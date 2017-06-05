@@ -62,6 +62,7 @@ import org.apache.sysml.hops.ipa.InterProceduralAnalysis;
 import org.apache.sysml.hops.recompile.Recompiler;
 import org.apache.sysml.hops.rewrite.HopRewriteUtils;
 import org.apache.sysml.hops.rewrite.ProgramRewriter;
+import org.apache.sysml.hops.spoof2.Spoof2Compiler;
 import org.apache.sysml.lops.Lop;
 import org.apache.sysml.lops.LopsException;
 import org.apache.sysml.parser.Expression.BuiltinFunctionOp;
@@ -279,6 +280,12 @@ public class DMLTranslator
 		// subsequently in various optimizations, e.g. CP vs. MR scheduling and parfor.
 		refreshMemEstimates(dmlp);
 		resetHopsDAGVisitStatus(dmlp);
+	}
+	
+	public void rewriteSpoofHopsDAG(DMLProgram dmlp)
+		throws LanguageException, HopsException, DMLRuntimeException 
+	{
+		Spoof2Compiler.generateCode(dmlp);
 	}
 	
 	public void codgenHopsDAG(DMLProgram dmlp)

@@ -284,7 +284,7 @@ public class SpoofCompiler
 		if( roots == null )
 			return roots;
 
-		ArrayList<Hop> optimized = SpoofCompiler.optimize(roots, false);
+		ArrayList<Hop> optimized = optimize(roots, false);
 		Hop.resetVisitStatus(roots);
 		Hop.resetVisitStatus(optimized);
 		

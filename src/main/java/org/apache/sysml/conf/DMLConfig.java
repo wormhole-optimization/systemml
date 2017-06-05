@@ -71,7 +71,8 @@ public class DMLConfig
 	public static final String CP_PARALLEL_MATRIXMULT = "cp.parallel.matrixmult";
 	public static final String CP_PARALLEL_TEXTIO   = "cp.parallel.textio";
 	public static final String COMPRESSED_LINALG    = "compressed.linalg";
-	public static final String NATIVE_BLAS    			= "native.blas";
+	public static final String NATIVE_BLAS    		= "native.blas";
+	public static final String SPOOF                = "spoof.enabled"; //boolean
 	public static final String CODEGEN              = "codegen.enabled"; //boolean
 	public static final String CODEGEN_PLANCACHE    = "codegen.plancache"; //boolean
 	public static final String CODEGEN_LITERALS     = "codegen.literals"; //1..heuristic, 2..always
@@ -113,6 +114,7 @@ public class DMLConfig
 		_defaultVals.put(CP_PARALLEL_MATRIXMULT, "true" );
 		_defaultVals.put(CP_PARALLEL_TEXTIO,     "true" );
 		_defaultVals.put(COMPRESSED_LINALG,      "false" );
+		_defaultVals.put(SPOOF,                  "false" );
 		_defaultVals.put(CODEGEN,                "false" );
 		_defaultVals.put(CODEGEN_PLANCACHE,      "true" );
 		_defaultVals.put(CODEGEN_LITERALS,       "1" );

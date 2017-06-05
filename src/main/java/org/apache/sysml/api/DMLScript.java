@@ -692,7 +692,10 @@ public class DMLScript
 		dmlt.rewriteHopsDAG(prog);
 
 		//Step 5.1: Generate code for the rewritten Hop dags 
-		if( dmlconf.getBooleanValue(DMLConfig.CODEGEN) ){
+		if( dmlconf.getBooleanValue(DMLConfig.SPOOF) ) {
+			dmlt.rewriteSpoofHopsDAG(prog);
+		}
+		else if( dmlconf.getBooleanValue(DMLConfig.CODEGEN) ){
 			SpoofCompiler.PLAN_CACHE_POLICY = PlanCachePolicy.get(
 					dmlconf.getBooleanValue(DMLConfig.CODEGEN_PLANCACHE),
 					dmlconf.getIntValue(DMLConfig.CODEGEN_LITERALS)==2);
