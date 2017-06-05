@@ -7,8 +7,18 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
+import org.apache.sysml.hops.AggBinaryOp;
+import org.apache.sysml.hops.AggUnaryOp;
+import org.apache.sysml.hops.DataOp;
 import org.apache.sysml.hops.Hop;
+import org.apache.sysml.hops.Hop.AggOp;
 import org.apache.sysml.hops.HopsException;
+import org.apache.sysml.hops.LiteralOp;
+import org.apache.sysml.hops.spoof2.plan.SNode;
+import org.apache.sysml.hops.spoof2.plan.SNodeAggregate;
+import org.apache.sysml.hops.spoof2.plan.SNodeData;
+import org.apache.sysml.hops.spoof2.plan.SNodePropagate;
+import org.apache.sysml.hops.spoof2.plan.SNodePropagate.PropOp;
 import org.apache.sysml.parser.DMLProgram;
 import org.apache.sysml.parser.ForStatement;
 import org.apache.sysml.parser.ForStatementBlock;
@@ -21,6 +31,7 @@ import org.apache.sysml.parser.StatementBlock;
 import org.apache.sysml.parser.WhileStatement;
 import org.apache.sysml.parser.WhileStatementBlock;
 import org.apache.sysml.runtime.DMLRuntimeException;
+import org.apache.sysml.utils.Explain;
 
 public class Spoof2Compiler 
 {
@@ -141,8 +152,53 @@ public class Spoof2Compiler
 	public static ArrayList<Hop> optimize(ArrayList<Hop> roots, boolean recompile) 
 		throws DMLRuntimeException 
 	{
-		LOG.trace("Spoof2Compiler called for DAG w/ "+roots.size()+" root nodes.");
+		LOG.trace("Spoof2Compiler called for HOP DAG: \n" 
+			+ Explain.explainHops(roots));
+		
+		//construct sum-product plan
+		ArrayList<SNode> sroots = new ArrayList<SNode>();
+		for( Hop root : roots )
+			sroots.add(rConstructSumProductPlan(root));
+		
+		//TODO explain extension sum-product plan
+		
+		//rewrite sum-product plan
+		
+		
+		//re-construct modified HOP DAG
+		
 		
 		return roots;
+	}
+	
+	private static SNode rConstructSumProductPlan(Hop current) {
+		//recursively process child nodes
+		ArrayList<SNode> inputs = new ArrayList<SNode>();
+		for( Hop c : current.getInput() )
+			inputs.add(rConstructSumProductPlan(c));
+		
+		//construct node for current hop
+		SNode node = null;
+		
+		
+		if( current instanceof DataOp ) {
+			node = ((DataOp)current).isRead() ?
+				new SNodeData(current) : 
+				new SNodeData(current, inputs.get(0));
+			node.setDims(current.getDim1(), current.getDim2());
+		}
+		else if( current instanceof LiteralOp ) {
+			node = new SNodeData(current);
+		}
+		else if( current instanceof AggUnaryOp ) {
+			node = new SNodeAggregate(inputs.get(0), 
+				((AggUnaryOp)current).getOp());
+		}
+		else if( current instanceof AggBinaryOp ) {
+			SNode mult = new SNodePropagate(inputs, PropOp.MULT);
+			node = new SNodeAggregate(mult, AggOp.SUM);
+		}
+		
+		return node;
 	}
 }
