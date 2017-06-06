@@ -1,10 +1,11 @@
 package org.apache.sysml.hops.spoof2.plan;
 
 import java.util.ArrayList;
+import java.util.List;
 
 import org.apache.sysml.runtime.controlprogram.parfor.util.IDSequence;
 
-public class SNode 
+public abstract class SNode 
 {
 	private final static IDSequence _idSeq = new IDSequence();
 	
@@ -17,7 +18,7 @@ public class SNode
 	private final ArrayList<Indexes> _indexes;
 	
 	//output dimensions and meta data
-	protected Indexes _schema;
+	protected final ArrayList<String> _schema;
 	protected long[] _dims;
 	
 	public SNode() {
@@ -25,6 +26,7 @@ public class SNode
 		_parents = new ArrayList<SNode>();
 		_inputs = new ArrayList<SNode>();
 		_indexes = new ArrayList<Indexes>();
+		_schema = new ArrayList<String>();
 	}
 
 	public SNode(SNode input) {
@@ -33,7 +35,7 @@ public class SNode
 		input._parents.add(this);
 	}
 	
-	public SNode(ArrayList<SNode> inputs) {
+	public SNode(List<SNode> inputs) {
 		this();
 		for( SNode input : inputs ) {
 			_inputs.add(input);
@@ -45,19 +47,19 @@ public class SNode
 		return _ID;
 	}
 	
-	public ArrayList<SNode> getParent() {
+	public List<SNode> getParent() {
 		return _parents;
 	}
 	
-	public ArrayList<SNode> getInput() {
+	public List<SNode> getInput() {
 		return _inputs;
 	}
 	
-	public ArrayList<Indexes> getIndexes() {
+	public List<Indexes> getIndexes() {
 		return _indexes;
 	}
 	
-	public Indexes getSchema() {
+	public List<String> getSchema() {
 		return _schema;
 	}
 	
@@ -82,5 +84,17 @@ public class SNode
 		_dims = new long[dims.length];
 		for( int i=0; i<dims.length; i++ )
 			_dims[i] = dims[i]; //unboxing
+	}
+	
+	public abstract boolean isIndexAggregator();
+	
+	public abstract boolean isIndexPropagator();
+	
+	@Override
+	public abstract String toString();
+	
+	protected void setupBasicSchema(long hopID) {
+		_schema.add("i1_" + hopID);
+		_schema.add("i2_" + hopID);
 	}
 }

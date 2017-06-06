@@ -9,16 +9,25 @@ import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.sysml.hops.AggBinaryOp;
 import org.apache.sysml.hops.AggUnaryOp;
+import org.apache.sysml.hops.BinaryOp;
+import org.apache.sysml.hops.DataGenOp;
 import org.apache.sysml.hops.DataOp;
 import org.apache.sysml.hops.Hop;
 import org.apache.sysml.hops.Hop.AggOp;
+import org.apache.sysml.hops.Hop.OpOp1;
+import org.apache.sysml.hops.Hop.OpOp2;
 import org.apache.sysml.hops.HopsException;
 import org.apache.sysml.hops.LiteralOp;
+import org.apache.sysml.hops.ReorgOp;
+import org.apache.sysml.hops.UnaryOp;
+import org.apache.sysml.hops.rewrite.HopRewriteUtils;
 import org.apache.sysml.hops.spoof2.plan.SNode;
 import org.apache.sysml.hops.spoof2.plan.SNodeAggregate;
 import org.apache.sysml.hops.spoof2.plan.SNodeData;
-import org.apache.sysml.hops.spoof2.plan.SNodePropagate;
-import org.apache.sysml.hops.spoof2.plan.SNodePropagate.PropOp;
+import org.apache.sysml.hops.spoof2.plan.SNodeExt;
+import org.apache.sysml.hops.spoof2.plan.SNodeNary;
+import org.apache.sysml.hops.spoof2.plan.SNodeNary.JoinCondition;
+import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp;
 import org.apache.sysml.parser.DMLProgram;
 import org.apache.sysml.parser.ForStatement;
 import org.apache.sysml.parser.ForStatementBlock;
@@ -179,24 +188,49 @@ public class Spoof2Compiler
 		
 		//construct node for current hop
 		SNode node = null;
-		
-		
 		if( current instanceof DataOp ) {
-			node = ((DataOp)current).isRead() ?
-				new SNodeData(current) : 
-				new SNodeData(current, inputs.get(0));
+			node = ((DataOp)current).isWrite() ?
+				new SNodeData(inputs.get(0), current) : 
+				new SNodeData(current);
 			node.setDims(current.getDim1(), current.getDim2());
 		}
 		else if( current instanceof LiteralOp ) {
 			node = new SNodeData(current);
+		}
+		else if( current instanceof DataGenOp ) {
+			node = new SNodeExt(current);
+		}
+		else if( current instanceof ReorgOp ) {
+			node = HopRewriteUtils.isTransposeOperation(current) ?
+				new SNodeNary(inputs.get(0), NaryOp.TRANSPOSE):
+				new SNodeExt(inputs.get(0), current);
+		}
+		else if( current instanceof UnaryOp ) {
+			OpOp1 op = ((UnaryOp) current).getOp();
+			node = NaryOp.contains(op.name()) ?
+				new SNodeNary(inputs.get(0), NaryOp.valueOf(op.name())) :
+				new SNodeExt(inputs.get(0), current);
+		}
+		else if( current instanceof BinaryOp ) {
+			OpOp2 op = ((BinaryOp) current).getOp();
+			node = NaryOp.contains(op.name()) ?
+				new SNodeNary(inputs, NaryOp.valueOf(op.name())) :
+				new SNodeExt(inputs, current);			
 		}
 		else if( current instanceof AggUnaryOp ) {
 			node = new SNodeAggregate(inputs.get(0), 
 				((AggUnaryOp)current).getOp());
 		}
 		else if( current instanceof AggBinaryOp ) {
-			SNode mult = new SNodePropagate(inputs, PropOp.MULT);
+			SNode mult = new SNodeNary(inputs, NaryOp.MULT, 
+				new JoinCondition(inputs.get(0).getSchema().get(1),
+				inputs.get(1).getSchema().get(0)));
 			node = new SNodeAggregate(mult, AggOp.SUM);
+		}
+		
+		if( node == null ) {
+			throw new RuntimeException("Error constructing SNode for HOP: " +
+				current.getHopID() + " " + current.getOpString() + ".");
 		}
 		
 		return node;

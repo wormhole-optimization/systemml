@@ -1,7 +1,7 @@
 package org.apache.sysml.hops.spoof2.plan;
 
-import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 
 import org.apache.sysml.runtime.controlprogram.parfor.util.IDSequence;
 
@@ -9,25 +9,21 @@ public class Indexes
 {
 	private final static IDSequence _idSeq = new IDSequence();
 	
-	private final ArrayList<String> _names;
+	private final HashSet<String> _names;
 
 	public Indexes(Indexes indexes) {
-		_names = new ArrayList<String>(
+		_names = new HashSet<String>(
 			indexes._names);
 	}
 	
 	public Indexes(String... indexes) {
-		_names = new ArrayList<String>();
+		_names = new HashSet<String>();
 		for( String index : indexes )
 			_names.add(index);
 	}
 	
 	public void add(String index) {
 		_names.add(index);
-	}
-	
-	public String get(int pos) {
-		return _names.get(pos);
 	}
 	
 	public void rename(String oldindex, String index) {
