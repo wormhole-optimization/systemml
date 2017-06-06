@@ -161,15 +161,20 @@ public class Spoof2Compiler
 	public static ArrayList<Hop> optimize(ArrayList<Hop> roots, boolean recompile) 
 		throws DMLRuntimeException 
 	{
-		LOG.trace("Spoof2Compiler called for HOP DAG: \n" 
-			+ Explain.explainHops(roots));
+		if( LOG.isTraceEnabled() ) {
+			LOG.trace("Spoof2Compiler called for HOP DAG: \n" 
+				+ Explain.explainHops(roots));
+		}
 		
 		//construct sum-product plan
 		ArrayList<SNode> sroots = new ArrayList<SNode>();
 		for( Hop root : roots )
 			sroots.add(rConstructSumProductPlan(root));
 		
-		//TODO explain extension sum-product plan
+		if( LOG.isTraceEnabled() ) {
+			LOG.trace("Explain after initial SPlan construction: " 
+				+ Explain.explainSPlan(sroots));
+		}
 		
 		//rewrite sum-product plan
 		
@@ -192,7 +197,6 @@ public class Spoof2Compiler
 			node = ((DataOp)current).isWrite() ?
 				new SNodeData(inputs.get(0), current) : 
 				new SNodeData(current);
-			node.setDims(current.getDim1(), current.getDim2());
 		}
 		else if( current instanceof LiteralOp ) {
 			node = new SNodeData(current);
@@ -225,13 +229,19 @@ public class Spoof2Compiler
 			SNode mult = new SNodeNary(inputs, NaryOp.MULT, 
 				new JoinCondition(inputs.get(0).getSchema().get(1),
 				inputs.get(1).getSchema().get(0)));
+			mult.setDims(current.getDim1(), current.getDim2(), 
+				current.getInput().get(0).getDim2());
 			node = new SNodeAggregate(mult, AggOp.SUM);
 		}
 		
+		//check for valid created SNode
 		if( node == null ) {
 			throw new RuntimeException("Error constructing SNode for HOP: " +
 				current.getHopID() + " " + current.getOpString() + ".");
 		}
+		
+		//update size information (other than intermediates)
+		node.setDims(current.getDim1(), current.getDim2());
 		
 		return node;
 	}

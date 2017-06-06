@@ -37,6 +37,7 @@ import org.apache.sysml.hops.globalopt.gdfgraph.GDFLoopNode;
 import org.apache.sysml.hops.globalopt.gdfgraph.GDFNode;
 import org.apache.sysml.hops.globalopt.gdfgraph.GDFNode.NodeType;
 import org.apache.sysml.hops.ipa.FunctionCallGraph;
+import org.apache.sysml.hops.spoof2.plan.SNode;
 import org.apache.sysml.lops.Lop;
 import org.apache.sysml.parser.DMLProgram;
 import org.apache.sysml.parser.ExternalFunctionStatement;
@@ -400,6 +401,35 @@ public class Explain
 	public static String explain( CNode node, int level ) throws DMLRuntimeException {
 		return explainCNode(node, level);
 	}
+	
+	public static String explainSPlan( ArrayList<SNode> splan ) 
+		throws DMLRuntimeException 
+	{
+		StringBuilder sb = new StringBuilder();
+		
+		//create template header
+		sb.append("\n----------------------------------------\n");
+		sb.append("SPLAN: #roots = "+ splan.size() +"\n");
+		sb.append("----------------------------------------\n");
+		
+		//explain body dag
+		SNode.resetVisited(splan);
+		for( SNode root : splan )
+			sb.append(explainSNode(root, 1));
+		SNode.resetVisited(splan);
+		
+		sb.append("----------------------------------------\n");
+		
+		return sb.toString();
+	}
+	
+	public static String explain( SNode node ) throws DMLRuntimeException {
+		return explain(node, 0);
+	}
+	
+	public static String explain( SNode node, int level ) throws DMLRuntimeException {
+		return explainSNode(node, level);
+	}
 
 	public static String explainGDFNodes( ArrayList<GDFNode> gdfnodes ) 
 		throws DMLRuntimeException
@@ -660,6 +690,62 @@ public class Explain
 		
 		return sb.toString();
 	}
+
+	//////////////
+	// internal explain SNODE
+
+	private static String explainSNode(SNode snode, int level) 
+		throws DMLRuntimeException 
+	{
+		if( snode.isVisited() )
+			return "";
+		
+		StringBuilder sb = new StringBuilder();
+		String offset = createOffset(level);
+		
+		for( SNode input : snode.getInput() )
+			sb.append(explainSNode(input, level));
+		
+		//indentation
+		sb.append(offset);
+		
+		//hop id
+		if( SHOW_DATA_DEPENDENCIES )
+			sb.append("("+snode.getID()+") ");
+		
+		//operation string
+		sb.append(snode.toString());
+		
+		//input hop references 
+		if( SHOW_DATA_DEPENDENCIES ) {
+			StringBuilder childs = new StringBuilder();
+			childs.append(" (");
+			boolean childAdded = false;
+			for( SNode input : snode.getInput() ) {
+				childs.append(childAdded?",":"");
+				childs.append(input.getID());
+				childAdded = true;
+			}
+			childs.append(")");		
+			if( childAdded )
+				sb.append(childs.toString());
+		}
+		
+		//tensor characteristics
+		sb.append(" [");
+		for( int i=0; i<snode.getNumDims(); i++ ) {
+			if( i > 0 )
+				sb.append(",");
+			sb.append(snode.getDim(i));
+		}
+		sb.append("]");
+		
+		sb.append('\n');
+		snode.setVisited();
+		
+		return sb.toString();
+	}
+	
 	
 	//////////////
 	// internal explain GDFNODE

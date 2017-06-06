@@ -74,7 +74,26 @@ public class SNodeNary extends SNode
 
 	@Override
 	public String toString() {
-		return "nary("+_type.name()+")";
+		switch( _type ) {
+			case PLUS: return "nary(+)";
+			case MINUS: return "nary(-)";
+			case MULT: return "nary(*)";
+			case DIV: return "nary(/)";
+			case MODULUS: return "nary(%%)";
+			case INTDIV: return "nary(%/%)";
+			case LESS: return "nary(<)";
+			case LESSEQUAL: return "nary(<=)";
+			case GREATER: return "nary(>)";
+			case GREATEREQUAL: return "nary(>=)";
+			case EQUAL: return "nary(==)";
+			case NOTEQUAL: return "nary(!=)";
+			case PLUS_MULT: return "nary(+*)";
+			case MINUS_MULT: return "nary(-*)";
+			case TRANSPOSE: return "nary(t)";
+		
+			default:
+				return "nary("+_type.name().toLowerCase()+")";
+		}
 	}
 
 	//equi join condition, use multiple for conjunctions

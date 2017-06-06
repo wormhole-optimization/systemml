@@ -29,6 +29,6 @@ public class SNodeAggregate extends SNode
 
 	@Override
 	public String toString() {
-		return "agg("+_type.name()+")";
+		return "agg("+_type.name().toLowerCase()+")";
 	}
 }

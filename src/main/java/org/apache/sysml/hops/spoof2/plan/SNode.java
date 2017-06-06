@@ -20,6 +20,7 @@ public abstract class SNode
 	//output dimensions and meta data
 	protected final ArrayList<String> _schema;
 	protected long[] _dims;
+	protected boolean _visited;
 	
 	public SNode() {
 		_ID = _idSeq.getNextID();
@@ -84,6 +85,31 @@ public abstract class SNode
 		_dims = new long[dims.length];
 		for( int i=0; i<dims.length; i++ )
 			_dims[i] = dims[i]; //unboxing
+	}
+	
+	public boolean isVisited() {
+		return _visited;
+	}
+	
+	public void setVisited() {
+		setVisited(true);
+	}
+	
+	public void setVisited(boolean flag) {
+		_visited = flag;
+	}
+	
+	public void resetVisited() {
+		if( !isVisited() )
+			return;
+		for( SNode c : getInput() )
+			c.resetVisited();		
+		setVisited(false);
+	}
+	
+	public static void resetVisited(ArrayList<SNode> roots) {
+		for( SNode root : roots )
+			root.resetVisited();
 	}
 	
 	public abstract boolean isIndexAggregator();
