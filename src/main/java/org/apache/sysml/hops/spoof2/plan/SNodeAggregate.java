@@ -1,6 +1,8 @@
 package org.apache.sysml.hops.spoof2.plan;
 
 
+import java.util.List;
+
 import org.apache.sysml.hops.Hop.AggOp;
 
 public class SNodeAggregate extends SNode
@@ -11,6 +13,12 @@ public class SNodeAggregate extends SNode
 	public SNodeAggregate(SNode input, AggOp type) {
 		super(input);
 		_type = type;
+	}
+	
+	public SNodeAggregate(SNode input, AggOp type, List<String> schema) {
+		super(input);
+		_type = type;
+		_schema.addAll(schema);
 	}
 	
 	public AggOp getOp() {

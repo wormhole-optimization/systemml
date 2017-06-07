@@ -1,6 +1,7 @@
 package org.apache.sysml.hops.spoof2.plan;
 
 import java.util.ArrayList;
+import java.util.List;
 
 public class SNodeNary extends SNode
 {
@@ -33,12 +34,17 @@ public class SNodeNary extends SNode
 	private final JoinCondition[] _joins;
 	
 	public SNodeNary(SNode input, NaryOp type) {
+		//for unary ops, schema propagates
+		this(input, type, input.getSchema());
+	}
+	
+	public SNodeNary(SNode input, NaryOp type, List<String> schema) {
 		super(input);
 		_type = type;
 		
 		//for unary ops, schema propagates
 		_joins = new JoinCondition[0];
-		_schema.addAll(input.getSchema());
+		_schema.addAll(schema);
 	}
 	
 	public SNodeNary(ArrayList<SNode> inputs, NaryOp type, JoinCondition... joins) {
@@ -60,6 +66,13 @@ public class SNodeNary extends SNode
 	
 	public JoinCondition[] getJoins() {
 		return _joins;
+	}
+	
+	public boolean containsJoinCondition(String attr) {
+		for( JoinCondition join : _joins )
+			if( join.getLeft().equals(attr) || join.getRight().equals(attr) )
+				return true;
+		return false;
 	}
 
 	@Override

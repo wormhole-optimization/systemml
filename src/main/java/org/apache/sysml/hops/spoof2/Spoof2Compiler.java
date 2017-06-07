@@ -2,6 +2,7 @@ package org.apache.sysml.hops.spoof2;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -14,6 +15,7 @@ import org.apache.sysml.hops.DataGenOp;
 import org.apache.sysml.hops.DataOp;
 import org.apache.sysml.hops.Hop;
 import org.apache.sysml.hops.Hop.AggOp;
+import org.apache.sysml.hops.Hop.Direction;
 import org.apache.sysml.hops.Hop.OpOp1;
 import org.apache.sysml.hops.Hop.OpOp2;
 import org.apache.sysml.hops.HopsException;
@@ -28,6 +30,7 @@ import org.apache.sysml.hops.spoof2.plan.SNodeExt;
 import org.apache.sysml.hops.spoof2.plan.SNodeNary;
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.JoinCondition;
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp;
+import org.apache.sysml.hops.spoof2.rewrite.BasicSPlanRewriter;
 import org.apache.sysml.parser.DMLProgram;
 import org.apache.sysml.parser.ForStatement;
 import org.apache.sysml.parser.ForStatementBlock;
@@ -41,6 +44,7 @@ import org.apache.sysml.parser.WhileStatement;
 import org.apache.sysml.parser.WhileStatementBlock;
 import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.utils.Explain;
+import org.spark_project.guava.collect.Lists;
 
 public class Spoof2Compiler 
 {
@@ -177,6 +181,13 @@ public class Spoof2Compiler
 		}
 		
 		//rewrite sum-product plan
+		BasicSPlanRewriter rewriter = new BasicSPlanRewriter();
+		sroots = rewriter.rewriteSPlan(sroots);
+		
+		if( LOG.isTraceEnabled() ) {
+			LOG.trace("Explain after SPlan rewriting: " 
+				+ Explain.explainSPlan(sroots));
+		}
 		
 		
 		//re-construct modified HOP DAG
@@ -206,7 +217,8 @@ public class Spoof2Compiler
 		}
 		else if( current instanceof ReorgOp ) {
 			node = HopRewriteUtils.isTransposeOperation(current) ?
-				new SNodeNary(inputs.get(0), NaryOp.TRANSPOSE):
+				new SNodeNary(inputs.get(0), NaryOp.TRANSPOSE,
+					Lists.reverse(inputs.get(0).getSchema())):
 				new SNodeExt(inputs.get(0), current);
 		}
 		else if( current instanceof UnaryOp ) {
@@ -222,8 +234,12 @@ public class Spoof2Compiler
 				new SNodeExt(inputs, current);			
 		}
 		else if( current instanceof AggUnaryOp ) {
+			AggUnaryOp au = (AggUnaryOp) current;
+			List<String> schema = (au.getDirection()==Direction.Row) ? 
+				Arrays.asList(inputs.get(0).getSchema().get(0)) : (au.getDirection()==Direction.Col) ? 
+				Arrays.asList(inputs.get(0).getSchema().get(1)) : new ArrayList<String>();
 			node = new SNodeAggregate(inputs.get(0), 
-				((AggUnaryOp)current).getOp());
+				((AggUnaryOp)current).getOp(), schema);
 		}
 		else if( current instanceof AggBinaryOp ) {
 			SNode mult = new SNodeNary(inputs, NaryOp.MULT, 
@@ -231,7 +247,8 @@ public class Spoof2Compiler
 				inputs.get(1).getSchema().get(0)));
 			mult.setDims(current.getDim1(), current.getDim2(), 
 				current.getInput().get(0).getDim2());
-			node = new SNodeAggregate(mult, AggOp.SUM);
+			node = new SNodeAggregate(mult, AggOp.SUM, Arrays.asList(
+				mult.getSchema().get(0), mult.getSchema().get(2)));
 		}
 		
 		//check for valid created SNode

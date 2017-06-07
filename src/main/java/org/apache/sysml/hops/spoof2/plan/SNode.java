@@ -64,12 +64,21 @@ public abstract class SNode
 		return _schema;
 	}
 	
+	public boolean isScalar() {
+		return (_dims.length==0)
+			|| (_dims.length==2 && _dims[0]==0 && _dims[1]==0);
+	}
+	
 	public int getNumDims() {
 		return _dims.length;
 	}
 	
 	public long getDim(int pos) {
 		return _dims[pos];
+	}
+	
+	public long getDim(String attr) {
+		return _dims[_schema.indexOf(attr)];
 	}
 	
 	public long getDim1() {

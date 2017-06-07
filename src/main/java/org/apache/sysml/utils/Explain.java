@@ -731,7 +731,9 @@ public class Explain
 				sb.append(childs.toString());
 		}
 		
-		//tensor characteristics
+		//schema and tensor characteristics
+		sb.append(" "+Arrays.toString(
+			snode.getSchema().toArray(new String[0])));
 		sb.append(" [");
 		for( int i=0; i<snode.getNumDims(); i++ ) {
 			if( i > 0 )
