@@ -21,8 +21,15 @@ public class RewriteAggregateElimination extends SPlanRewriteRule
 			{
 				SNodeRewriteUtils.replaceChildReference(
 					agg1, agg2, agg2.getInput().get(0));
-				LOG.debug("Applied RewriteAggregateElimination.");
+				LOG.debug("Applied RewriteAggregateElimination (agg-agg).");
 			}
+		}
+		else if( node instanceof SNodeAggregate 
+			&& node.getSchema().equals(node.getInput().get(0).getSchema()) )
+		{
+			SNodeRewriteUtils.replaceChildReference(
+				parent, node, node.getInput().get(0));
+			LOG.debug("Applied RewriteAggregateElimination (equi schema).");
 		}
 		
 		return node;

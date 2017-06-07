@@ -64,6 +64,11 @@ public abstract class SNode
 		return _schema;
 	}
 	
+	public void setSchema(List<String> schema) {
+		_schema.clear();
+		_schema.addAll(schema);
+	}
+	
 	public boolean isScalar() {
 		return (_dims.length==0)
 			|| (_dims.length==2 && _dims[0]==0 && _dims[1]==0);

@@ -41,6 +41,12 @@ public class RewriteDistributiveSumProduct extends SPlanRewriteRule
 						SNodeAggregate sum2 = new SNodeAggregate(input, AggOp.SUM, tgtSchema);
 						sum2.setDims(tgtDims.toArray(new Long[0]));
 						SNodeRewriteUtils.replaceChildReference(mult, input, sum2);
+						//update multiply dimensions and schema
+						//TODO extend for row/column sums
+						if( tgtSchema.isEmpty() ) { 
+							mult.setDims(0L, 0L);
+							mult.setSchema(mult.getInput().get(i).getSchema());
+						}
 						numApplied ++;
 					}
 				}
