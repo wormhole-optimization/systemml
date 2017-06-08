@@ -493,8 +493,7 @@ public class HopRewriteUtils
 		return createBinary(new LiteralOp(0), input, OpOp2.MINUS);
 	}
 	
-	public static BinaryOp createBinary(Hop input1, Hop input2, OpOp2 op)
-	{
+	public static BinaryOp createBinary(Hop input1, Hop input2, OpOp2 op) {
 		Hop mainInput = input1.getDataType().isMatrix() ? input1 : 
 			input2.getDataType().isMatrix() ? input2 : input1;
 		BinaryOp bop = new BinaryOp(mainInput.getName(), mainInput.getDataType(), 
@@ -506,6 +505,17 @@ public class HopRewriteUtils
 		copyLineNumbers(mainInput, bop);
 		bop.refreshSizeInformation();	
 		return bop;
+	}
+	
+	public static TernaryOp createTernary(Hop input1, Hop input2, Hop input3, OpOp3 op) {
+		Hop mainInput = input1.getDataType().isMatrix() ? input1 : 
+			input2.getDataType().isMatrix() ? input3 : input1;
+		TernaryOp top = new TernaryOp(mainInput.getName(), mainInput.getDataType(), 
+			mainInput.getValueType(), op, input1, input2, input3);
+		top.setOutputBlocksizes(mainInput.getRowsInBlock(), mainInput.getColsInBlock());
+		copyLineNumbers(mainInput, top);
+		top.refreshSizeInformation();	
+		return top;
 	}
 	
 	public static AggUnaryOp createSum( Hop input ) {

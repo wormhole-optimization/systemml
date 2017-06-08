@@ -18,11 +18,14 @@ import org.apache.sysml.hops.Hop.AggOp;
 import org.apache.sysml.hops.Hop.Direction;
 import org.apache.sysml.hops.Hop.OpOp1;
 import org.apache.sysml.hops.Hop.OpOp2;
+import org.apache.sysml.hops.Hop.OpOp3;
 import org.apache.sysml.hops.HopsException;
 import org.apache.sysml.hops.LiteralOp;
 import org.apache.sysml.hops.ReorgOp;
 import org.apache.sysml.hops.UnaryOp;
 import org.apache.sysml.hops.rewrite.HopRewriteUtils;
+import org.apache.sysml.hops.rewrite.ProgramRewriteStatus;
+import org.apache.sysml.hops.rewrite.ProgramRewriter;
 import org.apache.sysml.hops.spoof2.plan.SNode;
 import org.apache.sysml.hops.spoof2.plan.SNodeAggregate;
 import org.apache.sysml.hops.spoof2.plan.SNodeData;
@@ -31,6 +34,7 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary;
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.JoinCondition;
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp;
 import org.apache.sysml.hops.spoof2.rewrite.BasicSPlanRewriter;
+import org.apache.sysml.hops.spoof2.rewrite.SNodeRewriteUtils;
 import org.apache.sysml.parser.DMLProgram;
 import org.apache.sysml.parser.ForStatement;
 import org.apache.sysml.parser.ForStatementBlock;
@@ -146,8 +150,9 @@ public class Spoof2Compiler
 	 * @param recompile true if invoked during dynamic recompilation
 	 * @return dag root node of modified dag
 	 * @throws DMLRuntimeException if optimization failed
+	 * @throws HopsException 
 	 */
-	public static Hop optimize( Hop root, boolean recompile ) throws DMLRuntimeException {
+	public static Hop optimize( Hop root, boolean recompile ) throws DMLRuntimeException, HopsException {
 		if( root == null )
 			return root;
 		
@@ -161,9 +166,10 @@ public class Spoof2Compiler
 	 * @param recompile true if invoked during dynamic recompilation
 	 * @return dag root nodes of modified dag 
 	 * @throws DMLRuntimeException if optimization failed
+	 * @throws HopsException 
 	 */
 	public static ArrayList<Hop> optimize(ArrayList<Hop> roots, boolean recompile) 
-		throws DMLRuntimeException 
+		throws DMLRuntimeException, HopsException 
 	{
 		if( LOG.isTraceEnabled() ) {
 			LOG.trace("Spoof2Compiler called for HOP DAG: \n" 
@@ -189,11 +195,27 @@ public class Spoof2Compiler
 				+ Explain.explainSPlan(sroots));
 		}
 		
-		
 		//re-construct modified HOP DAG
+		ArrayList<Hop> roots2 = new ArrayList<Hop>();
+		for( SNode root : sroots )
+			roots2.add(rReconstructHopDag(root));
 		
+		if( LOG.isTraceEnabled() ) {
+			LOG.trace("Spoof2Compiler created modified HOP DAG: \n" 
+				+ Explain.explainHops(roots2));
+		}
 		
-		return roots;
+		//rewrite after applied sum-product optimizer
+		Hop.resetVisitStatus(roots2);
+		ProgramRewriter rewriter2 = new ProgramRewriter(true, true);
+		roots2 = rewriter2.rewriteHopDAGs(roots2, new ProgramRewriteStatus());
+	
+		if( LOG.isTraceEnabled() ) {
+			LOG.trace("Spoof2Compiler rewritten modified HOP DAG: \n" 
+				+ Explain.explainHops(roots2));
+		}
+		
+		return roots2;
 	}
 	
 	private static SNode rConstructSumProductPlan(Hop current) {
@@ -262,4 +284,77 @@ public class Spoof2Compiler
 		
 		return node;
 	}
+	
+	private static Hop rReconstructHopDag(SNode current) {
+		
+		//recursively process child nodes
+		ArrayList<Hop> inputs = new ArrayList<Hop>();
+		for( SNode c : current.getInput() )
+			inputs.add(rReconstructHopDag(c));
+		
+		Hop node = null;
+		
+		if( current instanceof SNodeData ) {
+			node = ((SNodeData)current).getHop();
+			if( !current.getInput().isEmpty() ) {
+				HopRewriteUtils.replaceChildReference(node, 
+					node.getInput().get(0), inputs.get(0), 0);
+			}
+		}
+		else if( current instanceof SNodeAggregate ) {
+			SNodeAggregate agg = (SNodeAggregate) current;
+			if( SNodeRewriteUtils.isSNodeNary(agg.getInput().get(0), NaryOp.MULT) 
+				&& (agg.isScalar() || agg.getInput().get(0).getNumDims()==3) ) {
+				//TODO proper handling of schemas to decide upon transpose
+				Hop input1 = inputs.get(0).getInput().get(0);
+				Hop input2 = inputs.get(0).getInput().get(1);
+				input1 = (agg.isScalar() && input1.getDim1() > 1) ? 
+					HopRewriteUtils.createTranspose(input1) : input1;
+				input2 = (agg.isScalar() && input2.getDim2() > 1) ? 
+						HopRewriteUtils.createTranspose(input2) : input2;
+				node = HopRewriteUtils.createMatrixMultiply(input1, input2);
+				node = HopRewriteUtils.createUnary(node, OpOp1.CAST_AS_SCALAR);
+			}
+			else {
+				Direction dir = agg.getSchema().isEmpty() ? Direction.RowCol : 
+					agg.getSchema().get(0).equals(agg.getInput().get(0).getSchema().get(0)) ? 
+					Direction.Row : Direction.Col;
+				node = HopRewriteUtils.createAggUnaryOp(inputs.get(0), agg.getOp(), dir);
+			}
+		}
+		else if( current instanceof SNodeNary ) {
+			SNodeNary nary = (SNodeNary) current;
+			if( inputs.size()==1 ) { //unary
+				if( nary.getOp()==NaryOp.TRANSPOSE )
+					node = HopRewriteUtils.createTranspose(inputs.get(0));
+				else
+					node = HopRewriteUtils.createUnary(
+						inputs.get(0), OpOp1.valueOf(nary.getOp().name()));
+			}
+			else if( inputs.size()==2 ) { //binary
+				node = HopRewriteUtils.createBinary(inputs.get(0), 
+					inputs.get(1), OpOp2.valueOf(nary.getOp().name()));
+			}
+			else if( inputs.size()==3 ) { //ternary
+				node = HopRewriteUtils.createTernary(inputs.get(0), inputs.get(1), 
+					inputs.get(2), OpOp3.valueOf(nary.getOp().name()));
+			}
+		}
+		else if( current instanceof SNodeExt ) {
+			node = ((SNodeExt)current).getHop();
+			if( !inputs.isEmpty() ) { //robustness datagen
+				HopRewriteUtils.removeAllChildReferences(node);
+				for( Hop c : inputs )
+					node.addInput(c);
+			}
+		}
+		
+		//check for valid created SNode
+		if( node == null ) {
+			throw new RuntimeException("Error constructing Hop for SNode: " +
+				current.getID() + " " + current.toString() + ".");
+		}
+		
+		return node;
+	} 
 }

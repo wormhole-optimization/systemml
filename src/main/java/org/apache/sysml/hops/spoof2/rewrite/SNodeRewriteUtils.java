@@ -3,6 +3,8 @@ package org.apache.sysml.hops.spoof2.rewrite;
 
 import java.util.ArrayList;
 import org.apache.sysml.hops.spoof2.plan.SNode;
+import org.apache.sysml.hops.spoof2.plan.SNodeNary;
+import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp;
 
 public class SNodeRewriteUtils 
 {
@@ -65,5 +67,9 @@ public class SNodeRewriteUtils
 		for( SNode input : inputs )
 			if( input.getParent().isEmpty() )
 				removeAllChildReferences(input);
+	}
+	
+	public static boolean isSNodeNary(SNode node, NaryOp type) {
+		return (node instanceof SNodeNary && ((SNodeNary)node).getOp()==type);
 	}
 }

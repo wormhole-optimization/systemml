@@ -119,8 +119,7 @@ public class SumProductRewrites extends AutomatedTestBase
 			HashMap<CellIndex, Double> rfile  = readRMatrixFromFS("R");	
 			TestUtils.compareMatrices(dmlfile, rfile, eps, "Stat-DML", "Stat-R");
 			if( testname.equals(TEST_NAME1) )
-				Assert.assertTrue(heavyHittersContainsSubString("uack+")
-					&& heavyHittersContainsSubString("uark+"));
+				Assert.assertTrue(heavyHittersContainsSubString("uack+"));
 		}
 		finally {
 			rtplatform = platformOld;
