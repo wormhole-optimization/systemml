@@ -18,8 +18,7 @@ public class Indexes
 	
 	public Indexes(String... indexes) {
 		_names = new HashSet<String>();
-		for( String index : indexes )
-			_names.add(index);
+		_names.addAll(Arrays.asList(indexes));
 	}
 	
 	public void add(String index) {

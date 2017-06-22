@@ -25,7 +25,7 @@ public class BasicSPlanRewriter
 	
 	public ArrayList<SNode> rewriteSPlan(ArrayList<SNode> roots) {
 		if( roots == null )
-			return roots;
+			return null;
 
 		//one pass rewrite-descend (rewrite created pattern)
 		SNode.resetVisited(roots);

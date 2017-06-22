@@ -61,7 +61,7 @@ public class Spoof2Compiler
 		// for internal debugging only
 		if( LDEBUG ) {
 			Logger.getLogger("org.apache.sysml.hops.spoof2")
-				  .setLevel((Level) Level.TRACE);
+				  .setLevel(Level.TRACE);
 		}
 	}
 	
@@ -133,7 +133,7 @@ public class Spoof2Compiler
 		throws HopsException, DMLRuntimeException
 	{
 		if( roots == null )
-			return roots;
+			return null;
 
 		ArrayList<Hop> optimized = optimize(roots, false);
 		Hop.resetVisitStatus(roots);
@@ -150,12 +150,11 @@ public class Spoof2Compiler
 	 * @param recompile true if invoked during dynamic recompilation
 	 * @return dag root node of modified dag
 	 * @throws DMLRuntimeException if optimization failed
-	 * @throws HopsException 
+	 * @throws HopsException -
 	 */
 	public static Hop optimize( Hop root, boolean recompile ) throws DMLRuntimeException, HopsException {
 		if( root == null )
-			return root;
-		
+			return null;
 		return optimize(new ArrayList<Hop>(Arrays.asList(root)), recompile).get(0);
 	}
 	
@@ -166,7 +165,7 @@ public class Spoof2Compiler
 	 * @param recompile true if invoked during dynamic recompilation
 	 * @return dag root nodes of modified dag 
 	 * @throws DMLRuntimeException if optimization failed
-	 * @throws HopsException 
+	 * @throws HopsException -
 	 */
 	public static ArrayList<Hop> optimize(ArrayList<Hop> roots, boolean recompile) 
 		throws DMLRuntimeException, HopsException 
@@ -177,7 +176,7 @@ public class Spoof2Compiler
 		}
 		
 		//construct sum-product plan
-		ArrayList<SNode> sroots = new ArrayList<SNode>();
+		ArrayList<SNode> sroots = new ArrayList<>();
 		for( Hop root : roots )
 			sroots.add(rConstructSumProductPlan(root));
 		
@@ -196,9 +195,9 @@ public class Spoof2Compiler
 		}
 		
 		//re-construct modified HOP DAG
-		ArrayList<Hop> roots2 = new ArrayList<Hop>();
-		for( SNode root : sroots )
-			roots2.add(rReconstructHopDag(root));
+		ArrayList<Hop> roots2 = new ArrayList<>();
+		for( SNode sroot : sroots )
+			roots2.add(rReconstructHopDag(sroot));
 		
 		if( LOG.isTraceEnabled() ) {
 			LOG.trace("Spoof2Compiler created modified HOP DAG: \n" 
@@ -220,7 +219,7 @@ public class Spoof2Compiler
 	
 	private static SNode rConstructSumProductPlan(Hop current) {
 		//recursively process child nodes
-		ArrayList<SNode> inputs = new ArrayList<SNode>();
+		ArrayList<SNode> inputs = new ArrayList<>();
 		for( Hop c : current.getInput() )
 			inputs.add(rConstructSumProductPlan(c));
 		
