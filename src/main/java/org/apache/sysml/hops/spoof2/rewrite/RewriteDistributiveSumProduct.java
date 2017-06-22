@@ -39,7 +39,7 @@ public class RewriteDistributiveSumProduct extends SPlanRewriteRule
 					//create new aggregate if potential for pre-agg
 					if( input.getSchema().size() > tgtSchema.size() ) {
 						SNodeAggregate sum2 = new SNodeAggregate(input, AggOp.SUM, tgtSchema);
-						sum2.setDims(tgtDims.toArray(new Long[0]));
+						sum2.setDims();
 						SNodeRewriteUtils.replaceChildReference(mult, input, sum2);
 						//update multiply dimensions and schema
 						//TODO extend for row/column sums

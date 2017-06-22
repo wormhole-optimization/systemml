@@ -711,7 +711,7 @@ public class Explain
 		
 		//hop id
 		if( SHOW_DATA_DEPENDENCIES )
-			sb.append("("+snode.getID()+") ");
+			sb.append("("+snode.getId()+") ");
 		
 		//operation string
 		sb.append(snode.toString());
@@ -723,7 +723,7 @@ public class Explain
 			boolean childAdded = false;
 			for( SNode input : snode.getInput() ) {
 				childs.append(childAdded?",":"");
-				childs.append(input.getID());
+				childs.append(input.getId());
 				childAdded = true;
 			}
 			childs.append(")");		

@@ -351,7 +351,7 @@ public class Spoof2Compiler
 		//check for valid created SNode
 		if( node == null ) {
 			throw new RuntimeException("Error constructing Hop for SNode: " +
-				current.getID() + " " + current.toString() + ".");
+				current.getId() + " " + current.toString() + ".");
 		}
 		
 		return node;
