@@ -173,8 +173,10 @@ object Spoof2Compiler {
 
         //construct sum-product plan
         var sroots = ArrayList<SNode>()
+        Hop.resetVisitStatus(roots)
+        val snodeMemo: MutableMap<Hop, SNode> = hashMapOf()
         for (root in roots)
-            sroots.add(rConstructSumProductPlan(root))
+            sroots.add(rConstructSumProductPlan(root, snodeMemo))
 
         if (LOG.isTraceEnabled) {
             LOG.trace("Explain after initial SPlan construction: " + Explain.explainSPlan(sroots))
@@ -190,8 +192,10 @@ object Spoof2Compiler {
 
         //re-construct modified HOP DAG
         var roots2 = ArrayList<Hop>()
+        SNode.resetVisited(sroots)
+        val hopMemo: MutableMap<SNode, Hop> = hashMapOf()
         for (sroot in sroots)
-            roots2.add(rReconstructHopDag(sroot))
+            roots2.add(rReconstructHopDag(sroot, hopMemo))
 
         if (LOG.isTraceEnabled) {
             LOG.trace("Spoof2Compiler created modified HOP DAG: \n" + Explain.explainHops(roots2))
@@ -212,11 +216,15 @@ object Spoof2Compiler {
 
     // during this phase, no one has exposed labels.
     // passing around matrices, vectors, and scalars
-    private fun rConstructSumProductPlan(current: Hop): SNode {
+    private fun rConstructSumProductPlan(current: Hop, snodeMemo: MutableMap<Hop, SNode>): SNode {
+        if (current.isVisited) {
+            return snodeMemo[current]!!
+        }
+
         //recursively process child nodes
         val inputs = ArrayList<SNode>()
         for (c in current.input)
-            inputs.add(rConstructSumProductPlan(c)) // todo cse? Use visit flag and memo map
+            inputs.add(rConstructSumProductPlan(c, snodeMemo))
 
         //construct node for current hop
         val node: SNode = when( current ) {
@@ -264,15 +272,21 @@ object Spoof2Compiler {
 
         node.updateSchema()
 
+        current.setVisited()
+        snodeMemo.put(current, node)
+
         return node
     }
 
-    private fun rReconstructHopDag(current: SNode): Hop {
+    private fun rReconstructHopDag(current: SNode, hopMemo: MutableMap<SNode, Hop>): Hop {
+        if (current.visited) {
+            return hopMemo[current]!!
+        }
 
         //recursively process child nodes
         val inputs = ArrayList<Hop>()
         for (c in current.inputs)
-            inputs.add(rReconstructHopDag(c))
+            inputs.add(rReconstructHopDag(c, hopMemo))
 
         val node: Hop = when( current ) {
             is SNodeData -> {
@@ -344,6 +358,9 @@ object Spoof2Compiler {
                 throw RuntimeException("Error constructing Hop for SNode: ${current.id} ${current.toString()}.")
             }
         }
+
+        current.visited = true
+        hopMemo.put(current, node)
 
         return node
     }
