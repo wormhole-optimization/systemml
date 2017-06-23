@@ -1,5 +1,6 @@
 package org.apache.sysml.hops.spoof2.plan
 
+import org.apache.sysml.hops.HopsException
 import java.util.ArrayList
 
 import org.apache.sysml.runtime.controlprogram.parfor.util.IDSequence
@@ -7,103 +8,80 @@ import org.apache.sysml.runtime.controlprogram.parfor.util.IDSequence
 abstract class SNode() {
 
     //globally unique SNode id
-    val id: Long
-    //SNode parent nodes
-    private val _parents: ArrayList<SNode>
-    //SNode child nodes and associated indexes
-    private val _inputs: ArrayList<SNode>
-    private val _indexes: ArrayList<Indexes>
+    val id: Long = _idSeq.nextID
+    val parents: ArrayList<SNode> = ArrayList()
+    val inputs: ArrayList<SNode> = ArrayList()
+    var visited: Boolean = false
 
-    //output dimensions and meta data
-    @JvmField
-    protected val _schema: ArrayList<String>
-    protected var _dims: LongArray = longArrayOf()
-    var isVisited: Boolean = false
+    // exposed indices, labels of exposed indices, type of base object
+    val schema = Schema() // initial schema is uncomputed
 
-    init {
-        id = _idSeq.nextID
-        _parents = ArrayList<SNode>()
-        _inputs = ArrayList<SNode>()
-        _indexes = ArrayList<Indexes>()
-        _schema = ArrayList<String>()
-    }
+    /** Set the [schema] as a function of this SNode's type and inputs.
+     * Re-compute this after changing the node's inputs. */
+    abstract fun updateSchema()
 
-    constructor(input: SNode) : this() {
-        _inputs.add(input)
-        input._parents.add(this)
-    }
-
+    constructor(vararg inputs: SNode) : this(inputs.asList())
     constructor(inputs: List<SNode>) : this() {
         for (input in inputs) {
-            _inputs.add(input)
-            input._parents.add(this)
+            this.inputs.add(input)
+            input.parents.add(this)
         }
     }
 
-    val parent: List<SNode>
-        get() = _parents
+//    val isScalar: Boolean
+//        get() = _dims.isEmpty() || _dims.size == 2 && _dims[0] == 0L && _dims[1] == 0L
 
-    val input: List<SNode>
-        get() = _inputs
+//    val numDims: Int
+//        get() = _dims.size
+//
+//    fun getDim(pos: Int): Long {
+//        return _dims[pos]
+//    }
+//
+//    fun getDim(attr: String): Long {
+//        return _dims[_schema.indexOf(attr)]
+//    }
 
-    val indexes: List<Indexes>
-        get() = _indexes
-
-    var schema: List<String>
-        get() = _schema
-        set(schema) {
-            _schema.clear()
-            _schema.addAll(schema)
-        }
-
-    val isScalar: Boolean
-        get() = _dims.isEmpty() || _dims.size == 2 && _dims[0] == 0L && _dims[1] == 0L
-
-    val numDims: Int
-        get() = _dims.size
-
-    fun getDim(pos: Int): Long {
-        return _dims[pos]
-    }
-
-    fun getDim(attr: String): Long {
-        return _dims[_schema.indexOf(attr)]
-    }
-
-    val dim1: Long
-        get() = getDim(0)
-
-    val dim2: Long
-        get() = if (numDims >= 2)
-            getDim(1)
-        else
-            1
-
-    fun setDims(vararg dims: Long) {
-        _dims = dims
-    }
-
-    fun setVisited() {
-        isVisited = true
-    }
+//    val dim1: Long
+//        get() = getDim(0)
+//
+//    val dim2: Long
+//        get() = if (numDims >= 2)
+//            getDim(1)
+//        else
+//            1
+//
+//    fun setDims(vararg dims: Long) {
+//        _dims = dims
+//    }
 
     fun resetVisited() {
-        if (!isVisited)
+        if (!visited)
             return
-        for (c in input)
+        for (c in inputs)
             c.resetVisited()
-        isVisited = false
+        visited = false
     }
 
-    abstract val isIndexAggregator: Boolean
-
-    abstract val isIndexPropagator: Boolean
-
+    abstract val isSchemaAggregator: Boolean
+    abstract val isSchemaPropagator: Boolean
     abstract override fun toString(): String
 
-    protected fun setupBasicSchema(hopID: Long) {
-        _schema.add("i1_" + hopID)
-        _schema.add("i2_" + hopID)
+    /**
+     * Check whether this SNode has a correct number of inputs. Some ops only allow a single input (transpose, exp)
+     * while others allow any number of inputs (mult).
+     *
+     * @throws HopsException if this SNode has an illegal number of inputs (a kind of Illegal State)
+     */
+    @Throws(HopsException::class)
+    abstract fun checkArity()
+
+    inline fun check(condition: Boolean, message: () -> String) {
+        SNodeException.check(condition, this, message)
+    }
+    fun checkLabels() {
+        // no label can appear more than once in an input
+        this.check( schema.labels.size == schema.labels.distinct().size ) {"a label appears more than once in $schema"}
     }
 
     companion object {

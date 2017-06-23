@@ -697,13 +697,13 @@ public class Explain
 	private static String explainSNode(SNode snode, int level) 
 		throws DMLRuntimeException 
 	{
-		if( snode.isVisited() )
+		if( snode.getVisited() )
 			return "";
 		
 		StringBuilder sb = new StringBuilder();
 		String offset = createOffset(level);
 		
-		for( SNode input : snode.getInput() )
+		for( SNode input : snode.getInputs() )
 			sb.append(explainSNode(input, level));
 		
 		//indentation
@@ -721,7 +721,7 @@ public class Explain
 			StringBuilder childs = new StringBuilder();
 			childs.append(" (");
 			boolean childAdded = false;
-			for( SNode input : snode.getInput() ) {
+			for( SNode input : snode.getInputs() ) {
 				childs.append(childAdded?",":"");
 				childs.append(input.getId());
 				childAdded = true;
@@ -732,18 +732,17 @@ public class Explain
 		}
 		
 		//schema and tensor characteristics
-		sb.append(" "+Arrays.toString(
-			snode.getSchema().toArray(new String[0])));
-		sb.append(" [");
-		for( int i=0; i<snode.getNumDims(); i++ ) {
-			if( i > 0 )
-				sb.append(",");
-			sb.append(snode.getDim(i));
-		}
-		sb.append("]");
+		sb.append(" ").append(snode.getSchema());
+//		sb.append(" [");
+//		for( int i=0; i<snode.getNumDims(); i++ ) {
+//			if( i > 0 )
+//				sb.append(",");
+//			sb.append(snode.getDim(i));
+//		}
+//		sb.append("]");
 		
 		sb.append('\n');
-		snode.setVisited();
+		snode.setVisited(true);
 		
 		return sb.toString();
 	}
@@ -969,7 +968,7 @@ public class Explain
 		instruction += offset+"  agg inst       = " + inst.getIv_aggInstructions() + " \n";
 		instruction += offset+"  other inst     = " + inst.getIv_otherInstructions() + " \n";
 		instruction += offset+"  output labels  = " + Arrays.toString(inst.getOutputVars()) + " \n";
-		instruction += offset+"  result indices = " + inst.getString(inst.getIv_resultIndices()) + " \n";
+		instruction += offset+"  result indexes = " + inst.getString(inst.getIv_resultIndices()) + " \n";
 		//instruction += offset+"result dims unknown " + getString(iv_resultDimsUnknown) + " \n";
 		instruction += offset+"  num reducers   = " + inst.getIv_numReducers() + " \n";
 		instruction += offset+"  replication    = " + inst.getIv_replication() + " ]";

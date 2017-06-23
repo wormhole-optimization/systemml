@@ -114,7 +114,7 @@ public class DMLConfig
 		_defaultVals.put(CP_PARALLEL_MATRIXMULT, "true" );
 		_defaultVals.put(CP_PARALLEL_TEXTIO,     "true" );
 		_defaultVals.put(COMPRESSED_LINALG,      "false" );
-		_defaultVals.put(SPOOF,                  "false" );
+		_defaultVals.put(SPOOF,                  "true" );  // hehe
 		_defaultVals.put(CODEGEN,                "false" );
 		_defaultVals.put(CODEGEN_PLANCACHE,      "true" );
 		_defaultVals.put(CODEGEN_LITERALS,       "1" );

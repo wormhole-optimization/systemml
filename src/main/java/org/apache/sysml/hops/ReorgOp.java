@@ -44,7 +44,7 @@ import org.apache.sysml.runtime.matrix.MatrixCharacteristics;
  * 			Symbol: ', rdiag, rshape, rsort
  * 			1 Operand (except sort and reshape take additional arguments)
  * 	
- * 		Semantic: change indices (in mapper or reducer)
+ * 		Semantic: change indexes (in mapper or reducer)
  * 
  * 
  *  NOTE MB: reshape integrated here because (1) ParameterizedBuiltinOp requires name-value pairs for params
