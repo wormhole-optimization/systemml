@@ -76,8 +76,9 @@ public class Explain
 {	
 	//internal configuration parameters
 	private static final boolean REPLACE_SPECIAL_CHARACTERS = true;	
-	private static final boolean SHOW_MEM_ABOVE_BUDGET      = true;
-	private static final boolean SHOW_LITERAL_HOPS          = false;
+	private static final boolean SHOW_MEM_ESTIMATES         = true;
+	private static final boolean SHOW_MEM_ABOVE_BUDGET      = false;
+	private static final boolean SHOW_LITERAL_HOPS          = true;
 	private static final boolean SHOW_DATA_DEPENDENCIES     = true;
 	private static final boolean SHOW_DATA_FLOW_PROPERTIES  = true;
 
@@ -617,12 +618,14 @@ public class Explain
 			sb.append("," + hop.getUpdateType().toString().toLowerCase());
 		
 		sb.append("]");
+		sb.append(hop.getDataType().name().charAt(0));
 		
 		//memory estimates
-		sb.append(" [" + showMem(hop.getInputMemEstimate(), false) + "," 
-		               + showMem(hop.getIntermediateMemEstimate(), false) + "," 
-				       + showMem(hop.getOutputMemEstimate(), false) + " -> " 
-		               + showMem(hop.getMemEstimate(), true) + "]");
+		if( SHOW_MEM_ESTIMATES )
+			sb.append(" [" + showMem(hop.getInputMemEstimate(), false) + ","
+						   + showMem(hop.getIntermediateMemEstimate(), false) + ","
+						   + showMem(hop.getOutputMemEstimate(), false) + " -> "
+						   + showMem(hop.getMemEstimate(), true) + "]");
 		
 		//data flow properties
 		if( SHOW_DATA_FLOW_PROPERTIES ) {

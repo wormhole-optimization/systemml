@@ -54,7 +54,7 @@ public class ProgramRewriter
 	private static final Log LOG = LogFactory.getLog(ProgramRewriter.class.getName());
 	
 	//internal local debug level
-	private static final boolean LDEBUG = false; 
+	private static final boolean LDEBUG = true;
 	private static final boolean CHECK = false;
 	
 	private ArrayList<HopRewriteRule> _dagRuleSet = null;
