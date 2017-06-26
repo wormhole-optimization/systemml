@@ -17,7 +17,7 @@ class BasicSPlanRewriter {
         //initialize ruleSet (with fixed rewrite order)
         _ruleSet.add(RewriteAggregateElimination())
         _ruleSet.add(RewriteDistributiveSumProduct())
-        _ruleSet.add(RewriteTransposeElimination())
+        _ruleSet.add(RewriteAggregateTransposeElimination())
     }
 
     fun rewriteSPlan(roots: ArrayList<SNode>): ArrayList<SNode> {

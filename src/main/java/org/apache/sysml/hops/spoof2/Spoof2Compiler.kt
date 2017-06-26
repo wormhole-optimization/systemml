@@ -19,28 +19,14 @@ import org.apache.sysml.hops.HopsException
 import org.apache.sysml.hops.LiteralOp
 import org.apache.sysml.hops.ReorgOp
 import org.apache.sysml.hops.UnaryOp
+import org.apache.sysml.hops.rewrite.HopDagValidator
 import org.apache.sysml.hops.rewrite.HopRewriteUtils
 import org.apache.sysml.hops.rewrite.ProgramRewriteStatus
 import org.apache.sysml.hops.rewrite.ProgramRewriter
-import org.apache.sysml.hops.spoof2.plan.SNode
-import org.apache.sysml.hops.spoof2.plan.SNodeAggregate
-import org.apache.sysml.hops.spoof2.plan.SNodeData
-import org.apache.sysml.hops.spoof2.plan.SNodeExt
-import org.apache.sysml.hops.spoof2.plan.SNodeNary
+import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
 import org.apache.sysml.hops.spoof2.rewrite.BasicSPlanRewriter
-import org.apache.sysml.hops.spoof2.rewrite.SNodeRewriteUtils
-import org.apache.sysml.parser.DMLProgram
-import org.apache.sysml.parser.ForStatement
-import org.apache.sysml.parser.ForStatementBlock
-import org.apache.sysml.parser.FunctionStatement
-import org.apache.sysml.parser.FunctionStatementBlock
-import org.apache.sysml.parser.IfStatement
-import org.apache.sysml.parser.IfStatementBlock
-import org.apache.sysml.parser.LanguageException
-import org.apache.sysml.parser.StatementBlock
-import org.apache.sysml.parser.WhileStatement
-import org.apache.sysml.parser.WhileStatementBlock
+import org.apache.sysml.parser.*
 import org.apache.sysml.runtime.DMLRuntimeException
 import org.apache.sysml.utils.Explain
 
@@ -200,6 +186,7 @@ object Spoof2Compiler {
         if (LOG.isTraceEnabled) {
             LOG.trace("Spoof2Compiler created modified HOP DAG: \n" + Explain.explainHops(roots2))
         }
+        HopDagValidator.validateHopDag(roots2)
 
         //rewrite after applied sum-product optimizer
         Hop.resetVisitStatus(roots2)
@@ -214,23 +201,33 @@ object Spoof2Compiler {
     }
 
 
-    // during this phase, no one has exposed labels.
-    // passing around matrices, vectors, and scalars
+    private fun createTransposePermutation(names: Collection<Name>): Map<Name,Name> {
+        require(names.size <= 2) {"transpose is undefined on tensors; given names $names"}
+        if (names.size <= 1) return mapOf()
+        val iter = names.iterator()
+        val n1 = iter.next()
+        val n2 = iter.next()
+        return mapOf(n1 to n2, n2 to n1)
+    }
+
+
+
+
+    // Input Hop Dag has matrices, vectors, and scalars. No tensors here.
+    //orientationMemo: MutableMap<Hop, SNode>
     private fun rConstructSumProductPlan(current: Hop, snodeMemo: MutableMap<Hop, SNode>): SNode {
-        if (current.isVisited) {
+        if (current.isVisited)
             return snodeMemo[current]!!
-        }
 
         //recursively process child nodes
-        val inputs = ArrayList<SNode>()
-        for (c in current.input)
-            inputs.add(rConstructSumProductPlan(c, snodeMemo))
+        val inputs = current.input.mapTo(ArrayList<SNode>()) { rConstructSumProductPlan(it, snodeMemo) }
 
         //construct node for current hop
         val node: SNode = when( current ) {
             is DataOp -> {
+                // no binding for reads and writes
                 if (current.isWrite)
-                    SNodeData(inputs[0], current)
+                    SNodeData(current, inputs[0])
                 else
                     SNodeData(current)
             }
@@ -241,28 +238,170 @@ object Spoof2Compiler {
                 SNodeExt(current)
             }
             is ReorgOp -> {
-                if (HopRewriteUtils.isTransposeOperation(current))
-                    SNodeNary(NaryOp.TRANSPOSE, inputs[0]) // no indices exposed at this point
-                else
+                if (HopRewriteUtils.isTransposeOperation(current)) {
+                    // transpose does not logically effect anything, but it will change the order of input shapes
+                    // which affects the join conditions of parent binary hops, so we keep the Permute SNode.
+                    // U - tr - B - inputs[0]
+                    val bindings = inputs[0].schema.genAllBindings()
+                    inputs[0] = SNodeBind(inputs[0], bindings)
+                    val perm = SNodePermute(inputs[0], createTransposePermutation(bindings.values))
+                    val U = SNodeUnbind(perm, bindings.values)
+//                    // this is a trick for reading orientation from unbound attribute names
+//                    // it will go away on next refreshSchema()
+//                    if (U.schema.size == 1) {
+//                        when( U.schema.names[0].first() ) {
+//                            Schema.NamePrefix.ROW.prefixChar -> U.schema.names[0] = Schema.NamePrefix.COL.prefixStr
+//                            Schema.NamePrefix.COL.prefixChar -> U.schema.names[0] = Schema.NamePrefix.ROW.prefixStr
+//                        }
+//                    }
+                    U
+                } else
                     SNodeExt(current, inputs[0])
             }
             is UnaryOp -> {
-                if (current.op.name in NaryOp)
-                    SNodeNary(NaryOp.valueOf(current.op.name), inputs[0])
+                if (current.op.name in NaryOp) {
+                    //ABS, SIN, COS, TAN, ASIN, ATAN, SIGN, SQRT, LOG, EXP, ROUND, CEIL, FLOOR, ...
+                    //SPROP, SIGMOID, SELP, LOG_NZ, NOT, ACOS
+                    val bindings = inputs[0].schema.genAllBindings()
+                    if( bindings.isNotEmpty() )
+                        inputs[0] = SNodeBind(inputs[0], bindings)
+                    // todo - handle UnaryOps that act like SELECTs, such as diag. Equate attribute names in this case.
+                    val nary = SNodeNary(NaryOp.valueOf(current.op.name), inputs[0])
+                    if( bindings.isNotEmpty() )
+                        SNodeUnbind(nary, bindings.values)
+                    else
+                        nary
+                }
                 else
                     SNodeExt(current, inputs[0])
             }
             is BinaryOp -> {
-                if (current.op.name in NaryOp)
-                    SNodeNary(NaryOp.valueOf(current.op.name), inputs)
+                if (current.op.name in NaryOp) {
+                    //PLUS, MIN, MAX, MULT, EQUAL, AND, OR
+                    //POW, MINUS, DIV, MODULUS, INTDIV, LESS, LESSEQUAL, GREATER, GREATEREQUAL, NOTEQUAL
+                    // if both scalar, no bindings
+                    // if one is scalar, gen bindings for other
+                    // if both are vectors, bind to same name
+                    // if vector and matrix... depends on orientation of vector. Get it from the original Hop.
+                    // if both are matrices, bind rows and cols to same name
+                    var (i0, i1, iMap) = largerSmaller(inputs[0], inputs[1]) {it.schema.size}
+                    // i0's dimension is >= i1's dimension
+
+                    val boundNames = arrayListOf<Name>()
+                    when( i0.schema.size ) {
+                        0 -> {}
+                        1 -> {
+                            val bs = i0.schema.genAllBindings()
+                            i0 = SNodeBind(i0, bs)
+                            boundNames += bs.values
+                            if( i1.schema.isNotEmpty() ) {
+                                // both vectors: bind to same name
+                                i1 = SNodeBind(i1, bs)
+                            }
+                        }
+                        2 -> {
+                            val bs0 = i0.schema.genAllBindings()
+                            i0 = SNodeBind(i0, bs0)
+                            boundNames += bs0.values
+                            when( i1.schema.size ) {
+                                0 -> {}
+                                1 -> { // matrix * vector: check orientation and bind appropriately
+                                    val vector = current.input[iMap[1]]
+                                    val bs1 = if( vector.dim1 == 1L )
+                                        mapOf(0 to bs0[1]!!) // row vector matches on cols
+                                    else
+                                        mapOf(0 to bs0[0]!!) // col vector matches on rows
+                                    i1 = SNodeBind(i1, bs1)
+                                }
+                                2 -> { // matrix * matrix: bind both
+                                    i1 = SNodeBind(i1, bs0)
+                                }
+                            }
+                        }
+                        else -> throw HopsException("unexpected tensor while constructing SNodes: ${i0.schema}")
+                    }
+                    inputs[0] = i0
+                    inputs[1] = i1
+                    val ret = SNodeNary(NaryOp.valueOf(current.op.name), inputs)
+                    if( boundNames.isNotEmpty() )
+                        SNodeUnbind(ret, boundNames)
+                    else ret
+                }
                 else
                     SNodeExt(current, inputs)
             }
             is AggUnaryOp -> {
-                SNodeAggregate(current.op, inputs, hashSetOf<String>(), current.direction)
+                when (inputs[0].schema.size) {
+                    0 -> { // aggregate a scalar?
+                        inputs[0] // skip the AggUnaryOp
+                    }
+                    1 -> { // aggregate a vector to a scalar
+                        val bs = inputs[0].schema.genAllBindings()
+                        inputs[0] = SNodeBind(inputs[0], bs)
+                        SNodeAggregate(current.op, inputs[0], bs[0]!!)
+                    }
+                    2 -> { // aggregate a matrix; check direction
+                        val bs = inputs[0].schema.genAllBindings()
+                        inputs[0] = SNodeBind(inputs[0], bs)
+                        when( current.direction!! ) {
+                            Hop.Direction.RowCol -> {
+                                SNodeAggregate(current.op, inputs[0], bs[0]!!, bs[1]!!)
+                            }
+                            Hop.Direction.Row -> { // sum rows ==> col vector
+                                val agg = SNodeAggregate(current.op, inputs[0], bs[1]!!)
+                                SNodeUnbind(agg, listOf(bs[0]!!))
+                            }
+                            Hop.Direction.Col -> { // sum cols ==> row vector
+                                val agg = SNodeAggregate(current.op, inputs[0], bs[0]!!)
+                                SNodeUnbind(agg, listOf(bs[1]!!))
+                            }
+                        }
+                    }
+                    else -> throw HopsException("unexpected tensor while constructing SNodes: ${inputs[0].schema}")
+                }
             }
-            is AggBinaryOp -> {
-                SNodeNary(NaryOp.MMULT, inputs)
+            is AggBinaryOp -> { // matrix multiply. There may be vectors.
+                if( current.innerOp.name in NaryOp ) {
+                    val boundNames = mutableSetOf<Name>()
+                    val aggName: Name?
+                    when (current.input[0].classify()) {
+                        HopClass.SCALAR -> throw HopsException("AggBinaryOp id=${current.hopID} should not act on scalars but input SNodes are $inputs")
+                        HopClass.COL_VECTOR -> {
+                            HopsException.check(current.input[1].classify() == HopClass.ROW_VECTOR, current,
+                                    "Column vector on left must multiply with row vector on right")
+                            // outer product
+                            val bs0 = inputs[0].schema.genAllBindings()
+                            inputs[0] = SNodeBind(inputs[0], bs0)
+                            boundNames += bs0.values
+                            val bs1 = inputs[1].schema.genAllBindings()
+                            inputs[1] = SNodeBind(inputs[1], bs1)
+                            boundNames += bs1.values
+                            aggName = null
+                        }
+                        HopClass.ROW_VECTOR, HopClass.MATRIX -> {
+                            val rightClass = current.input[1].classify()
+                            HopsException.check(rightClass == HopClass.COL_VECTOR ||
+                                    rightClass == HopClass.MATRIX, current,
+                                    "Row vector or Matrix on left must multiply with col vector or matrix on right")
+                            val bs0 = inputs[0].schema.genAllBindings()
+                            inputs[0] = SNodeBind(inputs[0], bs0)
+                            // bind last name of inputs[0] to first name of inputs[1]
+                            aggName = bs0[inputs[0].schema.size - 1]!!
+                            val bs1 = mutableMapOf(0 to aggName)
+                            inputs[1].schema.fillWithBindings(bs1) // match row vector binding with first dim on inputs[1]
+                            inputs[1] = SNodeBind(inputs[1], bs1)
+                            boundNames += bs0.values.toSet() + bs1.values
+                        }
+                    }
+                    var ret: SNode = SNodeNary(NaryOp.valueOf(current.innerOp.name), inputs)
+                    if( aggName != null ) {
+                        ret = SNodeAggregate(current.outerOp, ret, aggName)
+                        boundNames -= aggName
+                    }
+                    SNodeUnbind(ret, boundNames)
+                }
+                else
+                    SNodeExt(current, inputs)
             }
             else -> {
                 SNodeExt(current, inputs)
@@ -270,93 +409,149 @@ object Spoof2Compiler {
             }
         }
 
-        node.updateSchema()
-
         current.setVisited()
         snodeMemo.put(current, node)
 
         return node
     }
 
+    private fun reconstructAggregate(agg: SNodeAggregate, expectBind: Boolean, hopMemo: MutableMap<SNode, Hop>): Hop {
+        val mult = agg.inputs[0]
+        return if( mult is SNodeNary && mult.op == NaryOp.MULT && agg.op == Hop.AggOp.SUM
+                && mult.inputs.size == 2
+                && agg.aggreateNames.size == 1 ) {
+            // MxM
+            val mult0 = mult.inputs[0]
+            val mult1 = mult.inputs[1]
+            val (hop0, hop1) = if( expectBind ) {
+                if (mult0 !is SNodeBind || mult1 !is SNodeBind)
+                    TODO("fuse a matrix multiply with further SNodes $mult0, $mult1")
+                rReconstructHopDag(mult0.inputs[0], hopMemo) to rReconstructHopDag(mult1.inputs[0], hopMemo)
+            } else {
+                // Even if not expecting a Bind on the inputs,
+                // we may have a Bind anyway because the output is a scalar (thus no Unbind)
+                // but the inputs are non-scalars (and are therefore Bound)
+                val m0 = if( mult0 is SNodeBind ) mult0.inputs[0] else mult0
+                val m1 = if( mult1 is SNodeBind ) mult1.inputs[0] else mult1
+                rReconstructHopDag(m0, hopMemo) to rReconstructHopDag(m1, hopMemo)
+            }
+            val mxm = HopRewriteUtils.createMatrixMultiply(hop0, hop1)
+                            HopRewriteUtils.createUnary(mxm, OpOp1.CAST_AS_SCALAR) // why do we need this?
+//            checkCastScalar(mxm)
+        } else {
+            val aggInput = mult
+            val hop0 = if( expectBind ) {
+                if (aggInput !is SNodeBind)
+                    TODO("fuse an aggregate with further SNode $aggInput")
+                rReconstructHopDag(aggInput.inputs[0], hopMemo)
+            } else {
+                // Like above, we may have a Bind
+                val ai = if( aggInput is SNodeBind ) aggInput.inputs[0] else aggInput
+                rReconstructHopDag(ai, hopMemo)
+            }
+            // get direction from schema
+            SNodeException.check(agg.aggreateNames.size == 1 || agg.aggreateNames.size == 2, agg) {"don't know how to compile aggregate with aggregates ${agg.aggreateNames}"}
+            val dir = if( hop0.dim1 != 1L && hop0.dim2 != 1L )
+                Hop.Direction.RowCol
+            else if( hop0.dim2 == 1L )
+                Hop.Direction.Col // sum first dimension ==> row vector
+            else
+                Hop.Direction.Row // sum second dimension ==> col vector
+            val fin = HopRewriteUtils.createAggUnaryOp(hop0, agg.op, dir)
+            fin //checkCastScalar(fin)
+        }
+    }
+
+    // cast matrix to scalar
+    // sometimes this is necessary, sometimes not
+    // code in the SNodeExt reconstruct to Hop block checks for duplicate CAST_AS_SCALAR
+    private fun checkCastScalar(hop: Hop): Hop {
+        return if( hop.dimsKnown() && hop.dim1 == 1L && hop.dim2 == 1L && hop.dataType == Expression.DataType.MATRIX )
+            HopRewriteUtils.createUnary(hop, OpOp1.CAST_AS_SCALAR)
+        else
+            hop
+    }
+
+    private fun reconstructNary(nary: SNodeNary, expectBind: Boolean, hopMemo: MutableMap<SNode, Hop>): Hop {
+        var foundBind = false
+        val hopInputs = nary.inputs.map { input ->
+//            if( expectBind ) {
+                val i = if (input is SNodeBind) input.inputs[0] else input
+                rReconstructHopDag(i, hopMemo)
+//            } else {
+//                rReconstructHopDag(input, hopMemo)
+//            }
+        }
+        return when( nary.inputs.size ) {
+            1 -> HopRewriteUtils.createUnary(hopInputs[0], OpOp1.valueOf(nary.op.name))
+            2 -> HopRewriteUtils.createBinary(hopInputs[0], hopInputs[1], OpOp2.valueOf(nary.op.name))
+            3 -> HopRewriteUtils.createTernary(hopInputs[0], hopInputs[1], hopInputs[2], OpOp3.valueOf(nary.op.name))
+            else -> throw SNodeException(nary, "don't know how to reconstruct a Hop from an nary with ${nary.inputs.size} inputs $nary")
+        }
+    }
+
+
+    // Only these SNodes can have multiple parents---Unbind, Data, Ext---unless we have a scalar, in which case any SNode can appear.
+    // (Also, an Nary could have a matrix input and scalar input.)
+    // Start with one of these at the top. If Unbind, continue through the Binds at the bottom. This is a block.
+    // We will reconstruct the whole block at once.
+    // Induction: first reconstruct the children below the block.
+    // Then map the block to a Hop. (Fused Op or Regular Hop)
     private fun rReconstructHopDag(current: SNode, hopMemo: MutableMap<SNode, Hop>): Hop {
         if (current.visited) {
             return hopMemo[current]!!
         }
 
-        //recursively process child nodes
-        val inputs = ArrayList<Hop>()
-        for (c in current.inputs)
-            inputs.add(rReconstructHopDag(c, hopMemo))
-
         val node: Hop = when( current ) {
             is SNodeData -> {
-                if (!current.inputs.isEmpty()) {
+                //recursively process child nodes
+                val inputs = current.inputs.map { rReconstructHopDag(it, hopMemo) }
+                if (inputs.isNotEmpty()) {
                     HopRewriteUtils.replaceChildReference(current.hop,
                             current.hop.input[0], inputs[0], 0)
                 }
+                current.hop.parent.clear()
+                current.hop.resetVisitStatus() // visit status may be set from SNode construction
                 current.hop
             }
-            is SNodeAggregate -> {
-                fun SNode.isScalar() = this.schema.type.isNotEmpty()
-                val agg = current
-
-                if (SNodeRewriteUtils.isSNodeNary(agg.inputs[0], NaryOp.MULT)
-                        && (agg.isScalar() || agg.inputs[0].schema.type.size == 3)) // todo definitely change this type req
-                {
-                    //TODO proper handling of schemas to decide upon transpose
-                    var input1 = inputs[0].input[0]
-                    var input2 = inputs[0].input[1]
-                    input1 = if (agg.isScalar() && input1.dim1 > 1)
-                        HopRewriteUtils.createTranspose(input1)
-                    else
-                        input1
-                    input2 = if (agg.isScalar() && input2.dim2 > 1)
-                        HopRewriteUtils.createTranspose(input2)
-                    else
-                        input2
-                    val node = HopRewriteUtils.createMatrixMultiply(input1, input2)
-                    HopRewriteUtils.createUnary(node, OpOp1.CAST_AS_SCALAR)
-                } else {
-                    val dir = agg.direction
-//                    if (agg.schema.type.isEmpty()) // todo also here
-//                        Direction.RowCol
-//                    else if (agg.schema.type[0] == agg.inputs[0].schema.type[0])
-//                        Direction.Row
-//                    else
-//                        Direction.Col
-                    HopRewriteUtils.createAggUnaryOp(inputs[0], agg.op, dir)
-                }
-            }
-            is SNodeNary -> {
-                val nary = current
-                if (inputs.size == 1) { //unary
-                    if (nary.op == NaryOp.TRANSPOSE)
-                        HopRewriteUtils.createTranspose(inputs[0]) as Hop
-                    else
-                        HopRewriteUtils.createUnary(inputs[0], OpOp1.valueOf(nary.op.name))
-                } else if (inputs.size == 2) { //binary
-                    if( nary.op == NaryOp.MMULT )
-                        HopRewriteUtils.createMatrixMultiply(inputs[0], inputs[1])
-                    else
-                        HopRewriteUtils.createBinary(inputs[0], inputs[1], OpOp2.valueOf(nary.op.name))
-                } else if (inputs.size == 3) { //ternary
-                    HopRewriteUtils.createTernary(inputs[0], inputs[1],
-                            inputs[2], OpOp3.valueOf(nary.op.name))
-                } else
-                    TODO()
-            }
             is SNodeExt -> {
-                val node = current.hop
-                if (!inputs.isEmpty()) { //robustness datagen
-                    HopRewriteUtils.removeAllChildReferences(node)
+                var inputs = current.inputs.map { rReconstructHopDag(it, hopMemo) }
+                current.hop.resetVisitStatus() // visit status may be set from SNode construction
+//                node.parent.clear() // scrap parents from old Hop Dag
+                // prevent duplicate CAST_AS_SCALAR
+//                if( node is UnaryOp && node.op == OpOp1.CAST_AS_SCALAR
+//                        && inputs[0] is UnaryOp && (inputs[0] as UnaryOp).op == OpOp1.CAST_AS_SCALAR ) {
+//                    inputs = inputs[0].input
+//                    inputs[0].parent.clear()
+//                }
+                if (inputs.isNotEmpty()) { //robustness datagen
+                    HopRewriteUtils.removeAllChildReferences(current.hop)
                     for (c in inputs)
-                        node.addInput(c)
+                        current.hop.addInput(c)
                 }
-                node
+                current.hop
             }
-            else -> {
-                throw RuntimeException("Error constructing Hop for SNode: ${current.id} ${current.toString()}.")
+            is SNodeAggregate -> reconstructAggregate(current, false, hopMemo)
+            is SNodePermute -> throw SNodeException(current, "should not be a permute on a scalar schema type")
+            is SNodeNary -> reconstructNary(current, false, hopMemo)
+            is SNodeUnbind -> {
+                // match on the SNode beneath SNodeUnbind. Go to the Binds that are children to this block.
+                val bu = current.inputs[0]
+                when( bu ) {
+                    is SNodeAggregate -> reconstructAggregate(bu, true, hopMemo)
+                    is SNodePermute -> {
+                        val perm = bu
+                        val bind = perm.inputs[0]
+                        if( bind !is SNodeBind )
+                            TODO("fuse a transpose (permute) with further SNode $bind")
+                        val bindBelow = rReconstructHopDag(bind.inputs[0], hopMemo)
+                        HopRewriteUtils.createTranspose(bindBelow)
+                    }
+                    is SNodeNary -> reconstructNary(bu, true, hopMemo)
+                    else -> throw SNodeException("don't know how to translate $bu")
+                }
             }
+            else -> throw SNodeException(current, "should not be able to recurse on this type of SNode")
         }
 
         current.visited = true

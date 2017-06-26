@@ -737,7 +737,7 @@ public class Explain
 //		for( int i=0; i<snode.getNumDims(); i++ ) {
 //			if( i > 0 )
 //				sb.append(",");
-//			sb.append(snode.getDim(i));
+//			sb.append(snode.getShape(i));
 //		}
 //		sb.append("]");
 		

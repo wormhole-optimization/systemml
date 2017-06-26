@@ -1,49 +1,32 @@
 package org.apache.sysml.hops.spoof2.plan
 
-import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.Hop.AggOp
 
-class SNodeAggregate(
+/**
+ * Aggregate a single input.
+ */
+class SNodeAggregate private constructor(
         val op: AggOp,
         inputs: List<SNode>,
-        val labels: HashSet<String>,
-        val direction: Hop.Direction = Hop.Direction.RowCol // todo!
+        aggregateNames: List<Name>
 ) : SNode(inputs) {
-
-    constructor(op: AggOp, input: SNode, labels: HashSet<String>) : this(op, listOf(input), labels)
-
-    override val isSchemaAggregator = false
-    override val isSchemaPropagator = true
-
-    override fun toString() = "agg(${op.name.toLowerCase()})"
-
-    override fun checkArity() {
-        // can aggregate any number of SNodes
-        // todo - what about VAR, MAXINDEX, MININDEX?
+    val aggreateNames: ArrayList<Name> = ArrayList(aggregateNames)
+    init {
+        refreshSchema()
     }
 
-    override fun updateSchema() {
-        // intersection of input schema labels - this means we may need to add dummy operands to change what we retain in the output schema
-        schema.clearLabelsTypes()
-        inputs.forEach { schema += it.schema }
+    constructor(op: AggOp, input: SNode, names: List<Name>) : this(op, listOf(input), names)
+    constructor(op: AggOp, input: SNode, vararg names: Name) : this(op, listOf(input), names.asList())
 
-        // handle matrix aggregate - transform type based on direction
-        val inputType = inputs[0].schema.type
-        if (inputType.size <= 1)
-        else if (inputType.size > 2)
-            throw IllegalStateException("input type has dimension >2 on Schema $this")
-        else {
-            when (direction) {
-                Hop.Direction.Col -> {
-                    schema.type += inputType[0]
-                    schema.rowVector = true
-                }
-                Hop.Direction.Row -> {
-                    schema.type += inputType[1]
-                    schema.rowVector = false
-                }
-                Hop.Direction.RowCol -> {}
-            }
-        }
+    override fun toString() = "agg(${op.name.toLowerCase()}$aggreateNames)"
+
+    override fun checkArity() {
+        this.check( inputs.size == 1 ) {"SNodeAggregate should have 1 input but has ${inputs.size}"}
+    }
+
+    override fun refreshSchema() {
+        // input names minus aggregated names
+        schema.setTo(inputs[0].schema)
+        schema.removeBoundAttributes(aggreateNames)
     }
 }

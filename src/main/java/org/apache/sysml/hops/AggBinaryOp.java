@@ -90,8 +90,8 @@ public class AggBinaryOp extends Hop implements MultiThreadedHop
 		MULTI_BLOCK,
 	}
 	
-	private OpOp2 innerOp;
-	private AggOp outerOp;
+	public final OpOp2 innerOp;
+	public final AggOp outerOp;
 
 	private MMultMethod _method = null;
 	
@@ -99,8 +99,10 @@ public class AggBinaryOp extends Hop implements MultiThreadedHop
 	private boolean _hasLeftPMInput = false; //left input is permutation matrix
 	private int _maxNumThreads = -1; //-1 for unlimited
 	
-	private AggBinaryOp() {
+	private AggBinaryOp(OpOp2 innerOp, AggOp outerOp) {
 		//default constructor for clone
+		this.innerOp = innerOp;
+		this.outerOp = outerOp;
 	}
 	
 	public AggBinaryOp(String l, DataType dt, ValueType vt, OpOp2 innOp,
@@ -1834,14 +1836,12 @@ public class AggBinaryOp extends Hop implements MultiThreadedHop
 	@Override
 	public Object clone() throws CloneNotSupportedException 
 	{
-		AggBinaryOp ret = new AggBinaryOp();	
+		AggBinaryOp ret = new AggBinaryOp(innerOp, outerOp);
 		
 		//copy generic attributes
 		ret.clone(this, false);
 		
 		//copy specific attributes
-		ret.innerOp = innerOp;
-		ret.outerOp = outerOp;		
 		ret._hasLeftPMInput = _hasLeftPMInput;
 		ret._maxNumThreads = _maxNumThreads;
 		
