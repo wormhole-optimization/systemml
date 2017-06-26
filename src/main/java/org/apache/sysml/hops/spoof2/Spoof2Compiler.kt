@@ -423,7 +423,7 @@ object Spoof2Compiler {
             // MxM
             val mult0 = mult.inputs[0]
             val mult1 = mult.inputs[1]
-            val (hop0, hop1) = if( expectBind ) {
+            var (hop0, hop1) = if( expectBind ) {
                 if (mult0 !is SNodeBind || mult1 !is SNodeBind)
                     TODO("fuse a matrix multiply with further SNodes $mult0, $mult1")
                 rReconstructHopDag(mult0.inputs[0], hopMemo) to rReconstructHopDag(mult1.inputs[0], hopMemo)
@@ -437,18 +437,17 @@ object Spoof2Compiler {
             }
 
             // AggBinaryOp always expects matrix inputs
-            val h0 = if( hop0.dataType == Expression.DataType.SCALAR )
-                HopRewriteUtils.createUnary(hop0, OpOp1.CAST_AS_SCALAR)
-            else hop0
-            val h1 = if( hop1.dataType == Expression.DataType.SCALAR )
-                HopRewriteUtils.createUnary(hop1, OpOp1.CAST_AS_SCALAR)
-            else hop1
+            if( hop0.dataType == Expression.DataType.SCALAR )
+                hop0 = HopRewriteUtils.createUnary(hop0, OpOp1.CAST_AS_SCALAR)
+            if( hop1.dataType == Expression.DataType.SCALAR )
+                hop1 = HopRewriteUtils.createUnary(hop1, OpOp1.CAST_AS_SCALAR)
 
-            val mxm = HopRewriteUtils.createMatrixMultiply(h0, h1)
+            val mxm = HopRewriteUtils.createMatrixMultiply(hop0, hop1)
             mxm
-//                            HopRewriteUtils.createUnary(mxm, OpOp1.CAST_AS_SCALAR) // why do we need this?
+//                            HopRewriteUtils.createUnary(mxm, OpOp1.CAST_AS_SCALAR) // do we need this?
 //            checkCastScalar(mxm)
-        } else {
+        }
+        else {
             val aggInput = mult
             var hop0 = if( expectBind ) {
                 if (aggInput !is SNodeBind)
@@ -456,6 +455,7 @@ object Spoof2Compiler {
                 rReconstructHopDag(aggInput.inputs[0], hopMemo)
             } else {
                 // Like above, we may have a Bind
+                // Outer product shouldn't apply here
                 val ai = if( aggInput is SNodeBind ) aggInput.inputs[0] else aggInput
                 rReconstructHopDag(ai, hopMemo)
             }
@@ -466,23 +466,21 @@ object Spoof2Compiler {
 
             // get direction from schema
             SNodeException.check(agg.aggreateNames.size == 1 || agg.aggreateNames.size == 2, agg) {"don't know how to compile aggregate with aggregates ${agg.aggreateNames}"}
-            val dir = if( agg.aggreateNames.size == 2 )
-                Hop.Direction.RowCol
-            else if( hop0.dim2 == 1L )
-                Hop.Direction.Col // sum first dimension ==> row vector
-            else if( hop0.dim1 == 1L )
-                Hop.Direction.Row // sum second dimension ==> col vector
-            else if( agg.aggreateNames[0] == aggInput.schema.names[0] ) {
-                agg.check(aggInput.schema.size == 2) {"this may be erroneous if aggInput is not a matrix"}
-                Hop.Direction.Col
-            }
-            else {
-                agg.check(aggInput.schema.size == 2) {"this may be erroneous if aggInput is not a matrix"}
-                Hop.Direction.Row
+            val dir = when {
+                agg.aggreateNames.size == 2 -> Hop.Direction.RowCol
+                hop0.dim2 == 1L -> Hop.Direction.Col // sum first dimension ==> row vector
+                hop0.dim1 == 1L -> Hop.Direction.Row // sum second dimension ==> col vector
+                agg.aggreateNames[0] == aggInput.schema.names[0] -> {
+                    agg.check(aggInput.schema.size == 2) {"this may be erroneous if aggInput is not a matrix"}
+                    Hop.Direction.Col
+                }
+                else -> {
+                    agg.check(aggInput.schema.size == 2) {"this may be erroneous if aggInput is not a matrix"}
+                    Hop.Direction.Row
+                }
             }
 
-            val fin = HopRewriteUtils.createAggUnaryOp(hop0, agg.op, dir)
-            fin //checkCastScalar(fin)
+            HopRewriteUtils.createAggUnaryOp(hop0, agg.op, dir)
         }
     }
 
@@ -534,14 +532,12 @@ object Spoof2Compiler {
                     HopRewriteUtils.replaceChildReference(current.hop,
                             current.hop.input[0], inputs[0], 0)
                 }
-//                current.hop.parent.clear()
                 current.hop.resetVisitStatus() // visit status may be set from SNode construction
                 current.hop
             }
             is SNodeExt -> {
                 var inputs = current.inputs.map { rReconstructHopDag(it, hopMemo) }
                 current.hop.resetVisitStatus() // visit status may be set from SNode construction
-//                current.hop.parent.clear() // scrap parents from old Hop Dag
 
                 // prevent duplicate CAST_AS_SCALAR
 //                if( current.hop is UnaryOp && current.hop.op == OpOp1.CAST_AS_SCALAR
