@@ -19,6 +19,7 @@
 
 package org.apache.sysml.test.integration.functions.codegen;
 
+import org.apache.sysml.test.integration.functions.spoof2.Spoof2Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Suite;
 
@@ -45,10 +46,11 @@ import org.junit.runners.Suite;
 	RowAggTmplTest.class,
 	RowVectorComparisonTest.class,
 	SumProductChainTest.class,
+	Spoof2Test.class,
 })
 
 
-/** This class is just a holder for the above JUnit annotations. */
+/* This class is just a holder for the above JUnit annotations. */
 public class ZPackageSuite {
 
 }

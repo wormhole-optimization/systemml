@@ -27,7 +27,6 @@ import org.apache.sysml.lops.LopProperties.ExecType.*
 import org.apache.sysml.test.integration.AutomatedTestBase
 import org.apache.sysml.test.integration.TestConfiguration
 import org.apache.sysml.test.utils.TestUtils
-import org.junit.Assert
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
@@ -43,7 +42,9 @@ class Spoof2Test(
     companion object {
         private const val TEST_NAME = "spoof2pattern"
         //	TEST_NAME+ 1;  //t(X)
-        private const val NUM_TESTS = 1
+        //	TEST_NAME+ 2;  //rowSum(t(X))
+        //	TEST_NAME+ 3;  //colSum(t(X))
+        private const val NUM_TESTS = 3
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
@@ -73,12 +74,12 @@ class Spoof2Test(
     }
 
     @Test
-    fun testCodegenRowAgg() {
-        testCodegenIntegration(testName, rewrites, execType)
+    fun test() {
+        testIt(testName, rewrites, execType)
     }
 
 
-    private fun testCodegenIntegration(testname: String, rewrites: Boolean, instType: LopProperties.ExecType) {
+    private fun testIt(testname: String, rewrites: Boolean, instType: LopProperties.ExecType) {
         val oldFlag = OptimizerUtils.ALLOW_ALGEBRAIC_SIMPLIFICATION
         val platformOld = AutomatedTestBase.rtplatform
         when (instType) {
@@ -97,12 +98,14 @@ class Spoof2Test(
 
             val HOME = AutomatedTestBase.SCRIPT_DIR + TEST_DIR
             fullDMLScriptName = HOME + testname + ".dml"
-            programArgs = arrayOf("-explain", "recompile_hops", "-stats", "-args", output("S"))
+            if ( rewrites ) // "-explain", "recompile_hops",
+                programArgs = arrayOf("-stats", "-args", output("S"))
+            else
+                programArgs = arrayOf("-stats", "-args", output("S")) //"-nvargs spoof.enabled=false",
+
 
             fullRScriptName = HOME + testname + ".R"
             rCmd = getRCmd(inputDir(), expectedDir())
-
-            OptimizerUtils.ALLOW_ALGEBRAIC_SIMPLIFICATION = rewrites
 
             runTest(true, false, null, -1)
             runRScript(true)
