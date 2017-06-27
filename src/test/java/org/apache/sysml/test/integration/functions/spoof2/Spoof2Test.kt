@@ -41,45 +41,25 @@ class Spoof2Test(
 ) : AutomatedTestBase() {
 
     companion object {
-        private const val TEST_NAME = "rowAggPattern"
-        //	TEST_NAME+"1";  //t(X)%*%(X%*%(lamda*v))
-        //	TEST_NAME+"2";  //t(X)%*%(lamda*(X%*%v))
-        //	TEST_NAME+"3";  //t(X)%*%(z+(2-(w*(X%*%v))))
-        //	TEST_NAME+"4";  //colSums(X/rowSums(X))
-        //	TEST_NAME+"5";  //t(X)%*%((P*(1-P))*(X%*%v));
-        //	TEST_NAME+"6";  //t(X)%*%((P[,1]*(1-P[,1]))*(X%*%v));
-        //	TEST_NAME+"7";  //t(X)%*%(X%*%v-y); sum((X%*%v-y)^2);
-        //	TEST_NAME+"8";  //colSums((X/rowSums(X))>0.7)
-        //	TEST_NAME+"9";  //t(X) %*% (v - abs(y))
-        //	TEST_NAME+"10"; //Y=(X<=rowMins(X)); R=colSums((Y/rowSums(Y)));
-        //	TEST_NAME+"11"; //y - X %*% v
-        //	TEST_NAME+"12"; //Y=(X>=v); R=Y/rowSums(Y)
-        //	TEST_NAME+"13"; //rowSums(X)+rowSums(Y)
-        //	TEST_NAME+"14"; //colSums(max(floor(round(abs(min(sign(X+Y),1)))),7))
-        //	TEST_NAME+"15"; //systemml nn - softmax backward
-        //	TEST_NAME+"16"; //Y=X-rowIndexMax(X); R=Y/rowSums(Y)
-        //	TEST_NAME+"17"; //MLogreg - vector-matrix w/ indexing
-        //	TEST_NAME+"18"; //MLogreg - matrix-vector cbind 0s
-        //	TEST_NAME+"19"; //MLogreg - rowwise dag
-        //	TEST_NAME+"20"; //1 / (1 - (A / rowSums(A)))
-        //	TEST_NAME+"21"; //sum(X/rowSums(X))
-        private const val NUM_TESTS = 21
+        private const val TEST_NAME = "spoof2pattern"
+        //	TEST_NAME+ 1;  //t(X)
+        private const val NUM_TESTS = 1
 
-        private const val TEST_DIR = "functions/codegen/"
+        private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
-        private const val TEST_CONF = "SystemML-config-codegen.xml"
+        private const val TEST_CONF = "SystemML-config-spoof2.xml"
         private val TEST_CONF_FILE = File(SCRIPT_DIR + TEST_DIR, TEST_CONF)
 
         private const val eps = 10.0e-10
 
         @JvmStatic
-        @Parameterized.Parameters(name = "{index}: testCodegen({0}, rewrites={1}, {2})")
+        @Parameterized.Parameters(name = "{index}: testSpoof2({0}, rewrites={1}, {2})")
         fun testParams(): Collection<Array<Any>> {
             val params = ArrayList<Array<Any>>(NUM_TESTS * 3)
             for (testNum in 1..NUM_TESTS) {
                 val testName = TEST_NAME + testNum
                 params.add(arrayOf(testName, false, CP))
-                params.add(arrayOf(testName, false, SPARK))
+//                params.add(arrayOf(testName, false, SPARK))
                 params.add(arrayOf(testName, true, CP))
             }
             return params
@@ -88,7 +68,7 @@ class Spoof2Test(
 
     override fun setUp() {
         TestUtils.clearAssertionInformation()
-        for (i in 1..21)
+        for (i in 1..NUM_TESTS)
             addTestConfiguration(TEST_NAME + i, TestConfiguration(TEST_CLASS_DIR, TEST_NAME + i, arrayOf(i.toString())))
     }
 
@@ -131,13 +111,15 @@ class Spoof2Test(
             val dmlfile = AutomatedTestBase.readDMLMatrixFromHDFS("S")
             val rfile = readRMatrixFromFS("S")
             TestUtils.compareMatrices(dmlfile, rfile, eps, "Stat-DML", "Stat-R")
-            Assert.assertTrue(heavyHittersContainsSubString("spoofRA") || heavyHittersContainsSubString("sp_spoofRA"))
+
+//            Assert.assertTrue(heavyHittersContainsSubString("spoofRA") || heavyHittersContainsSubString("sp_spoofRA"))
 
             //ensure full aggregates for certain patterns
-            if (testname == TEST_NAME+15)
-                Assert.assertTrue(!heavyHittersContainsSubString("uark+"))
-            if (testname == TEST_NAME+17)
-                Assert.assertTrue(!heavyHittersContainsSubString("rangeReIndex"))
+//            if (testname == TEST_NAME+15)
+//                Assert.assertTrue(!heavyHittersContainsSubString("uark+"))
+//            if (testname == TEST_NAME+17)
+//                Assert.assertTrue(!heavyHittersContainsSubString("rangeReIndex"))
+
         } finally {
             AutomatedTestBase.rtplatform = platformOld
             DMLScript.USE_LOCAL_SPARK_CONFIG = sparkConfigOld
