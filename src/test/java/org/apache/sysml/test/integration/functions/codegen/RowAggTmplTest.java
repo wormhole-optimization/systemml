@@ -70,7 +70,7 @@ public class RowAggTmplTest extends AutomatedTestBase
 	private final static String TEST_CONF = "SystemML-config-codegen.xml";
 	private final static File   TEST_CONF_FILE = new File(SCRIPT_DIR + TEST_DIR, TEST_CONF);
 
-	private static final double eps = Math.pow(10, -10);
+	private static final double eps = 10.0e-10;
 
 	@Parameterized.Parameters(name = "{index}: testCodegen({0}, rewrites={1}, {2})")
 	public static Collection<Object[]> testParams() {
@@ -99,7 +99,7 @@ public class RowAggTmplTest extends AutomatedTestBase
 	@Override
 	public void setUp() {
 		TestUtils.clearAssertionInformation();
-		for(int i=1; i<=21; i++)
+		for(int i=1; i<=NUM_TESTS; i++)
 			addTestConfiguration( TEST_NAME+i, new TestConfiguration(TEST_CLASS_DIR, TEST_NAME+i, new String[] { String.valueOf(i) }) );
 	}
 
