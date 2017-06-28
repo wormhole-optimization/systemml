@@ -53,7 +53,9 @@ class Spoof2Test(
         //	TEST_NAME+10;  //2-X
         //	TEST_NAME+11;  //t(X)%*%(2-(w*(Y%*%v)))
         //	TEST_NAME+12;  //print(sum(v))                  // print expects a scalar
-        private const val NUM_TESTS = 12
+        //	TEST_NAME+13;  //x%*%y                          // inner product
+        //	TEST_NAME+13;  //x%*%y                          // outer product
+        private const val NUM_TESTS = 14
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
@@ -69,8 +71,8 @@ class Spoof2Test(
         fun testParams(): Collection<Array<Any>> {
             val params = ArrayList<Array<Any>>(NUM_TESTS * 3)
             for (testNum in 1..NUM_TESTS) {
-//                if (testNum != NUM_TESTS)
-//                    continue
+                if (testNum != NUM_TESTS)
+                    continue
 
                 val testName = TEST_NAME + testNum
 //                params.add(arrayOf(testName, false, CP))

@@ -477,6 +477,8 @@ object Spoof2Compiler {
             SNodeException.check(agg.aggreateNames.size == 1 || agg.aggreateNames.size == 2, agg)
             {"don't know how to compile aggregate to Hop with aggregates ${agg.aggreateNames}"}
             val dir = when {
+                // minindex, maxindex only defined on Row aggregation
+                agg.op == Hop.AggOp.MININDEX || agg.op == Hop.AggOp.MAXINDEX -> Hop.Direction.Row
                 agg.aggreateNames.size == 2 -> Hop.Direction.RowCol
                 // change to RowCol when aggregating vectors, in order to create a scalar rather than a 1x1 matrix
                 hop0.dim2 == 1L -> Hop.Direction.RowCol // sum first dimension ==> row vector : Hop.Direction.Col
@@ -490,11 +492,12 @@ object Spoof2Compiler {
                     Hop.Direction.Row
                 }
             }
-            if( LOG.isTraceEnabled )
-                LOG.trace("Decide direction $dir on input dims [${hop0.dim1},${hop0.dim2}] & schema $aggInput " +
-                        "aggregating on ${agg.aggreateNames} to schema ${agg.schema}:")
 
-            HopRewriteUtils.createAggUnaryOp(hop0, agg.op, dir)
+            val ret = HopRewriteUtils.createAggUnaryOp(hop0, agg.op, dir)
+            if( LOG.isTraceEnabled )
+                LOG.trace("Decide direction $dir on input dims [${hop0.dim1},${hop0.dim2}], schema $aggInput, " +
+                        "aggregating on ${agg.aggreateNames} by ${agg.op} to schema ${agg.schema} for SNode ${agg.id} and new Hop ${ret.hopID}")
+            ret
         }
     }
 
@@ -517,12 +520,19 @@ object Spoof2Compiler {
 //                rReconstructHopDag(input, hopMemo)
 //            }
         }
-        return when( nary.inputs.size ) {
-            1 -> HopRewriteUtils.createUnary(hopInputs[0], OpOp1.valueOf(nary.op.name))
-            2 -> HopRewriteUtils.createBinary(hopInputs[0], hopInputs[1], OpOp2.valueOf(nary.op.name))
-            3 -> HopRewriteUtils.createTernary(hopInputs[0], hopInputs[1], hopInputs[2], OpOp3.valueOf(nary.op.name))
-            else -> throw SNodeException(nary, "don't know how to reconstruct a Hop from an nary with ${nary.inputs.size} inputs $nary")
+
+        // check for outer product: nary(*) between two vectors whose names do not join
+        return if( nary.op == NaryOp.MULT && nary.inputs[0].schema.size == 1 && nary.inputs[1].schema.size == 1
+                && nary.inputs[0].schema.names[0] != nary.inputs[1].schema.names[0] ) {
+            HopRewriteUtils.createMatrixMultiply(hopInputs[0], hopInputs[1])
         }
+        else
+            when( nary.inputs.size ) {
+                1 -> HopRewriteUtils.createUnary(hopInputs[0], OpOp1.valueOf(nary.op.name))
+                2 -> HopRewriteUtils.createBinary(hopInputs[0], hopInputs[1], OpOp2.valueOf(nary.op.name))
+                3 -> HopRewriteUtils.createTernary(hopInputs[0], hopInputs[1], hopInputs[2], OpOp3.valueOf(nary.op.name))
+                else -> throw SNodeException(nary, "don't know how to reconstruct a Hop from an nary with ${nary.inputs.size} inputs $nary")
+            }
     }
 
 
