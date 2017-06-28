@@ -320,8 +320,8 @@ object Spoof2Compiler {
                         }
                         else -> throw HopsException("unexpected tensor while constructing SNodes: ${i0.schema}")
                     }
-                    inputs[0] = i0
-                    inputs[1] = i1
+                    inputs[iMap[0]] = i0
+                    inputs[iMap[1]] = i1
                     val ret = SNodeNary(NaryOp.valueOf(current.op.name), inputs)
                     if( boundNames.isNotEmpty() )
                         SNodeUnbind(ret, boundNames)
@@ -419,8 +419,8 @@ object Spoof2Compiler {
         val mult = agg.inputs[0]
         return if( mult is SNodeNary && mult.op == NaryOp.MULT && agg.op == Hop.AggOp.SUM
                 && mult.inputs.size == 2
-                && agg.aggreateNames.size == 1 ) {
-            // MxM
+                && agg.aggreateNames.size == 1 )
+        {   // MxM
             val mult0 = mult.inputs[0]
             val mult1 = mult.inputs[1]
             var (hop0, hop1) = if( expectBind ) {
@@ -437,17 +437,23 @@ object Spoof2Compiler {
             }
 
             // AggBinaryOp always expects matrix inputs
-            if( hop0.dataType == Expression.DataType.SCALAR )
-                hop0 = HopRewriteUtils.createUnary(hop0, OpOp1.CAST_AS_SCALAR)
-            if( hop1.dataType == Expression.DataType.SCALAR )
-                hop1 = HopRewriteUtils.createUnary(hop1, OpOp1.CAST_AS_SCALAR)
+            if( hop0.dataType == Expression.DataType.SCALAR ) {
+                hop0 = HopRewriteUtils.createUnary(hop0, OpOp1.CAST_AS_MATRIX)
+                if( LOG.isTraceEnabled )
+                    LOG.trace("inserted cast_as_matrix id=${hop0.hopID} for left input to AggBinaryOp")
+            }
+            if( hop1.dataType == Expression.DataType.SCALAR ) {
+                hop1 = HopRewriteUtils.createUnary(hop1, OpOp1.CAST_AS_MATRIX)
+                if( LOG.isTraceEnabled )
+                    LOG.trace("inserted cast_as_matrix id=${hop1.hopID} for right input to AggBinaryOp")
+            }
 
             val mxm = HopRewriteUtils.createMatrixMultiply(hop0, hop1)
             mxm
 //                            HopRewriteUtils.createUnary(mxm, OpOp1.CAST_AS_SCALAR) // do we need this?
 //            checkCastScalar(mxm)
         }
-        else {
+        else { // general Agg
             val aggInput = mult
             var hop0 = if( expectBind ) {
                 if (aggInput !is SNodeBind)
@@ -461,15 +467,20 @@ object Spoof2Compiler {
             }
 
             // AggUnaryOp always requires MATRIX input
-            if( hop0.dataType == Expression.DataType.SCALAR )
-                hop0 = HopRewriteUtils.createUnary(hop0, OpOp1.CAST_AS_SCALAR)
+            if( hop0.dataType == Expression.DataType.SCALAR ) {
+                hop0 = HopRewriteUtils.createUnary(hop0, OpOp1.CAST_AS_MATRIX)
+                if( LOG.isTraceEnabled )
+                    LOG.trace("inserted cast_as_matrix id=${hop0.hopID} for input to AggUnaryOp")
+            }
 
-            // get direction from schema
-            SNodeException.check(agg.aggreateNames.size == 1 || agg.aggreateNames.size == 2, agg) {"don't know how to compile aggregate with aggregates ${agg.aggreateNames}"}
+            // Determine direction
+            SNodeException.check(agg.aggreateNames.size == 1 || agg.aggreateNames.size == 2, agg)
+            {"don't know how to compile aggregate to Hop with aggregates ${agg.aggreateNames}"}
             val dir = when {
                 agg.aggreateNames.size == 2 -> Hop.Direction.RowCol
-                hop0.dim2 == 1L -> Hop.Direction.Col // sum first dimension ==> row vector
-                hop0.dim1 == 1L -> Hop.Direction.Row // sum second dimension ==> col vector
+                // change to RowCol when aggregating vectors, in order to create a scalar rather than a 1x1 matrix
+                hop0.dim2 == 1L -> Hop.Direction.RowCol // sum first dimension ==> row vector : Hop.Direction.Col
+                hop0.dim1 == 1L -> Hop.Direction.RowCol // sum second dimension ==> col vector: Hop.Direction.Row
                 agg.aggreateNames[0] == aggInput.schema.names[0] -> {
                     agg.check(aggInput.schema.size == 2) {"this may be erroneous if aggInput is not a matrix"}
                     Hop.Direction.Col
@@ -479,6 +490,9 @@ object Spoof2Compiler {
                     Hop.Direction.Row
                 }
             }
+            if( LOG.isTraceEnabled )
+                LOG.trace("Decide direction $dir on input dims [${hop0.dim1},${hop0.dim2}] & schema $aggInput " +
+                        "aggregating on ${agg.aggreateNames} to schema ${agg.schema}:")
 
             HopRewriteUtils.createAggUnaryOp(hop0, agg.op, dir)
         }
@@ -495,7 +509,6 @@ object Spoof2Compiler {
     }
 
     private fun reconstructNary(nary: SNodeNary, expectBind: Boolean, hopMemo: MutableMap<SNode, Hop>): Hop {
-        var foundBind = false
         val hopInputs = nary.inputs.map { input ->
 //            if( expectBind ) {
                 val i = if (input is SNodeBind) input.inputs[0] else input
@@ -545,13 +558,13 @@ object Spoof2Compiler {
 //                    inputs = inputs[0].input
 //                    inputs[0].parent.clear()
 //                }
-                if( current.hop is UnaryOp && current.hop.op == OpOp1.CAST_AS_SCALAR
-                        && inputs[0].dataType == Expression.DataType.SCALAR ) {
+                if( HopRewriteUtils.isUnary(current.hop, OpOp1.CAST_AS_SCALAR)
+                        && inputs[0].dataType.isScalar ) {
                     // skip the cast
                     inputs[0]
                 }
-                else if( current.hop is UnaryOp && current.hop.op == OpOp1.CAST_AS_MATRIX
-                        && inputs[0].dataType == Expression.DataType.MATRIX ) {
+                else if( HopRewriteUtils.isUnary(current.hop, OpOp1.CAST_AS_MATRIX)
+                        && inputs[0].dataType.isMatrix ) {
                     // skip the cast
                     inputs[0]
                 }

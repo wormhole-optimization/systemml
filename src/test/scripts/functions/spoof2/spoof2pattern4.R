@@ -23,5 +23,5 @@ args<-commandArgs(TRUE)
 options(digits=22)
 library(Matrix)
 X = matrix(  c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15), nrow=5, ncol=3, byrow = TRUE)
-S = t(colSums(t(X))) # colSums produces a row vector
+S = as.matrix(sum(t(X)))
 writeMM(as(S, "CsparseMatrix"), paste(args[2], "S", sep=""));

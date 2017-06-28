@@ -72,7 +72,7 @@ public class RowAggTmplTest extends AutomatedTestBase
 
 	private static final double eps = 10.0e-10;
 
-	@Parameterized.Parameters(name = "{index}: testCodegen({0}, rewrites={1}, {2})")
+	@Parameterized.Parameters(name = "testCodegen({0}, rewrites={1}, {2})")
 	public static Collection<Object[]> testParams() {
 		List<Object[]> params = new ArrayList<>(NUM_TESTS*3);
 		for (int testNum = 1; testNum <= NUM_TESTS; testNum++) {

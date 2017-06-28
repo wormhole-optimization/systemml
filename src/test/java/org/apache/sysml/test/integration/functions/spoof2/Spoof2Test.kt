@@ -44,22 +44,36 @@ class Spoof2Test(
         //	TEST_NAME+ 1;  //t(X)
         //	TEST_NAME+ 2;  //rowSum(t(X))
         //	TEST_NAME+ 3;  //colSum(t(X))
-        private const val NUM_TESTS = 3
+        //	TEST_NAME+ 4;  //sum(t(X))
+        //	TEST_NAME+ 5;  //X%*%Y
+        //	TEST_NAME+ 6;  //t(t(X)%*%t(Y))
+        //	TEST_NAME+ 7;  //rowSums(t(t(X)%*%t(Y)))
+        //	TEST_NAME+ 8;  //colSums(t(t(X)%*%t(Y)))
+        //	TEST_NAME+ 9;  //t(X)%*%(w*(Y%*%v))
+        //	TEST_NAME+10;  //2-X
+        //	TEST_NAME+11;  //t(X)%*%(2-(w*(Y%*%v)))
+        //	TEST_NAME+12;  //print(sum(v))                  // print expects a scalar
+        private const val NUM_TESTS = 12
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
-        private const val TEST_CONF = "SystemML-config-spoof2.xml"
-        private val TEST_CONF_FILE = File(SCRIPT_DIR + TEST_DIR, TEST_CONF)
+        private const val TEST_CONF_SPOOF2 = "SystemML-config-spoof2.xml"
+        private const val TEST_CONF_NOSPOOF2 = "SystemML-config-nospoof2.xml"
+        private val TEST_CONF_FILE_SPOOF2 = File(SCRIPT_DIR + TEST_DIR, TEST_CONF_SPOOF2)
+        private val TEST_CONF_FILE_NOSPOOF2 = File(SCRIPT_DIR + TEST_DIR, TEST_CONF_NOSPOOF2)
 
         private const val eps = 10.0e-10
 
         @JvmStatic
-        @Parameterized.Parameters(name = "{index}: testSpoof2({0}, rewrites={1}, {2})")
+        @Parameterized.Parameters(name = "testSpoof2({0}, rewrites={1}, {2})")
         fun testParams(): Collection<Array<Any>> {
             val params = ArrayList<Array<Any>>(NUM_TESTS * 3)
             for (testNum in 1..NUM_TESTS) {
+//                if (testNum != NUM_TESTS)
+//                    continue
+
                 val testName = TEST_NAME + testNum
-                params.add(arrayOf(testName, false, CP))
+//                params.add(arrayOf(testName, false, CP))
 //                params.add(arrayOf(testName, false, SPARK))
                 params.add(arrayOf(testName, true, CP))
             }
@@ -99,9 +113,7 @@ class Spoof2Test(
             val HOME = AutomatedTestBase.SCRIPT_DIR + TEST_DIR
             fullDMLScriptName = HOME + testname + ".dml"
             if ( rewrites ) // "-explain", "recompile_hops",
-                programArgs = arrayOf("-stats", "-args", output("S"))
-            else
-                programArgs = arrayOf("-stats", "-args", output("S")) //"-nvargs spoof.enabled=false",
+            programArgs = arrayOf("-stats", "-args", output("S"))
 
 
             fullRScriptName = HOME + testname + ".R"
@@ -138,8 +150,9 @@ class Spoof2Test(
      */
     override fun getConfigTemplateFile(): File {
         // Instrumentation in this test's output log to show custom configuration file used for template.
-        println("This test case overrides default configuration with " + TEST_CONF_FILE.path)
-        return TEST_CONF_FILE
+        val tcf = if( rewrites ) TEST_CONF_FILE_SPOOF2 else TEST_CONF_FILE_NOSPOOF2
+        println("This test case overrides default configuration with " + tcf.path)
+        return tcf
     }
 
 
