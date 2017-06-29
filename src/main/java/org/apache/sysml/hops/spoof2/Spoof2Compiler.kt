@@ -476,20 +476,28 @@ object Spoof2Compiler {
             // Determine direction
             SNodeException.check(agg.aggreateNames.size == 1 || agg.aggreateNames.size == 2, agg)
             {"don't know how to compile aggregate to Hop with aggregates ${agg.aggreateNames}"}
-            val dir = when {
-                // minindex, maxindex only defined on Row aggregation
-                agg.op == Hop.AggOp.MININDEX || agg.op == Hop.AggOp.MAXINDEX -> Hop.Direction.Row
+            var dir = when {
                 agg.aggreateNames.size == 2 -> Hop.Direction.RowCol
                 // change to RowCol when aggregating vectors, in order to create a scalar rather than a 1x1 matrix
                 hop0.dim2 == 1L -> Hop.Direction.RowCol // sum first dimension ==> row vector : Hop.Direction.Col
                 hop0.dim1 == 1L -> Hop.Direction.RowCol // sum second dimension ==> col vector: Hop.Direction.Row
                 agg.aggreateNames[0] == aggInput.schema.names[0] -> {
-                    agg.check(aggInput.schema.size == 2) {"this may be erroneous if aggInput is not a matrix"}
+                    agg.check(aggInput.schema.size == 2) {"this may be erroneous if aggInput is not a matrix: $aggInput"}
                     Hop.Direction.Col
                 }
                 else -> {
-                    agg.check(aggInput.schema.size == 2) {"this may be erroneous if aggInput is not a matrix"}
+                    agg.check(aggInput.schema.size == 2) {"this may be erroneous if aggInput is not a matrix: $aggInput"}
                     Hop.Direction.Row
+                }
+            }
+
+            // minindex, maxindex only defined on Row aggregation
+            if( agg.op == Hop.AggOp.MININDEX || agg.op == Hop.AggOp.MAXINDEX ) {
+                if( dir == Hop.Direction.RowCol )
+                    dir = Hop.Direction.Row
+                else if( dir == Hop.Direction.Col ) {
+                    hop0 = HopRewriteUtils.createTranspose(hop0)
+                    dir = Hop.Direction.Row
                 }
             }
 

@@ -54,8 +54,11 @@ class Spoof2Test(
         //	TEST_NAME+11;  //t(X)%*%(2-(w*(Y%*%v)))
         //	TEST_NAME+12;  //print(sum(v))                  // print expects a scalar
         //	TEST_NAME+13;  //x%*%y                          // inner product
-        //	TEST_NAME+13;  //x%*%y                          // outer product
-        private const val NUM_TESTS = 14
+        //	TEST_NAME+14;  //x%*%y                          // outer product
+        //	TEST_NAME+15;  //rowIndexMax(X)
+        //	TEST_NAME+16;  //rowIndexMax(t(X))
+        //	TEST_NAME+17;  //t(rowIndexMax(t(X)))
+        private const val NUM_TESTS = 17
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
