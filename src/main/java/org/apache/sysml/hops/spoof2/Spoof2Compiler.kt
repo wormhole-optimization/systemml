@@ -421,8 +421,8 @@ object Spoof2Compiler {
                 && mult.inputs.size == 2
                 && agg.aggreateNames.size == 1 )
         {   // MxM
-            val mult0 = mult.inputs[0]
-            val mult1 = mult.inputs[1]
+            var mult0 = mult.inputs[0]
+            var mult1 = mult.inputs[1]
             var (hop0, hop1) = if( expectBind ) {
                 if (mult0 !is SNodeBind || mult1 !is SNodeBind)
                     TODO("fuse a matrix multiply with further SNodes $mult0, $mult1")
@@ -447,11 +447,63 @@ object Spoof2Compiler {
                 if( LOG.isTraceEnabled )
                     LOG.trace("inserted cast_as_matrix id=${hop1.hopID} for right input to AggBinaryOp")
             }
+            agg.check(mult0.schema.size in 1..2 && mult1.schema.size in 1..2) {"matrix multiply with tensors? inputs: $mult0 $mult1"}
 
-            val mxm = HopRewriteUtils.createMatrixMultiply(hop0, hop1)
-            mxm
-//                            HopRewriteUtils.createUnary(mxm, OpOp1.CAST_AS_SCALAR) // do we need this?
-//            checkCastScalar(mxm)
+            // use symmetry
+            if( mult0.schema.size == 2 && mult1.schema.size == 1 ) {
+                val tmp = mult0; mult0 = mult1; mult1 = tmp
+                val t = hop0; hop0 = hop1; hop1 = t
+            }
+
+            // check positions of labels and see if we need to transpose
+            val aggName: Name = agg.aggreateNames[0]
+            when( mult0.schema.size ) {
+                1 -> when( mult1.schema.size ) { // hop0 is V
+                    1 -> when( hop0.classify() ) { // hop1 is V; inner product
+                        HopClass.ROW_VECTOR -> when( hop1.classify() ) {
+                            HopClass.COL_VECTOR -> {}
+                            HopClass.ROW_VECTOR -> hop1 = HopRewriteUtils.createTranspose(hop1)
+                        }
+                        HopClass.COL_VECTOR -> when( hop1.classify() ) {
+                            HopClass.COL_VECTOR -> hop0 = HopRewriteUtils.createTranspose(hop0)
+                            HopClass.ROW_VECTOR -> {val t = hop0; hop0 = hop1; hop1 = t}
+                        }
+                    }
+                    2 -> { // hop1 is M; check VxM or MxV
+                        // get matching name, which is also aggregated over
+                        val i1 = mult1.schema.names.indexOf(aggName); agg.check(i1 != -1) {"$mult1 should have the name $aggName we are aggregating over"}
+                        when( i1 ) {
+                            0 -> when( hop0.classify() ) { // VxM; ensure vector is a row vector
+                                HopClass.ROW_VECTOR -> {}
+                                HopClass.COL_VECTOR -> hop0 = HopRewriteUtils.createTranspose(hop0)
+                            }
+                            1 -> { // MxV; swap hops and ensure vector is a col vector
+                                val t = hop0; hop0 = hop1; hop1 = t
+                                when( hop1.classify() ) {
+                                    HopClass.ROW_VECTOR -> hop1 = HopRewriteUtils.createTranspose(hop1)
+                                    HopClass.COL_VECTOR -> {}
+                                }
+                            }
+                        }
+                    }
+                }
+                2 -> { // MxM case
+                    val i0 = mult0.schema.names.indexOf(aggName); agg.check(i0 != -1) {"$mult0 should have the name $aggName we are aggregating over"}
+                    val i1 = mult1.schema.names.indexOf(aggName); agg.check(i1 != -1) {"$mult1 should have the name $aggName we are aggregating over"}
+                    // make common attribute on position 1 of hop0 and position0 of hop1
+                    when( i0 ) {
+                        0 -> when( i1 ) {
+                            0 -> hop0 = HopRewriteUtils.createTranspose(hop0)       //[b,a]x[b,c]
+                            1 -> { val tmp = hop0; hop0 = hop1; hop1 = tmp }   //[b,a]x[c,b]
+                        }
+                        1 -> when( i1 ) {
+                            0 -> {}                                                 //[a,b]x[b,c]
+                            1 -> hop1 = HopRewriteUtils.createTranspose(hop1)       //[a,b]x[c,b]
+                        }
+                    }
+                }
+            }
+            HopRewriteUtils.createMatrixMultiply(hop0, hop1)
         }
         else { // general Agg
             val aggInput = mult
@@ -520,7 +572,7 @@ object Spoof2Compiler {
     }
 
     private fun reconstructNary(nary: SNodeNary, expectBind: Boolean, hopMemo: MutableMap<SNode, Hop>): Hop {
-        val hopInputs = nary.inputs.map { input ->
+        val hopInputs = nary.inputs.mapTo(ArrayList()) { input ->
 //            if( expectBind ) {
                 val i = if (input is SNodeBind) input.inputs[0] else input
                 rReconstructHopDag(i, hopMemo)
@@ -528,6 +580,15 @@ object Spoof2Compiler {
 //                rReconstructHopDag(input, hopMemo)
 //            }
         }
+
+        // if joining on two names, ensure that they align by possibly transposing one of them
+        if( nary.inputs.size == 2 && nary.inputs[0].schema.size == 2
+                && nary.inputs[0].schema.names.toSet() == nary.inputs[1].schema.names.toSet() ) {
+            if( nary.inputs[0].schema.names[0] != nary.inputs[1].schema.names[0] )
+                hopInputs[1] = HopRewriteUtils.createTranspose(hopInputs[1])
+        }
+
+        // handle swapping of inputs (such as vector expansion should always have vector on right) in future rules
 
         // check for outer product: nary(*) between two vectors whose names do not join
         return if( nary.op == NaryOp.MULT && nary.inputs[0].schema.size == 1 && nary.inputs[1].schema.size == 1
