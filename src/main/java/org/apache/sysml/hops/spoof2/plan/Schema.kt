@@ -13,6 +13,7 @@ class Schema private constructor(
         val names: ArrayList<Name>,
         val shapes: ArrayList<Shape>
 ) {
+    // defensive copy constructors
     constructor() : this(arrayListOf(), arrayListOf())
     constructor(names: List<Name>, shapes: List<Shape>) : this(ArrayList(names), ArrayList(shapes))
     constructor(s: Schema) : this(ArrayList(s.names), ArrayList(s.shapes))
@@ -122,21 +123,49 @@ class Schema private constructor(
         names[pos] = name // replace pre
     }
 
-    fun permute(permutation: Map<Name, Name>) {
-//        println("permutation: $permutation\nbefore: $names")
-        val indexMap = names.mapIndexed { idx, n ->
-            if (n in permutation) {
-                val newidx = names.indexOf(permutation[n])
-                require(newidx != -1) {"bad permutation $permutation on $this"}
-                newidx
-            } else
-                idx
+    fun permutePositions(permutation: Map<Int,Int>) {
+        when( permutation.filter { (k,v) -> k != v }.size ) {
+        // common cases
+            0 -> return
+            1 -> throw IllegalArgumentException("bad permutation $permutation on $this")
+            2 -> {
+                val (a, b) = permutation.keys.iterator().let { it.next() to it.next() }
+                names.swap(a,b)
+            }
+            else -> { // advanced case with >2 permutes
+                val tmpNames = ArrayList(names)
+                names.mapInPlaceIndexed { idx, _ -> tmpNames[if (idx in permutation) permutation[idx]!! else idx] }
+                val tmpShapes = ArrayList(shapes)
+                shapes.mapInPlaceIndexed { idx, _ -> tmpShapes[if (idx in permutation) permutation[idx]!! else idx] }
+            }
         }
-        val tmpNames = ArrayList(names)
-        names.mapInPlaceIndexed { idx, _ -> tmpNames[indexMap[idx]] }
-        val tmpShapes = ArrayList(shapes)
-        shapes.mapInPlaceIndexed { idx, _ -> tmpShapes[indexMap[idx]] }
-//        println("after: $names")
+    }
+
+    fun permuteNames(permutation: Map<Name, Name>) {
+        when( permutation.filter { (k,v) -> k != v }.size ) {
+            // common cases
+            0 -> return
+            1 -> throw IllegalArgumentException("bad permutation $permutation on $this")
+            2 -> {
+                val (a, b) = permutation.keys.iterator().let { names.indexOf(it.next()) to names.indexOf(it.next()) }
+                require(a != -1 && b != -1) {"bad permutation $permutation on $this"}
+                names.swap(a,b)
+            }
+            else -> { // advanced case with >2 permutes
+                val indexMap = names.mapIndexed { idx, n ->
+                    if (n in permutation) {
+                        val newidx = names.indexOf(permutation[n])
+                        require(newidx != -1) {"bad permutation $permutation on $this"}
+                        newidx
+                    } else
+                        idx
+                }
+                val tmpNames = ArrayList(names)
+                names.mapInPlaceIndexed { idx, _ -> tmpNames[indexMap[idx]] }
+                val tmpShapes = ArrayList(shapes)
+                shapes.mapInPlaceIndexed { idx, _ -> tmpShapes[indexMap[idx]] }
+            }
+        }
     }
 
     fun isEmpty() = names.isEmpty()
@@ -160,5 +189,5 @@ class Schema private constructor(
         }
     }
 
-    fun genAllBindings(): MutableMap<Int, Name> = hashMapOf<Int,Name>().also { this.fillWithBindings(it) }
+    fun genAllBindings(): MutableMap<Int, Name> = linkedMapOf<Int,Name>().also { this.fillWithBindings(it) }
 }

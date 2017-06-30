@@ -18,6 +18,8 @@ class SNodeData private constructor(
     val isLiteral = hop is LiteralOp
     val isWrite = hop is DataOp && hop.isWrite
 
+    val inputHopClasses = hop.input.map(Hop::classify)
+
     override fun toString() = "data(${hop.hopID} ${hop.opString})"
 
     override fun checkArity() {

@@ -157,6 +157,9 @@ object Spoof2Compiler {
             return roots
         }
 
+        // remember top-level orientations
+        val rootClasses = roots.map(Hop::classify)
+
         //construct sum-product plan
         var sroots = ArrayList<SNode>()
         Hop.resetVisitStatus(roots)
@@ -182,6 +185,19 @@ object Spoof2Compiler {
         val hopMemo: MutableMap<SNode, Hop> = hashMapOf()
         for (sroot in sroots)
             roots2.add(rReconstructHopDag(sroot, hopMemo))
+
+        // add transposes if necessary to roots in order to maintain same orientation as original
+        // shouldn't be necessary because the roots are generally Writes, which correct orientation on their own
+        roots2.mapInPlaceIndexed { idx, root2 ->
+            if( rootClasses[idx].isVector && root2.classify() != rootClasses[idx] ) {
+                check( root2.classify().isVector ) {"root changed type after reconstruction? Old type ${rootClasses[idx]}; new type ${root2.classify()}"}
+                if( LOG.isTraceEnabled )
+                    LOG.trace("creating root transpose at root $idx to enforce orientation ${rootClasses[idx]}")
+                HopRewriteUtils.createTranspose(root2)
+            }
+            else
+                root2
+        }
 
         if (LOG.isTraceEnabled) {
             LOG.trace("Spoof2Compiler created modified HOP DAG: \n" + Explain.explainHops(roots2))
@@ -242,19 +258,17 @@ object Spoof2Compiler {
                     // transpose does not logically effect anything, but it will change the order of input shapes
                     // which affects the join conditions of parent binary hops, so we keep the Permute SNode.
                     // U - tr - B - inputs[0]
-                    val bindings = inputs[0].schema.genAllBindings()
-                    inputs[0] = SNodeBind(inputs[0], bindings)
-                    val perm = SNodePermute(inputs[0], createTransposePermutation(bindings.values))
-                    val U = SNodeUnbind(perm, bindings.values)
-//                    // this is a trick for reading orientation from unbound attribute names
-//                    // it will go away on next refreshSchema()
-//                    if (U.schema.size == 1) {
-//                        when( U.schema.names[0].first() ) {
-//                            Schema.NamePrefix.ROW.prefixChar -> U.schema.names[0] = Schema.NamePrefix.COL.prefixStr
-//                            Schema.NamePrefix.COL.prefixChar -> U.schema.names[0] = Schema.NamePrefix.ROW.prefixStr
-//                        }
-//                    }
-                    U
+                    if (inputs[0].schema.size == 2) {
+                        val bindings = inputs[0].schema.genAllBindings()
+                        inputs[0] = SNodeBind(inputs[0], bindings)
+//                    val perm = SNodePermute(inputs[0], createTransposePermutation(bindings.values))
+//                    require(bindings.keys == setOf(0,1)) {"unexpected transpose input $current"}
+
+                        val flipBindings = mapOf(0 to bindings[1]!!, 1 to bindings[0]!!)
+                        SNodeUnbind(inputs[0], flipBindings)
+                    } else {
+                        inputs[0] // skip transpose on vector
+                    }
                 } else
                     SNodeExt(current, inputs)
             }
@@ -268,7 +282,7 @@ object Spoof2Compiler {
                     // todo - handle UnaryOps that act like SELECTs, such as diag. Equate attribute names in this case.
                     val nary = SNodeNary(NaryOp.valueOf(current.op.name), inputs[0])
                     if( bindings.isNotEmpty() )
-                        SNodeUnbind(nary, bindings.values)
+                        SNodeUnbind(nary, bindings)
                     else
                         nary
                 }
@@ -287,13 +301,13 @@ object Spoof2Compiler {
                     var (i0, i1, iMap) = largerSmaller(inputs[0], inputs[1]) {it.schema.size}
                     // i0's dimension is >= i1's dimension
 
-                    val boundNames = arrayListOf<Name>()
+                    val boundNames = mutableMapOf<Int,Name>()
                     when( i0.schema.size ) {
                         0 -> {}
                         1 -> {
                             val bs = i0.schema.genAllBindings()
                             i0 = SNodeBind(i0, bs)
-                            boundNames += bs.values
+                            boundNames += bs
                             if( i1.schema.isNotEmpty() ) {
                                 // both vectors: bind to same name
                                 i1 = SNodeBind(i1, bs)
@@ -302,7 +316,7 @@ object Spoof2Compiler {
                         2 -> {
                             val bs0 = i0.schema.genAllBindings()
                             i0 = SNodeBind(i0, bs0)
-                            boundNames += bs0.values
+                            boundNames += bs0 // order of unbinding is equal to order of attributes in matrix
                             when( i1.schema.size ) {
                                 0 -> {}
                                 1 -> { // matrix * vector: check orientation and bind appropriately
@@ -349,11 +363,11 @@ object Spoof2Compiler {
                             }
                             Hop.Direction.Row -> { // sum rows ==> col vector
                                 val agg = SNodeAggregate(current.op, inputs[0], bs[1]!!)
-                                SNodeUnbind(agg, listOf(bs[0]!!))
+                                SNodeUnbind(agg, mapOf(0 to bs[0]!!))
                             }
                             Hop.Direction.Col -> { // sum cols ==> row vector
                                 val agg = SNodeAggregate(current.op, inputs[0], bs[0]!!)
-                                SNodeUnbind(agg, listOf(bs[1]!!))
+                                SNodeUnbind(agg, mapOf(0 to bs[1]!!))
                             }
                         }
                     }
@@ -362,7 +376,7 @@ object Spoof2Compiler {
             }
             is AggBinaryOp -> { // matrix multiply. There may be vectors.
                 if( current.innerOp.name in NaryOp ) {
-                    val boundNames = mutableSetOf<Name>()
+                    val boundNames = mutableMapOf<Int,Name>()
                     val aggName: Name?
                     when (current.input[0].classify()) {
                         HopClass.SCALAR -> throw HopsException("AggBinaryOp id=${current.hopID} should not act on scalars but input SNodes are $inputs")
@@ -372,10 +386,10 @@ object Spoof2Compiler {
                             // outer product
                             val bs0 = inputs[0].schema.genAllBindings()
                             inputs[0] = SNodeBind(inputs[0], bs0)
-                            boundNames += bs0.values
+                            boundNames += 0 to bs0[0]!!
                             val bs1 = inputs[1].schema.genAllBindings()
                             inputs[1] = SNodeBind(inputs[1], bs1)
-                            boundNames += bs1.values
+                            boundNames += 1 to bs1[0]!!
                             aggName = null
                         }
                         HopClass.ROW_VECTOR, HopClass.MATRIX -> {
@@ -390,13 +404,13 @@ object Spoof2Compiler {
                             val bs1 = mutableMapOf(0 to aggName)
                             inputs[1].schema.fillWithBindings(bs1) // match row vector binding with first dim on inputs[1]
                             inputs[1] = SNodeBind(inputs[1], bs1)
-                            boundNames += bs0.values.toSet() + bs1.values
+                            if( inputs[0].schema.size == 2 ) boundNames += 0 to bs0[0]!!
+                            if( inputs[1].schema.size == 2 ) boundNames += boundNames.size to bs1[1]!!
                         }
                     }
                     var ret: SNode = SNodeNary(NaryOp.valueOf(current.innerOp.name), inputs)
                     if( aggName != null ) {
                         ret = SNodeAggregate(current.outerOp, ret, aggName)
-                        boundNames -= aggName
                     }
                     SNodeUnbind(ret, boundNames)
                 }
@@ -414,6 +428,7 @@ object Spoof2Compiler {
 
         return node
     }
+
 
     private fun reconstructAggregate(agg: SNodeAggregate, expectBind: Boolean, hopMemo: MutableMap<SNode, Hop>): Hop {
         val mult = agg.inputs[0]
@@ -468,6 +483,7 @@ object Spoof2Compiler {
                             HopClass.COL_VECTOR -> hop0 = HopRewriteUtils.createTranspose(hop0)
                             HopClass.ROW_VECTOR -> {val t = hop0; hop0 = hop1; hop1 = t}
                         }
+                        else -> throw AssertionError()
                     }
                     2 -> { // hop1 is M; check VxM or MxV
                         // get matching name, which is also aggregated over
@@ -476,12 +492,14 @@ object Spoof2Compiler {
                             0 -> when( hop0.classify() ) { // VxM; ensure vector is a row vector
                                 HopClass.ROW_VECTOR -> {}
                                 HopClass.COL_VECTOR -> hop0 = HopRewriteUtils.createTranspose(hop0)
+                                else -> throw AssertionError()
                             }
                             1 -> { // MxV; swap hops and ensure vector is a col vector
                                 val t = hop0; hop0 = hop1; hop1 = t
                                 when( hop1.classify() ) {
                                     HopClass.ROW_VECTOR -> hop1 = HopRewriteUtils.createTranspose(hop1)
                                     HopClass.COL_VECTOR -> {}
+                                    else -> throw AssertionError()
                                 }
                             }
                         }
@@ -619,7 +637,18 @@ object Spoof2Compiler {
         val node: Hop = when( current ) {
             is SNodeData -> {
                 //recursively process child nodes
-                val inputs = current.inputs.map { rReconstructHopDag(it, hopMemo) }
+                val inputs = current.inputs.mapTo(arrayListOf()) { rReconstructHopDag(it, hopMemo) }
+
+                for( i in inputs.indices ) {
+                    val oldHopClass = current.hop.input[i]!!.classify() //current.inputHopClasses[i]
+                    if( oldHopClass.isVector ) {
+                        if( inputs[i].classify() != oldHopClass ) {
+                            inputs[i] = HopRewriteUtils.createTranspose(inputs[i])
+                            if( LOG.isTraceEnabled )
+                                LOG.trace("on $current id=${current.id}, created transpose to force orientation to $oldHopClass on input $i of $current")
+                        }
+                    }
+                }
                 if (inputs.isNotEmpty()) {
                     HopRewriteUtils.replaceChildReference(current.hop,
                             current.hop.input[0], inputs[0], 0)
@@ -628,7 +657,7 @@ object Spoof2Compiler {
                 current.hop
             }
             is SNodeExt -> {
-                var inputs = current.inputs.map { rReconstructHopDag(it, hopMemo) }
+                val inputs = current.inputs.mapTo(arrayListOf()) { rReconstructHopDag(it, hopMemo) }
                 current.hop.resetVisitStatus() // visit status may be set from SNode construction
 
                 // prevent duplicate CAST_AS_SCALAR
@@ -648,6 +677,18 @@ object Spoof2Compiler {
                     inputs[0]
                 }
                 else {
+                    // change input orientation if necessary
+                    for( i in inputs.indices ) {
+                        val oldHopClass = current.hop.input[i]!!.classify() //current.inputHopClasses[i]
+                        if( oldHopClass.isVector ) {
+                            if( inputs[i].classify() != oldHopClass ) {
+                                inputs[i] = HopRewriteUtils.createTranspose(inputs[i])
+                                if( LOG.isTraceEnabled )
+                                    LOG.trace("on $current id=${current.id}, created transpose to force orientation to $oldHopClass on input $i of $current")
+                            }
+                        }
+                    }
+
                     if (inputs.isNotEmpty()) { //robustness datagen
                         HopRewriteUtils.removeAllChildReferences(current.hop)
                         for (c in inputs)
@@ -657,24 +698,28 @@ object Spoof2Compiler {
                 }
             }
             is SNodeAggregate -> reconstructAggregate(current, false, hopMemo)
-            is SNodePermute -> throw SNodeException(current, "should not be a permute on a scalar schema type")
             is SNodeNary -> reconstructNary(current, false, hopMemo)
             is SNodeUnbind -> {
                 // match on the SNode beneath SNodeUnbind. Go to the Binds that are children to this block.
                 val bu = current.inputs[0]
-                when( bu ) {
+                val hop = when( bu ) {
                     is SNodeAggregate -> reconstructAggregate(bu, true, hopMemo)
-                    is SNodePermute -> {
-                        val perm = bu
-                        val bind = perm.inputs[0]
-                        if( bind !is SNodeBind )
-                            TODO("fuse a transpose (permute) with further SNode $bind")
-                        val bindBelow = rReconstructHopDag(bind.inputs[0], hopMemo)
-                        HopRewriteUtils.createTranspose(bindBelow)
-                    }
                     is SNodeNary -> reconstructNary(bu, true, hopMemo)
+                    is SNodeBind -> { // unbind-bind
+                        rReconstructHopDag(bu.inputs[0], hopMemo)
+                    }
                     else -> throw SNodeException("don't know how to translate $bu")
                 }
+                // check if the Unbind necessitates a permutation
+                // if the Unbind has a map of Int to Attribute that does not agree with the schema of the input, then transpose
+                if( current.unbinding.any { (pos,n) -> current.inputs[0].schema.names[pos] != n } ) {
+                    // log this in case we encounter transpose issues
+                    if( LOG.isTraceEnabled )
+                        LOG.trace("insert transpose at Unbind id=${current.id} $current with input ${current.inputs[0]}")
+                    HopRewriteUtils.createTranspose(hop)
+                }
+                else
+                    hop
             }
             else -> throw SNodeException(current, "should not be able to recurse on this type of SNode")
         }

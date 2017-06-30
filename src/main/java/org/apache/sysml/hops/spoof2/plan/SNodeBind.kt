@@ -7,7 +7,7 @@ class SNodeBind(
         input: SNode,
         bindings: Map<Int, Name>
 ) : SNode(input) {
-    val bindings: MutableMap<Int, Name> = HashMap(bindings)
+    val bindings: MutableMap<Int, Name> = HashMap(bindings) // defensive copy
     init {
         refreshSchema()
     }

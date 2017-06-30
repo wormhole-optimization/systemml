@@ -94,8 +94,8 @@ inline fun <T,C:Comparable<C>> largerSmaller(i0: T, i1: T, by: (T) -> C): Triple
 fun Hop.isVector(): Boolean = this.dim1 == 1L || this.dim2 == 1L
 fun Hop.isRowVector(): Boolean = this.dim1 == 1L
 
-enum class HopClass {
-    SCALAR, ROW_VECTOR, COL_VECTOR, MATRIX;
+enum class HopClass(val isVector: Boolean) {
+    SCALAR(false), ROW_VECTOR(true), COL_VECTOR(true), MATRIX(false);
 }
 fun Hop.classify(): HopClass {
     HopsException.check(this.dimsKnown(), this, "dims not known")
@@ -113,5 +113,9 @@ fun Hop.classify(): HopClass {
         else
             HopClass.MATRIX
     }
+}
+
+fun <T> MutableList<T>.swap(i0: Int, i1: Int) {
+    this[i0].let { this[i0] = this[i1]; this[i1] = it }
 }
 

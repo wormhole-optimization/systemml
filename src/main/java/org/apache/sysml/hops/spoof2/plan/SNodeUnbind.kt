@@ -5,9 +5,9 @@ package org.apache.sysml.hops.spoof2.plan
  */
 class SNodeUnbind(
         input: SNode,
-        names: Collection<Name>
+        names: Map<Int,Name>
 ) : SNode(input) {
-    val unbinding = ArrayList(names)
+    val unbinding: MutableMap<Int,Name> = HashMap(names) // defensive copy
     init {
         refreshSchema()
     }
@@ -20,8 +20,10 @@ class SNodeUnbind(
 
     override fun refreshSchema() {
         val si = inputs[0].schema
-        this.check( unbinding.all(si::contains) ) {"attempt to unbind $unbinding on input schema $si"}
+        this.check( unbinding.values.all(si::contains) ) {"attempt to unbind $unbinding on input schema $si"}
         schema.setTo(si)
-        unbinding.forEach(schema::unbindName)
+        val pmap = unbinding.mapValues { (_,v) -> schema.names.indexOf(v) }
+        schema.permutePositions(pmap)
+        unbinding.values.forEach(schema::unbindName)
     }
 }
