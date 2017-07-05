@@ -58,7 +58,8 @@ class Spoof2Test(
         //	TEST_NAME+15;  //rowIndexMax(X)
         //	TEST_NAME+16;  //rowIndexMax(t(X))
         //	TEST_NAME+17;  //t(rowIndexMax(t(X)))
-        private const val NUM_TESTS = 17
+        //	TEST_NAME+18;  //t(t(X))
+        private const val NUM_TESTS = 18
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
