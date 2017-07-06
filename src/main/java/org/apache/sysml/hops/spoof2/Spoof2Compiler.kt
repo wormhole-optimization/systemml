@@ -511,7 +511,7 @@ object Spoof2Compiler {
                             1 -> { val tmp = hop0; hop0 = hop1; hop1 = tmp     //[b,a]x[c,b]
                                 // also switch the SNode plan inputs and refresh schema, for later reconstruction
                                 mult.inputs.reverse()
-                                mult.refreshSchemasUpward() // refresh schema of all parents above
+                                mult.refreshSchemasUpward() // refresh schema of all parents above, as long as schema changes
                             }
                         }
                         1 -> when( i1 ) {

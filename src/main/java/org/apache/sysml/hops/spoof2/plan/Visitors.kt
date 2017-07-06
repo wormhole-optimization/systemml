@@ -23,9 +23,10 @@ fun SNode.renameAttributes(renaming: Map<Name, Name>, useInternalGuard: Boolean)
     acceptFoldUnorderedGuard(SNode.FN_NULL, postVisit, false, Boolean::or)
 }
 
-// todo - memo common subexpressions
 fun SNode.refreshSchemasUpward() {
+    val origSchema = Schema(this.schema)
     this.refreshSchema()
-    this.parents.forEach { it.refreshSchemasUpward() }
+    if( origSchema != this.schema ) // only if schema changed (also acts as a memo guard)
+        this.parents.forEach { it.refreshSchemasUpward() }
 }
 
