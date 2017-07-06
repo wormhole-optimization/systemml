@@ -51,7 +51,8 @@ object SNodeRewriteUtils {
         addChildReference(parent, inNew, pos)
     }
 
-    @JvmOverloads fun replaceChildReference(parent: SNode, inOld: SNode, inNew: SNode, pos: Int, refresh: Boolean = true) {
+    @JvmOverloads
+    fun replaceChildReference(parent: SNode, inOld: SNode, inNew: SNode, pos: Int, refresh: Boolean = true) {
         removeChildReferenceByPos(parent, inOld, pos)
         addChildReference(parent, inNew, pos)
     }

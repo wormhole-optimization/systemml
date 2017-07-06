@@ -7,7 +7,7 @@ class SNodeUnbind(
         input: SNode,
         names: Map<Int,Name>
 ) : SNode(input) {
-    val unbinding: MutableMap<Int,Name> = HashMap(names) // defensive copy
+    val unbinding: HashMap<Int,Name> = HashMap(names) // defensive copy
     init {
         refreshSchema()
     }

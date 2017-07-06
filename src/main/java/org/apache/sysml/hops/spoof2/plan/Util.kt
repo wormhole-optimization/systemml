@@ -98,7 +98,7 @@ enum class HopClass(val isVector: Boolean) {
     SCALAR(false), ROW_VECTOR(true), COL_VECTOR(true), MATRIX(false);
 }
 fun Hop.classify(): HopClass {
-    HopsException.check(this.dimsKnown(), this, "dims not known")
+    HopsException.check(this.dimsKnown(), this, "dims not known: [$dim1, $dim2]")
     if( this.dataType == Expression.DataType.SCALAR )
         return HopClass.SCALAR
     return if (this.dim1 == 1L) {

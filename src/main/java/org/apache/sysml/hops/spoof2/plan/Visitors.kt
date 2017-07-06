@@ -22,3 +22,10 @@ fun SNode.renameAttributes(renaming: Map<Name, Name>, useInternalGuard: Boolean)
     }
     acceptFoldUnorderedGuard(SNode.FN_NULL, postVisit, false, Boolean::or)
 }
+
+// todo - memo common subexpressions
+fun SNode.refreshSchemasUpward() {
+    this.refreshSchema()
+    this.parents.forEach { it.refreshSchemasUpward() }
+}
+

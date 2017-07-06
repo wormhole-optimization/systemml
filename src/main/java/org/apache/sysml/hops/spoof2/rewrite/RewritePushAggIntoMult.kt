@@ -6,7 +6,7 @@ import org.apache.sysml.hops.spoof2.plan.SNodeAggregate
 import org.apache.sysml.hops.spoof2.plan.SNodeNary
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
 
-class RewriteDistributiveSumProduct : SPlanRewriteRule() {
+class RewritePushAggIntoMult : SPlanRewriteRule() {
     override fun rewriteNode(parent: SNode, node: SNode, pos: Int): SNode {
 
         //pattern: agg(sum)-b(*)
@@ -27,16 +27,20 @@ class RewriteDistributiveSumProduct : SPlanRewriteRule() {
                 if (preAggAttrs.isNotEmpty()) {
                     // pre-aggregate these indices!
                     val preAgg = SNodeAggregate(AggOp.SUM, input, preAggAttrs)
-                    preAgg.refreshSchema() // todo - automate this?
                     SNodeRewriteUtils.replaceChildReference(mult, input, preAgg)
                     mult.refreshSchema()
-
                     numApplied++
                 }
             }
 
-            if (numApplied > 0)
-                SPlanRewriteRule.LOG.debug("Applied RewriteDistributiveSumProduct (num=$numApplied).")
+            if (numApplied > 0) {
+                // check if the agg no longer needs some attributes
+                val fullyPushed = agg.aggreateNames.filterNot { it in mult.schema }
+                agg.aggreateNames -= fullyPushed
+                agg.refreshSchema()
+                if( SPlanRewriteRule.LOG.isDebugEnabled )
+                    SPlanRewriteRule.LOG.debug("Applied RewritePushAggIntoMult, num=$numApplied. Fully pushed: $fullyPushed")
+            }
         }
 
         return node

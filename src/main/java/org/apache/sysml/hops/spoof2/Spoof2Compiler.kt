@@ -438,18 +438,12 @@ object Spoof2Compiler {
         {   // MxM
             var mult0 = mult.inputs[0]
             var mult1 = mult.inputs[1]
-            var (hop0, hop1) = if( expectBind ) {
-                if (mult0 !is SNodeBind || mult1 !is SNodeBind)
-                    TODO("fuse a matrix multiply with further SNodes $mult0, $mult1")
-                rReconstructHopDag(mult0.inputs[0], hopMemo) to rReconstructHopDag(mult1.inputs[0], hopMemo)
-            } else {
-                // Even if not expecting a Bind on the inputs,
-                // we may have a Bind anyway because the output is a scalar (thus no Unbind)
-                // but the inputs are non-scalars (and are therefore Bound)
-                val m0 = if( mult0 is SNodeBind ) mult0.inputs[0] else mult0
-                val m1 = if( mult1 is SNodeBind ) mult1.inputs[0] else mult1
-                rReconstructHopDag(m0, hopMemo) to rReconstructHopDag(m1, hopMemo)
-            }
+
+            // Even if not expecting a Bind on the inputs,
+            // we may have a Bind anyway because the output is a scalar (thus no Unbind)
+            // but the inputs are non-scalars (and are therefore Bound)
+            var hop0 = rReconstructHopDag(if( mult0 is SNodeBind ) mult0.inputs[0] else mult0, hopMemo)
+            var hop1 = rReconstructHopDag(if( mult1 is SNodeBind ) mult1.inputs[0] else mult1, hopMemo)
 
             // AggBinaryOp always expects matrix inputs
             if( hop0.dataType == Expression.DataType.SCALAR ) {
@@ -478,10 +472,12 @@ object Spoof2Compiler {
                         HopClass.ROW_VECTOR -> when( hop1.classify() ) {
                             HopClass.COL_VECTOR -> {}
                             HopClass.ROW_VECTOR -> hop1 = HopRewriteUtils.createTranspose(hop1)
+                            else -> throw AssertionError()
                         }
                         HopClass.COL_VECTOR -> when( hop1.classify() ) {
                             HopClass.COL_VECTOR -> hop0 = HopRewriteUtils.createTranspose(hop0)
                             HopClass.ROW_VECTOR -> {val t = hop0; hop0 = hop1; hop1 = t}
+                            else -> throw AssertionError()
                         }
                         else -> throw AssertionError()
                     }
@@ -512,7 +508,11 @@ object Spoof2Compiler {
                     when( i0 ) {
                         0 -> when( i1 ) {
                             0 -> hop0 = HopRewriteUtils.createTranspose(hop0)       //[b,a]x[b,c]
-                            1 -> { val tmp = hop0; hop0 = hop1; hop1 = tmp }   //[b,a]x[c,b]
+                            1 -> { val tmp = hop0; hop0 = hop1; hop1 = tmp     //[b,a]x[c,b]
+                                // also switch the SNode plan inputs and refresh schema, for later reconstruction
+                                mult.inputs.reverse()
+                                mult.refreshSchemasUpward() // refresh schema of all parents above
+                            }
                         }
                         1 -> when( i1 ) {
                             0 -> {}                                                 //[a,b]x[b,c]
@@ -525,16 +525,7 @@ object Spoof2Compiler {
         }
         else { // general Agg
             val aggInput = mult
-            var hop0 = if( expectBind ) {
-                if (aggInput !is SNodeBind)
-                    TODO("fuse an aggregate with further SNode $aggInput")
-                rReconstructHopDag(aggInput.inputs[0], hopMemo)
-            } else {
-                // Like above, we may have a Bind
-                // Outer product shouldn't apply here
-                val ai = if( aggInput is SNodeBind ) aggInput.inputs[0] else aggInput
-                rReconstructHopDag(ai, hopMemo)
-            }
+            var hop0 = rReconstructHopDag( if(aggInput is SNodeBind) aggInput.inputs[0] else aggInput, hopMemo)
 
             // AggUnaryOp always requires MATRIX input
             if( hop0.dataType == Expression.DataType.SCALAR ) {
@@ -654,6 +645,7 @@ object Spoof2Compiler {
                             current.hop.input[0], inputs[0], 0)
                 }
                 current.hop.resetVisitStatus() // visit status may be set from SNode construction
+                current.hop.refreshSizeInformation()
                 current.hop
             }
             is SNodeExt -> {

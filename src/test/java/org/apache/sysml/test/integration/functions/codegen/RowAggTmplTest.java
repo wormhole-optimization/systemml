@@ -77,8 +77,8 @@ public class RowAggTmplTest extends AutomatedTestBase
 		List<Object[]> params = new ArrayList<>(NUM_TESTS*3);
 		for (int testNum = 1; testNum <= NUM_TESTS; testNum++) {
 			final String testName = TEST_NAME+testNum;
-			params.add(new Object[] {testName, false, ExecType.CP});
-			params.add(new Object[] {testName, false, ExecType.SPARK});
+//			params.add(new Object[] {testName, false, ExecType.CP});
+//			params.add(new Object[] {testName, false, ExecType.SPARK});
 			params.add(new Object[] {testName, true, ExecType.CP});
 		}
 		return params;

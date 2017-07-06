@@ -25,10 +25,10 @@
    <scratch>scratch_space</scratch> 
 
    <!-- compiler optimization level, valid values: 0 | 1 | 2 | 3 | 4, default: 2 -->
-   <optlevel>7</optlevel>
+   <optlevel>1</optlevel>
 
    <!-- default number of reduce tasks per MR job, default: 2 x number of nodes -->
-   <numreducers>10</numreducers> 
+   <numreducers>10</numreducers>
    
    <!-- override jvm reuse flag for specific MR jobs, valid values: true | false  -->
    <jvmreuse>false</jvmreuse> 
