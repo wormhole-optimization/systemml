@@ -10,7 +10,7 @@ fun SNode.renameAttributes(renaming: Map<Name, Name>, useInternalGuard: Boolean)
                 changed = it.aggreateNames.mapInPlace { renaming[it] ?: it } || changed
             }
             is SNodeUnbind -> {
-                changed = it.unbinding.mapValuesInPlace { renaming[it] ?: it } || changed
+                changed = it.unbindings.mapValuesInPlace { renaming[it] ?: it } || changed
             }
             is SNodeBind -> {
                 changed = it.bindings.mapValuesInPlace { renaming[it] ?: it } || changed

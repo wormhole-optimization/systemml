@@ -316,7 +316,7 @@ object Spoof2Compiler {
                         2 -> {
                             val bs0 = i0.schema.genAllBindings()
                             i0 = SNodeBind(i0, bs0)
-                            boundNames += bs0 // order of unbinding is equal to order of attributes in matrix
+                            boundNames += bs0 // order of unbindings is equal to order of attributes in matrix
                             when( i1.schema.size ) {
                                 0 -> {}
                                 1 -> { // matrix * vector: check orientation and bind appropriately
@@ -487,7 +487,7 @@ object Spoof2Compiler {
                         when( i1 ) {
                             0 -> when( hop0.classify() ) { // VxM; ensure vector is a row vector
                                 HopClass.ROW_VECTOR -> {}
-                                HopClass.COL_VECTOR -> hop0 = HopRewriteUtils.createTranspose(hop0)
+                                HopClass.COL_VECTOR -> hop0 = HopRewriteUtils.createTranspose(hop0) //
                                 else -> throw AssertionError()
                             }
                             1 -> { // MxV; swap hops and ensure vector is a col vector
@@ -704,7 +704,7 @@ object Spoof2Compiler {
                 }
                 // check if the Unbind necessitates a permutation
                 // if the Unbind has a map of Int to Attribute that does not agree with the schema of the input, then transpose
-                if( current.unbinding.any { (pos,n) -> current.inputs[0].schema.names[pos] != n } ) {
+                if( current.unbindings.any { (pos,n) -> current.inputs[0].schema.names[pos] != n } ) {
                     // log this in case we encounter transpose issues
                     if( LOG.isTraceEnabled )
                         LOG.trace("insert transpose at Unbind id=${current.id} $current with input ${current.inputs[0]}")
