@@ -18,6 +18,7 @@ class BasicSPlanRewriter {
         _ruleSet.add(RewriteBindElimination())
         _ruleSet.add(RewritePullAggAboveMult())
         _ruleSet.add(RewriteAggregateElimination())
+        _ruleSet.add(RewriteCombineMultiply()) // disrupts RewritePushAggIntoMult?
         _ruleSet.add(RewritePushAggIntoMult())
     }
 
