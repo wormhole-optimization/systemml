@@ -20,10 +20,11 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
  */
 class RewritePullAggAboveMult : SPlanRewriteRule() {
     override fun rewriteNode(parent: SNode, node: SNode, pos: Int): SNode {
-        if( node !is SNodeNary || node.op != NaryOp.MULT )
+        if( node !is SNodeNary || node.op != NaryOp.MULT ) // todo generalize to other * functions that are semiring to +
             return node
         val mult = node
         var top = mult
+        var numApplied = 0
 
         for (iMultToAgg in mult.inputs.indices) { // index of agg in mult
             val agg = mult.inputs[iMultToAgg]
@@ -51,8 +52,11 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
                 agg.refreshSchema()
                 if( top === node ) // original parents connect to the first pulled aggregate
                     top = agg      // a later rewrite rule will combine consecutive aggregates
+                numApplied++
             }
         }
+        if( numApplied > 0 && SPlanRewriteRule.LOG.isDebugEnabled )
+            SPlanRewriteRule.LOG.debug("RewritePullAggAboveMult (num=$numApplied) on mult ${mult.id}. Top: ${top.id} $top")
         return top
     }
 

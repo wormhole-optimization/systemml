@@ -27,17 +27,17 @@ class RewriteAggregateElimination : SPlanRewriteRule() {
                     SNodeRewriteUtils.replaceChildReference(agg1, agg2, agg2child)
                     agg1.refreshSchema()
                     if (SPlanRewriteRule.LOG.isDebugEnabled)
-                        SPlanRewriteRule.LOG.debug("Applied RewriteAggregateElimination on consecutive aggs ${agg1.id}-${agg2.id} to form $agg1.")
+                        SPlanRewriteRule.LOG.debug("RewriteAggregateElimination on consecutive aggs ${agg1.id}-${agg2.id} to form $agg1.")
                 }
-
-            } else if( node.aggreateNames.isEmpty() ) {
+            }
+            else if( node.aggreateNames.isEmpty() ) {
                 // agg is empty; connect child to parent
                 // handle multiple parents
                 val child = node.inputs[0]
                 SNodeRewriteUtils.removeAllChildReferences(node)
                 SNodeRewriteUtils.replaceChildReference(parent, node, child)
                 if (SPlanRewriteRule.LOG.isDebugEnabled)
-                    SPlanRewriteRule.LOG.debug("Applied RewriteAggregateElimination on empty agg ${node.id} $node).")
+                    SPlanRewriteRule.LOG.debug("RewriteAggregateElimination on empty agg ${node.id} $node).")
                 return child
             }
         }

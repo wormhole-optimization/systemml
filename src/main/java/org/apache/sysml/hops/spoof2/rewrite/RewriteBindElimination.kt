@@ -28,7 +28,7 @@ class RewriteBindElimination : SPlanRewriteRule() {
 
         if( canEliminateEmpty(node) ) {
             if (SPlanRewriteRule.LOG.isDebugEnabled)
-                SPlanRewriteRule.LOG.debug("Applied RewriteBindElimination on empty ${node.id} $node.")
+                SPlanRewriteRule.LOG.debug("RewriteBindElimination on empty ${node.id} $node.")
             return rewriteNode(parent, eliminateEmpty(node), pos)
         }
         else if( node is SNodeBind && node.inputs[0] is SNodeBind && node.inputs[0].parents.size == 1 ) {
@@ -40,7 +40,7 @@ class RewriteBindElimination : SPlanRewriteRule() {
             eliminateEmpty(bind2)
 
             if (SPlanRewriteRule.LOG.isDebugEnabled)
-                SPlanRewriteRule.LOG.debug("Applied RewriteBindElimination on consecutve Binds at ${bind.id} to $bind.")
+                SPlanRewriteRule.LOG.debug("RewriteBindElimination on consecutve Binds at ${bind.id} to $bind.")
             return rewriteNode(parent, bind, pos)
         }
         else if( node is SNodeUnbind && node.inputs[0] is SNodeUnbind && node.inputs[0].parents.size == 1 ) {
@@ -52,7 +52,7 @@ class RewriteBindElimination : SPlanRewriteRule() {
             eliminateEmpty(unbind2)
 
             if (SPlanRewriteRule.LOG.isDebugEnabled)
-                SPlanRewriteRule.LOG.debug("Applied RewriteBindElimination on consecutve Unbinds at ${unbind.id} to $unbind.")
+                SPlanRewriteRule.LOG.debug("RewriteBindElimination on consecutve Unbinds at ${unbind.id} to $unbind.")
             return rewriteNode(parent, unbind, pos)
         }
         else if( node is SNodeBind && node.inputs[0] is SNodeUnbind && node.inputs[0].parents.size == 1 ) {
@@ -73,7 +73,7 @@ class RewriteBindElimination : SPlanRewriteRule() {
                 val unbindChild = unbind.inputs[0]
                 unbindChild.renameAttributes(renamings, false)
                 if (SPlanRewriteRule.LOG.isDebugEnabled)
-                    SPlanRewriteRule.LOG.debug("Applied RewriteBindElimination Bind-Unbind: " +
+                    SPlanRewriteRule.LOG.debug("RewriteBindElimination Bind-Unbind: " +
                             "rename sub-tree of Unbind ${unbind.id} by $renamings")
 
                 // Common case: the resulting bind-unbind is empty.
@@ -99,7 +99,7 @@ class RewriteBindElimination : SPlanRewriteRule() {
             }
             if (numRemoved > 0) {
                 if (SPlanRewriteRule.LOG.isDebugEnabled)
-                    SPlanRewriteRule.LOG.debug("Applied RewriteBindElimination Unbind-Bind on Unbind ${unbind.id} to $unbind and $bind, removing $numRemoved names")
+                    SPlanRewriteRule.LOG.debug("RewriteBindElimination Unbind-Bind on Unbind ${unbind.id} to $unbind and $bind, removing $numRemoved names")
 
                 // Common case: the resulting unbind-bind is empty.
                 val child2 = if (bind.bindings.isEmpty()) eliminateEmpty(bind) else bind

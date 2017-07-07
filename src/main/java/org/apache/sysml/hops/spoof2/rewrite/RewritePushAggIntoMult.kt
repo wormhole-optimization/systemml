@@ -12,7 +12,7 @@ class RewritePushAggIntoMult : SPlanRewriteRule() {
         //pattern: agg(sum)-b(*)
         if (node is SNodeAggregate && node.op == AggOp.SUM
                 && node.inputs[0] is SNodeNary
-                && (node.inputs[0] as SNodeNary).op == NaryOp.MULT) { // todo generalize to other multiply functions that are semiring to +
+                && (node.inputs[0] as SNodeNary).op == NaryOp.MULT) { // todo generalize to other * functions that are semiring to +
             val agg = node
             val mult = node.inputs[0] as SNodeNary
             // the attributes that occur in more than one input
@@ -42,7 +42,7 @@ class RewritePushAggIntoMult : SPlanRewriteRule() {
                     SNodeRewriteUtils.rewireAllParentChildReferences(agg, mult) // for each parent of node, change its input from node to child and add the parent to child
                 }
                 if( SPlanRewriteRule.LOG.isDebugEnabled )
-                    SPlanRewriteRule.LOG.debug("Applied RewritePushAggIntoMult, num=$numApplied. Fully pushed: $fullyPushed."+(if(agg.aggreateNames.isEmpty())" Eliminate agg." else ""))
+                    SPlanRewriteRule.LOG.debug("RewritePushAggIntoMult, num=$numApplied. Fully pushed: $fullyPushed."+(if(agg.aggreateNames.isEmpty())" Eliminate agg." else ""))
             }
         }
 
