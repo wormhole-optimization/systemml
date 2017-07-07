@@ -42,7 +42,7 @@ class RewritePushAggIntoMult : SPlanRewriteRule() {
                     SNodeRewriteUtils.rewireAllParentChildReferences(agg, mult) // for each parent of node, change its input from node to child and add the parent to child
                 }
                 if( SPlanRewriteRule.LOG.isDebugEnabled )
-                    SPlanRewriteRule.LOG.debug("RewritePushAggIntoMult, num=$numApplied. Fully pushed: $fullyPushed."+(if(agg.aggreateNames.isEmpty())" Eliminate agg." else ""))
+                    SPlanRewriteRule.LOG.debug("RewritePushAggIntoMult (num=$numApplied). Fully pushed: $fullyPushed."+(if(agg.aggreateNames.isEmpty())" Eliminate agg." else ""))
             }
         }
 

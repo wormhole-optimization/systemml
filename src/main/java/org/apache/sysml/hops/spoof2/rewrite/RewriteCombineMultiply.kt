@@ -15,7 +15,7 @@ class RewriteCombineMultiply : SPlanRewriteRule() {
             var i1to2 = 0
             var numApplied = 0
             while( i1to2 < mult1.inputs.size ) {
-                val mult2 = mult1.inputs[i1to2]      // Todo handle created 3-way n-ary multiplies
+                val mult2 = mult1.inputs[i1to2]
                 if( mult2 !is SNodeNary || mult2.op != mult1.op || mult2.parents.any { it !== mult1 } ) {
                     i1to2++
                     continue

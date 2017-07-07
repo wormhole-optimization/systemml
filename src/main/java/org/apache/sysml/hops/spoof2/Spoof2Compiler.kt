@@ -26,6 +26,7 @@ import org.apache.sysml.hops.rewrite.ProgramRewriter
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
 import org.apache.sysml.hops.spoof2.rewrite.BasicSPlanRewriter
+import org.apache.sysml.hops.spoof2.rewrite.RewriteBindElimination
 import org.apache.sysml.parser.*
 import org.apache.sysml.runtime.DMLRuntimeException
 import org.apache.sysml.utils.Explain
@@ -168,7 +169,9 @@ object Spoof2Compiler {
             sroots.add(rConstructSumProductPlan(root, snodeMemo))
 
         if (LOG.isTraceEnabled) {
-            LOG.trace("Explain after initial SPlan construction: " + Explain.explainSPlan(sroots))
+//            LOG.trace("Explain after initial SPlan construction: " + Explain.explainSPlan(sroots))
+            BasicSPlanRewriter().rewriteSPlan(sroots, listOf(RewriteBindElimination()))
+            LOG.trace("Explain after SPlan construction and RewriteBindElimination: " + Explain.explainSPlan(sroots))
         }
 
         //rewrite sum-product plan
