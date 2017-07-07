@@ -119,3 +119,6 @@ fun <T> MutableList<T>.swap(i0: Int, i1: Int) {
     this[i0].let { this[i0] = this[i1]; this[i1] = it }
 }
 
+fun <K,V> Map<K,V>.intersectEntries(m: Map<K,V>): Map<K,V> {
+    return this.filter { (k,v) -> m[k] == v }
+}
