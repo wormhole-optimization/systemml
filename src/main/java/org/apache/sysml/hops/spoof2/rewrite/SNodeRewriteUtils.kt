@@ -47,12 +47,10 @@ object SNodeRewriteUtils {
 
     fun replaceChildReference(parent: SNode, inOld: SNode, inNew: SNode) {
         val pos = getChildReferencePos(parent, inOld)
-        removeChildReferenceByPos(parent, inOld, pos)
-        addChildReference(parent, inNew, pos)
+        replaceChildReference(parent, inOld, inNew, pos)
     }
 
-    @JvmOverloads
-    fun replaceChildReference(parent: SNode, inOld: SNode, inNew: SNode, pos: Int, refresh: Boolean = true) {
+    fun replaceChildReference(parent: SNode, inOld: SNode, inNew: SNode, pos: Int) {
         removeChildReferenceByPos(parent, inOld, pos)
         addChildReference(parent, inNew, pos)
     }

@@ -35,11 +35,14 @@ class RewritePushAggIntoMult : SPlanRewriteRule() {
 
             if (numApplied > 0) {
                 // check if the agg no longer needs some attributes
-                val fullyPushed = agg.aggreateNames.filterNot { it in mult.schema }
+                val fullyPushed = agg.aggreateNames.filter { it !in mult.schema }
                 agg.aggreateNames -= fullyPushed
-                agg.refreshSchema()
+                if( agg.aggreateNames.isEmpty() ) { // eliminate agg
+                    SNodeRewriteUtils.removeAllChildReferences(agg) // clear node.inputs, child.parents
+                    SNodeRewriteUtils.rewireAllParentChildReferences(agg, mult) // for each parent of node, change its input from node to child and add the parent to child
+                }
                 if( SPlanRewriteRule.LOG.isDebugEnabled )
-                    SPlanRewriteRule.LOG.debug("Applied RewritePushAggIntoMult, num=$numApplied. Fully pushed: $fullyPushed")
+                    SPlanRewriteRule.LOG.debug("Applied RewritePushAggIntoMult, num=$numApplied. Fully pushed: $fullyPushed."+(if(agg.aggreateNames.isEmpty())" Eliminate agg." else ""))
             }
         }
 

@@ -16,6 +16,7 @@ class BasicSPlanRewriter {
     init {
         //initialize ruleSet (with fixed rewrite order)
         _ruleSet.add(RewriteBindElimination())
+        _ruleSet.add(RewritePullAggAboveMult())
         _ruleSet.add(RewriteAggregateElimination())
         _ruleSet.add(RewritePushAggIntoMult())
     }

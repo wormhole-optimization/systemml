@@ -60,7 +60,8 @@ class Spoof2Test(
         //	TEST_NAME+17;  //t(rowIndexMax(t(X)))
         //	TEST_NAME+18;  //t(t(X))
         //	TEST_NAME+19;  //t(X)%*%(Y%*%y)  // this rewrites to t(X%*%t(Y%*%y)), which is normally good (tranpose the vector rather than the matrix) but messes up a fusion pattern
-        private const val NUM_TESTS = 19
+        //	TEST_NAME+20;  //sum(X*Y)
+        private const val NUM_TESTS = 20
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
