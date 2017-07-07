@@ -40,7 +40,7 @@ class RewriteBindElimination : SPlanRewriteRule() {
                 SPlanRewriteRule.LOG.debug("RewriteBindElimination on empty ${node.id} $node.")
             return rewriteNode(parent, eliminateEmpty(node), pos)
         }
-        if( parent is SNodeBind || parent is SNodeUnbind ) {
+        else if( parent is SNodeBind || parent is SNodeUnbind ) {
             // try to find another parent that is the same type and has overlapping bindings
             val parent2 = node.parents.find { np -> np !== parent && np.javaClass == parent.javaClass && parent.agbindings.any { (dim,n) -> np.agbindings[dim] == n } }
             if( parent2 != null ) {
@@ -60,91 +60,78 @@ class RewriteBindElimination : SPlanRewriteRule() {
                 return rewriteNode(parent, newBind, pos)
             }
         }
-        when( node ) {
-            is SNodeBind -> {
-                val bind = node
-                // bind-bind
-                if( bind.inputs[0] is SNodeBind && bind.inputs[0].parents.size == 1 ) {
-                    val bind2 = node.inputs[0] as SNodeBind
-                    bind.check(bind.bindings.keys != bind2.bindings.keys) {"Overlap between keys of consecutive binds with $bind2"}
-                    bind.bindings += bind2.bindings
+        // bind-bind or unbind-unbind; no foreign parents
+        else if(     (node is SNodeBind && node.inputs[0] is SNodeBind
+                    || node is SNodeUnbind && node.inputs[0] is SNodeUnbind)
+                && node.inputs[0].parents.size == 1 ) {
+            val child = node.inputs[0]
+            node.check(node.agbindings.keys != child.agbindings.keys) {"Overlap between keys of consecutive ${node.id} $node $child"}
+            node.agbindings += child.agbindings
 
-                    eliminateEmpty(bind2)
+            eliminateEmpty(child)
 
-                    if (SPlanRewriteRule.LOG.isDebugEnabled)
-                        SPlanRewriteRule.LOG.debug("RewriteBindElimination on consecutve Binds at ${bind.id} to $bind.")
-                    return rewriteNode(parent, bind, pos)
+            if (SPlanRewriteRule.LOG.isDebugEnabled)
+                SPlanRewriteRule.LOG.debug("RewriteBindElimination on consecutve Unbinds at ${node.id} to $node.")
+            return rewriteNode(parent, node, pos)
+        }
+        else if( node is SNodeBind ) {
+            val bind = node
+            // bind-unbind
+            if( bind.inputs[0] is SNodeUnbind && bind.inputs[0].parents.size == 1 ) {
+                val unbind = node.inputs[0] as SNodeUnbind
+                val renamings = mutableMapOf<Name,Name>()
+                val iter = bind.bindings.iterator()
+                while( iter.hasNext() ) {
+                    val (dim,newName) = iter.next()
+                    if( dim in unbind.unbindings ) {
+                        // this dim is unbound and then bound. Rename the unbound name to the bound name.
+                        val oldName = unbind.unbindings.remove(dim)!!
+                        iter.remove()
+                        renamings += oldName to newName
+                    }
                 }
-                // bind-unbind
-                if( bind.inputs[0] is SNodeUnbind && bind.inputs[0].parents.size == 1 ) {
-                    val unbind = node.inputs[0] as SNodeUnbind
-                    val renamings = mutableMapOf<Name,Name>()
-                    val iter = bind.bindings.iterator()
-                    while( iter.hasNext() ) {
-                        val (dim,newName) = iter.next()
-                        if( dim in unbind.unbindings ) {
-                            // this dim is unbound and then bound. Rename the unbound name to the bound name.
-                            val oldName = unbind.unbindings.remove(dim)!!
-                            iter.remove()
-                            renamings += oldName to newName
-                        }
-                    }
-                    if( renamings.isNotEmpty() ) {
-                        val unbindChild = unbind.inputs[0]
-                        unbindChild.renameAttributes(renamings, false)
-                        if (SPlanRewriteRule.LOG.isDebugEnabled)
-                            SPlanRewriteRule.LOG.debug("RewriteBindElimination Bind-Unbind: " +
-                                    "rename sub-tree of Unbind ${unbind.id} by $renamings")
+                if( renamings.isNotEmpty() ) {
+                    val unbindChild = unbind.inputs[0]
+                    unbindChild.renameAttributes(renamings, false)
+                    if (SPlanRewriteRule.LOG.isDebugEnabled)
+                        SPlanRewriteRule.LOG.debug("RewriteBindElimination Bind-Unbind: " +
+                                "rename sub-tree of Unbind ${unbind.id} by $renamings")
 
-                        // Common case: the resulting bind-unbind is empty.
-                        val child2 = if (unbind.unbindings.isEmpty()) eliminateEmpty(unbind) else unbind
-                        return if (bind.bindings.isEmpty())
-                            rewriteNode(parent, eliminateEmpty(bind), pos)
-                        else bind
-                    }
+                    // Common case: the resulting bind-unbind is empty.
+                    val child2 = if (unbind.unbindings.isEmpty()) eliminateEmpty(unbind) else unbind
+                    return if (bind.bindings.isEmpty())
+                        rewriteNode(parent, eliminateEmpty(bind), pos)
+                    else bind
                 }
             }
-            is SNodeUnbind -> {
-                val unbind = node
-                // unbind-unbind
-                if( unbind.inputs[0] is SNodeUnbind && node.inputs[0].parents.size == 1 ) {
-                    val unbind2 = node.inputs[0] as SNodeUnbind
-                    unbind.check(unbind.unbindings.keys != unbind2.unbindings.keys) {"Overlap between keys of consecutive unbinds with $unbind2"}
-                    unbind.unbindings += unbind2.unbindings
-
-                    eliminateEmpty(unbind2)
-
-                    if (SPlanRewriteRule.LOG.isDebugEnabled)
-                        SPlanRewriteRule.LOG.debug("RewriteBindElimination on consecutve Unbinds at ${unbind.id} to $unbind.")
-                    return rewriteNode(parent, unbind, pos)
+        }
+        else if( node is SNodeUnbind ) {
+            val unbind = node
+            // unbind-bind
+            if( unbind.inputs[0] is SNodeBind && unbind.inputs[0].parents.size == 1 ) {
+                val bind = node.inputs[0] as SNodeBind
+                // elminate unbindings and bindings where the names are in the same position
+                val iter = unbind.unbindings.iterator()
+                var numRemoved = 0
+                while( iter.hasNext() ) {
+                    val (dim,unboundName) = iter.next()
+                    if( unboundName == bind.bindings[dim] ) {
+                        bind.bindings.remove(dim)
+                        iter.remove()
+                        numRemoved++
+                    }
                 }
-                // unbind-bind
-                if( unbind.inputs[0] is SNodeBind && unbind.inputs[0].parents.size == 1 ) {
-                    val bind = node.inputs[0] as SNodeBind
-                    // elminate unbindings and bindings where the names are in the same position
-                    val iter = unbind.unbindings.iterator()
-                    var numRemoved = 0
-                    while( iter.hasNext() ) {
-                        val (dim,unboundName) = iter.next()
-                        if( unboundName == bind.bindings[dim] ) {
-                            bind.bindings.remove(dim)
-                            iter.remove()
-                            numRemoved++
-                        }
-                    }
-                    if (numRemoved > 0) {
-                        if (SPlanRewriteRule.LOG.isDebugEnabled)
-                            SPlanRewriteRule.LOG.debug("RewriteBindElimination Unbind-Bind on Unbind ${unbind.id} to $unbind and $bind, removing $numRemoved names")
+                if (numRemoved > 0) {
+                    if (SPlanRewriteRule.LOG.isDebugEnabled)
+                        SPlanRewriteRule.LOG.debug("RewriteBindElimination Unbind-Bind on Unbind ${unbind.id} to $unbind and $bind, removing $numRemoved names")
 
-                        // Common case: the resulting unbind-bind is empty.
-                        val child2 = if (bind.bindings.isEmpty()) eliminateEmpty(bind) else bind
-                        return if (unbind.unbindings.isEmpty())
-                            rewriteNode(parent, eliminateEmpty(unbind), pos)
-                        else unbind
-                    }
+                    // Common case: the resulting unbind-bind is empty.
+                    val child2 = if (bind.bindings.isEmpty()) eliminateEmpty(bind) else bind
+                    return if (unbind.unbindings.isEmpty())
+                        rewriteNode(parent, eliminateEmpty(unbind), pos)
+                    else unbind
                 }
             }
-            else -> {}
         }
         return node
     }
