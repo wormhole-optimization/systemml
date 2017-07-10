@@ -45,7 +45,7 @@ class BasicSPlanRewriter {
             return
 
         //recursively process children
-        for (i in 0..node.inputs.size - 1) {
+        for (i in node.inputs.indices) {
             var ci = node.inputs[i]
 
             //process children recursively first (to allow roll-up)
@@ -53,8 +53,15 @@ class BasicSPlanRewriter {
                 rRewriteSPlan(ci, rules, descendFirst)
 
             //apply actual rewrite rules
-            for (r in rules)
-                ci = r.rewriteNode(node, ci, i)
+            for (r in rules) {
+                val result = r.rewriteNode(node, ci, i)
+                when( result ) {
+                    SPlanRewriteRule.RewriteResult.NoChange -> {}
+                    is SPlanRewriteRule.RewriteResult.NewNode -> {
+                        ci = result.newNode
+                    }
+                }
+            }
 
             //process children recursively after rewrites (to investigate pattern newly created by rewrites)
             if (!descendFirst)

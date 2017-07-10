@@ -8,7 +8,7 @@ import org.apache.sysml.hops.spoof2.plan.*
  * 0. If a Bind or Unbind is empty, eliminate it.
  * 0. Combine consecutive Binds/Unbinds when the child has no foreign parents.
  * 0. If at least two parents are Binds (or Unbinds) and they contain some of the same mappings,
- *    then move the common mappings into a common SNodeBind and rewire.
+ *    then move the common mappings into a common SNode(Un)Bind and rewire.
  * 1. Bind-Unbind, when Unbind has no foreign parents.
  *    Rename Unbound names to Bound names, recursively downwards.
  *    Do this for as many Unbound names as possible. Eliminate the Unbound/Bound if they become empty.
@@ -34,11 +34,14 @@ class RewriteBindElimination : SPlanRewriteRule() {
             else -> throw IllegalArgumentException()
         }
 
-    override tailrec fun rewriteNode(parent: SNode, node: SNode, pos: Int): SNode {
+    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
+        return rRewriteNode(parent, node, false)
+    }
+    private tailrec fun rRewriteNode(parent: SNode, node: SNode, changed: Boolean): RewriteResult {
         if( canEliminateEmpty(node) ) {
             if (SPlanRewriteRule.LOG.isDebugEnabled)
                 SPlanRewriteRule.LOG.debug("RewriteBindElimination on empty ${node.id} $node.")
-            return rewriteNode(parent, eliminateEmpty(node), pos)
+            return rRewriteNode(parent, eliminateEmpty(node), true)
         }
         if( parent is SNodeBind || parent is SNodeUnbind ) {
             // try to find another parent that is the same type and has overlapping bindings
@@ -59,7 +62,7 @@ class RewriteBindElimination : SPlanRewriteRule() {
                 if (SPlanRewriteRule.LOG.isDebugEnabled)
                     SPlanRewriteRule.LOG.debug("RewriteBindElimination combine common mappings of parents " +
                             "${parent.id} and ${parent2.id} into new ${newBind.id} $newBind.")
-                return rewriteNode(parent, newBind, pos)
+                return rRewriteNode(parent, newBind, true)
             }
         }
         // bind-bind or unbind-unbind; no foreign parents
@@ -74,7 +77,7 @@ class RewriteBindElimination : SPlanRewriteRule() {
 
             if (SPlanRewriteRule.LOG.isDebugEnabled)
                 SPlanRewriteRule.LOG.debug("RewriteBindElimination on consecutve Unbinds at ${node.id} to $node.")
-            return rewriteNode(parent, node, pos)
+            return rRewriteNode(parent, node, true)
         }
         if( node is SNodeBind ) {
             val bind = node
@@ -102,8 +105,8 @@ class RewriteBindElimination : SPlanRewriteRule() {
                     // Common case: the resulting bind-unbind is empty.
                     val child2 = if (unbind.unbindings.isEmpty()) eliminateEmpty(unbind) else unbind
                     return if (bind.bindings.isEmpty())
-                        rewriteNode(parent, eliminateEmpty(bind), pos)
-                    else bind
+                        rRewriteNode(parent, eliminateEmpty(bind), true)
+                    else RewriteResult.NewNode(bind)
                 }
             }
         }
@@ -130,12 +133,12 @@ class RewriteBindElimination : SPlanRewriteRule() {
                     // Common case: the resulting unbind-bind is empty.
                     val child2 = if (bind.bindings.isEmpty()) eliminateEmpty(bind) else bind
                     return if (unbind.unbindings.isEmpty())
-                        rewriteNode(parent, eliminateEmpty(unbind), pos)
-                    else unbind
+                        rRewriteNode(parent, eliminateEmpty(unbind), true)
+                    else RewriteResult.NewNode(unbind)
                 }
             }
         }
-        return node
+        return if (changed) RewriteResult.NewNode(node) else RewriteResult.NoChange
     }
 
 }

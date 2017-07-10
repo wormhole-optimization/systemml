@@ -19,9 +19,9 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
  * and no foreign parents on +.
  */
 class RewritePullAggAboveMult : SPlanRewriteRule() {
-    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): SNode {
+    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
         if( node !is SNodeNary || node.op != NaryOp.MULT ) // todo generalize to other * functions that are semiring to +
-            return node
+            return RewriteResult.NoChange
         val mult = node
         var top = mult
         var numApplied = 0
@@ -55,9 +55,12 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
                 numApplied++
             }
         }
-        if( numApplied > 0 && SPlanRewriteRule.LOG.isDebugEnabled )
-            SPlanRewriteRule.LOG.debug("RewritePullAggAboveMult (num=$numApplied) on mult ${mult.id}. Top: ${top.id} $top")
-        return top
+        if (numApplied > 0) {
+            if (SPlanRewriteRule.LOG.isDebugEnabled)
+                SPlanRewriteRule.LOG.debug("RewritePullAggAboveMult (num=$numApplied) on mult ${mult.id}. Top: ${top.id} $top")
+            return RewriteResult.NewNode(top)
+        }
+        return RewriteResult.NoChange
     }
 
 }

@@ -9,7 +9,7 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary
  */
 class RewriteCombineMultiply : SPlanRewriteRule() {
 
-    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): SNode {
+    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
         if( node is SNodeNary && node.op == SNodeNary.NaryOp.MULT ) { // todo generalize to other * functions
             val mult1 = node
             var i1to2 = 0
@@ -56,10 +56,13 @@ class RewriteCombineMultiply : SPlanRewriteRule() {
                 numApplied += i1to2all.size
             }
 
-            if (numApplied > 0 && SPlanRewriteRule.LOG.isDebugEnabled)
-                SPlanRewriteRule.LOG.debug("RewriteCombineMultiply (num=$numApplied) onto top ${mult1.id} $mult1.")
+            if (numApplied > 0) {
+                if (SPlanRewriteRule.LOG.isDebugEnabled)
+                    SPlanRewriteRule.LOG.debug("RewriteCombineMultiply (num=$numApplied) onto top ${mult1.id} $mult1.")
+                return RewriteResult.NewNode(mult1)
+            }
         }
-        return node
+        return RewriteResult.NoChange
     }
 
 }

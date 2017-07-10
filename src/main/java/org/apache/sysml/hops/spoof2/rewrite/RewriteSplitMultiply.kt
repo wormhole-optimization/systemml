@@ -12,7 +12,7 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary
  */
 class RewriteSplitMultiply : SPlanRewriteRule() {
 
-    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): SNode {
+    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
         val origInputSize = node.inputs.size
         if( node is SNodeNary && node.op == SNodeNary.NaryOp.MULT && origInputSize > 2 ) { // todo generalize to other * functions
             val curMult = node
@@ -22,8 +22,9 @@ class RewriteSplitMultiply : SPlanRewriteRule() {
 
             if (SPlanRewriteRule.LOG.isDebugEnabled)
                 SPlanRewriteRule.LOG.debug("RewriteSplitMultiply (num=${origInputSize-2}) onto top ${curMult.id} $curMult.")
+            return RewriteResult.NewNode(curMult)
         }
-        return node
+        return RewriteResult.NoChange
     }
 
     private tailrec fun rSplitMultiply(curMult: SNodeNary, origMult: SNodeNary) {

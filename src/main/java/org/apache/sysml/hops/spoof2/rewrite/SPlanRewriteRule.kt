@@ -7,7 +7,13 @@ import org.apache.sysml.hops.spoof2.plan.SNode
 
 abstract class SPlanRewriteRule {
 
-    abstract fun rewriteNode(parent: SNode, node: SNode, pos: Int): SNode
+    abstract fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult
+
+    sealed class RewriteResult {
+        data class NewNode(val newNode: SNode) : RewriteResult()
+        object NoChange : RewriteResult()
+    }
+
 
     companion object {
         internal val LOG = LogFactory.getLog(SPlanRewriteRule::class.java)!!

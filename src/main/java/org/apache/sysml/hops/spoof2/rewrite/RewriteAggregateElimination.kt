@@ -13,7 +13,10 @@ class RewriteAggregateElimination : SPlanRewriteRule() {
 //        val allowedAggOps = setOf(AggOp.SUM, AggOp.MIN, AggOp.MAX, AggOp.)
     }
 
-    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): SNode {
+    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
+        return rRewriteNode(parent, node, false)
+    }
+    private tailrec fun rRewriteNode(parent: SNode, node: SNode, changed: Boolean): RewriteResult {
         if( node is SNodeAggregate ) {
             if( node.inputs[0] is SNodeAggregate ) {
                 val agg1 = node
@@ -28,9 +31,10 @@ class RewriteAggregateElimination : SPlanRewriteRule() {
                     agg1.refreshSchema()
                     if (SPlanRewriteRule.LOG.isDebugEnabled)
                         SPlanRewriteRule.LOG.debug("RewriteAggregateElimination on consecutive aggs ${agg1.id}-${agg2.id} to form $agg1.")
+                    return rRewriteNode(parent, agg1, true)
                 }
             }
-            else if( node.aggreateNames.isEmpty() ) {
+            if( node.aggreateNames.isEmpty() ) {
                 // agg is empty; connect child to parent
                 // handle multiple parents
                 val child = node.inputs[0]
@@ -38,10 +42,10 @@ class RewriteAggregateElimination : SPlanRewriteRule() {
                 SNodeRewriteUtils.replaceChildReference(parent, node, child)
                 if (SPlanRewriteRule.LOG.isDebugEnabled)
                     SPlanRewriteRule.LOG.debug("RewriteAggregateElimination on empty agg ${node.id} $node).")
-                return child
+                return rRewriteNode(parent, child, true)
             }
         }
-        return node
+        return if (changed) RewriteResult.NewNode(node) else RewriteResult.NoChange
     }
 
 }

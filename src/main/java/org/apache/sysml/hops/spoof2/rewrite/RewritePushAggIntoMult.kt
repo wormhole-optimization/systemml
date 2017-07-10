@@ -7,7 +7,7 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
 
 class RewritePushAggIntoMult : SPlanRewriteRule() {
-    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): SNode {
+    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
 
         //pattern: agg(sum)-b(*)
         if (node is SNodeAggregate && node.op == AggOp.SUM
@@ -37,16 +37,17 @@ class RewritePushAggIntoMult : SPlanRewriteRule() {
                 // check if the agg no longer needs some attributes
                 val fullyPushed = agg.aggreateNames.filter { it !in mult.schema }
                 agg.aggreateNames -= fullyPushed
+                if( SPlanRewriteRule.LOG.isDebugEnabled )
+                    SPlanRewriteRule.LOG.debug("RewritePushAggIntoMult (num=$numApplied). Fully pushed: $fullyPushed."+(if(agg.aggreateNames.isEmpty())" Eliminate agg." else ""))
                 if( agg.aggreateNames.isEmpty() ) { // eliminate agg
                     SNodeRewriteUtils.removeAllChildReferences(agg) // clear node.inputs, child.parents
                     SNodeRewriteUtils.rewireAllParentChildReferences(agg, mult) // for each parent of node, change its input from node to child and add the parent to child
+                    return RewriteResult.NewNode(mult)
                 }
-                if( SPlanRewriteRule.LOG.isDebugEnabled )
-                    SPlanRewriteRule.LOG.debug("RewritePushAggIntoMult (num=$numApplied). Fully pushed: $fullyPushed."+(if(agg.aggreateNames.isEmpty())" Eliminate agg." else ""))
+                return RewriteResult.NewNode(agg)
             }
         }
-
-        return node
+        return RewriteResult.NoChange
     }
 
 }
