@@ -23,7 +23,7 @@ class RewriteCombineMultiply : SPlanRewriteRule() {
                 // all of mult2's parents are exactly mult1
                 // each time mult2 occurs as an input to mult1, we need to add mult1's children in the place of mult2
                 val i1to2all = mult1.inputs.indices.filter { mult1.inputs[it] === mult2 }
-                assert(i1to2 == i1to2all.first())
+                i1to2 = i1to2all.first() // reset to index of first occurrence of this mult2 in mult1.inputs
                 val newMult1Inputs = ArrayList<SNode>(mult1.inputs.size - i1to2all.size + i1to2all.size * mult2.inputs.size)
 
                 // first occurrence of mult2
