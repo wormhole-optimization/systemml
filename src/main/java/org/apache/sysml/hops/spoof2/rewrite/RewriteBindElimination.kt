@@ -47,7 +47,9 @@ class RewriteBindElimination : SPlanRewriteRule() {
                 val commonBindings = parent.agbindings.intersectEntries(parent2.agbindings)
                 node.parents.remove(parent)
                 node.parents.remove(parent2)
-                val newBind = SNodeBind(node, commonBindings)
+                val newBind =
+                        if( parent is SNodeBind) SNodeBind(node, commonBindings)
+                        else SNodeUnbind(node, commonBindings)
                 parent.inputs[0] = newBind
                 parent2.inputs[0] = newBind
                 newBind.parents += parent
