@@ -19,10 +19,7 @@ import org.apache.sysml.hops.HopsException
 import org.apache.sysml.hops.LiteralOp
 import org.apache.sysml.hops.ReorgOp
 import org.apache.sysml.hops.UnaryOp
-import org.apache.sysml.hops.rewrite.HopDagValidator
-import org.apache.sysml.hops.rewrite.HopRewriteUtils
-import org.apache.sysml.hops.rewrite.ProgramRewriteStatus
-import org.apache.sysml.hops.rewrite.ProgramRewriter
+import org.apache.sysml.hops.rewrite.*
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
 import org.apache.sysml.hops.spoof2.rewrite.BasicSPlanRewriter
@@ -149,6 +146,9 @@ object Spoof2Compiler {
         if (LOG.isTraceEnabled) {
             LOG.trace("Spoof2Compiler called for HOP DAG: \n" + Explain.explainHops(roots))
         }
+
+        ProgramRewriter(RewriteCommonSubexpressionElimination()).rewriteHopDAGs(roots, ProgramRewriteStatus())
+
 
         // if any sizes unknown, don't do Spoof2
         if( roots.any { !allKnownSizes(it)} ) {

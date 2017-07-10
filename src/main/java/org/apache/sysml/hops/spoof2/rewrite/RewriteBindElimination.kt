@@ -40,7 +40,7 @@ class RewriteBindElimination : SPlanRewriteRule() {
                 SPlanRewriteRule.LOG.debug("RewriteBindElimination on empty ${node.id} $node.")
             return rewriteNode(parent, eliminateEmpty(node), pos)
         }
-        else if( parent is SNodeBind || parent is SNodeUnbind ) {
+        if( parent is SNodeBind || parent is SNodeUnbind ) {
             // try to find another parent that is the same type and has overlapping bindings
             val parent2 = node.parents.find { np -> np !== parent && np.javaClass == parent.javaClass && parent.agbindings.any { (dim,n) -> np.agbindings[dim] == n } }
             if( parent2 != null ) {
@@ -61,7 +61,7 @@ class RewriteBindElimination : SPlanRewriteRule() {
             }
         }
         // bind-bind or unbind-unbind; no foreign parents
-        else if(     (node is SNodeBind && node.inputs[0] is SNodeBind
+        if(     (node is SNodeBind && node.inputs[0] is SNodeBind
                     || node is SNodeUnbind && node.inputs[0] is SNodeUnbind)
                 && node.inputs[0].parents.size == 1 ) {
             val child = node.inputs[0]
@@ -74,7 +74,7 @@ class RewriteBindElimination : SPlanRewriteRule() {
                 SPlanRewriteRule.LOG.debug("RewriteBindElimination on consecutve Unbinds at ${node.id} to $node.")
             return rewriteNode(parent, node, pos)
         }
-        else if( node is SNodeBind ) {
+        if( node is SNodeBind ) {
             val bind = node
             // bind-unbind
             if( bind.inputs[0] is SNodeUnbind && bind.inputs[0].parents.size == 1 ) {
@@ -105,7 +105,7 @@ class RewriteBindElimination : SPlanRewriteRule() {
                 }
             }
         }
-        else if( node is SNodeUnbind ) {
+        if( node is SNodeUnbind ) {
             val unbind = node
             // unbind-bind
             if( unbind.inputs[0] is SNodeBind && unbind.inputs[0].parents.size == 1 ) {
