@@ -36,7 +36,12 @@ class RewriteSplitMultiply : SPlanRewriteRule() {
         }
         val firstInput = curMult.inputs[0]
         firstInput.parents[inputParentIndexes[0]] = curMult
-        val nextMult = SNodeNary(curMult.op, curMult.inputs.subList(1, curSize))
+        val otherInputs = curMult.inputs.subList(1,curSize)
+        val nextMult = SNodeNary(curMult.op, otherInputs)      // this adds nextMult as parent to otherInputs
+        otherInputs.forEachIndexed { idx, child ->  // but we want to replace the parent at position inputParentIndexes with nextMult
+            child.parents.removeAt(child.parents.size-1)
+            child.parents[inputParentIndexes[idx+1]] = nextMult
+        }
         curMult.inputs.clear()
         curMult.inputs += firstInput
         curMult.inputs += nextMult
