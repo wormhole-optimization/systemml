@@ -17,8 +17,8 @@ class RewriteSplitMultiply : SPlanRewriteRule() {
         if( node is SNodeNary && node.op == SNodeNary.NaryOp.MULT && origInputSize > 2 ) { // todo generalize to other * functions
             val curMult = node
             // todo check sublist
-            val inputParentIndexes = curMult.inputs.map { it.parents.indexOf(curMult) }
-            rSplitMultiply(curMult, inputParentIndexes)
+//            val inputParentIndexes = curMult.inputs.map { it.parents.indexOf(curMult) }
+            rSplitMultiply(curMult, curMult)
 
             if (SPlanRewriteRule.LOG.isDebugEnabled)
                 SPlanRewriteRule.LOG.debug("RewriteSplitMultiply (num=${origInputSize-2}) onto top ${curMult.id} $curMult.")
@@ -26,27 +26,24 @@ class RewriteSplitMultiply : SPlanRewriteRule() {
         return node
     }
 
-    private tailrec fun rSplitMultiply(curMult: SNodeNary, inputParentIndexes: List<Int>) {
+    private tailrec fun rSplitMultiply(curMult: SNodeNary, origMult: SNodeNary) {
         val curSize = curMult.inputs.size
         if( curSize == 2 ) {
-            curMult.inputs.forEachIndexed { i, cmi ->
-                cmi.parents[inputParentIndexes[i]] = curMult
-            }
+            curMult.inputs.forEach { it.parents[it.parents.indexOf(origMult)] = curMult }
             return
         }
         val firstInput = curMult.inputs[0]
-        firstInput.parents[inputParentIndexes[0]] = curMult
+        firstInput.parents[firstInput.parents.indexOf(origMult)] = curMult
         val otherInputs = curMult.inputs.subList(1,curSize)
-        val nextMult = SNodeNary(curMult.op, otherInputs)      // this adds nextMult as parent to otherInputs
-        otherInputs.forEachIndexed { idx, child ->  // but we want to replace the parent at position inputParentIndexes with nextMult
+        val nextMult = SNodeNary(curMult.op, otherInputs)  // this adds nextMult as parent to otherInputs
+        otherInputs.forEach { child ->              // but we will replace the existing parent origMult later
             child.parents.removeAt(child.parents.size-1)
-            child.parents[inputParentIndexes[idx+1]] = nextMult
         }
         curMult.inputs.clear()
         curMult.inputs += firstInput
         curMult.inputs += nextMult
         nextMult.parents += curMult
-        rSplitMultiply(nextMult, inputParentIndexes.drop(1))
+        rSplitMultiply(nextMult, origMult)
     }
 
 }

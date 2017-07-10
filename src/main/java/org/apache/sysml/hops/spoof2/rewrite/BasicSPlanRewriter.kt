@@ -3,6 +3,7 @@ package org.apache.sysml.hops.spoof2.rewrite
 import java.util.ArrayList
 
 import org.apache.sysml.hops.spoof2.plan.SNode
+import org.apache.sysml.utils.Explain
 
 /**
  * This program rewriter applies a variety of rule-based rewrites
@@ -28,10 +29,13 @@ class BasicSPlanRewriter {
         for (node in roots)
             rRewriteSPlan(node, rules, false)
 
+        SPlanRewriteRule.LOG.debug(Explain.explainSPlan(roots))
+
         //one pass descend-rewrite (for rollup)
         SNode.resetVisited(roots)
         for (node in roots)
-            rRewriteSPlan(node, rules, true)
+            rRewriteSPlan(node, rules, false) // do not descendFirst because it messes up the visit flag
+        // the rewrite rules assume that the parents are visited first
 
         return roots
     }
