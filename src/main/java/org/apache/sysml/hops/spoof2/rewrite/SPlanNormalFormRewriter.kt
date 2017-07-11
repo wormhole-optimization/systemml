@@ -7,11 +7,13 @@ import org.apache.sysml.utils.Explain
 
 /**
  * 1. Apply the rewrite rules that get us into a normal form first, repeatedly until convergence.
- * 2. Apply the rewrite rules that get us back to Hop-ready form, repeatedly until convergence.
+ * 2. Apply RewriteNormalForm.
+ * 3. Apply the rewrite rules that get us back to Hop-ready form, repeatedly until convergence.
  */
 class SPlanNormalFormRewriter {
     private val _rulesToNormalForm: ArrayList<SPlanRewriteRule> = ArrayList()
     private val _rulesToHopReady: ArrayList<SPlanRewriteRule> = ArrayList()
+    private val _rulesNormalForm = listOf(RewriteNormalForm())
 
     init {
         //initialize ruleSet (with fixed rewrite order)
@@ -39,9 +41,12 @@ class SPlanNormalFormRewriter {
                 SPlanRewriteRule.LOG.trace("'to normal form' rewrites did not affect SNodePlan; skipping rest")
             return roots
         }
-
         if( SPlanRewriteRule.LOG.isTraceEnabled )
             SPlanRewriteRule.LOG.trace("Ran 'to normal form' rewrites $count times to yield: "+Explain.explainSPlan(roots))
+
+        SNode.resetVisited(roots)
+        for (node in roots)
+            rRewriteSPlan(node, _rulesNormalForm)
 
         count = 0
         do {

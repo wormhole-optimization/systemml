@@ -133,6 +133,12 @@ object Spoof2Compiler {
         return optimize(ArrayList(Arrays.asList(root)), recompile).get(0)
     }
 
+    private fun rewriteHopsDynamic(roots: ArrayList<Hop>): ArrayList<Hop> {
+        Hop.resetVisitStatus(roots)
+        val rewriter2 = ProgramRewriter(true, true)
+        return rewriter2.rewriteHopDAGs(roots, ProgramRewriteStatus())
+    }
+
     /**
      * Main interface of sum-product optimizer, statement block dag.
 
@@ -156,7 +162,7 @@ object Spoof2Compiler {
             if (LOG.isTraceEnabled) {
                 LOG.trace("Skipping Spoof2 due to unknown sizes")
             }
-            return roots
+            return rewriteHopsDynamic(roots)
         }
 
         // remember top-level orientations
@@ -174,13 +180,13 @@ object Spoof2Compiler {
             if (LOG.isTraceEnabled) {
                 LOG.trace("Skipping Spoof2 on DAG that is entirely composed of Data and Ext nodes")
             }
-            return roots
+            return rewriteHopsDynamic(roots)
         }
 
 
+        BasicSPlanRewriter().rewriteSPlan(sroots, listOf(RewriteBindElimination()))
         if (LOG.isTraceEnabled) {
 //            LOG.trace("Explain after initial SPlan construction: " + Explain.explainSPlan(sroots))
-            BasicSPlanRewriter().rewriteSPlan(sroots, listOf(RewriteBindElimination()))
             LOG.trace("Explain after SPlan construction and RewriteBindElimination: " + Explain.explainSPlan(sroots))
         }
 
@@ -218,9 +224,7 @@ object Spoof2Compiler {
         HopDagValidator.validateHopDag(roots2)
 
         //rewrite after applied sum-product optimizer
-        Hop.resetVisitStatus(roots2)
-        val rewriter2 = ProgramRewriter(true, true)
-        roots2 = rewriter2.rewriteHopDAGs(roots2, ProgramRewriteStatus())
+        rewriteHopsDynamic(roots2)
 
         if (LOG.isTraceEnabled) {
             LOG.trace("Spoof2Compiler rewritten modified HOP DAG: \n" + Explain.explainHops(roots2))
