@@ -29,6 +29,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 
 import org.apache.sysml.api.DMLScript;
@@ -367,7 +369,14 @@ public class Statistics
 	public static long getRunTime() {
 		return execEndTime - execStartTime;
 	}
-	
+
+	// Tracks largest sum-product statistics; see RewriteNormalForm, Statistics, AutomatedTestBase
+	public static AtomicInteger spoof2NormalFormNameLength = new AtomicInteger();
+	public static volatile String spoof2NormalFormAggs = "";
+	public static volatile String spoof2NormalFormInputSchemas = "";
+	public static volatile String spoof2NormalFormTestName = "";
+	public static AtomicBoolean spoof2NormalFormChanged = new AtomicBoolean();
+
 	public static void reset()
 	{
 		hopRecompileTime.reset();

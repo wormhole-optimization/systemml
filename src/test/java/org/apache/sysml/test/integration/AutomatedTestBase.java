@@ -19,6 +19,9 @@
 
 package org.apache.sysml.test.integration;
 
+import static org.apache.sysml.utils.Statistics.spoof2NormalFormChanged;
+import static org.apache.sysml.utils.Statistics.spoof2NormalFormNameLength;
+import static org.apache.sysml.utils.Statistics.spoof2NormalFormTestName;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -1243,6 +1246,15 @@ public abstract class AutomatedTestBase
 				fail(errorMessage.toString());
 			}
 		}
+
+		// Tracks largest sum-product statistics; see RewriteNormalForm, Statistics, AutomatedTestBase
+		if( spoof2NormalFormChanged.get() ) {
+			spoof2NormalFormTestName = fullDMLScriptName;
+			spoof2NormalFormChanged.set(false);
+		}
+		System.out.format("Spoof2 largest sum-product block on %s\n\tname length: %d\t aggs: %s\n\tschemas: %s\n",
+				spoof2NormalFormTestName,
+				spoof2NormalFormNameLength.get(), Statistics.spoof2NormalFormAggs, Statistics.spoof2NormalFormInputSchemas);
 	}
 
 	public void cleanupScratchSpace()
@@ -1801,7 +1813,7 @@ public abstract class AutomatedTestBase
 	 *
 	 * @param name
 	 *            directory name
-	 * @param matrix
+	 * @param data
 	 *            two dimensional frame data
 	 * @param schema
 	 * @param oi
