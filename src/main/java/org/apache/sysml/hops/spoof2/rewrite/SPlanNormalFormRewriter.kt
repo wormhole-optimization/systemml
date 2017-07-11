@@ -34,6 +34,12 @@ class SPlanNormalFormRewriter {
             count++
         } while (changed)
 
+        if( count == 1 ) {
+            if( SPlanRewriteRule.LOG.isTraceEnabled )
+                SPlanRewriteRule.LOG.trace("'to normal form' rewrites did not affect SNodePlan; skipping rest")
+            return roots
+        }
+
         if( SPlanRewriteRule.LOG.isTraceEnabled )
             SPlanRewriteRule.LOG.trace("Ran 'to normal form' rewrites $count times to yield: "+Explain.explainSPlan(roots))
 

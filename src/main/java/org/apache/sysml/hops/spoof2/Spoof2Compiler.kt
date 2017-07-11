@@ -169,6 +169,15 @@ object Spoof2Compiler {
         for (root in roots)
             sroots.add(rConstructSumProductPlan(root, snodeMemo))
 
+        // if this is entirely composed of Data and Ext ops, then don't do Spoof2 because nothing to do
+        if( sroots.any { it.isEntirelyDataExt() } ) {
+            if (LOG.isTraceEnabled) {
+                LOG.trace("Skipping Spoof2 on DAG that is entirely composed of Data and Ext nodes")
+            }
+            return roots
+        }
+
+
         if (LOG.isTraceEnabled) {
 //            LOG.trace("Explain after initial SPlan construction: " + Explain.explainSPlan(sroots))
             BasicSPlanRewriter().rewriteSPlan(sroots, listOf(RewriteBindElimination()))

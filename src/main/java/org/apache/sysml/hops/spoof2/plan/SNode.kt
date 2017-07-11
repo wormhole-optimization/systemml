@@ -78,6 +78,7 @@ abstract class SNode(inputs: List<SNode>) {
         val FN_TRUE: (SNode) -> Boolean = {true}
         val FN_NOOP: (SNode) -> Unit = {}
         val FN_NULL: (SNode) -> Nothing? = {null}
+        fun <R> FN_RET(node: SNode, ret: R) = ret
     }
 
 
@@ -158,8 +159,8 @@ abstract class SNode(inputs: List<SNode>) {
      */
     fun <R:Any> acceptFold(
             preVisit: (SNode) -> R? = FN_NULL,
-            postVisit: (SNode, List<R>) -> R) {
-        visitRecurseFold(preVisit, postVisit)
+            postVisit: (SNode, List<R>) -> R): R {
+        return visitRecurseFold(preVisit, postVisit)
     }
 
     /**
@@ -170,7 +171,7 @@ abstract class SNode(inputs: List<SNode>) {
     inline fun <R:Any> acceptFoldGuard(
             crossinline preVisit: (SNode) -> R?,
             crossinline postVisit: (SNode, List<R>) -> R
-    ) {
+    ): R {
         val seen: MutableMap<SNode, R?> = HashMap()
         val preVisitGuard: (SNode) -> R? = {
             if (it in seen) seen[it]
@@ -186,7 +187,7 @@ abstract class SNode(inputs: List<SNode>) {
             seen[n] = post
             post
         }
-        acceptFold(preVisitGuard, postVisitGuard)
+        return acceptFold(preVisitGuard, postVisitGuard)
     }
 
     private fun <R:Any> visitRecurseFold(
@@ -215,8 +216,8 @@ abstract class SNode(inputs: List<SNode>) {
             preVisit: (SNode) -> R? = FN_NULL,
             postVisit: (SNode, R) -> R,
             default: R,
-            fold: (R, R) -> R) {
-        visitRecurseFoldUnordered(preVisit, postVisit, default, fold)
+            fold: (R, R) -> R): R {
+        return visitRecurseFoldUnordered(preVisit, postVisit, default, fold)
     }
 
     /**
@@ -230,7 +231,7 @@ abstract class SNode(inputs: List<SNode>) {
             crossinline postVisit: (SNode, R) -> R,
             default: R,
             noinline fold: (R, R) -> R
-    ) {
+    ): R {
         val seen: MutableMap<SNode, R?> = HashMap()
         val preVisitGuard: (SNode) -> R? = {
             if (it in seen) seen[it]
@@ -246,7 +247,7 @@ abstract class SNode(inputs: List<SNode>) {
             seen[n] = post
             post
         }
-        acceptFoldUnordered(preVisitGuard, postVisitGuard, default, fold)
+        return acceptFoldUnordered(preVisitGuard, postVisitGuard, default, fold)
     }
 
     private fun <R:Any> visitRecurseFoldUnordered(
