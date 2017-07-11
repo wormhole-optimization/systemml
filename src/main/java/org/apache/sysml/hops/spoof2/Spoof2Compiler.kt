@@ -24,6 +24,7 @@ import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
 import org.apache.sysml.hops.spoof2.rewrite.BasicSPlanRewriter
 import org.apache.sysml.hops.spoof2.rewrite.RewriteBindElimination
+import org.apache.sysml.hops.spoof2.rewrite.SPlanNormalFormRewriter
 import org.apache.sysml.parser.*
 import org.apache.sysml.runtime.DMLRuntimeException
 import org.apache.sysml.utils.Explain
@@ -175,11 +176,11 @@ object Spoof2Compiler {
         }
 
         //rewrite sum-product plan
-        val rewriter = BasicSPlanRewriter()
+        val rewriter = SPlanNormalFormRewriter()
         sroots = rewriter.rewriteSPlan(sroots)
 
         if (LOG.isTraceEnabled) {
-            LOG.trace("Explain after SPlan rewriting: " + Explain.explainSPlan(sroots))
+//            LOG.trace("Explain after SPlan rewriting: " + Explain.explainSPlan(sroots))
         }
 
         //re-construct modified HOP DAG

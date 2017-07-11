@@ -16,7 +16,7 @@ class BasicSPlanRewriter {
     init {
         //initialize ruleSet (with fixed rewrite order)
         _ruleSet.add(RewriteBindElimination())
-        _ruleSet.add(RewritePullAggAboveMult()) // todo structure these in some loop that continues until there are no changes
+        _ruleSet.add(RewritePullAggAboveMult())
         _ruleSet.add(RewriteAggregateElimination())
         _ruleSet.add(RewriteCombineMultiply()) // disrupts RewritePushAggIntoMult unless we choose a variable order and split the multiplies
         _ruleSet.add(RewriteSplitMultiply())
@@ -29,13 +29,13 @@ class BasicSPlanRewriter {
         for (node in roots)
             rRewriteSPlan(node, rules, false)
 
-        SPlanRewriteRule.LOG.debug(Explain.explainSPlan(roots))
+//        SPlanRewriteRule.LOG.debug(Explain.explainSPlan(roots))
 
-        //one pass descend-rewrite (for rollup)
-        SNode.resetVisited(roots)
-        for (node in roots)
-            rRewriteSPlan(node, rules, false) // do not descendFirst because it messes up the visit flag
-        // the rewrite rules assume that the parents are visited first
+//        //one pass descend-rewrite (for rollup)
+//        SNode.resetVisited(roots)
+//        for (node in roots)
+//            rRewriteSPlan(node, rules, false) // do not descendFirst because it messes up the visit flag
+//        // the rewrite rules assume that the parents are visited first
 
         return roots
     }
