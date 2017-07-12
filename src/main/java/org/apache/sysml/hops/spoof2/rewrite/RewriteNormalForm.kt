@@ -16,10 +16,11 @@ class RewriteNormalForm : SPlanRewriteRule() {
     override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
         val spb = isSumProductBlock(node) ?: return RewriteResult.NoChange
 
-        LOG.debug(spb)
+        if( LOG.isDebugEnabled )
+            LOG.debug(spb)
 
         // Tracks largest sum-product statistics; see RewriteNormalForm, Statistics, AutomatedTestBase
-        val thisSize = spb.names.size
+        val thisSize = spb.inputSchemas.size
         var oldLargestSize: Int
         do {
             oldLargestSize = Statistics.spoof2NormalFormNameLength.get()
