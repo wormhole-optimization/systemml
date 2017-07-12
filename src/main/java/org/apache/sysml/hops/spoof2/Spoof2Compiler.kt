@@ -538,7 +538,13 @@ object Spoof2Compiler {
                     }
                 }
             }
-            HopRewriteUtils.createMatrixMultiply(hop0, hop1)
+            var mxm: Hop = HopRewriteUtils.createMatrixMultiply(hop0, hop1)
+            if( mxm.dim1 == 1L && mxm.dim2 == 1L ) {
+                if( LOG.isDebugEnabled )
+                    LOG.debug("Casting result of matrix multiply ${mxm.hopID} to scalar")
+                mxm = HopRewriteUtils.createUnary(mxm, OpOp1.CAST_AS_SCALAR)
+            }
+            mxm
         }
         else { // general Agg
             val aggInput = mult
@@ -730,7 +736,11 @@ object Spoof2Compiler {
                 else
                     hop
             }
-            else -> throw SNodeException(current, "should not be able to recurse on this type of SNode")
+            is SNodeBind -> {
+                // ignore SNodeBind
+                rReconstructHopDag(current.inputs[0], hopMemo)
+            }
+            else -> throw SNodeException(current, "recurse on unknown SNode")
         }
 
         current.visited = true

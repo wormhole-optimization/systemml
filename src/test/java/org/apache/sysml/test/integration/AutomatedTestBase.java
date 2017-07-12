@@ -1272,7 +1272,7 @@ public abstract class AutomatedTestBase
 		catch (Exception ex)
 		{
 			//ex.printStackTrace();
-			return; //no effect on tests
+			//return; //no effect on tests
 		}
 	}
 
