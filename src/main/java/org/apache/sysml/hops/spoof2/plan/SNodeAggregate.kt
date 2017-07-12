@@ -8,14 +8,14 @@ import org.apache.sysml.hops.Hop.AggOp
 class SNodeAggregate private constructor(
         val op: AggOp,
         inputs: List<SNode>,
-        aggregateNames: List<Name>
+        aggregateNames: Collection<Name>
 ) : SNode(inputs) {
     val aggreateNames: ArrayList<Name> = ArrayList(aggregateNames)
     init {
         refreshSchema()
     }
 
-    constructor(op: AggOp, input: SNode, names: List<Name>) : this(op, listOf(input), names)
+    constructor(op: AggOp, input: SNode, names: Collection<Name>) : this(op, listOf(input), names)
     constructor(op: AggOp, input: SNode, vararg names: Name) : this(op, listOf(input), names.asList())
 
     override fun toString() = "agg(${op.name.toLowerCase()}$aggreateNames)"
