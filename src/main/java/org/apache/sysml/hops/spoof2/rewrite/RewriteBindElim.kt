@@ -14,7 +14,7 @@ import org.apache.sysml.hops.spoof2.plan.*
  *    Do this for as many Unbound names as possible. Eliminate the Unbound/Bound if they become empty.
  * 2. Unbind-Bind, when Bind has no foreign parents. Eliminate names in identical positions.
  */
-class RewriteBindElimination : SPlanRewriteRule() {
+class RewriteBindElim : SPlanRewriteRule() {
     private fun canEliminateEmpty(node: SNode) =
             node is SNodeBind && node.bindings.isEmpty()
             || node is SNodeUnbind && node.unbindings.isEmpty()
@@ -40,7 +40,7 @@ class RewriteBindElimination : SPlanRewriteRule() {
     private tailrec fun rRewriteNode(parent: SNode, node: SNode, changed: Boolean): RewriteResult {
         if( canEliminateEmpty(node) ) {
             if (SPlanRewriteRule.LOG.isDebugEnabled)
-                SPlanRewriteRule.LOG.debug("RewriteBindElimination on empty ${node.id} $node.")
+                SPlanRewriteRule.LOG.debug("RewriteBindElim on empty ${node.id} $node.")
             return rRewriteNode(parent, eliminateEmpty(node), true)
         }
         if( parent is SNodeBind || parent is SNodeUnbind ) {
@@ -60,7 +60,7 @@ class RewriteBindElimination : SPlanRewriteRule() {
                 parent.agbindings -= commonBindings.keys   // could create an empty Bind/Unbind in the parent; need another pass
                 parent2.agbindings -= commonBindings.keys
                 if (SPlanRewriteRule.LOG.isDebugEnabled)
-                    SPlanRewriteRule.LOG.debug("RewriteBindElimination combine common mappings of parents " +
+                    SPlanRewriteRule.LOG.debug("RewriteBindElim combine common mappings of parents " +
                             "${parent.id} and ${parent2.id} into new ${newBind.id} $newBind.")
                 return rRewriteNode(parent, newBind, true)
             }
@@ -76,7 +76,7 @@ class RewriteBindElimination : SPlanRewriteRule() {
             eliminateEmpty(child)
 
             if (SPlanRewriteRule.LOG.isDebugEnabled)
-                SPlanRewriteRule.LOG.debug("RewriteBindElimination on consecutve Unbinds at ${node.id} to $node.")
+                SPlanRewriteRule.LOG.debug("RewriteBindElim on consecutve Unbinds at ${node.id} to $node.")
             return rRewriteNode(parent, node, true)
         }
         if( node is SNodeBind ) {
@@ -99,7 +99,7 @@ class RewriteBindElimination : SPlanRewriteRule() {
                     val unbindChild = unbind.inputs[0]
                     unbindChild.renameAttributes(renamings, false)
                     if (SPlanRewriteRule.LOG.isDebugEnabled)
-                        SPlanRewriteRule.LOG.debug("RewriteBindElimination Bind-Unbind: " +
+                        SPlanRewriteRule.LOG.debug("RewriteBindElim Bind-Unbind: " +
                                 "rename sub-tree of Unbind ${unbind.id} by $renamings")
 
                     // the parent's schema may have been reordered as a result of Bind-Unbind elimination
@@ -131,7 +131,7 @@ class RewriteBindElimination : SPlanRewriteRule() {
                 }
                 if (numRemoved > 0) {
                     if (SPlanRewriteRule.LOG.isDebugEnabled)
-                        SPlanRewriteRule.LOG.debug("RewriteBindElimination Unbind-Bind on Unbind ${unbind.id} to $unbind and $bind, removing $numRemoved names")
+                        SPlanRewriteRule.LOG.debug("RewriteBindElim Unbind-Bind on Unbind ${unbind.id} to $unbind and $bind, removing $numRemoved names")
 
                     // Common case: the resulting unbind-bind is empty.
                     if (bind.bindings.isEmpty()) eliminateEmpty(bind)

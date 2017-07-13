@@ -3,7 +3,6 @@ package org.apache.sysml.hops.spoof2.rewrite
 import java.util.ArrayList
 
 import org.apache.sysml.hops.spoof2.plan.SNode
-import org.apache.sysml.utils.Explain
 
 /**
  * This program rewriter applies a variety of rule-based rewrites
@@ -15,9 +14,9 @@ class BasicSPlanRewriter {
 
     init {
         //initialize ruleSet (with fixed rewrite order)
-        _ruleSet.add(RewriteBindElimination())
+        _ruleSet.add(RewriteBindElim())
         _ruleSet.add(RewritePullAggAboveMult())
-        _ruleSet.add(RewriteAggregateElimination())
+        _ruleSet.add(RewriteAggregateElim())
         _ruleSet.add(RewriteCombineMultiply()) // disrupts RewritePushAggIntoMult unless we choose a variable order and split the multiplies
         _ruleSet.add(RewriteSplitMultiply())
         _ruleSet.add(RewritePushAggIntoMult())

@@ -7,7 +7,7 @@ import org.apache.sysml.hops.spoof2.plan.SNodeAggregate
  * 1. Combine two consecutive aggregates into one.
  * 2. Eliminate empty aggregates.
  */
-class RewriteAggregateElimination : SPlanRewriteRule() {
+class RewriteAggregateElim : SPlanRewriteRule() {
 
     companion object {
 //        val allowedAggOps = setOf(AggOp.SUM, AggOp.MIN, AggOp.MAX, AggOp.)
@@ -30,7 +30,7 @@ class RewriteAggregateElimination : SPlanRewriteRule() {
                     SNodeRewriteUtils.replaceChildReference(agg1, agg2, agg2child)
                     agg1.refreshSchema()
                     if (SPlanRewriteRule.LOG.isDebugEnabled)
-                        SPlanRewriteRule.LOG.debug("RewriteAggregateElimination on consecutive aggs ${agg1.id}-${agg2.id} to form $agg1.")
+                        SPlanRewriteRule.LOG.debug("RewriteAggregateElim on consecutive aggs ${agg1.id}-${agg2.id} to form $agg1.")
                     return rRewriteNode(parent, agg1, true)
                 }
             }
@@ -41,7 +41,7 @@ class RewriteAggregateElimination : SPlanRewriteRule() {
                 SNodeRewriteUtils.removeAllChildReferences(node)
                 SNodeRewriteUtils.replaceChildReference(parent, node, child)
                 if (SPlanRewriteRule.LOG.isDebugEnabled)
-                    SPlanRewriteRule.LOG.debug("RewriteAggregateElimination on empty agg ${node.id} $node).")
+                    SPlanRewriteRule.LOG.debug("RewriteAggregateElim on empty agg ${node.id} $node).")
                 return rRewriteNode(parent, child, true)
             }
         }

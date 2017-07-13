@@ -23,7 +23,7 @@ import org.apache.sysml.hops.rewrite.*
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
 import org.apache.sysml.hops.spoof2.rewrite.BasicSPlanRewriter
-import org.apache.sysml.hops.spoof2.rewrite.RewriteBindElimination
+import org.apache.sysml.hops.spoof2.rewrite.RewriteBindElim
 import org.apache.sysml.hops.spoof2.rewrite.SPlanNormalFormRewriter
 import org.apache.sysml.parser.*
 import org.apache.sysml.runtime.DMLRuntimeException
@@ -184,10 +184,10 @@ object Spoof2Compiler {
         }
 
 
-        BasicSPlanRewriter().rewriteSPlan(sroots, listOf(RewriteBindElimination()))
+        BasicSPlanRewriter().rewriteSPlan(sroots, listOf(RewriteBindElim()))
         if (LOG.isTraceEnabled) {
 //            LOG.trace("Explain after initial SPlan construction: " + Explain.explainSPlan(sroots))
-            LOG.trace("Explain after SPlan construction and RewriteBindElimination: " + Explain.explainSPlan(sroots))
+            LOG.trace("Explain after SPlan construction and RewriteBindElim: " + Explain.explainSPlan(sroots))
         }
 
         //rewrite sum-product plan

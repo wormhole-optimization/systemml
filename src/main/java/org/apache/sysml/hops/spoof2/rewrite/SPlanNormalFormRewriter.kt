@@ -18,9 +18,9 @@ class SPlanNormalFormRewriter {
 
     init {
         //initialize ruleSet (with fixed rewrite order)
-        _rulesToNormalForm.add(RewriteBindElimination())
+        _rulesToNormalForm.add(RewriteBindElim())
         _rulesToNormalForm.add(RewritePullAggAboveMult())
-        _rulesToNormalForm.add(RewriteAggregateElimination())
+        _rulesToNormalForm.add(RewriteAggregateElim())
         _rulesToNormalForm.add(RewriteCombineMultiply())
 
         _rulesToHopReady.add(RewriteSplitMultiply())
