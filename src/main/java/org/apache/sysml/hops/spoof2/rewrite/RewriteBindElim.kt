@@ -51,7 +51,7 @@ class RewriteBindElim : SPlanRewriteRule() {
                 node.parents.remove(parent)
                 node.parents.remove(parent2)
                 val newBind =
-                        if( parent is SNodeBind) SNodeBind(node, commonBindings)
+                        if( parent is SNodeBind ) SNodeBind(node, commonBindings)
                         else SNodeUnbind(node, commonBindings)
                 parent.inputs[0] = newBind
                 parent2.inputs[0] = newBind
@@ -99,11 +99,10 @@ class RewriteBindElim : SPlanRewriteRule() {
                     val unbindChild = unbind.inputs[0]
                     unbindChild.renameAttributes(renamings, false)
                     if (SPlanRewriteRule.LOG.isDebugEnabled)
-                        SPlanRewriteRule.LOG.debug("RewriteBindElim Bind-Unbind: " +
-                                "rename sub-tree of Unbind ${unbind.id} by $renamings")
-
-                    // the parent's schema may have been reordered as a result of Bind-Unbind elimination
-                    bind.parents.forEach { it.refreshSchemasUpward() }
+                        SPlanRewriteRule.LOG.debug("RewriteBindElim Bind(${bind.id})-Unbind(${unbind.id}): " +
+                                "rename sub-tree of Unbind by $renamings" +
+                                (if(bind.bindings.isEmpty()) " and elim Bind" else "") +
+                                if(unbind.unbindings.isEmpty()) " and elim Unbind" else "")
 
                     // Common case: the resulting bind-unbind is empty.
                     if (unbind.unbindings.isEmpty()) eliminateEmpty(unbind)
@@ -131,7 +130,10 @@ class RewriteBindElim : SPlanRewriteRule() {
                 }
                 if (numRemoved > 0) {
                     if (SPlanRewriteRule.LOG.isDebugEnabled)
-                        SPlanRewriteRule.LOG.debug("RewriteBindElim Unbind-Bind on Unbind ${unbind.id} to $unbind and $bind, removing $numRemoved names")
+                        SPlanRewriteRule.LOG.debug("RewriteBindElim Unbind(${unbind.id})-Bind(${bind.id}) " +
+                                "to $unbind and $bind, removing $numRemoved names" +
+                                (if(unbind.unbindings.isEmpty()) " and elim Unbind" else "" +
+                                        if(bind.bindings.isEmpty()) " and elim Bind" else ""))
 
                     // Common case: the resulting unbind-bind is empty.
                     if (bind.bindings.isEmpty()) eliminateEmpty(bind)

@@ -22,7 +22,12 @@ fun SNode.renameAttributes(renaming: Map<Name, Name>, useInternalGuard: Boolean)
             it.refreshSchema()
         changed
     }
+    val oldSchema = Schema(this.schema)
     acceptFoldUnorderedGuard(SNode.FN_NULL, postVisit, false, Boolean::or)
+    // if the schema changed as a result of the rename, then the parents may need to change too
+    // specifically: the schema may be reordered
+    if( this.schema != oldSchema )
+        this.parents.forEach { it.refreshSchemasUpward() }
 }
 
 fun SNode.refreshSchemasUpward() {

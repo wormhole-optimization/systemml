@@ -614,9 +614,6 @@ object Spoof2Compiler {
             }
         }
 
-        // todo there is some kind of problem in GLMDMLTest with the reconstruction.
-        // I think a multiply of a 1x51 times 51x1 is somehow ending up as a 51x51 instead of a 1x1
-
         // matrix-vector element-wise multiply case (vector expansion)
         // swap inputs if matrix is on right
         // transpose vector if it does not match the correct dimension
