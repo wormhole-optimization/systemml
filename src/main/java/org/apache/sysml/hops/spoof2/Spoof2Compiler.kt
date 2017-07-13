@@ -700,13 +700,27 @@ object Spoof2Compiler {
                 //recursively process child nodes
                 val inputs = current.inputs.mapTo(arrayListOf()) { rReconstructHopDag(it, hopMemo) }
 
+                if( current.isWrite ) {
+                    if (current.hop.dataType == Expression.DataType.SCALAR && inputs[0].dataType != Expression.DataType.SCALAR) {
+                        if (LOG.isDebugEnabled)
+                            LOG.debug("on $current id=${current.id}, casting input 0 to scalar in order to match previous Write DataOp ${current.hop} hopid=${current.hop.hopID}")
+                        current.check(inputs[0].dim1 == 1L && inputs[0].dim2 == 1L) {"attempt to cast to scalar fails because dims are not 1,1 in inputs[0] ${inputs[0]} hopid=${inputs[0].hopID}"}
+                        inputs[0] = HopRewriteUtils.createUnary(inputs[0], OpOp1.CAST_AS_SCALAR)
+                    } else if (current.hop.dataType != Expression.DataType.SCALAR && inputs[0].dataType == Expression.DataType.SCALAR) {
+                        current.check(inputs[0].dim1 == 0L && inputs[0].dim2 == 0L) {"attempt to cast to matrix fails because dims are not 0,0 in inputs[0] ${inputs[0]} hopid=${inputs[0].hopID}"}
+                        if (LOG.isDebugEnabled)
+                            LOG.debug("on $current id=${current.id}, casting input 0 to matrix in order to match previous Write DataOp ${current.hop} hopid=${current.hop.hopID}")
+                        inputs[0] = HopRewriteUtils.createUnary(inputs[0], OpOp1.CAST_AS_MATRIX)
+                    }
+                }
+
                 for( i in inputs.indices ) {
                     val oldHopClass = current.hop.input[i]!!.classify() //current.inputHopClasses[i]
                     if( oldHopClass.isVector ) {
                         if( inputs[i].classify() != oldHopClass ) {
                             inputs[i] = HopRewriteUtils.createTranspose(inputs[i])
-                            if( LOG.isTraceEnabled )
-                                LOG.trace("on $current id=${current.id}, created transpose to force orientation to $oldHopClass on input $i of $current")
+                            if( LOG.isDebugEnabled )
+                                LOG.debug("on $current id=${current.id}, created transpose to force orientation to $oldHopClass on input $i")
                         }
                     }
                 }
