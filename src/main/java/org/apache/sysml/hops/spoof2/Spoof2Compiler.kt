@@ -150,13 +150,6 @@ object Spoof2Compiler {
      */
     @Throws(DMLRuntimeException::class, HopsException::class)
     fun optimize(roots: ArrayList<Hop>, recompile: Boolean): ArrayList<Hop> {
-        if (LOG.isTraceEnabled) {
-            LOG.trace("Spoof2Compiler called for HOP DAG: \n" + Explain.explainHops(roots))
-        }
-
-        ProgramRewriter(RewriteCommonSubexpressionElimination()).rewriteHopDAGs(roots, ProgramRewriteStatus())
-
-
         // if any sizes unknown, don't do Spoof2
         if( roots.any { !allKnownSizes(it)} ) {
             if (LOG.isTraceEnabled) {
@@ -164,6 +157,13 @@ object Spoof2Compiler {
             }
             return rewriteHopsDynamic(roots)
         }
+
+        if (LOG.isTraceEnabled) {
+            LOG.trace("Spoof2Compiler called for HOP DAG: \n" + Explain.explainHops(roots))
+        }
+
+        ProgramRewriter(RewriteCommonSubexpressionElimination()).rewriteHopDAGs(roots, ProgramRewriteStatus())
+
 
         // remember top-level orientations
         val rootClasses = roots.map(Hop::classify)
@@ -234,16 +234,6 @@ object Spoof2Compiler {
     }
 
 
-    private fun createTransposePermutation(names: Collection<Name>): Map<Name,Name> {
-        require(names.size <= 2) {"transpose is undefined on tensors; given names $names"}
-        if (names.size <= 1) return mapOf()
-        val iter = names.iterator()
-        val n1 = iter.next()
-        val n2 = iter.next()
-        return mapOf(n1 to n2, n2 to n1)
-    }
-
-
 
 
     // Input Hop Dag has matrices, vectors, and scalars. No tensors here.
@@ -272,14 +262,10 @@ object Spoof2Compiler {
             }
             is ReorgOp -> {
                 if (HopRewriteUtils.isTransposeOperation(current)) {
-                    // transpose does not logically effect anything, but it will change the order of input shapes
-                    // which affects the join conditions of parent binary hops, so we keep the Permute SNode.
-                    // U - tr - B - inputs[0]
+                    // reverse the mapping in the unbind
                     if (inputs[0].schema.size == 2) {
                         val bindings = inputs[0].schema.genAllBindings()
                         inputs[0] = SNodeBind(inputs[0], bindings)
-//                    val perm = SNodePermute(inputs[0], createTransposePermutation(bindings.values))
-//                    require(bindings.keys == setOf(0,1)) {"unexpected transpose input $current"}
 
                         val flipBindings = mapOf(0 to bindings[1]!!, 1 to bindings[0]!!)
                         SNodeUnbind(inputs[0], flipBindings)
@@ -447,7 +433,7 @@ object Spoof2Compiler {
     }
 
 
-    private fun reconstructAggregate(agg: SNodeAggregate, expectBind: Boolean, hopMemo: MutableMap<SNode, Hop>): Hop {
+    private fun reconstructAggregate(agg: SNodeAggregate, hopMemo: MutableMap<SNode, Hop>): Hop {
         val mult = agg.inputs[0]
         return if( mult is SNodeNary && mult.op == NaryOp.MULT && agg.op == Hop.AggOp.SUM
                 && mult.inputs.size == 2
@@ -456,11 +442,10 @@ object Spoof2Compiler {
             var mult0 = mult.inputs[0]
             var mult1 = mult.inputs[1]
 
-            // Even if not expecting a Bind on the inputs,
-            // we may have a Bind anyway because the output is a scalar (thus no Unbind)
+            // We may have a Bind because the output is a scalar (thus no Unbind)
             // but the inputs are non-scalars (and are therefore Bound)
-            var hop0 = rReconstructHopDag(if( mult0 is SNodeBind ) mult0.inputs[0] else mult0, hopMemo)
-            var hop1 = rReconstructHopDag(if( mult1 is SNodeBind ) mult1.inputs[0] else mult1, hopMemo)
+            var hop0 = rReconstructHopDag(mult0, hopMemo)
+            var hop1 = rReconstructHopDag(mult1, hopMemo)
 
             // AggBinaryOp always expects matrix inputs
             if( hop0.dataType == Expression.DataType.SCALAR ) {
@@ -548,7 +533,7 @@ object Spoof2Compiler {
         }
         else { // general Agg
             val aggInput = mult
-            var hop0 = rReconstructHopDag( if(aggInput is SNodeBind) aggInput.inputs[0] else aggInput, hopMemo)
+            var hop0 = rReconstructHopDag(aggInput, hopMemo)
 
             // AggUnaryOp always requires MATRIX input
             if( hop0.dataType == Expression.DataType.SCALAR ) {
@@ -603,14 +588,9 @@ object Spoof2Compiler {
             hop
     }
 
-    private fun reconstructNary(nary: SNodeNary, expectBind: Boolean, hopMemo: MutableMap<SNode, Hop>): Hop {
+    private fun reconstructNary(nary: SNodeNary, hopMemo: MutableMap<SNode, Hop>): Hop {
         val hopInputs = nary.inputs.mapTo(ArrayList()) { input ->
-//            if( expectBind ) {
-                val i = if (input is SNodeBind) input.inputs[0] else input
-                rReconstructHopDag(i, hopMemo)
-//            } else {
-//                rReconstructHopDag(input, hopMemo)
-//            }
+                rReconstructHopDag(input, hopMemo)
         }
 
         // if joining on two names and both matrices, ensure that they align by possibly transposing one of them
@@ -634,7 +614,7 @@ object Spoof2Compiler {
             }
         }
 
-        // todo there is some kind of problem in GLMTest with the reconstruction.
+        // todo there is some kind of problem in GLMDMLTest with the reconstruction.
         // I think a multiply of a 1x51 times 51x1 is somehow ending up as a 51x51 instead of a 1x1
 
         // matrix-vector element-wise multiply case (vector expansion)
@@ -684,12 +664,8 @@ object Spoof2Compiler {
     }
 
 
-    // Only these SNodes can have multiple parents---Unbind, Data, Ext---unless we have a scalar, in which case any SNode can appear.
-    // (Also, an Nary could have a matrix input and scalar input.)
-    // Start with one of these at the top. If Unbind, continue through the Binds at the bottom. This is a block.
-    // We will reconstruct the whole block at once.
-    // Induction: first reconstruct the children below the block.
-    // Then map the block to a Hop. (Fused Op or Regular Hop)
+
+    // Later we will map blocks between bind/unbind all at once, into either Fused Ops or Regular Hops.
     private fun rReconstructHopDag(current: SNode, hopMemo: MutableMap<SNode, Hop>): Hop {
         if (current.visited) {
             return hopMemo[current]!!
@@ -773,14 +749,14 @@ object Spoof2Compiler {
                     current.hop
                 }
             }
-            is SNodeAggregate -> reconstructAggregate(current, false, hopMemo)
-            is SNodeNary -> reconstructNary(current, false, hopMemo)
+            is SNodeAggregate -> reconstructAggregate(current, hopMemo)
+            is SNodeNary -> reconstructNary(current, hopMemo)
             is SNodeUnbind -> {
                 // match on the SNode beneath SNodeUnbind. Go to the Binds that are children to this block.
                 val bu = current.inputs[0]
                 val hop = when( bu ) {
-                    is SNodeAggregate -> reconstructAggregate(bu, true, hopMemo)
-                    is SNodeNary -> reconstructNary(bu, true, hopMemo)
+                    is SNodeAggregate -> reconstructAggregate(bu, hopMemo)
+                    is SNodeNary -> reconstructNary(bu, hopMemo)
                     is SNodeBind -> { // unbind-bind
                         rReconstructHopDag(bu.inputs[0], hopMemo)
                     }
@@ -790,8 +766,8 @@ object Spoof2Compiler {
                 // if the Unbind has a map of Int to Attribute that does not agree with the schema of the input, then transpose
                 if( current.unbindings.any { (pos,n) -> current.inputs[0].schema.names[pos] != n } ) {
                     // log this in case we encounter transpose issues
-                    if( LOG.isTraceEnabled )
-                        LOG.trace("insert transpose at Unbind id=${current.id} $current with input ${current.inputs[0]}")
+                    if( LOG.isDebugEnabled )
+                        LOG.debug("insert transpose at Unbind id=${current.id} $current with input ${current.inputs[0]}")
                     HopRewriteUtils.createTranspose(hop)
                 }
                 else
