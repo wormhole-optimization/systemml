@@ -613,14 +613,61 @@ object Spoof2Compiler {
 //            }
         }
 
-        // if joining on two names, ensure that they align by possibly transposing one of them
+        // if joining on two names and both matrices, ensure that they align by possibly transposing one of them
         if( nary.inputs.size == 2 && nary.inputs[0].schema.size == 2
                 && nary.inputs[0].schema.names.toSet() == nary.inputs[1].schema.names.toSet() ) {
-            if( nary.inputs[0].schema.names[0] != nary.inputs[1].schema.names[0] )
+            if( nary.inputs[0].schema.names[0] != nary.inputs[1].schema.names[0] ) {
                 hopInputs[1] = HopRewriteUtils.createTranspose(hopInputs[1])
+                if( LOG.isDebugEnabled )
+                    LOG.debug("transpose second matrix ${nary.inputs} hopid=${hopInputs[1].hopID} to match matrix element-wise multiply id=${nary.inputs[1].id}")
+            }
         }
 
-        // handle swapping of inputs (such as vector expansion should always have vector on right) in future rules
+        // if joining on one name and both vectors, ensure that they align by possibly transposing one of them
+        if( nary.inputs.size == 2 && nary.inputs[0].schema.size == 1 && nary.inputs[0].schema == nary.inputs[1].schema) {
+            assert(hopInputs[0].classify().isVector)
+            assert(hopInputs[1].classify().isVector)
+            if( hopInputs[0].classify() != hopInputs[1].classify() ) {
+                hopInputs[1] = HopRewriteUtils.createTranspose(hopInputs[1])
+                if( LOG.isDebugEnabled )
+                    LOG.debug("transpose vector ${nary.inputs[1]} id=${nary.inputs[1].id} hopid=${hopInputs[1].hopID} to match vector element-wise multiply")
+            }
+        }
+
+        // todo there is some kind of problem in GLMTest with the reconstruction.
+        // I think a multiply of a 1x51 times 51x1 is somehow ending up as a 51x51 instead of a 1x1
+
+        // matrix-vector element-wise multiply case (vector expansion)
+        // swap inputs if matrix is on right
+        // transpose vector if it does not match the correct dimension
+        if( nary.inputs.size == 2 &&
+                (nary.inputs[0].schema.size == 2 && nary.inputs[1].schema.size == 1 ||
+                nary.inputs[1].schema.size == 2 && nary.inputs[0].schema.size == 1))
+        {
+            val (mat,vec) = if( nary.inputs[1].schema.size == 2 ) {
+                hopInputs.swap(0,1)
+                nary.inputs[1] to nary.inputs[0]
+            } else
+                nary.inputs[0] to nary.inputs[1]
+            assert(hopInputs[1].classify().isVector)
+            if( vec.schema.names[0] == mat.schema.names[0] ) {
+                // require vector to be column
+                if( hopInputs[1].classify() != HopClass.COL_VECTOR ) {
+                    hopInputs[1] = HopRewriteUtils.createTranspose(hopInputs[1])
+                    if( LOG.isDebugEnabled )
+                        LOG.debug("transpose vector $vec to col vector to match vector expansion element-wise multiply on first dimension of matrix $mat")
+                }
+            } else if ( vec.schema.names[0] == mat.schema.names[1] ) {
+                // require vector to be row
+                if( hopInputs[1].classify() != HopClass.ROW_VECTOR ) {
+                    hopInputs[1] = HopRewriteUtils.createTranspose(hopInputs[1])
+                    if( LOG.isDebugEnabled )
+                        LOG.debug("transpose vector $vec to row vector to match vector expansion element-wise multiply on second dimension of matrix $mat")
+                }
+            } else throw SNodeException(nary, "attribute name of vector does not match either attribute name of matrix in vector-expansion element-wise multiply")
+
+        }
+
 
         // check for outer product: nary(*) between two vectors whose names do not join
         return if( nary.op == NaryOp.MULT && nary.inputs[0].schema.size == 1 && nary.inputs[1].schema.size == 1

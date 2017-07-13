@@ -67,6 +67,7 @@ class Spoof2Test(
         //	TEST_NAME+24;  //sum(X%*%Y)
         //	TEST_NAME+25;  //sum( (U%*%t(V))^2 ) // need common subexpression splitting, power-to-multiply
         //	TEST_NAME+26;  //X * (r %*% M %*% c) // the right multiply results in a scalar; the sum-product block can be partitioned
+        //	TEST_NAME+27;  //section from GLMDMLTest
         private const val NUM_TESTS = 26
 
         private const val TEST_DIR = "functions/spoof2/"
