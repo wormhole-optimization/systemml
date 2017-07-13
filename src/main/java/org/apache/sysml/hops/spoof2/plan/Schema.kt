@@ -131,6 +131,7 @@ class Schema private constructor(
             2 -> {
                 val (a, b) = permutation.keys.iterator().let { it.next() to it.next() }
                 names.swap(a,b)
+                shapes.swap(a,b)
             }
             else -> { // advanced case with >2 permutes
                 val tmpNames = ArrayList(names)

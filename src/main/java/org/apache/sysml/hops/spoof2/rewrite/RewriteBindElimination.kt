@@ -83,7 +83,7 @@ class RewriteBindElimination : SPlanRewriteRule() {
             val bind = node
             // bind-unbind
             if( bind.inputs[0] is SNodeUnbind && bind.inputs[0].parents.size == 1 ) {
-                val unbind = node.inputs[0] as SNodeUnbind
+                val unbind = bind.inputs[0] as SNodeUnbind
                 val renamings = mutableMapOf<Name,Name>()
                 val iter = bind.bindings.iterator()
                 while( iter.hasNext() ) {
@@ -102,8 +102,11 @@ class RewriteBindElimination : SPlanRewriteRule() {
                         SPlanRewriteRule.LOG.debug("RewriteBindElimination Bind-Unbind: " +
                                 "rename sub-tree of Unbind ${unbind.id} by $renamings")
 
+                    // the parent's schema may have been reordered as a result of Bind-Unbind elimination
+                    bind.parents.forEach { it.refreshSchemasUpward() }
+
                     // Common case: the resulting bind-unbind is empty.
-                    val child2 = if (unbind.unbindings.isEmpty()) eliminateEmpty(unbind) else unbind
+                    if (unbind.unbindings.isEmpty()) eliminateEmpty(unbind)
                     return if (bind.bindings.isEmpty())
                         rRewriteNode(parent, eliminateEmpty(bind), true)
                     else RewriteResult.NewNode(bind)
@@ -131,7 +134,7 @@ class RewriteBindElimination : SPlanRewriteRule() {
                         SPlanRewriteRule.LOG.debug("RewriteBindElimination Unbind-Bind on Unbind ${unbind.id} to $unbind and $bind, removing $numRemoved names")
 
                     // Common case: the resulting unbind-bind is empty.
-                    val child2 = if (bind.bindings.isEmpty()) eliminateEmpty(bind) else bind
+                    if (bind.bindings.isEmpty()) eliminateEmpty(bind)
                     return if (unbind.unbindings.isEmpty())
                         rRewriteNode(parent, eliminateEmpty(unbind), true)
                     else RewriteResult.NewNode(unbind)

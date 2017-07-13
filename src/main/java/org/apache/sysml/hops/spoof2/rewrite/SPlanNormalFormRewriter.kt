@@ -3,6 +3,7 @@ package org.apache.sysml.hops.spoof2.rewrite
 import java.util.ArrayList
 
 import org.apache.sysml.hops.spoof2.plan.SNode
+import org.apache.sysml.hops.spoof2.plan.SPlanValidator
 import org.apache.sysml.utils.Explain
 
 /**
@@ -26,9 +27,16 @@ class SPlanNormalFormRewriter {
         _rulesToHopReady.add(RewritePushAggIntoMult())
     }
 
+    companion object {
+        /** Whether to invoke the SPlanValidator after every rewrite pass. */
+        internal const val CHECK = true
+    }
+
     fun rewriteSPlan(roots: ArrayList<SNode>): ArrayList<SNode> {
         var count = 0
         do {
+            if( CHECK )
+                SPlanValidator.validateSPlan(roots)
             var changed = false
             SNode.resetVisited(roots)
             for (node in roots)
@@ -50,6 +58,8 @@ class SPlanNormalFormRewriter {
 
         count = 0
         do {
+            if( CHECK )
+                SPlanValidator.validateSPlan(roots)
             var changed = false
             SNode.resetVisited(roots)
             for (node in roots)
