@@ -101,8 +101,11 @@ import org.apache.sysml.utils.Statistics;
 import org.apache.sysml.yarn.DMLAppMasterUtils;
 import org.apache.sysml.yarn.DMLYarnClientProxy;
 
+import static org.apache.sysml.utils.Statistics.spoof2NormalFormChanged;
+import static org.apache.sysml.utils.Statistics.spoof2NormalFormNameLength;
+import static org.apache.sysml.utils.Statistics.spoof2NormalFormTestName;
 
-public class DMLScript 
+public class DMLScript
 {	
 	public enum RUNTIME_PLATFORM { 
 		HADOOP, 	    // execute all matrix operations in MR
@@ -768,6 +771,16 @@ public class DMLScript
 			LOG.info("END DML run " + getDateTime() );
 			//cleanup scratch_space and all working dirs
 			cleanupHadoopExecution( dmlconf );
+
+
+			// Tracks largest sum-product statistics; see RewriteNormalForm, Statistics, AutomatedTestBase
+			if( spoof2NormalFormChanged.get() ) {
+//				spoof2NormalFormTestName = fullDMLScriptName;
+				spoof2NormalFormChanged.set(false);
+			}
+			System.out.format("Spoof2 largest sum-product block on %s\n\tname length: %d\t aggs: %s\n\tschemas: %s\n",
+					spoof2NormalFormTestName,
+					spoof2NormalFormNameLength.get(), Statistics.spoof2NormalFormAggs, Statistics.spoof2NormalFormInputSchemas);
 		}
 	}		
 	

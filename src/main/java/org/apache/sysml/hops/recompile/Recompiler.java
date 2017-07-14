@@ -30,11 +30,9 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.wink.json4j.JSONObject;
 import org.apache.sysml.api.DMLScript;
-import org.apache.sysml.conf.ConfigurationManager;
-import org.apache.sysml.conf.DMLConfig;
 import org.apache.sysml.conf.CompilerConfig.ConfigType;
+import org.apache.sysml.conf.ConfigurationManager;
 import org.apache.sysml.hops.DataGenOp;
 import org.apache.sysml.hops.DataOp;
 import org.apache.sysml.hops.FunctionOp;
@@ -51,9 +49,9 @@ import org.apache.sysml.hops.MemoTable;
 import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.hops.ReorgOp;
 import org.apache.sysml.hops.UnaryOp;
-import org.apache.sysml.hops.codegen.SpoofCompiler;
 import org.apache.sysml.hops.rewrite.HopRewriteUtils;
 import org.apache.sysml.hops.rewrite.ProgramRewriter;
+import org.apache.sysml.hops.spoof2.Spoof2Compiler;
 import org.apache.sysml.lops.CSVReBlock;
 import org.apache.sysml.lops.DataGen;
 import org.apache.sysml.lops.Lop;
@@ -104,6 +102,7 @@ import org.apache.sysml.runtime.util.MapReduceTool;
 import org.apache.sysml.utils.Explain;
 import org.apache.sysml.utils.Explain.ExplainType;
 import org.apache.sysml.utils.JSONHelper;
+import org.apache.wink.json4j.JSONObject;
 
 /**
  * Dynamic recompilation of hop dags to runtime instructions, which includes the 
@@ -217,14 +216,19 @@ public class Recompiler
 			for( Hop hopRoot : hops )
 				hopRoot.refreshMemEstimates(memo); 
 			memo.extract(hops, status);
+
+			// Todo call Spoof2Compiler
+			Hop.resetVisitStatus(hops);
+			Spoof2Compiler.generateCodeFromHopDAGs(hops);
+
 			
-			// codegen if enabled
-			if( ConfigurationManager.getDMLConfig().getBooleanValue(DMLConfig.CODEGEN) 
-					&& SpoofCompiler.RECOMPILE_CODEGEN ) {
-				Hop.resetVisitStatus(hops);
-				hops = SpoofCompiler.optimize(hops, 
-					(status==null || !status.isInitialCodegen()));
-			}
+//			// codegen if enabled
+//			if( ConfigurationManager.getDMLConfig().getBooleanValue(DMLConfig.CODEGEN)
+//					&& SpoofCompiler.RECOMPILE_CODEGEN ) {
+//				Hop.resetVisitStatus(hops);
+//				hops = SpoofCompiler.optimize(hops,
+//					(status==null || !status.isInitialCodegen()));
+//			}
 			
 			// construct lops			
 			Dag<Lop> dag = new Dag<Lop>();
@@ -325,15 +329,21 @@ public class Recompiler
 			hops.resetVisitStatus();
 			memo.init(hops, status);
 			hops.resetVisitStatus();
-			hops.refreshMemEstimates(memo); 		
-			
-			// codegen if enabled
-			if( ConfigurationManager.getDMLConfig().getBooleanValue(DMLConfig.CODEGEN) 
-					&& SpoofCompiler.RECOMPILE_CODEGEN ) {
-				hops.resetVisitStatus();
-				hops = SpoofCompiler.optimize(hops,
-					(status==null || !status.isInitialCodegen()));
-			}
+			hops.refreshMemEstimates(memo);
+
+			// Todo call Spoof2Compiler
+			hops.resetVisitStatus();
+			hops = Spoof2Compiler.optimize(hops, true);
+
+
+
+			//			// codegen if enabled
+//			if( ConfigurationManager.getDMLConfig().getBooleanValue(DMLConfig.CODEGEN)
+//					&& SpoofCompiler.RECOMPILE_CODEGEN ) {
+//				hops.resetVisitStatus();
+//				hops = SpoofCompiler.optimize(hops,
+//					(status==null || !status.isInitialCodegen()));
+//			}
 			
 			// construct lops			
 			Dag<Lop> dag = new Dag<Lop>();

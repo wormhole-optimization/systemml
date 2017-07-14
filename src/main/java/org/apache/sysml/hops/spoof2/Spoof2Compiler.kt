@@ -65,6 +65,7 @@ object Spoof2Compiler {
         }
     }
 
+    @JvmStatic
     @Throws(HopsException::class, DMLRuntimeException::class)
     fun generateCodeFromStatementBlock(current: StatementBlock) {
         when( current ) {
@@ -105,6 +106,7 @@ object Spoof2Compiler {
         }
     }
 
+    @JvmStatic
     @Throws(HopsException::class, DMLRuntimeException::class)
     fun generateCodeFromHopDAGs(roots: ArrayList<Hop>?): ArrayList<Hop>? {
         if (roots == null)
@@ -126,6 +128,7 @@ object Spoof2Compiler {
      * @throws DMLRuntimeException if optimization failed
      * @throws HopsException       -
      */
+    @JvmStatic
     @Throws(DMLRuntimeException::class, HopsException::class)
     fun optimize(root: Hop?, recompile: Boolean): Hop? {
         if (root == null)
