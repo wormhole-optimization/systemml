@@ -23,6 +23,7 @@ class SPlanNormalFormRewriter {
         _rulesToNormalForm.add(RewriteAggregateElim())
         _rulesToNormalForm.add(RewriteCombineMultiply())
 
+        _rulesToHopReady.add(RewriteMultiplyCSEToPower())
         _rulesToHopReady.add(RewriteSplitMultiply())
         _rulesToHopReady.add(RewritePushAggIntoMult())
     }

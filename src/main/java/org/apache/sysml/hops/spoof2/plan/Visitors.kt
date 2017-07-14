@@ -30,11 +30,19 @@ fun SNode.renameAttributes(renaming: Map<Name, Name>, useInternalGuard: Boolean)
         this.parents.forEach { it.refreshSchemasUpward() }
 }
 
-fun SNode.refreshSchemasUpward() {
+/**
+ * Refresh the schema. If it changed, refresh the schema of all parents recursively.
+ *
+ * @return Whether the schema of this node changed.
+ */
+fun SNode.refreshSchemasUpward(): Boolean {
     val origSchema = Schema(this.schema)
     this.refreshSchema()
     if( origSchema != this.schema ) // only if schema changed (also acts as a memo guard)
+    {
         this.parents.forEach { it.refreshSchemasUpward() }
+        return true
+    } else return false
 }
 
 /**

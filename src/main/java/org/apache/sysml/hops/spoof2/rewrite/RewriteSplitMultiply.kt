@@ -1,7 +1,6 @@
 package org.apache.sysml.hops.spoof2.rewrite
 
-import org.apache.sysml.hops.spoof2.plan.SNode
-import org.apache.sysml.hops.spoof2.plan.SNodeNary
+import org.apache.sysml.hops.spoof2.plan.*
 
 /**
  * Split Nary multiply ops that have >2 inputs into a chain of multiplies.
@@ -16,8 +15,9 @@ class RewriteSplitMultiply : SPlanRewriteRule() {
         val origInputSize = node.inputs.size
         if( node is SNodeNary && node.op == SNodeNary.NaryOp.MULT && origInputSize > 2 ) { // todo generalize to other * functions
             val curMult = node
-            // todo check sublist
-//            val inputParentIndexes = curMult.inputs.map { it.parents.indexOf(curMult) }
+
+            adjustInputOrder(curMult)
+
             rSplitMultiply(curMult, curMult)
 
             if (SPlanRewriteRule.LOG.isDebugEnabled)
@@ -25,6 +25,24 @@ class RewriteSplitMultiply : SPlanRewriteRule() {
             return RewriteResult.NewNode(curMult)
         }
         return RewriteResult.NoChange
+    }
+
+    /**
+     * Change the order of inputs to mult so as to enable Hop reconstruction.
+     * May affect schema.
+     */
+    private fun adjustInputOrder(mult: SNodeNary) {
+        if( mult.parents.size == 1 && mult.parents[0] is SNodeAggregate ) {
+            val parent = mult.parents[0] as SNodeAggregate
+            // heuristic: the first inputs to multiply should be the ones with the most things to aggregate.
+            mult.inputs.sortWith(
+                    (compareBy<SNode> { parent.aggreateNames.intersect(it.schema.names).count() })
+                            .thenComparing<Int> { -(it.schema.names - parent.aggreateNames).size }
+            )
+            val changed = mult.refreshSchemasUpward()
+            if (changed && SPlanRewriteRule.LOG.isDebugEnabled)
+                SPlanRewriteRule.LOG.debug("RewriteSplitMultiply reorder inputs of $mult id=${mult.id} to schema ${mult.schema}.")
+        }
     }
 
     private tailrec fun rSplitMultiply(curMult: SNodeNary, origMult: SNodeNary) {
