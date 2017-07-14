@@ -45,6 +45,15 @@ class RewriteMultiplyCSEToPower : SPlanRewriteRule() {
                 }
                 multToChild++
             }
+            //eliminate unary mult
+            if( node.inputs.size == 1 ) {
+                val child = node.inputs[0]
+                SNodeRewriteUtils.removeAllChildReferences(node) // clear node.inputs, child.parents
+                SNodeRewriteUtils.rewireAllParentChildReferences(node, child) // for each parent of node, change its input from node to child and add the parent to child
+                if (SPlanRewriteRule.LOG.isDebugEnabled)
+                    SPlanRewriteRule.LOG.debug("RewriteMultiplyCSEToPower eliminate now-single-input multiply $node id=${node.id} whose child is $child id=${child.id}")
+                return RewriteResult.NewNode(child)
+            }
             if( numCSEs > 0 )
                 return RewriteResult.NewNode(node)
         }

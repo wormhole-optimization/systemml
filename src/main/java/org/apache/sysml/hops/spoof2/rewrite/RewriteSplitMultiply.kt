@@ -27,42 +27,52 @@ class RewriteSplitMultiply : SPlanRewriteRule() {
         return RewriteResult.NoChange
     }
 
-    /**
-     * Change the order of inputs to mult so as to enable Hop reconstruction.
-     * May affect schema.
-     */
-    private fun adjustInputOrder(mult: SNodeNary) {
-        if( mult.parents.size == 1 && mult.parents[0] is SNodeAggregate ) {
-            val parent = mult.parents[0] as SNodeAggregate
-            // heuristic: the first inputs to multiply should be the ones with the most things to aggregate.
-            mult.inputs.sortWith(
-                    (compareBy<SNode> { parent.aggreateNames.intersect(it.schema.names).count() })
-                            .thenComparing<Int> { -(it.schema.names - parent.aggreateNames).size }
-            )
-            val changed = mult.refreshSchemasUpward()
-            if (changed && SPlanRewriteRule.LOG.isDebugEnabled)
-                SPlanRewriteRule.LOG.debug("RewriteSplitMultiply reorder inputs of $mult id=${mult.id} to schema ${mult.schema}.")
-        }
-    }
+    companion object {
 
-    private tailrec fun rSplitMultiply(curMult: SNodeNary, origMult: SNodeNary) {
-        val curSize = curMult.inputs.size
-        if( curSize == 2 ) {
-            curMult.inputs.forEach { it.parents[it.parents.indexOf(origMult)] = curMult }
-            return
+
+        /**
+         * Change the order of inputs to mult so as to enable Hop reconstruction.
+         * May affect schema.
+         */
+        private fun adjustInputOrder(mult: SNodeNary) {
+            if (mult.parents.size == 1 && mult.parents[0] is SNodeAggregate) {
+                val parent = mult.parents[0] as SNodeAggregate
+                // heuristic: the first inputs to multiply should be the ones with the most things to aggregate.
+                mult.inputs.sortWith(
+                        (compareBy<SNode> { parent.aggreateNames.intersect(it.schema.names).count() })
+                                .thenComparing<Int> { -(it.schema.names - parent.aggreateNames).size }
+                )
+                val changed = mult.refreshSchemasUpward()
+                if (changed && SPlanRewriteRule.LOG.isDebugEnabled)
+                    SPlanRewriteRule.LOG.debug("RewriteSplitMultiply reorder inputs of $mult id=${mult.id} to schema ${mult.schema}.")
+            }
         }
-        val firstInput = curMult.inputs[0]
-        firstInput.parents[firstInput.parents.indexOf(origMult)] = curMult
-        val otherInputs = curMult.inputs.subList(1,curSize)
-        val nextMult = SNodeNary(curMult.op, otherInputs)  // this adds nextMult as parent to otherInputs
-        otherInputs.forEach { child ->              // but we will replace the existing parent origMult later
-            child.parents.removeAt(child.parents.size-1)
+
+        internal fun splitMultiply(mult: SNodeNary) {
+            rSplitMultiply(mult, mult)
         }
-        curMult.inputs.clear()
-        curMult.inputs += firstInput
-        curMult.inputs += nextMult
-        nextMult.parents += curMult
-        rSplitMultiply(nextMult, origMult)
+
+        private tailrec fun rSplitMultiply(curMult: SNodeNary, origMult: SNodeNary) {
+            val curSize = curMult.inputs.size
+            if (curSize == 2) {
+                curMult.inputs.forEach { it.parents[it.parents.indexOf(origMult)] = curMult }
+                return
+            }
+            val firstInput = curMult.inputs[0]
+            firstInput.parents[firstInput.parents.indexOf(origMult)] = curMult
+            val otherInputs = curMult.inputs.subList(1, curSize)
+            val nextMult = SNodeNary(curMult.op, otherInputs)  // this adds nextMult as parent to otherInputs
+            otherInputs.forEach { child ->
+                // but we will replace the existing parent origMult later
+                child.parents.removeAt(child.parents.size - 1)
+            }
+            curMult.inputs.clear()
+            curMult.inputs += firstInput
+            curMult.inputs += nextMult
+            nextMult.parents += curMult
+            rSplitMultiply(nextMult, origMult)
+        }
+
     }
 
 }

@@ -24,19 +24,7 @@ class RewriteNormalForm : SPlanRewriteRule() {
         if( LOG.isDebugEnabled )
             LOG.debug(spb)
 
-        // Tracks largest sum-product statistics; see RewriteNormalForm, Statistics, AutomatedTestBase
-        val thisSize = spb.edges.size
-        var oldLargestSize: Int
-        do {
-            oldLargestSize = Statistics.spoof2NormalFormNameLength.get()
-        } while(thisSize > oldLargestSize && !Statistics.spoof2NormalFormNameLength.compareAndSet(oldLargestSize, thisSize))
-        // not exactly thread safe because we need to lock the other fields, but good enough for this hack.
-
-        if( thisSize > oldLargestSize ) {
-            Statistics.spoof2NormalFormAggs = spb.aggNames.toString()
-            Statistics.spoof2NormalFormInputSchemas = spb.edges.toString()
-            Statistics.spoof2NormalFormChanged.set(true)
-        }
+        trackStatistics(spb)
 
         // 0. Check if this normal form can be partitioned into two separate connected components.
         // This occurs if some portion of the multiplies produces a scalar.
@@ -71,8 +59,96 @@ class RewriteNormalForm : SPlanRewriteRule() {
             return RewriteResult.NewNode(newMult) // these will be handled as disjoint sub-problems in SPlanNormalFormRewriter at next recursion
         }
 
-        return RewriteResult.NoChange
+
+        return RewriteResult.NewNode(binaryFactorize(agg, spb))
+
+
+//        // 1. Brute force variable order. spb.aggNames.size! choices.
+//        // Cost each variable order.
+//        var bestCost = SPCost.MAX_COST
+//        var bestOrder = listOf<Name>()
+//        for (elimName in spb.aggNames) {
+//            val (cost, order) = costQuery(spb, elimName)
+//            // Does not consider the cost of multiplying vectors over non-aggregated names,
+//            // but the cost of multiplying those is the same for all elimination orders, so it is okay not to add it here.
+//            if( cost < bestCost ) {
+//                bestCost = cost
+//                bestOrder = order + elimName
+//            }
+//        }
+//        bestOrder = bestOrder.reversed()
+//        if( LOG.isDebugEnabled )
+//            LOG.debug("Best order at cost $bestCost: $bestOrder")
+
+        // 2. Re-order the multiplies into the new order.
+        // todo
+
+
+//        return RewriteResult.NoChange
     }
+    private fun binaryFactorize(agg: SNodeAggregate, spbInitial: SumProductBlock): SNodeAggregate {
+        var spb = spbInitial
+        val mult = agg.inputs[0] as SNodeNary
+
+        // 1. Multiply within groups
+        if( spb.edgesGroupByIncidentNames.size == 1 ) {
+            // all edges fit in a single group; chain them
+            RewriteSplitMultiply.splitMultiply(mult)
+            assert(mult.inputs.size == 2)
+            return agg
+        }
+        spb.edgesGroupByIncidentNames.forEach { (_, edges) ->
+            if( edges.size > 1 ) {
+                val edgeIds = edges.map { it.id }
+                val edgeNodes = mult.inputs.filter { it.id in edgeIds }
+
+                // Create a multiply just with these edgeNodes, then split it.
+                mult.inputs.removeIf { it.id in edgeIds }
+                edgeNodes.forEach { it.parents.remove(mult) }
+                val newMult = SNodeNary(mult.op, edgeNodes)
+                mult.inputs += newMult
+                newMult.parents += mult
+                RewriteSplitMultiply.splitMultiply(newMult)
+                mult.refreshSchemasUpward()
+
+                if (LOG.isDebugEnabled)
+                    LOG.debug("Isolating edge group $edgeNodes under new $newMult id=${newMult.id} ${newMult.schema}")
+            }
+        }
+        // If we go down to 2 inputs, we are done.
+        spb = isSumProductBlock(agg) ?: return agg
+
+        return agg
+//        // 2. Eliminate aggregated names, in order of the lowest degree one.
+//        while( spb.aggNames.isNotEmpty() ) {
+//            val (elimName,elimAdjNames) = spb.nameToAdjacentNames.minBy { (name,adjNames) ->
+//                (adjNames - name).size
+//            }!!
+//            when( elimAdjNames.size ) {
+//                0 -> {}
+//                1 -> {
+//
+//                }
+//            }
+//        }
+    }
+
+    private fun trackStatistics(spb: SumProductBlock) {
+        // Tracks largest sum-product statistics; see RewriteNormalForm, Statistics, AutomatedTestBase
+        val thisSize = spb.edges.size
+        var oldLargestSize: Int
+        do {
+            oldLargestSize = Statistics.spoof2NormalFormNameLength.get()
+        } while(thisSize > oldLargestSize && !Statistics.spoof2NormalFormNameLength.compareAndSet(oldLargestSize, thisSize))
+        // not exactly thread safe because we need to lock the other fields, but good enough for this hack.
+
+        if( thisSize > oldLargestSize ) {
+            Statistics.spoof2NormalFormAggs = spb.aggNames.toString()
+            Statistics.spoof2NormalFormInputSchemas = spb.edges.map { it.schema }.toString()
+            Statistics.spoof2NormalFormChanged.set(true)
+        }
+    }
+
 
     private fun findConnectedNames(spb: SumProductBlock, name: Name): Set<Name> {
         return mutableSetOf<Name>().also { rFindConnectedNames(spb, name, it) }
@@ -113,6 +189,7 @@ class RewriteNormalForm : SPlanRewriteRule() {
             val multOp: SNodeNary.NaryOp,
             val aggId: Long
     ) {
+
         constructor(aggNode: SNodeAggregate) : this(
                 aggNode.inputs[0].inputs.map(::Edge),
                 HashSet(aggNode.aggreateNames),
@@ -130,6 +207,16 @@ class RewriteNormalForm : SPlanRewriteRule() {
             edges.flatMap { it.schema.names }.toSet()
         }
 
+        val edgesGroupByIncidentNames: Map<Set<Name>, List<Edge>> = edges.groupBy { it.schema.names.toSet() }
+
+        fun elimNeighborGroups(elimName: Name): Map<Set<Name>, List<Edge>> {
+            val adjacentNames = nameToAdjacentNames[elimName]!!
+
+
+            // todo
+            TODO()
+        }
+
         override fun toString(): String {
             return "SumProductBlock (+=$aggOp) (*=$multOp) (aggId=$aggId)\n" +
                     "\tnames: $names aggregating $aggNames\n" +
@@ -137,9 +224,27 @@ class RewriteNormalForm : SPlanRewriteRule() {
         }
     }
 
-//    private data class MultiplyBlock(
-//            val multOp: SNodeNary.NaryOp,
-//            val names: List<Name>,
-//            val inputs: List<Schema>
-//    )
+    data class SPCost(
+            val nMultiply: Long = 0L,
+            val nAdd: Long = 0L,
+            val nMemory: Long = 0L
+    ) : Comparable<SPCost> {
+
+        companion object {
+            val MAX_COST = SPCost(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE)
+        }
+        override fun compareTo(other: SPCost): Int {
+            // todo consider memory
+            return (nMultiply + nAdd - other.nMultiply - other.nAdd).toInt()
+        }
+
+    }
+
+    private fun costQuery(spb: SumProductBlock, elimName: Name): Pair<SPCost, List<Name>> {
+        // 1. Form elim neighbor groups
+        TODO()
+    }
+
+
+
 }
