@@ -212,7 +212,7 @@ object Spoof2Compiler {
         // shouldn't be necessary because the roots are generally Writes, which correct orientation on their own
         roots2.mapInPlaceIndexed { idx, root2 ->
             if( rootClasses[idx].isVector && root2.classify() != rootClasses[idx] ) {
-                check( root2.classify().isVector ) {"root changed type after reconstruction? Old type ${rootClasses[idx]}; new type ${root2.classify()}"}
+                check( root2.classify().isVector ) {"root changed type after reconstruction? Old type ${rootClasses[idx]}; new type ${root2.classify()} dims ${root2.dim1}, ${root2.dim2} hopid=${root2.hopID}"}
                 if( LOG.isTraceEnabled )
                     LOG.trace("creating root transpose at root $idx to enforce orientation ${rootClasses[idx]}")
                 HopRewriteUtils.createTranspose(root2)

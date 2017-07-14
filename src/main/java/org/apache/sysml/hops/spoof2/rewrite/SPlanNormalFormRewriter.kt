@@ -12,21 +12,20 @@ import org.apache.sysml.utils.Explain
  * 3. Apply the rewrite rules that get us back to Hop-ready form, repeatedly until convergence.
  */
 class SPlanNormalFormRewriter {
-    private val _rulesToNormalForm: ArrayList<SPlanRewriteRule> = ArrayList()
-    private val _rulesToHopReady: ArrayList<SPlanRewriteRule> = ArrayList()
-    private val _rulesNormalForm = listOf(RewriteNormalForm())
-
-    init {
-        //initialize ruleSet (with fixed rewrite order)
-        _rulesToNormalForm.add(RewriteBindElim())
-        _rulesToNormalForm.add(RewritePullAggAboveMult())
-        _rulesToNormalForm.add(RewriteAggregateElim())
-        _rulesToNormalForm.add(RewriteCombineMultiply())
-
-        _rulesToHopReady.add(RewriteMultiplyCSEToPower())
-        _rulesToHopReady.add(RewriteSplitMultiply())
-        _rulesToHopReady.add(RewritePushAggIntoMult())
-    }
+    private val _rulesToNormalForm = listOf(
+            RewriteBindElim(),
+            RewritePullAggAboveMult(),
+            RewriteAggregateElim(),
+            RewriteCombineMultiply()
+    )
+    private val _rulesNormalForm = listOf(
+            RewriteMultiplyCSEToPower(),
+            RewriteNormalForm()
+    )
+    private val _rulesToHopReady = listOf(
+            RewriteSplitMultiply(),
+            RewritePushAggIntoMult()
+    )
 
     companion object {
         /** Whether to invoke the SPlanValidator after every rewrite pass. */

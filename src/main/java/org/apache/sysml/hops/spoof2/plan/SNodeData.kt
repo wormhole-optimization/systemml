@@ -18,6 +18,17 @@ class SNodeData private constructor(
     val isLiteral = hop is LiteralOp
     val isWrite = hop is DataOp && hop.isWrite
 
+    val literalLong: Long
+        get() {
+            check(hop is LiteralOp) {"tried to get literal value of non-literal $this id=$id"}
+            return (hop as LiteralOp).longValue
+        }
+    val literalDouble: Double
+        get() {
+            check(hop is LiteralOp) {"tried to get literal value of non-literal $this id=$id"}
+            return (hop as LiteralOp).doubleValue
+        }
+
     val inputHopClasses = hop.input.map(Hop::classify)
 
     override fun toString() = "data(${hop.hopID} ${hop.opString})"

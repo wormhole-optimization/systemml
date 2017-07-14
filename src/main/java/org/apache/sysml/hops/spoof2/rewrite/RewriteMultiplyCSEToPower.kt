@@ -9,8 +9,18 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary
 /**
  * When a multiply has common subexpression inputs, rewrite them as a power.
  * Combine their parents together.
+ * Depends on common subexpression elimination.
+ *
+ * Also combine together children with their powers, when the power does not have foreign parents.
  */
 class RewriteMultiplyCSEToPower : SPlanRewriteRule() {
+
+    private fun SNode.isChildPower(node: SNode, child: SNode): Boolean {
+        return this is SNodeNary && this.op == SNodeNary.NaryOp.POW
+                && this.inputs[1] is SNodeData && ((this.inputs[1]) as SNodeData).isLiteral
+                && node in this.parents && child == this.inputs[0]
+                && this.parents.size == 1
+    }
 
     override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
         if( node is SNodeNary && node.op == SNodeNary.NaryOp.MULT ) { // todo generalize to other * functions - min and max don't change input, + doubles input
@@ -19,16 +29,18 @@ class RewriteMultiplyCSEToPower : SPlanRewriteRule() {
             while (multToChild < node.inputs.size) {
                 val child = node.inputs[multToChild]
                 val numInstancesOfChild = node.inputs.count { it == child }
-                if( numInstancesOfChild > 1 ) {
-                    node.inputs.removeIf { it == child }
+                // We can have floating-point powers
+                val powerCountOfChild = node.inputs.sumByDouble { if (it.isChildPower(node, child)) (it.inputs[1] as SNodeData).literalDouble else 0.0 }
+                if( numInstancesOfChild + powerCountOfChild > 1 ) {
+                    node.inputs.removeIf { it == child || it.isChildPower(node, child) }
                     // remove all instances in parents of child
-                    child.parents.removeIf { it == node }
-                    val pow = SNodeNary(SNodeNary.NaryOp.POW, child, SNodeData(LiteralOp(numInstancesOfChild.toLong())))
+                    child.parents.removeIf { it == node || it.isChildPower(node, child) }
+                    val pow = SNodeNary(SNodeNary.NaryOp.POW, child, SNodeData(LiteralOp(numInstancesOfChild + powerCountOfChild)))
                     node.inputs.add(multToChild, pow)
                     pow.parents += node
                     if (SPlanRewriteRule.LOG.isDebugEnabled)
                         SPlanRewriteRule.LOG.debug("RewriteMultiplyCSEToPower on multiply $node id=${node.id}, " +
-                                "merged $numInstancesOfChild common subexpressions of $child id=${child.id} into power $pow id=${pow.id}.")
+                                "merged common subexpressions of $child id=${child.id} into power $pow id=${pow.id} with exponent ${numInstancesOfChild + powerCountOfChild}.")
                     numCSEs++
                 }
                 multToChild++

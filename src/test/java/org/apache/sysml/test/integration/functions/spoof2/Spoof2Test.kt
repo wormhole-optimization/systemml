@@ -69,7 +69,8 @@ class Spoof2Test(
         //	TEST_NAME+26;  //X * (r %*% M %*% c) // the right multiply results in a scalar; the sum-product block can be partitioned
         //	TEST_NAME+27;  //((X * X) %*% Y) * Z
         //	TEST_NAME+28;  //((X * X) %*% Y)
-        private const val NUM_TESTS = 28
+        //	TEST_NAME+29;  //((X * X^2.2) %*% Y)
+        private const val NUM_TESTS = 29
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
