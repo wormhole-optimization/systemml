@@ -1246,6 +1246,15 @@ public abstract class AutomatedTestBase
 				fail(errorMessage.toString());
 			}
 		}
+
+		// Tracks largest sum-product statistics; see RewriteNormalForm, Statistics, AutomatedTestBase
+		if( spoof2NormalFormChanged.get() ) {
+			spoof2NormalFormTestName = fullDMLScriptName;
+			spoof2NormalFormChanged.set(false);
+		}
+//		System.out.format("Spoof2 largest sum-product block on %s\n\tname length: %d\t aggs: %s\n\tschemas: %s\n",
+//				spoof2NormalFormTestName,
+//				spoof2NormalFormNameLength.get(), Statistics.spoof2NormalFormAggs, Statistics.spoof2NormalFormFactoredSpb);
 	}
 
 	public void cleanupScratchSpace()

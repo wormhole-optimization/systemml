@@ -23,8 +23,6 @@ class RewriteNormalForm : SPlanRewriteRule() {
         if( LOG.isDebugEnabled )
             LOG.debug(spb)
 
-        trackStatistics(spb)
-
 
 //        val agg = node as SNodeAggregate
 //        val mult = agg.inputs[0] as SNodeNary
@@ -82,44 +80,27 @@ class RewriteNormalForm : SPlanRewriteRule() {
             return RewriteResult.NewNode(spb.applyToNormalForm(node)) // these will be handled as disjoint sub-problems in SPlanNormalFormRewriter at next recursion
         }
 
+        numForks = 0
+
         val (spbNew, spbCost) = factorSumProduct(spb)
         if( LOG.isDebugEnabled )
             LOG.debug("New SumProduct.Block found with cost $spbCost\n" +
                     "$spbNew")
 
+        trackStatistics(spb)
+
         return RewriteResult.NewNode(spbNew.applyToNormalForm(node))
-
-
-//        // 1. Brute force variable order. spb.aggNames.size! choices.
-//        // Cost each variable order.
-//        var bestCost = SPCost.MAX_COST
-//        var bestOrder = listOf<Name>()
-//        for (elimName in spb.aggNames) {
-//            val (cost, order) = costQuery(spb, elimName)
-//            // Does not consider the cost of multiplying vectors over non-aggregated names,
-//            // but the cost of multiplying those is the same for all elimination orders, so it is okay not to add it here.
-//            if( cost < bestCost ) {
-//                bestCost = cost
-//                bestOrder = order + elimName
-//            }
-//        }
-//        bestOrder = bestOrder.reversed()
-//        if( LOG.isDebugEnabled )
-//            LOG.debug("Best order at cost $bestCost: $bestOrder")
-
-        // 2. Re-order the multiplies into the new order.
-        // todo
-
-
-//        return RewriteResult.NoChange
     }
-    private fun factorSumProduct(spb: SumProduct.Block): Pair<SumProduct.Block, SPCost> {
 
-        // 1. Multiply within groups
+    var numForks = 0
+
+    private fun factorSumProduct(spb: SumProduct.Block): Pair<SumProduct.Block, SPCost> {
         if (spb.edgesGroupByIncidentNames().size == 1) {
             // all edges fit in a single group; nothing to do
             return spb to SPCost.costFactoredBlock(spb)
         }
+
+        // 1. Multiply within groups
         spb.edgesGroupByIncidentNames().forEach { (_, edges) ->
             if (edges.size > 1) {
                 // Create a Block on just these inputs.
@@ -131,7 +112,7 @@ class RewriteNormalForm : SPlanRewriteRule() {
             }
         }
 
-        // We are done if no aggregations remain
+        // Done if no aggregations remain
         if (spb.aggNames().isEmpty())
             return spb to SPCost.costFactoredBlock(spb)
 
@@ -142,12 +123,13 @@ class RewriteNormalForm : SPlanRewriteRule() {
         val minDegree = tmp.map { it.second }.min()!!
         check(minDegree <= 2) { "Minimum degree is >2. Will form tensor intermediary. In spb $spb" }
         val minDegreeAggNames = tmp.filter { it.second == minDegree }.map { it.first }
+        numForks += minDegreeAggNames.size
 
         // fork on the different possible agg names
         val (bestSpb, bestCost) = minDegreeAggNames.map { elimName ->
             val incidentEdges = spb.nameToIncidentEdge()[elimName]!!
-//            if( incidentEdges.size == spb.edges.size ) // if all edges remaining touch this one, nothing to do.
-//                return spb to SPCost.costFactoredBlock(spb)
+            if( incidentEdges.size == spb.edges.size && spb.aggNames().isEmpty() ) // if all edges remaining touch this one, nothing to do.
+                return spb to SPCost.costFactoredBlock(spb)
 
             val factoredSpb = spb.deepCopy()
             factoredSpb.factorEdgesToBlock(incidentEdges)
@@ -204,7 +186,9 @@ class RewriteNormalForm : SPlanRewriteRule() {
 
     private fun trackStatistics(spb: SumProduct.Block) {
         // Tracks largest sum-product statistics; see RewriteNormalForm, Statistics, AutomatedTestBase
-        val thisSize = spb.edges.size
+        val recSchema = spb.recUnionSchema()
+
+        val thisSize = spb.edges.size + recSchema.size
         var oldLargestSize: Int
         do {
             oldLargestSize = Statistics.spoof2NormalFormNameLength.get()
@@ -212,8 +196,9 @@ class RewriteNormalForm : SPlanRewriteRule() {
         // not exactly thread safe because we need to lock the other fields, but good enough for this hack.
 
         if( thisSize > oldLargestSize ) {
-            Statistics.spoof2NormalFormAggs = spb.aggNames().toString()
-            Statistics.spoof2NormalFormInputSchemas = spb.edges.map { it.schema }.toString()
+            Statistics.spoof2NormalFormAggs = recSchema.toString()
+            Statistics.spoof2NormalFormFactoredSpb = spb.toString() //.edges.map { it.schema }.toString()
+            Statistics.spoof2NormalFormNumForks = numForks
             Statistics.spoof2NormalFormChanged.set(true)
         }
     }

@@ -101,7 +101,6 @@ import org.apache.sysml.utils.Statistics;
 import org.apache.sysml.yarn.DMLAppMasterUtils;
 import org.apache.sysml.yarn.DMLYarnClientProxy;
 
-import static org.apache.sysml.utils.Statistics.spoof2NormalFormChanged;
 import static org.apache.sysml.utils.Statistics.spoof2NormalFormNameLength;
 import static org.apache.sysml.utils.Statistics.spoof2NormalFormTestName;
 
@@ -774,13 +773,16 @@ public class DMLScript
 
 
 			// Tracks largest sum-product statistics; see RewriteNormalForm, Statistics, AutomatedTestBase
-			if( spoof2NormalFormChanged.get() ) {
-//				spoof2NormalFormTestName = fullDMLScriptName;
-				spoof2NormalFormChanged.set(false);
-			}
-			System.out.format("Spoof2 largest sum-product block on %s\n\tname length: %d\t aggs: %s\n\tschemas: %s\n",
+//			if( spoof2NormalFormChanged.get() ) {
+////				spoof2NormalFormTestName = fullDMLScriptName;
+//				spoof2NormalFormChanged.set(false);
+//			}
+			System.out.format("Spoof2 largest sum-product block on %s\n"
+							+ "weight: %d\t all-schema: %s\tnumForks: %d\n"
+							+ "%s\n",
 					spoof2NormalFormTestName,
-					spoof2NormalFormNameLength.get(), Statistics.spoof2NormalFormAggs, Statistics.spoof2NormalFormInputSchemas);
+					spoof2NormalFormNameLength.get(), Statistics.spoof2NormalFormAggs,
+					Statistics.spoof2NormalFormNumForks, Statistics.spoof2NormalFormFactoredSpb);
 		}
 	}		
 	

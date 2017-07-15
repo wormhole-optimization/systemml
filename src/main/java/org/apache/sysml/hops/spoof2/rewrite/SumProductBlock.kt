@@ -402,6 +402,14 @@ sealed class SumProduct {
         return SNodeNary(this.product, inputNodes)
     }
 
+    fun recUnionSchema(rSchema: Schema = Schema()): Schema {
+        when( this ) {
+            is Input -> rSchema.unionWithBound(this.schema)
+            is Block -> this.edges.forEach { it.recUnionSchema(rSchema) }
+        }
+        return rSchema
+    }
+
 }
 
 

@@ -373,8 +373,9 @@ public class Statistics
 	// Tracks largest sum-product statistics; see RewriteNormalForm, Statistics, AutomatedTestBase
 	public static AtomicInteger spoof2NormalFormNameLength = new AtomicInteger();
 	public static volatile String spoof2NormalFormAggs = "";
-	public static volatile String spoof2NormalFormInputSchemas = "";
+	public static volatile String spoof2NormalFormFactoredSpb = "";
 	public static volatile String spoof2NormalFormTestName = "";
+	public static volatile int spoof2NormalFormNumForks;
 	public static AtomicBoolean spoof2NormalFormChanged = new AtomicBoolean();
 
 	public static void reset()
