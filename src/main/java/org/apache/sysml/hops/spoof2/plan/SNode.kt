@@ -9,7 +9,7 @@ import org.apache.sysml.runtime.controlprogram.parfor.util.IDSequence
 abstract class SNode(inputs: List<SNode>) {
 
     //globally unique SNode id
-    val id: Long = _idSeq.nextID
+    val id: Id = _idSeq.nextID
     val parents: ArrayList<SNode> = ArrayList()
     val inputs: ArrayList<SNode> = ArrayList(inputs)
     var visited: Boolean = false

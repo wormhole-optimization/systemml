@@ -8,6 +8,7 @@ import org.apache.sysml.parser.Expression
 typealias Attribute = Pair<Name, Shape>
 typealias Name = String
 typealias Shape = Long
+typealias Id = Long
 fun Name.isBound() = this.length >= 2
 
 /**

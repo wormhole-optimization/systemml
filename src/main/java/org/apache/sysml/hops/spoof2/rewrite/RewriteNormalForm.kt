@@ -16,9 +16,7 @@ class RewriteNormalForm : SPlanRewriteRule() {
         if( !SumProduct.isSumProductBlock(node))
             return RewriteResult.NoChange
         val spb = SumProduct.constructBlock(node)
-        val agg = node as SNodeAggregate
-        val mult = agg.inputs[0] as SNodeNary
-        if( mult.schema.names.any { !it.isBound() } ) {
+        if( node.schema.names.any { !it.isBound() } ) {
             LOG.warn("Found unbound name in Sum-Product block; may not be handled incorrectly. $spb")
         }
 
@@ -27,41 +25,66 @@ class RewriteNormalForm : SPlanRewriteRule() {
 
         trackStatistics(spb)
 
+
+//        val agg = node as SNodeAggregate
+//        val mult = agg.inputs[0] as SNodeNary
         // 0. Check if this normal form can be partitioned into two separate connected components.
         // This occurs if some portion of the multiplies produces a scalar.
         val CCnames = findConnectedNames(spb, spb.names.first())
         if( CCnames != spb.names ) {
             val NCnames = spb.names - CCnames
-            // partition the names by CCnames
-            // create:  CC-edges <<- aggp[CC-aggs] <- new-mult -> agg[not-CC-aggs] ->> not-CC-edges
-            val (CCedges, NCedges) = mult.inputs.partition { it.schema.names.first() in CCnames }
-            mult.inputs.forEach { it.parents.removeAt(it.parents.indexOf(mult)) }
-            val CCaggNames = agg.aggreateNames.intersect(CCnames)
-            val NCaggNames = agg.aggreateNames - CCaggNames
 
-            // For CC and NC, don't create mult if only one input; don't create agg if no aggregation.
-            val CCmult = if (CCedges.size == 1) CCedges.first() else SNodeNary(mult.op, CCedges)
-            val CCagg = if (CCaggNames.isEmpty()) CCmult else SNodeAggregate(agg.op, CCmult, CCaggNames)
-            val NCmult = if (NCedges.size == 1) NCedges.first() else SNodeNary(mult.op, NCedges)
-            val NCagg = if (NCaggNames.isEmpty()) NCmult else SNodeAggregate(agg.op, NCmult, NCaggNames)
-            val newMult = SNodeNary(mult.op, CCagg, NCagg)
+            val CCspb = SumProduct.Block(
+                    spb.sumBlocks.map { SumBlock(it.op, it.names.filter { it in CCnames }) }
+                            .filter { it.names.isNotEmpty() },
+                    spb.product,
+                    spb.edges.filter { it.schema.names.any { it in CCnames } }
+                            .map { it.deepCopy() }
+            )
+            val NCspb = SumProduct.Block(
+                    spb.sumBlocks.map { SumBlock(it.op, it.names.filter { it in NCnames }) }
+                            .filter { it.names.isNotEmpty() },
+                    spb.product,
+                    spb.edges.filter { it.schema.names.any { it in NCnames } }
+                            .map { it.deepCopy() }
+            )
+            spb.sumBlocks.clear()
+            spb.edges.clear()
+            spb.edges += CCspb
+            spb.edges += NCspb
 
-            val parents = ArrayList(agg.parents)
-            for( p in parents )
-                SNodeRewriteUtils.replaceChildReference(p, agg, newMult)
-            for( p in agg.parents )
-                p.refreshSchemasUpward() // playing it safe, not sure if this is necessary
+
+//            // partition the names by CCnames
+//            // create:  CC-edges <<- aggp[CC-aggs] <- new-mult -> agg[not-CC-aggs] ->> not-CC-edges
+//            val (CCedges, NCedges) = mult.inputs.partition { it.schema.names.first() in CCnames }
+//            mult.inputs.forEach { it.parents.removeAt(it.parents.indexOf(mult)) }
+//            val CCaggNames = agg.aggreateNames.intersect(CCnames)
+//            val NCaggNames = agg.aggreateNames - CCaggNames
+//
+//            // For CC and NC, don't create mult if only one input; don't create agg if no aggregation.
+//            val CCmult = if (CCedges.size == 1) CCedges.first() else SNodeNary(mult.op, CCedges)
+//            val CCagg = if (CCaggNames.isEmpty()) CCmult else SNodeAggregate(agg.op, CCmult, CCaggNames)
+//            val NCmult = if (NCedges.size == 1) NCedges.first() else SNodeNary(mult.op, NCedges)
+//            val NCagg = if (NCaggNames.isEmpty()) NCmult else SNodeAggregate(agg.op, NCmult, NCaggNames)
+//            val newMult = SNodeNary(mult.op, CCagg, NCagg)
+//
+//            val parents = ArrayList(agg.parents)
+//            for( p in parents )
+//                SNodeRewriteUtils.replaceChildReference(p, agg, newMult)
+//            for( p in agg.parents )
+//                p.refreshSchemasUpward() // playing it safe, not sure if this is necessary
 
             if( LOG.isDebugEnabled )
                 LOG.debug("Detected Sum-Product block that can be partitioned into disjoint connected components:\n" +
-                        "\tComponent 1: ${CCedges.size} edge with names $CCnames ${if(CCagg is SNodeAggregate) "aggregating" else "no agg"} at $CCagg id=${CCagg.id}\n" +
-                        "\tComponent 2: ${NCedges.size} edge with names $NCnames ${if(NCagg is SNodeAggregate) "aggregating" else "no agg"} at $NCagg id=${NCagg.id}")
+                        "\tComponent 1: $CCspb\n" +
+                        "\tComponent 2: $NCspb")
 
-            return RewriteResult.NewNode(newMult) // these will be handled as disjoint sub-problems in SPlanNormalFormRewriter at next recursion
+            return RewriteResult.NewNode(spb.applyToNormalForm(node)) // these will be handled as disjoint sub-problems in SPlanNormalFormRewriter at next recursion
         }
 
+        val spbNew = factorSumProduct(spb)
 
-        return RewriteResult.NewNode(solveSumProduct(agg, spb))
+        return RewriteResult.NewNode(spbNew.applyToNormalForm(node))
 
 
 //        // 1. Brute force variable order. spb.aggNames.size! choices.
@@ -87,40 +110,37 @@ class RewriteNormalForm : SPlanRewriteRule() {
 
 //        return RewriteResult.NoChange
     }
-    private fun solveSumProduct(agg: SNodeAggregate, spbInitial: SumProduct.Block): SNodeAggregate {
-        var spb = spbInitial
-        val mult = agg.inputs[0] as SNodeNary
+    private fun factorSumProduct(spb: SumProduct.Block): SumProduct.Block {
+
+        // 0. Check if this normal form can be partitioned into two separate connected components.
+        // This occurs if some portion of the multiplies produces a scalar.
+        val CCnames = findConnectedNames(spb, spb.names.first())
+        if( CCnames != spb.names ) {
+
+        }
 
         // 1. Multiply within groups
-        if( spb.edgesGroupByIncidentNames.size == 1 ) {
-            // all edges fit in a single group; chain them
-            RewriteSplitMultiply.splitMultiply(mult)
-            assert(mult.inputs.size == 2)
-            return agg
+        val edgesGroupByIncidentNames = spb.edgesGroupByIncidentNames
+        if( edgesGroupByIncidentNames.size == 1 ) {
+            // all edges fit in a single group; nothing to do
+            return spb
         }
-        spb.edgesGroupByIncidentNames.forEach { (_, edges) ->
+        edgesGroupByIncidentNames.forEach { (_, edges) ->
             if( edges.size > 1 ) {
-                val edgeIds = edges.map { it as SumProduct.Edge; it.id }
-                val edgeNodes = mult.inputs.filter { it.id in edgeIds }
-
-                // Create a multiply just with these edgeNodes, then split it.
-                mult.inputs.removeIf { it.id in edgeIds }
-                edgeNodes.forEach { it.parents.remove(mult) }
-                val newMult = SNodeNary(mult.op, edgeNodes)
-                mult.inputs += newMult
-                newMult.parents += mult
-                RewriteSplitMultiply.splitMultiply(newMult)
-                mult.refreshSchemasUpward()
-
+                // Create a Block on just these inputs, without aggregation. (Push aggregation later.)
+                // Move these inputs to the new block and wire the new block to this block.
+                val groupBlock = SumProduct.Block(spb.product, edges)
+                spb.edges.removeIf { it in edges }
+                spb.edges += groupBlock
                 if (LOG.isDebugEnabled)
-                    LOG.debug("Isolating edge group $edgeNodes under new $newMult id=${newMult.id} ${newMult.schema}")
+                    LOG.debug("Isolating edge group $edges")
             }
         }
-        // If we go down to 2 inputs, we are done.
-        if( !SumProduct.isSumProductBlock(agg) )
-            return agg
+        // Push aggregations down if they are not join conditions (present in >1 edge).
+        spb.pushAggregations()
 
-        return agg
+        return spb
+
 //        // 2. Eliminate aggregated names, in order of the lowest degree one.
 //        while( spb.aggNames.isNotEmpty() ) {
 //            val (elimName,elimAdjNames) = spb.nameToAdjacentNames.minBy { (name,adjNames) ->
@@ -135,9 +155,45 @@ class RewriteNormalForm : SPlanRewriteRule() {
 //        }
     }
 
+//    private fun temp(spbInitial: SumProduct.Block) {
+//        var spb = spbInitial
+//        val mult = agg.inputs[0] as SNodeNary
+//
+//        // 1. Multiply within groups
+//        if( spb.edgesGroupByIncidentNames.size == 1 ) {
+//            // all edges fit in a single group; chain them
+//            RewriteSplitMultiply.splitMultiply(mult)
+//            assert(mult.inputs.size == 2)
+//            return agg
+//        }
+//        spb.edgesGroupByIncidentNames.forEach { (_, edges) ->
+//            if( edges.size > 1 ) {
+//                val edgeIds = edges.map { it as SumProduct.Input; it.id }
+//                val edgeNodes = mult.inputs.filter { it.id in edgeIds }
+//
+//                // Create a multiply just with these edgeNodes, then split it.
+//                mult.inputs.removeIf { it.id in edgeIds }
+//                edgeNodes.forEach { it.parents.remove(mult) }
+//                val newMult = SNodeNary(mult.op, edgeNodes)
+//                mult.inputs += newMult
+//                newMult.parents += mult
+//                RewriteSplitMultiply.splitMultiply(newMult)
+//                mult.refreshSchemasUpward()
+//
+//                if (LOG.isDebugEnabled)
+//                    LOG.debug("Isolating edge group $edgeNodes under new $newMult id=${newMult.id} ${newMult.schema}")
+//            }
+//        }
+//        // If we go down to 2 inputs, we are done.
+//        if( !SumProduct.isSumProductBlock(agg) )
+//            return agg
+//
+//        return agg
+//    }
+
     private fun trackStatistics(spb: SumProduct.Block) {
         // Tracks largest sum-product statistics; see RewriteNormalForm, Statistics, AutomatedTestBase
-        val thisSize = spb.inputs.size
+        val thisSize = spb.edges.size
         var oldLargestSize: Int
         do {
             oldLargestSize = Statistics.spoof2NormalFormNameLength.get()
@@ -146,7 +202,7 @@ class RewriteNormalForm : SPlanRewriteRule() {
 
         if( thisSize > oldLargestSize ) {
             Statistics.spoof2NormalFormAggs = spb.aggNames.toString()
-            Statistics.spoof2NormalFormInputSchemas = spb.inputs.map { it.schema }.toString()
+            Statistics.spoof2NormalFormInputSchemas = spb.edges.map { it.schema }.toString()
             Statistics.spoof2NormalFormChanged.set(true)
         }
     }

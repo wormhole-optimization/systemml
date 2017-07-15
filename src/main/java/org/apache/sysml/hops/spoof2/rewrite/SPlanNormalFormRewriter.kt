@@ -19,7 +19,7 @@ class SPlanNormalFormRewriter {
             RewriteCombineMultiply()
     )
     private val _rulesNormalForm = listOf(
-            RewriteMultiplyCSEToPower(),
+//            RewriteMultiplyCSEToPower(),
             RewriteNormalForm()
     )
     private val _rulesToHopReady = listOf(

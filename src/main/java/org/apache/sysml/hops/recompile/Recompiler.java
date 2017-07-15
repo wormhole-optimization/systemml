@@ -219,7 +219,7 @@ public class Recompiler
 
 			// Todo call Spoof2Compiler
 			Hop.resetVisitStatus(hops);
-			Spoof2Compiler.generateCodeFromHopDAGs(hops);
+			Spoof2Compiler.generateCodeFromHopDAGs(hops, true);
 
 			
 //			// codegen if enabled

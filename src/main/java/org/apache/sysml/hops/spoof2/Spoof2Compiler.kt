@@ -100,7 +100,7 @@ object Spoof2Compiler {
                     generateCodeFromStatementBlock(sb)
             } 
             else -> { //generic (last-level)
-                current._hops = generateCodeFromHopDAGs(current._hops)
+                current._hops = generateCodeFromHopDAGs(current._hops, false)
                 current.updateRecompilationFlag()
             }
         }
@@ -108,12 +108,12 @@ object Spoof2Compiler {
 
     @JvmStatic
     @Throws(HopsException::class, DMLRuntimeException::class)
-    fun generateCodeFromHopDAGs(roots: ArrayList<Hop>?): ArrayList<Hop>? {
+    fun generateCodeFromHopDAGs(roots: ArrayList<Hop>?, recompile: Boolean): ArrayList<Hop>? {
         if (roots == null)
             return null
 
-        val optimized = optimize(roots, false)
-        Hop.resetVisitStatus(roots)
+        val optimized = optimize(roots, recompile)
+//        Hop.resetVisitStatus(roots)
         Hop.resetVisitStatus(optimized)
 
         return optimized
@@ -162,7 +162,7 @@ object Spoof2Compiler {
         }
 
         if (LOG.isTraceEnabled) {
-            LOG.trace("Spoof2Compiler called for HOP DAG: \n" + Explain.explainHops(roots))
+            LOG.trace("Spoof2Compiler called for HOP DAG${if(recompile) " at RECOMPILE" else ""}: \n" + Explain.explainHops(roots))
         }
 
         ProgramRewriter(RewriteCommonSubexpressionElimination()).rewriteHopDAGs(roots, ProgramRewriteStatus())
