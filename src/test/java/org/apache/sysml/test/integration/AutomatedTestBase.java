@@ -1225,7 +1225,7 @@ public abstract class AutomatedTestBase
 			System.out.println("arguments to DMLScript: " + Arrays.toString(dmlScriptArgs));
 			DMLScript.main(dmlScriptArgs);
 
-			/** check number of MR jobs */
+			/* check number of MR jobs */
 			if (maxMRJobs > -1 && maxMRJobs < Statistics.getNoOfCompiledMRJobs())
 				fail("Limit of MR jobs is exceeded: expected: " + maxMRJobs + ", occurred: "
 						+ Statistics.getNoOfCompiledMRJobs());
@@ -1246,15 +1246,6 @@ public abstract class AutomatedTestBase
 				fail(errorMessage.toString());
 			}
 		}
-
-		// Tracks largest sum-product statistics; see RewriteNormalForm, Statistics, AutomatedTestBase
-		if( spoof2NormalFormChanged.get() ) {
-			spoof2NormalFormTestName = fullDMLScriptName;
-			spoof2NormalFormChanged.set(false);
-		}
-		System.out.format("Spoof2 largest sum-product block on %s\n\tname length: %d\t aggs: %s\n\tschemas: %s\n",
-				spoof2NormalFormTestName,
-				spoof2NormalFormNameLength.get(), Statistics.spoof2NormalFormAggs, Statistics.spoof2NormalFormInputSchemas);
 	}
 
 	public void cleanupScratchSpace()

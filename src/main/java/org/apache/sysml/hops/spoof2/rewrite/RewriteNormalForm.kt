@@ -1,7 +1,6 @@
 package org.apache.sysml.hops.spoof2.rewrite
 
 import org.apache.commons.logging.LogFactory
-import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.utils.Statistics
 
@@ -14,7 +13,9 @@ class RewriteNormalForm : SPlanRewriteRule() {
     }
 
     override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
-        val spb = isSumProductBlock(node) ?: return RewriteResult.NoChange
+        if( !SumProduct.isSumProductBlock(node))
+            return RewriteResult.NoChange
+        val spb = SumProduct.constructBlock(node)
         val agg = node as SNodeAggregate
         val mult = agg.inputs[0] as SNodeNary
         if( mult.schema.names.any { !it.isBound() } ) {
@@ -60,7 +61,7 @@ class RewriteNormalForm : SPlanRewriteRule() {
         }
 
 
-        return RewriteResult.NewNode(binaryFactorize(agg, spb))
+        return RewriteResult.NewNode(solveSumProduct(agg, spb))
 
 
 //        // 1. Brute force variable order. spb.aggNames.size! choices.
@@ -86,7 +87,7 @@ class RewriteNormalForm : SPlanRewriteRule() {
 
 //        return RewriteResult.NoChange
     }
-    private fun binaryFactorize(agg: SNodeAggregate, spbInitial: SumProductBlock): SNodeAggregate {
+    private fun solveSumProduct(agg: SNodeAggregate, spbInitial: SumProduct.Block): SNodeAggregate {
         var spb = spbInitial
         val mult = agg.inputs[0] as SNodeNary
 
@@ -99,7 +100,7 @@ class RewriteNormalForm : SPlanRewriteRule() {
         }
         spb.edgesGroupByIncidentNames.forEach { (_, edges) ->
             if( edges.size > 1 ) {
-                val edgeIds = edges.map { it.id }
+                val edgeIds = edges.map { it as SumProduct.Edge; it.id }
                 val edgeNodes = mult.inputs.filter { it.id in edgeIds }
 
                 // Create a multiply just with these edgeNodes, then split it.
@@ -116,7 +117,8 @@ class RewriteNormalForm : SPlanRewriteRule() {
             }
         }
         // If we go down to 2 inputs, we are done.
-        spb = isSumProductBlock(agg) ?: return agg
+        if( !SumProduct.isSumProductBlock(agg) )
+            return agg
 
         return agg
 //        // 2. Eliminate aggregated names, in order of the lowest degree one.
@@ -133,9 +135,9 @@ class RewriteNormalForm : SPlanRewriteRule() {
 //        }
     }
 
-    private fun trackStatistics(spb: SumProductBlock) {
+    private fun trackStatistics(spb: SumProduct.Block) {
         // Tracks largest sum-product statistics; see RewriteNormalForm, Statistics, AutomatedTestBase
-        val thisSize = spb.edges.size
+        val thisSize = spb.inputs.size
         var oldLargestSize: Int
         do {
             oldLargestSize = Statistics.spoof2NormalFormNameLength.get()
@@ -144,85 +146,26 @@ class RewriteNormalForm : SPlanRewriteRule() {
 
         if( thisSize > oldLargestSize ) {
             Statistics.spoof2NormalFormAggs = spb.aggNames.toString()
-            Statistics.spoof2NormalFormInputSchemas = spb.edges.map { it.schema }.toString()
+            Statistics.spoof2NormalFormInputSchemas = spb.inputs.map { it.schema }.toString()
             Statistics.spoof2NormalFormChanged.set(true)
         }
     }
 
 
-    private fun findConnectedNames(spb: SumProductBlock, name: Name): Set<Name> {
+    private fun findConnectedNames(spb: SumProduct.Block, name: Name): Set<Name> {
         return mutableSetOf<Name>().also { rFindConnectedNames(spb, name, it) }
     }
 
     /** Depth first search to find connected names. */
-    private fun rFindConnectedNames(spb: SumProductBlock, name: Name, foundNames: MutableSet<Name>) {
+    private fun rFindConnectedNames(spb: SumProduct.Block, name: Name, foundNames: MutableSet<Name>) {
         val adjacent = spb.nameToAdjacentNames[name] ?: return
         val adjacentNotFound = adjacent - foundNames
         foundNames += adjacentNotFound
         adjacentNotFound.forEach { rFindConnectedNames(spb, it, foundNames) }
     }
 
-    private fun isSumProductBlock(agg: SNode): SumProductBlock? {
-        if( agg is SNodeAggregate && agg.op == Hop.AggOp.SUM ) {
-            val mult = agg.inputs[0]
-            if( mult is SNodeNary && mult.op == SNodeNary.NaryOp.MULT
-                    && mult.parents.size == 1 && mult.inputs.size > 2 ) {
-                return SumProductBlock(agg)
-            }
-        }
-        return null
-    }
-
-    private data class Edge(
-            val id: Long,
-            val schema: Schema,
-            val nnz: Long?
-    ) {
-        constructor(snode: SNode)
-                : this(snode.id, Schema(snode.schema), null) // todo fill with nnz estimate
-    }
-
-    private data class SumProductBlock(
-            val edges: List<Edge>,
-            val aggNames: Set<Name>,
-            val aggOp: Hop.AggOp,
-            val multOp: SNodeNary.NaryOp,
-            val aggId: Long
-    ) {
-
-        constructor(aggNode: SNodeAggregate) : this(
-                aggNode.inputs[0].inputs.map(::Edge),
-                HashSet(aggNode.aggreateNames),
-                aggNode.op, (aggNode.inputs[0] as SNodeNary).op, aggNode.id
-        )
-        /** Map of name to all edges touching that name. */
-        val nameToIncidentEdge: Map<Name,List<Edge>> = edges.flatMap { edge ->
-            edge.schema.names.map { name -> name to edge }
-        }.groupBy(Pair<Name,Edge>::first).mapValues { (_,v) -> v.map(Pair<Name,Edge>::second) }
-
-        val names = nameToIncidentEdge.keys
-
-        /** Map of name to all names adjacent to it via some edge. */
-        val nameToAdjacentNames: Map<Name,Set<Name>> = nameToIncidentEdge.mapValues { (_,edges) ->
-            edges.flatMap { it.schema.names }.toSet()
-        }
-
-        val edgesGroupByIncidentNames: Map<Set<Name>, List<Edge>> = edges.groupBy { it.schema.names.toSet() }
-
-        fun elimNeighborGroups(elimName: Name): Map<Set<Name>, List<Edge>> {
-            val adjacentNames = nameToAdjacentNames[elimName]!!
 
 
-            // todo
-            TODO()
-        }
-
-        override fun toString(): String {
-            return "SumProductBlock (+=$aggOp) (*=$multOp) (aggId=$aggId)\n" +
-                    "\tnames: $names aggregating $aggNames\n" +
-                    "\tedges: ${edges.map { it.schema.names }}"
-        }
-    }
 
     data class SPCost(
             val nMultiply: Long = 0L,
@@ -234,16 +177,16 @@ class RewriteNormalForm : SPlanRewriteRule() {
             val MAX_COST = SPCost(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE)
         }
         override fun compareTo(other: SPCost): Int {
-            // todo consider memory
+            // todo consider memory - check if below distributed threshold
             return (nMultiply + nAdd - other.nMultiply - other.nAdd).toInt()
         }
 
     }
 
-    private fun costQuery(spb: SumProductBlock, elimName: Name): Pair<SPCost, List<Name>> {
-        // 1. Form elim neighbor groups
-        TODO()
-    }
+//    private fun costQuery(spb: SumProductBlock, elimName: Name): Pair<SPCost, List<Name>> {
+//        // 1. Form elim neighbor groups
+//        TODO()
+//    }
 
 
 
