@@ -30,9 +30,9 @@ class RewriteNormalForm : SPlanRewriteRule() {
 //        val mult = agg.inputs[0] as SNodeNary
         // 0. Check if this normal form can be partitioned into two separate connected components.
         // This occurs if some portion of the multiplies produces a scalar.
-        val CCnames = findConnectedNames(spb, spb.names.first())
-        if( CCnames != spb.names ) {
-            val NCnames = spb.names - CCnames
+        val CCnames = findConnectedNames(spb, spb.names().first())
+        if( CCnames != spb.names() ) {
+            val NCnames = spb.names() - CCnames
 
             val CCspb = SumProduct.Block(
                     spb.sumBlocks.map { SumBlock(it.op, it.names.filter { it in CCnames }) }
@@ -112,26 +112,19 @@ class RewriteNormalForm : SPlanRewriteRule() {
     }
     private fun factorSumProduct(spb: SumProduct.Block): SumProduct.Block {
 
-        // 0. Check if this normal form can be partitioned into two separate connected components.
-        // This occurs if some portion of the multiplies produces a scalar.
-        val CCnames = findConnectedNames(spb, spb.names.first())
-        if( CCnames != spb.names ) {
-
-        }
-
         // 1. Multiply within groups
-        val edgesGroupByIncidentNames = spb.edgesGroupByIncidentNames
-        if( edgesGroupByIncidentNames.size == 1 ) {
+        if( spb.edgesGroupByIncidentNames().size == 1 ) {
             // all edges fit in a single group; nothing to do
             return spb
         }
-        edgesGroupByIncidentNames.forEach { (_, edges) ->
+        spb.edgesGroupByIncidentNames().forEach { (_, edges) ->
             if( edges.size > 1 ) {
                 // Create a Block on just these inputs, without aggregation. (Push aggregation later.)
                 // Move these inputs to the new block and wire the new block to this block.
                 val groupBlock = SumProduct.Block(spb.product, edges)
                 spb.edges.removeIf { it in edges }
                 spb.edges += groupBlock
+                spb.refresh()
                 if (LOG.isDebugEnabled)
                     LOG.debug("Isolating edge group $edges")
             }
@@ -201,7 +194,7 @@ class RewriteNormalForm : SPlanRewriteRule() {
         // not exactly thread safe because we need to lock the other fields, but good enough for this hack.
 
         if( thisSize > oldLargestSize ) {
-            Statistics.spoof2NormalFormAggs = spb.aggNames.toString()
+            Statistics.spoof2NormalFormAggs = spb.aggNames().toString()
             Statistics.spoof2NormalFormInputSchemas = spb.edges.map { it.schema }.toString()
             Statistics.spoof2NormalFormChanged.set(true)
         }
@@ -209,15 +202,15 @@ class RewriteNormalForm : SPlanRewriteRule() {
 
 
     private fun findConnectedNames(spb: SumProduct.Block, name: Name): Set<Name> {
-        return mutableSetOf<Name>().also { rFindConnectedNames(spb, name, it) }
+        return mutableSetOf<Name>().also { rFindConnectedNames(spb.nameToAdjacentNames(), name, it) }
     }
 
     /** Depth first search to find connected names. */
-    private fun rFindConnectedNames(spb: SumProduct.Block, name: Name, foundNames: MutableSet<Name>) {
-        val adjacent = spb.nameToAdjacentNames[name] ?: return
+    private fun rFindConnectedNames(adjMap: Map<Name, Set<Name>>, name: Name, foundNames: MutableSet<Name>) {
+        val adjacent = adjMap[name] ?: return
         val adjacentNotFound = adjacent - foundNames
         foundNames += adjacentNotFound
-        adjacentNotFound.forEach { rFindConnectedNames(spb, it, foundNames) }
+        adjacentNotFound.forEach { rFindConnectedNames(adjMap, it, foundNames) }
     }
 
 

@@ -99,8 +99,13 @@ sealed class SumProduct {
             val product: SNodeNary.NaryOp,
             val edges: ArrayList<SumProduct>
     ) : SumProduct() {
+        private var _schema: Schema? = null
         override val schema: Schema
-            get() = edges.fold(Schema()) { schema, sp -> schema.apply{unionWithBound(sp.schema)} }
+            get() {
+                if( _schema == null )
+                    _schema = edges.fold(Schema()) { schema, sp -> schema.apply{unionWithBound(sp.schema)} }
+                return _schema!!
+            }
         override val nnz: Long? = null // todo compute nnz estimate
 
         init {
@@ -126,38 +131,77 @@ sealed class SumProduct {
         constructor(product: SNodeNary.NaryOp, vararg edges: SumProduct)
                 : this(ArrayList<SumBlock>(), product, ArrayList(edges.asList()))
 
-        val aggNames: Set<Name>
-            get() = sumBlocks.fold(setOf<Name>()) { acc, sb -> acc + sb.names }
-
-        /** Map of name to all edges touching that name. */
-        val nameToIncidentEdge: Map<Name,List<SumProduct>>
-            get() = edges.flatMap { edge ->
-                edge.schema.names.map { name -> name to edge }
-            }.groupBy(Pair<Name,SumProduct>::first).mapValues { (_,v) -> v.map(Pair<Name,SumProduct>::second) }
-
-        val names: Set<Name>
-            get() = schema.names.toSet()
-
-        /** Map of name to all names adjacent to it via some edge. */
-        val nameToAdjacentNames: Map<Name, Set<Name>>
-            get() = nameToIncidentEdge.mapValues { (_,edges) ->
-                edges.flatMap { it.schema.names }.toSet()
+        private var _aggNames: Set<Name>? = null
+        fun aggNames(refresh: Boolean = false): Set<Name> {
+            if( refresh || _aggNames == null ) {
+                _aggNames = sumBlocks.fold(setOf<Name>()) { acc, sb -> acc + sb.names }
             }
+            return _aggNames!!
+        }
 
-        val edgesGroupByIncidentNames: Map<Set<Name>, List<SumProduct>>
-            get() = edges.groupBy { it.schema.names.toSet() }
+        private var _nameToIncidentEdge: Map<Name,List<SumProduct>>? = null
+        /** Map of name to all edges touching that name. */
+        fun nameToIncidentEdge(refresh: Boolean = false): Map<Name,List<SumProduct>> {
+            if( refresh || _nameToIncidentEdge == null ) {
+                _nameToIncidentEdge = edges.flatMap { edge ->
+                    edge.schema.names.map { name -> name to edge }
+                }.groupBy(Pair<Name,SumProduct>::first).mapValues { (_,v) -> v.map(Pair<Name,SumProduct>::second) }
+            }
+            return _nameToIncidentEdge!!
+        }
+
+        private var _names: Set<Name>? = null
+        fun names(refresh: Boolean = false): Set<Name> {
+            if(refresh || _names == null) {
+                if( refresh )
+                    _schema = null
+                _names = schema.names.toSet()
+            }
+            return _names!!
+        }
+
+        private var _nameToAdjacentNames: Map<Name, Set<Name>>? = null
+        /** Map of name to all names adjacent to it via some edge. */
+        fun nameToAdjacentNames(refresh: Boolean = false): Map<Name, Set<Name>> {
+            if( refresh || _nameToIncidentEdge == null ) {
+                _nameToAdjacentNames = nameToIncidentEdge(refresh).mapValues { (_,edges) ->
+                    edges.flatMap { it.schema.names }.toSet()
+                }
+            }
+            return _nameToAdjacentNames!!
+        }
+
+        private var _edgesGroupByIncidentNames: Map<Set<Name>, List<SumProduct>>? = null
+        fun edgesGroupByIncidentNames(refresh: Boolean = false): Map<Set<Name>, List<SumProduct>> {
+            if( refresh || _edgesGroupByIncidentNames == null ) {
+                _edgesGroupByIncidentNames = edges.groupBy { it.schema.names.toSet() }
+            }
+            return _edgesGroupByIncidentNames!!
+        }
+
+        fun refresh() {
+            _schema = null
+            _names = null
+            _aggNames = null
+            _nameToIncidentEdge = null
+            _nameToAdjacentNames = null
+            _edgesGroupByIncidentNames = null
+        }
+
+
+
 
         fun canAggregate(aggName: Name): Boolean {
             val sumBlockIndex = sumBlocks.indexOfFirst { aggName in it.names }
             require( sumBlockIndex != -1 ) {"no such aggregation over $aggName in $this"}
-            val adjacentNames = this.nameToAdjacentNames[aggName]!!
+            val adjacentNames = this.nameToAdjacentNames()[aggName]!!
             // check forward -- all names in future blocks must not be adjacent to aggName
             return (sumBlockIndex+1..sumBlocks.size-1).all { idx ->
                 this.sumBlocks[idx].names.all { it !in adjacentNames }
             }
         }
 
-        fun removeAggName(aggName: Name): Hop.AggOp {
+        private fun removeAggName(aggName: Name): Hop.AggOp {
             val idx = sumBlocks.indexOfFirst { aggName in it.names }
             require(idx != -1) {"tried to remove an aggName $aggName that is not being aggregated in $this"}
             val sumBlock = sumBlocks[idx]
@@ -167,7 +211,7 @@ sealed class SumProduct {
             return sumBlock.op
         }
 
-        fun addAggNamesToFront(aggOp: Hop.AggOp, vararg aggName: Name) {
+        private fun addAggNamesToFront(aggOp: Hop.AggOp, vararg aggName: Name) {
             if( sumBlocks.isEmpty() || sumBlocks[0].op != aggOp ) {
                 sumBlocks.add(0, SumBlock(aggOp, *aggName))
             } else {
@@ -180,10 +224,9 @@ sealed class SumProduct {
          * Some aggNames cannot be pushed down. We check if it is correct to change the aggregation order.
          */
         fun pushAggregations() {
-            val aggNames = this.aggNames
-            var nameToIncidentEdge = this.nameToIncidentEdge
-            aggNames.forEach { aggName ->
-                val incidentEdges = nameToIncidentEdge[aggName]!!
+            // no refresh on aggNames
+            aggNames().forEach { aggName ->
+                val incidentEdges = nameToIncidentEdge()[aggName]!!
                 if( incidentEdges.size == 1 && canAggregate(aggName) ) {
                     val sumOp = removeAggName(aggName)
                     val edge = incidentEdges[0]
@@ -193,13 +236,13 @@ sealed class SumProduct {
                             val newBlock = Block(SumBlock(sumOp, aggName), product, edge)
                             this.edges -= edge
                             this.edges += newBlock
-//                            this.refresh() //todo
-                            nameToIncidentEdge = this.nameToIncidentEdge
+                            refresh()
                         }
                     }
                 }
             }
         }
+
     }
 
     /**
