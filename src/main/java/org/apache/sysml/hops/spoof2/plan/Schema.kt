@@ -32,6 +32,8 @@ class Schema private constructor(
 
     operator fun contains(name: Name) = name in names
 
+    fun zip(): List<Pair<Name,Shape>> = names.zip(shapes)
+
     fun getShape(name: Name): Shape {
         val idx = names.indexOf(name)
         require(idx != -1) {"no such name $name in $this"}
@@ -191,4 +193,5 @@ class Schema private constructor(
     }
 
     fun genAllBindings(): MutableMap<Int, Name> = linkedMapOf<Int,Name>().also { this.fillWithBindings(it) }
+
 }

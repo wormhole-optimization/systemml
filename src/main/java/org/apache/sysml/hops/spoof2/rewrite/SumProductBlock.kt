@@ -29,6 +29,7 @@ class SumBlock private constructor(
  */
 sealed class SumProduct {
 
+    /** Schema of non-aggregated attributes. The schema emitting from this SumProduct. */
     abstract val schema: Schema
     abstract val nnz: Long?
     abstract fun deepCopy(): SumProduct
@@ -99,14 +100,39 @@ sealed class SumProduct {
             val product: SNodeNary.NaryOp,
             val edges: ArrayList<SumProduct>
     ) : SumProduct() {
+        override val nnz: Long? = null // todo compute nnz estimate
+
+        private var _allSchema: Schema? = null
+        /** Schema of all attributes, both aggregated and retained. */
+        fun allSchema(refresh: Boolean = false): Schema {
+            if( refresh || _allSchema == null ) {
+                _allSchema = edges.fold(Schema()) { schema, sp ->
+                    schema.apply{unionWithBound(sp.schema)} }
+            }
+            return _allSchema!!
+        }
+
         private var _schema: Schema? = null
         override val schema: Schema
             get() {
-                if( _schema == null )
-                    _schema = edges.fold(Schema()) { schema, sp -> schema.apply{unionWithBound(sp.schema)} }
+                if( _schema == null ) {
+                    _schema = Schema(allSchema())
+                    _schema!!.removeBoundAttributes(aggNames())
+                }
                 return _schema!!
             }
-        override val nnz: Long? = null // todo compute nnz estimate
+
+        private var _aggSchema: Schema? = null
+        /** Schema of aggregated attributes. */
+        fun aggSchema(refresh: Boolean = false): Schema {
+            if( refresh || _aggSchema == null ) {
+                _aggSchema = edges.fold(Schema()) { schema, sp ->
+                    schema.apply{unionWithBound(sp.schema.zip().filter { (n,_) ->
+                        n in aggNames()
+                    }.unzip().let { (ns,ss) -> Schema(ns,ss) })} }
+            }
+            return _aggSchema!!
+        }
 
         init {
             check(edges.isNotEmpty()) {"Empty inputs to Block $this"}
@@ -150,16 +176,6 @@ sealed class SumProduct {
             return _nameToIncidentEdge!!
         }
 
-        private var _names: Set<Name>? = null
-        fun names(refresh: Boolean = false): Set<Name> {
-            if(refresh || _names == null) {
-                if( refresh )
-                    _schema = null
-                _names = schema.names.toSet()
-            }
-            return _names!!
-        }
-
         private var _nameToAdjacentNames: Map<Name, Set<Name>>? = null
         /** Map of name to all names adjacent to it via some edge. */
         fun nameToAdjacentNames(refresh: Boolean = false): Map<Name, Set<Name>> {
@@ -181,7 +197,6 @@ sealed class SumProduct {
 
         fun refresh() {
             _schema = null
-            _names = null
             _aggNames = null
             _nameToIncidentEdge = null
             _nameToAdjacentNames = null

@@ -87,7 +87,7 @@ class Spoof2Test(
         fun testParams(): Collection<Array<Any>> {
             val params = ArrayList<Array<Any>>(NUM_TESTS * 3)
             for (testNum in 1..NUM_TESTS) {
-                if (testNum != NUM_TESTS) continue
+//                if (testNum != NUM_TESTS) continue
 
                 val testName = TEST_NAME + testNum
 //                params.add(arrayOf(testName, false, CP))

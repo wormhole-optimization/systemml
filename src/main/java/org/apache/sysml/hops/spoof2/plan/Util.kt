@@ -123,3 +123,11 @@ fun <T> MutableList<T>.swap(i0: Int, i1: Int) {
 fun <K,V> Map<K,V>.intersectEntries(m: Map<K,V>): Map<K,V> {
     return this.filter { (k,v) -> m[k] == v }
 }
+
+inline fun <T> Iterable<T>.sumByLong(selector: (T) -> Long): Long {
+    var sum = 0L
+    for (element in this) {
+        sum += selector(element)
+    }
+    return sum
+}

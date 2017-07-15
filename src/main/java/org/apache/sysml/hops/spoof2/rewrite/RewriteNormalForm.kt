@@ -30,9 +30,9 @@ class RewriteNormalForm : SPlanRewriteRule() {
 //        val mult = agg.inputs[0] as SNodeNary
         // 0. Check if this normal form can be partitioned into two separate connected components.
         // This occurs if some portion of the multiplies produces a scalar.
-        val CCnames = findConnectedNames(spb, spb.names().first())
-        if( CCnames != spb.names() ) {
-            val NCnames = spb.names() - CCnames
+        val CCnames = findConnectedNames(spb, spb.allSchema().names.first())
+        if( CCnames != spb.allSchema().names.toSet() ) {
+            val NCnames = spb.allSchema().names - CCnames
 
             val CCspb = SumProduct.Block(
                     spb.sumBlocks.map { SumBlock(it.op, it.names.filter { it in CCnames }) }
@@ -75,7 +75,7 @@ class RewriteNormalForm : SPlanRewriteRule() {
 //                p.refreshSchemasUpward() // playing it safe, not sure if this is necessary
 
             if( LOG.isDebugEnabled )
-                LOG.debug("Detected Sum-Product block that can be partitioned into disjoint connected components:\n" +
+                LOG.debug("Partition Sum-Product block into disjoint components:\n" +
                         "\tComponent 1: $CCspb\n" +
                         "\tComponent 2: $NCspb")
 
@@ -216,21 +216,6 @@ class RewriteNormalForm : SPlanRewriteRule() {
 
 
 
-    data class SPCost(
-            val nMultiply: Long = 0L,
-            val nAdd: Long = 0L,
-            val nMemory: Long = 0L
-    ) : Comparable<SPCost> {
-
-        companion object {
-            val MAX_COST = SPCost(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE)
-        }
-        override fun compareTo(other: SPCost): Int {
-            // todo consider memory - check if below distributed threshold
-            return (nMultiply + nAdd - other.nMultiply - other.nAdd).toInt()
-        }
-
-    }
 
 //    private fun costQuery(spb: SumProductBlock, elimName: Name): Pair<SPCost, List<Name>> {
 //        // 1. Form elim neighbor groups
