@@ -67,7 +67,11 @@ sealed class SumProduct {
                     return false
                 top = top.inputs[0]
             }
-            if( top !is SNodeNary || top.op !in ALLOWED_PRODUCTS || top.parents.size > 1 || top.inputs.size <= 2)
+            if( top !is SNodeNary || top.op !in ALLOWED_PRODUCTS
+                    || top.parents.size > 1 // foreign parent
+                    || top.inputs.size <= 2 // too few inputs
+                    || top.schema.isEmpty() // all-scalar case
+                    )
                 return false
             return true
         }
