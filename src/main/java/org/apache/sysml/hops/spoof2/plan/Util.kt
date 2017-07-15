@@ -131,3 +131,7 @@ inline fun <T> Iterable<T>.sumByLong(selector: (T) -> Long): Long {
     }
     return sum
 }
+
+fun <T> Iterable<T>.disjoint(b: Iterable<T>): Boolean {
+    return this.all { it !in b }
+}

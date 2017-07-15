@@ -20,6 +20,24 @@ class SumBlock private constructor(
         return "$op$names"
     }
 
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other?.javaClass != javaClass) return false
+
+        other as SumBlock
+
+        if (op != other.op) return false
+        if (names != other.names) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = op.hashCode()
+        result = 31 * result + names.hashCode()
+        return result
+    }
+
 }
 
 /**
@@ -69,6 +87,8 @@ sealed class SumProduct {
         }
     }
 
+    open fun toStringWithTab(tab: Int): String = toString()
+
     // possibly add a Constant subclass
 
     data class Input(
@@ -101,6 +121,8 @@ sealed class SumProduct {
             val edges: ArrayList<SumProduct>
     ) : SumProduct() {
         override val nnz: Long? = null // todo compute nnz estimate
+
+
 
         private var _allSchema: Schema? = null
         /** Schema of all attributes, both aggregated and retained. */
@@ -139,10 +161,26 @@ sealed class SumProduct {
         }
 
         override fun toString(): String {
-            return "Block$sumBlocks<$product>$edges"+(if(SHOW_NNZ) "(nnz=$nnz)" else "")
+//            return "Block$sumBlocks<$product>$edges"+(if(SHOW_NNZ) "(nnz=$nnz)" else "")
+//            return "Block$sumBlocks<$product>:\n\t" +
+//                    edges.joinToString("\n\t") +(if(SHOW_NNZ) "(nnz=$nnz)" else "")
+            return toStringWithTab(1)
         }
 
-        override fun deepCopy() = Block(ArrayList(sumBlocks), product, ArrayList(edges))
+        override fun toStringWithTab(tab: Int): String {
+            val sep = StringBuilder("\n").let { sb ->
+                repeat(tab) {sb.append('\t')}
+                sb.toString()
+            }
+            return "Block$sumBlocks<$product>:" +
+                    edges.joinToString(prefix = sep, separator = sep, transform = {it.toStringWithTab(tab+1)}) +(if(SHOW_NNZ) "(nnz=$nnz)" else "")
+        }
+
+        override fun deepCopy() = Block(
+                sumBlocks.map { it.deepCopy() },
+                product,
+                edges.map { it.deepCopy() }
+        )
 
         constructor(sumBlocks: Collection<SumBlock>, product: SNodeNary.NaryOp, edges: Collection<SumProduct>)
                 : this(ArrayList(sumBlocks), product, ArrayList(edges))
@@ -179,7 +217,7 @@ sealed class SumProduct {
         private var _nameToAdjacentNames: Map<Name, Set<Name>>? = null
         /** Map of name to all names adjacent to it via some edge. */
         fun nameToAdjacentNames(refresh: Boolean = false): Map<Name, Set<Name>> {
-            if( refresh || _nameToIncidentEdge == null ) {
+            if( refresh || _nameToAdjacentNames == null ) {
                 _nameToAdjacentNames = nameToIncidentEdge(refresh).mapValues { (_,edges) ->
                     edges.flatMap { it.schema.names }.toSet()
                 }
@@ -198,13 +236,34 @@ sealed class SumProduct {
         fun refresh() {
             _schema = null
             _aggNames = null
+            _allSchema = null
             _nameToIncidentEdge = null
             _nameToAdjacentNames = null
             _edgesGroupByIncidentNames = null
+            _aggSchema = null
         }
 
 
 
+
+        fun factorEdgesToBlock(toMove: Collection<SumProduct>) {
+            val groupBlock = SumProduct.Block(this.product, toMove)
+            this.edges.removeIf { it in toMove }
+            this.edges += groupBlock
+            this.refresh()
+            this.pushAggregations()
+        }
+
+        fun eligibleAggNames(): Set<Name> {
+            val (_,eligibleAggs) = sumBlocks.foldRight(setOf<Name>() to setOf<Name>())
+            { sumBlock, (aggsSeen, eligibleAggs) ->
+                // all names in future blocks must not be adjacent
+                (aggsSeen + sumBlock.names) to (eligibleAggs + sumBlock.names.filter { testAggName ->
+                    this.nameToAdjacentNames()[testAggName]!!.disjoint(aggsSeen)
+                })
+            }
+            return eligibleAggs
+        }
 
         fun canAggregate(aggName: Name): Boolean {
             val sumBlockIndex = sumBlocks.indexOfFirst { aggName in it.names }
@@ -246,16 +305,39 @@ sealed class SumProduct {
                     val sumOp = removeAggName(aggName)
                     val edge = incidentEdges[0]
                     when( edge ) {
-                        is Block -> edge.addAggNamesToFront(sumOp, aggName)
+                        is Block -> {
+                            edge.addAggNamesToFront(sumOp, aggName)
+                            edge.refresh()
+                        }
                         is Input -> {
                             val newBlock = Block(SumBlock(sumOp, aggName), product, edge)
                             this.edges -= edge
                             this.edges += newBlock
-                            refresh()
                         }
                     }
+                    refresh()
                 }
             }
+        }
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other?.javaClass != javaClass) return false
+
+            other as Block
+
+            if (sumBlocks != other.sumBlocks) return false
+            if (product != other.product) return false
+            if (edges != other.edges) return false
+
+            return true
+        }
+
+        override fun hashCode(): Int {
+            var result = sumBlocks.hashCode()
+            result = 31 * result + product.hashCode()
+            result = 31 * result + edges.hashCode()
+            return result
         }
 
     }
@@ -288,11 +370,36 @@ sealed class SumProduct {
             // create an SNodeNary for the product, if there are at least two inputs
             // create an SNodeAggregate for each SumBlock
             val inputNodes = this.edges.map { it.rConstructSPlan(origInputs) }
-            val mult = if(inputNodes.size >= 2) SNodeNary(this.product, inputNodes) else inputNodes[0]
+            val mult: SNode = createMultiply(inputNodes)
+//            val mult = if(inputNodes.size >= 2) SNodeNary(this.product, inputNodes) else inputNodes[0]
             sumBlocks.foldRight(mult) { sumBlock, acc ->
                 SNodeAggregate(sumBlock.op, acc, sumBlock.names)
             }
         }
+    }
+
+    private fun createMultiply(inputNodes: List<SNode>): SNode {
+        this as Block
+        check( inputNodes.isNotEmpty() )
+        if(inputNodes.size == 1)
+            return inputNodes[0]
+        // check for a--x--y case
+        if(inputNodes.size == 3 && inputNodes.count { it.schema.size == 1 } == 1
+                && inputNodes.count { it.schema.size == 2 } == 2) {
+            val vector = inputNodes.find { it.schema.size == 1 }!!
+//            val n12 = vector.schema.names.first()
+            val s12 = vector.schema.shapes.first()
+            var m1 = inputNodes.find { it.schema.size == 2 }!!
+            var m2 = inputNodes.findLast { it.schema.size == 2 }!!
+            val s1 = (m1.schema.shapes - s12).first()
+            val s2 = (m2.schema.shapes - s12).first()
+            if( s1 > s2 )
+                run { val t = m1; m1 = m2; m2 = t }
+            val nary1 = SNodeNary(this.product, m1, vector)
+            val nary2 = SNodeNary(this.product, nary1, m2)
+            return nary2
+        }
+        return SNodeNary(this.product, inputNodes)
     }
 
 }

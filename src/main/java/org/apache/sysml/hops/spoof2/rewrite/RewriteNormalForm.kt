@@ -76,13 +76,16 @@ class RewriteNormalForm : SPlanRewriteRule() {
 
             if( LOG.isDebugEnabled )
                 LOG.debug("Partition Sum-Product block into disjoint components:\n" +
-                        "\tComponent 1: $CCspb\n" +
-                        "\tComponent 2: $NCspb")
+                        "Component 1: $CCspb\n" +
+                        "Component 2: $NCspb")
 
             return RewriteResult.NewNode(spb.applyToNormalForm(node)) // these will be handled as disjoint sub-problems in SPlanNormalFormRewriter at next recursion
         }
 
-        val spbNew = factorSumProduct(spb)
+        val (spbNew, spbCost) = factorSumProduct(spb)
+        if( LOG.isDebugEnabled )
+            LOG.debug("New SumProduct.Block found with cost $spbCost\n" +
+                    "$spbNew")
 
         return RewriteResult.NewNode(spbNew.applyToNormalForm(node))
 
@@ -110,43 +113,58 @@ class RewriteNormalForm : SPlanRewriteRule() {
 
 //        return RewriteResult.NoChange
     }
-    private fun factorSumProduct(spb: SumProduct.Block): SumProduct.Block {
+    private fun factorSumProduct(spb: SumProduct.Block): Pair<SumProduct.Block, SPCost> {
 
         // 1. Multiply within groups
-        if( spb.edgesGroupByIncidentNames().size == 1 ) {
+        if (spb.edgesGroupByIncidentNames().size == 1) {
             // all edges fit in a single group; nothing to do
-            return spb
+            return spb to SPCost.costFactoredBlock(spb)
         }
         spb.edgesGroupByIncidentNames().forEach { (_, edges) ->
-            if( edges.size > 1 ) {
-                // Create a Block on just these inputs, without aggregation. (Push aggregation later.)
+            if (edges.size > 1) {
+                // Create a Block on just these inputs.
                 // Move these inputs to the new block and wire the new block to this block.
-                val groupBlock = SumProduct.Block(spb.product, edges)
-                spb.edges.removeIf { it in edges }
-                spb.edges += groupBlock
-                spb.refresh()
+                // Push aggregations down if they are not join conditions (present in >1 edge).
+                spb.factorEdgesToBlock(edges)
                 if (LOG.isDebugEnabled)
                     LOG.debug("Isolating edge group $edges")
             }
         }
-        // Push aggregations down if they are not join conditions (present in >1 edge).
-        spb.pushAggregations()
 
-        return spb
+        // We are done if no aggregations remain
+        if (spb.aggNames().isEmpty())
+            return spb to SPCost.costFactoredBlock(spb)
 
-//        // 2. Eliminate aggregated names, in order of the lowest degree one.
-//        while( spb.aggNames.isNotEmpty() ) {
-//            val (elimName,elimAdjNames) = spb.nameToAdjacentNames.minBy { (name,adjNames) ->
-//                (adjNames - name).size
-//            }!!
-//            when( elimAdjNames.size ) {
-//                0 -> {}
-//                1 -> {
-//
-//                }
-//            }
-//        }
+        // Determine what variables we could eliminate at this point
+        val eligibleAggNames = spb.eligibleAggNames()
+        // Prune down to the agg names with minimum degree
+        val tmp = eligibleAggNames.map { it to (spb.nameToAdjacentNames()[it]!! - it).size }
+        val minDegree = tmp.map { it.second }.min()!!
+        check(minDegree <= 2) { "Minimum degree is >2. Will form tensor intermediary. In spb $spb" }
+        val minDegreeAggNames = tmp.filter { it.second == minDegree }.map { it.first }
+
+        // fork on the different possible agg names
+        val (bestSpb, bestCost) = minDegreeAggNames.map { elimName ->
+            val incidentEdges = spb.nameToIncidentEdge()[elimName]!!
+//            if( incidentEdges.size == spb.edges.size ) // if all edges remaining touch this one, nothing to do.
+//                return spb to SPCost.costFactoredBlock(spb)
+
+            val factoredSpb = spb.deepCopy()
+            factoredSpb.factorEdgesToBlock(incidentEdges)
+            val (newSpb, cost) = factorSumProduct(factoredSpb)
+            newSpb to cost
+        }.minBy { it.second }!!
+
+        return bestSpb to bestCost
     }
+
+//    private fun elimName(spb: SumProduct.Block, elimName: Name): SumProduct.Block {
+//        val incidentEdges = spb.nameToIncidentEdge()[elimName]!!
+//        if( incidentEdges.size == spb.edges.size ) // if all edges remaining touch this one, nothing to do.
+//            return spb
+//        spb.factorEdgesToBlock(incidentEdges)
+//        return spb
+//    }
 
 //    private fun temp(spbInitial: SumProduct.Block) {
 //        var spb = spbInitial

@@ -83,37 +83,45 @@ data class SPCost(
                         0 -> ZERO_COST
                         1 -> { // all edges are vectors over this single name
                             val isAgg = spb.aggNames().isNotEmpty()
-                            val shape = if(isAgg) spb.schema.shapes[0] else spb.aggSchema().shapes[0]
+                            val shape = spb.allSchema().shapes[0]
                             // first multiply them together
                             val multCost = (spb.edges.size-1) * shape
                             val addCost = if( isAgg ) shape - 1 else 0L
                             SPCost(multCost, addCost)
                         }
                         2 -> { // a--b: vectors on a; matrices on a,b; vectors on b
-                            // first multiply the vectors together
+                            // first multiply the groups together
                             val repSchemasToCount = spb.edgesGroupByIncidentNames().map { (_,edges) -> edges.first().schema to edges.size }
                             val multWithinGroupCost = repSchemasToCount.sumByLong { (repSchema,count) ->
                                 (count-1) * repSchema.shapes.reduce(Long::times)
                             }
                             // now multiply across groups
-                            val allSchema = repSchemasToCount.map(Pair<Schema,Int>::first).fold(Schema()) { acc, schema -> acc.apply { unionWithBound(schema) } }
+                            val allSchema = spb.allSchema() //repSchemasToCount.map(Pair<Schema,Int>::first).fold(Schema()) { acc, schema -> acc.apply { unionWithBound(schema) } }
                             val tmp = allSchema.zip()
                             var (n1,s1) = tmp.first()
                             var (n2,s2) = tmp.drop(1).first()
                             var h1 = spb.edgesGroupByIncidentNames()[setOf(n1)] != null
                             var h2 = spb.edgesGroupByIncidentNames()[setOf(n2)] != null
                             val h12 = spb.edgesGroupByIncidentNames()[setOf(n1, n2)] != null
-                            check(h12) {"SumProduct not completely factored; can be partitioned into disjoint vectors; $this"}
                             var a1 = n1 in spb.aggNames()
                             var a2 = n2 in spb.aggNames()
                             if( !h1 && h2 ) { // symmetry
                                 h1 = true; h2 = false
-                                kotlin.run { val t = n1; n1 = n2; n2 = t }
-                                kotlin.run { val t = s1; s1 = s2; s2 = t }
-                                kotlin.run { val t = a1; a1 = a2; a2 = t }
+                                run { val t = n1; n1 = n2; n2 = t }
+                                run { val t = s1; s1 = s2; s2 = t }
+                                run { val t = a1; a1 = a2; a2 = t }
                             }
+//                            check(h12) {"SumProduct not completely factored; can be partitioned into disjoint vectors; $spb"}
 
-                            val costCrossGroup = if( h1 ) {
+                            val costCrossGroup = if( !h12 ) {
+                                check( !a1 && !a2 ) {"SumProduct not completely factored; can be partitioned into disjoint vectors; $spb"}
+                                if( h1 && h2 )
+                                    SPCost(s1*s2, 0) // outer product
+                                else
+                                    ZERO_COST
+                            }
+                            else
+                            if( h1 ) {
                                 if( h2 ) {
                                     if( a1 )
                                         if( a2 ) SPCost(s1*s2+s1, s1*(s2-1) + s1-1).min(SPCost(s1*s2+s2, (s1-1)*s2 + s2-1))
@@ -137,11 +145,52 @@ data class SPCost(
                             costCrossGroup.plusMultiply(multWithinGroupCost)
                         }
                         3 -> {
-                            check( spb.aggNames().isNotEmpty() ) {"SumProduct not completely factored; output is a tensor from $this"}
-                            // todo
-                            ZERO_COST
+                            check( spb.aggNames().isNotEmpty() ) {"SumProduct not completely factored; output is a tensor from $spb"}
+                            // The only possible pattern is a--x--y with matrix Aax, matrix Bxy, and possibly vector Vx
+                            // If the vector Vx is present, then either multiply it with A or with B.
+
+                            // first multiply the groups together (not necessary if fully factored, but why not)
+                            val repSchemasToCount = spb.edgesGroupByIncidentNames().map { (_,edges) -> edges.first().schema to edges.size }
+                            check( repSchemasToCount.size <= 3 ) {"SumProduct not completely factored; more than 3 groups of edges in $spb"}
+                            val multWithinGroupCost = repSchemasToCount.sumByLong { (repSchema,count) ->
+                                (count-1) * repSchema.shapes.reduce(Long::times)
+                            }
+
+                            var vSchema: Schema? = null
+                            var _m1Schema: Schema? = null
+                            var _m2Schema: Schema? = null
+                            repSchemasToCount.forEach { (schema,_) ->
+                                if( schema.size == 1 ) {
+                                    check( vSchema == null ) {"SumProduct not completely factored; saw vectors twice in $spb"}
+                                    vSchema = schema
+                                }
+                                else if( _m1Schema == null )
+                                    _m1Schema = schema
+                                else {
+                                    check( _m2Schema == null ) {"saw too many groups of matrices in $spb"}
+                                    _m2Schema = schema
+                                }
+                            }
+                            check(_m1Schema != null && _m2Schema != null) {"expected two kinds of matrices in $spb"}
+                            val m1Schema = _m1Schema!!
+                            val m2Schema = _m2Schema!!
+                            val n12 = m1Schema.names.intersect(m2Schema.names).also { check(it.size == 1) {"the matrices' schemas should only overlap in one position"} }.first()
+                            val s12 = m1Schema.getShape(n12)
+                            val n1 = (m1Schema.names - n12).first()
+                            val n2 = (m2Schema.names - n12).first()
+                            val s1 = (m1Schema.shapes - s12).first()
+                            val s2 = (m2Schema.shapes - s12).first()
+                            check( n1 !in spb.aggNames() && n2 !in spb.aggNames() && n12 in spb.aggNames() ) {"unexpected aggregation pattern in $spb"}
+
+                            val vectorMultCost = if( vSchema != null ) {
+                                check( vSchema!!.names.first() == n12 ) {"SumProduct not completely factored; vector is not over shared dimension in $spb"}
+                                Math.min(s1, s2) * s12
+                            } else 0L
+                            val matrixMultCost = SPCost(s1*s12*s2, s1*(s12-1)*s2)
+
+                            matrixMultCost.plusMultiply(multWithinGroupCost + vectorMultCost)
                         }
-                        else -> throw IllegalStateException("SumProduct not completely factored; found block with more than two names $this")
+                        else -> throw IllegalStateException("SumProduct not completely factored; found block with more than two names $spb")
                     }
                 }
             }
