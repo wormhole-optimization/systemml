@@ -76,9 +76,11 @@ public class Explain
 {	
 	//internal configuration parameters
 	private static final boolean REPLACE_SPECIAL_CHARACTERS = true;	
+	private static final boolean SHOW_VALUE_TYPE            = true;
+	private static final boolean SHOW_DATA_TYPE             = true;
 	private static final boolean SHOW_MEM_ESTIMATES         = false;
 	private static final boolean SHOW_MEM_ABOVE_BUDGET      = false;
-	private static final boolean SHOW_LITERAL_HOPS          = false;
+	private static final boolean SHOW_LITERAL_HOPS          = true;
 	private static final boolean SHOW_DATA_DEPENDENCIES     = true;
 	private static final boolean SHOW_DATA_FLOW_PROPERTIES  = true;
 
@@ -618,7 +620,10 @@ public class Explain
 			sb.append("," + hop.getUpdateType().toString().toLowerCase());
 		
 		sb.append("]");
-		sb.append(hop.getDataType().name().charAt(0));
+		if( SHOW_DATA_TYPE )
+			sb.append(hop.getDataType().name().charAt(0));
+		if( SHOW_VALUE_TYPE )
+			sb.append(hop.getValueType().name().charAt(0));
 		
 		//memory estimates
 		if( SHOW_MEM_ESTIMATES )

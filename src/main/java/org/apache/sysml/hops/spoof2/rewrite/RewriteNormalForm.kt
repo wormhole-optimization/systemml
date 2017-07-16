@@ -21,7 +21,7 @@ class RewriteNormalForm : SPlanRewriteRule() {
         }
 
         if( LOG.isDebugEnabled )
-            LOG.debug(spb)
+            LOG.debug("Found Sum-Product Block:\n"+spb)
 
 
 //        val agg = node as SNodeAggregate

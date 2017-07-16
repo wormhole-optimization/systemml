@@ -139,6 +139,7 @@ object Spoof2Compiler {
     private fun rewriteHopsDynamic(roots: ArrayList<Hop>, recompile: Boolean): ArrayList<Hop> {
         Hop.resetVisitStatus(roots)
         val rewriter2 = ProgramRewriter(!recompile, true) // don't run static rewrites during recompile
+            // todo - some fix with handling literals in predicates, as exposed by CSE in static rewrites during recompile - need fix from master
         return rewriter2.rewriteHopDAGs(roots, ProgramRewriteStatus())
     }
 
@@ -180,7 +181,7 @@ object Spoof2Compiler {
         Hop.resetVisitStatus(roots)
 
         // if this is entirely composed of Data and Ext ops, then don't do Spoof2 because nothing to do
-        if( sroots.any { it.isEntirelyDataExtEquals() } ) {
+        if( sroots.all { it.isEntirelyDataExtEquals() } ) {
             if (LOG.isTraceEnabled) {
                 LOG.trace("Skipping Spoof2 on DAG that is entirely composed of Data, Ext, and == nodes")
             }
@@ -709,7 +710,7 @@ object Spoof2Compiler {
                     HopRewriteUtils.replaceChildReference(current.hop,
                             current.hop.input[0], inputs[0], 0)
                 }
-                current.hop.parent.clear()
+                current.hop.parent.removeIf { it !is DataOp || it.input.indexOf(current.hop) == 0 }
                 current.hop.resetVisitStatus() // visit status may be set from SNode construction
                 current.hop.refreshSizeInformation()
                 current.hop
@@ -752,7 +753,7 @@ object Spoof2Compiler {
                         for (c in inputs)
                             current.hop.addInput(c)
                     }
-                    current.hop.parent.clear()
+                    current.hop.parent.removeIf { it !is DataOp || it.input.indexOf(current.hop) == 0 }
                     current.hop
                 }
             }

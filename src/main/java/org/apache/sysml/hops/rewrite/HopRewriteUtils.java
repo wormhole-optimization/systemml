@@ -501,6 +501,10 @@ public class HopRewriteUtils
 		//cleanup value type for relational operations
 		if( bop.isPPredOperation() && bop.getDataType().isScalar() )
 			bop.setValueType(ValueType.BOOLEAN);
+		// cleanup cbind, rbind
+		if( bop.getDataType() == DataType.SCALAR && bop.getValueType() != ValueType.STRING
+				&& input2.getValueType() == ValueType.STRING )
+			bop.setValueType(ValueType.STRING);
 		bop.setOutputBlocksizes(mainInput.getRowsInBlock(), mainInput.getColsInBlock());
 		copyLineNumbers(mainInput, bop);
 		bop.refreshSizeInformation();	
