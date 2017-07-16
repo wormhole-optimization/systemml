@@ -685,7 +685,8 @@ public class UnaryOp extends Hop implements MultiThreadedHop
 	{
 		if ( getDataType() == DataType.SCALAR ) 
 		{
-			//do nothing always known
+			setDim1( 0 );
+			setDim2( 0 );
 		}
 		else if( _op == OpOp1.CAST_AS_MATRIX && getInput().get(0).getDataType()==DataType.SCALAR )
 		{
