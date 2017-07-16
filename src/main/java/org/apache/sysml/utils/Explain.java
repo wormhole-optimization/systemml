@@ -78,7 +78,7 @@ public class Explain
 	private static final boolean REPLACE_SPECIAL_CHARACTERS = true;	
 	private static final boolean SHOW_VALUE_TYPE            = true;
 	private static final boolean SHOW_DATA_TYPE             = true;
-	private static final boolean SHOW_MEM_ESTIMATES         = false;
+	private static final boolean SHOW_MEM_ESTIMATES         = true;
 	private static final boolean SHOW_MEM_ABOVE_BUDGET      = false;
 	private static final boolean SHOW_LITERAL_HOPS          = true;
 	private static final boolean SHOW_DATA_DEPENDENCIES     = true;

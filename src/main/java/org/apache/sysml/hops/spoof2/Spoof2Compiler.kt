@@ -140,7 +140,9 @@ object Spoof2Compiler {
         Hop.resetVisitStatus(roots)
         val rewriter2 = ProgramRewriter(!recompile, true) // don't run static rewrites during recompile
             // todo - some fix with handling literals in predicates, as exposed by CSE in static rewrites during recompile - need fix from master
-        return rewriter2.rewriteHopDAGs(roots, ProgramRewriteStatus())
+        rewriter2.rewriteHopDAGs(roots, ProgramRewriteStatus())
+        Hop.resetVisitStatus(roots)
+        return roots
     }
 
     /**

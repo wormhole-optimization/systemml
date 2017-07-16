@@ -71,7 +71,7 @@ class Spoof2Test(
         //	TEST_NAME+28;  //((X * X) %*% Y)
         //	TEST_NAME+29;  //((X * X^2.2) %*% Y)
         //	TEST_NAME+30;  //((X * Z) %*% Y)
-        private const val NUM_TESTS = 30
+        private const val NUM_TESTS = 31
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
