@@ -179,9 +179,9 @@ object Spoof2Compiler {
             sroots.add(rConstructSumProductPlan(root, snodeMemo))
 
         // if this is entirely composed of Data and Ext ops, then don't do Spoof2 because nothing to do
-        if( sroots.any { it.isEntirelyDataExt() } ) {
+        if( sroots.any { it.isEntirelyDataExtEquals() } ) {
             if (LOG.isTraceEnabled) {
-                LOG.trace("Skipping Spoof2 on DAG that is entirely composed of Data and Ext nodes")
+                LOG.trace("Skipping Spoof2 on DAG that is entirely composed of Data, Ext, and == nodes")
             }
             return rewriteHopsDynamic(roots)
         }

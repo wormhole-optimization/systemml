@@ -46,12 +46,14 @@ fun SNode.refreshSchemasUpward(): Boolean {
 }
 
 /**
- * Is this SNode and all children recursively composed of entirely SNodeDatas and SNodeExts?
+ * Is this SNode and all children recursively composed of entirely SNodeDatas and SNodeExts
+ * and `==` SNodeNarys?
  */
-fun SNode.isEntirelyDataExt(): Boolean {
+fun SNode.isEntirelyDataExtEquals(): Boolean {
     val preVisit: (SNode) -> Boolean? = { node ->
-        if (node !is SNodeData && node !is SNodeExt)
-            false // no need to visit children if this is not Data or Ext; we know the result is false
+        if (node !is SNodeData && node !is SNodeExt
+                && (node !is SNodeNary || node.op != SNodeNary.NaryOp.EQUAL))
+            false // no need to visit children; we know the result is false
         else null
     }
     val postVisit: (SNode, Boolean) -> Boolean = ::FN_RET // directly return the Boolean
