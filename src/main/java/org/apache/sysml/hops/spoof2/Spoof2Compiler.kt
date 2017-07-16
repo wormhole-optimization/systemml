@@ -178,6 +178,8 @@ object Spoof2Compiler {
         // remember top-level orientations
         val rootClasses = roots.map(Hop::classify)
 
+        HopDagValidator.validateHopDag(roots)
+
         //construct sum-product plan
         var sroots = ArrayList<SNode>()
         Hop.resetVisitStatus(roots)
