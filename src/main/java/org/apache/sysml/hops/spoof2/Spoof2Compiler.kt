@@ -136,9 +136,9 @@ object Spoof2Compiler {
         return optimize(ArrayList(Arrays.asList(root)), recompile).get(0)
     }
 
-    private fun rewriteHopsDynamic(roots: ArrayList<Hop>): ArrayList<Hop> {
+    private fun rewriteHopsDynamic(roots: ArrayList<Hop>, recompile: Boolean): ArrayList<Hop> {
         Hop.resetVisitStatus(roots)
-        val rewriter2 = ProgramRewriter(true, true)
+        val rewriter2 = ProgramRewriter(!recompile, true) // don't run static rewrites during recompile
         return rewriter2.rewriteHopDAGs(roots, ProgramRewriteStatus())
     }
 
@@ -158,7 +158,7 @@ object Spoof2Compiler {
             if (LOG.isTraceEnabled) {
                 LOG.trace("Skipping Spoof2 due to unknown sizes")
             }
-            return rewriteHopsDynamic(roots)
+            return rewriteHopsDynamic(roots, recompile)
         }
 
         if (LOG.isTraceEnabled) {
@@ -177,13 +177,14 @@ object Spoof2Compiler {
         val snodeMemo: MutableMap<Hop, SNode> = hashMapOf()
         for (root in roots)
             sroots.add(rConstructSumProductPlan(root, snodeMemo))
+        Hop.resetVisitStatus(roots)
 
         // if this is entirely composed of Data and Ext ops, then don't do Spoof2 because nothing to do
         if( sroots.any { it.isEntirelyDataExtEquals() } ) {
             if (LOG.isTraceEnabled) {
                 LOG.trace("Skipping Spoof2 on DAG that is entirely composed of Data, Ext, and == nodes")
             }
-            return rewriteHopsDynamic(roots)
+            return rewriteHopsDynamic(roots, recompile)
         }
 
 
@@ -228,7 +229,9 @@ object Spoof2Compiler {
         HopDagValidator.validateHopDag(roots2)
 
         //rewrite after applied sum-product optimizer
-        rewriteHopsDynamic(roots2)
+        rewriteHopsDynamic(roots2, recompile)
+
+        HopDagValidator.validateHopDag(roots2)
 
         if (LOG.isTraceEnabled) {
             LOG.trace("Spoof2Compiler rewritten modified HOP DAG: \n" + Explain.explainHops(roots2))
@@ -706,6 +709,7 @@ object Spoof2Compiler {
                     HopRewriteUtils.replaceChildReference(current.hop,
                             current.hop.input[0], inputs[0], 0)
                 }
+                current.hop.parent.clear()
                 current.hop.resetVisitStatus() // visit status may be set from SNode construction
                 current.hop.refreshSizeInformation()
                 current.hop
@@ -748,6 +752,7 @@ object Spoof2Compiler {
                         for (c in inputs)
                             current.hop.addInput(c)
                     }
+                    current.hop.parent.clear()
                     current.hop
                 }
             }

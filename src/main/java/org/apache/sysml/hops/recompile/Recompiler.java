@@ -334,6 +334,7 @@ public class Recompiler
 			// Todo call Spoof2Compiler
 			hops.resetVisitStatus();
 			hops = Spoof2Compiler.optimize(hops, true);
+			hops.resetVisitStatus();
 
 
 
