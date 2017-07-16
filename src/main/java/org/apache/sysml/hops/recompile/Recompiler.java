@@ -204,11 +204,6 @@ public class Recompiler
 				Hop.resetVisitStatus(hops);
 				for( Hop hopRoot : hops )
 					rUpdateStatistics( hopRoot, vars );
-
-				// Todo call Spoof2Compiler
-				Hop.resetVisitStatus(hops);
-				Spoof2Compiler.generateCodeFromHopDAGs(hops, true);
-				Hop.resetVisitStatus(hops);
 			}
 			
 			// refresh memory estimates (based on updated stats,
@@ -223,6 +218,10 @@ public class Recompiler
 			memo.extract(hops, status);
 
 
+			// Todo call Spoof2Compiler
+			Hop.resetVisitStatus(hops);
+			Spoof2Compiler.generateCodeFromHopDAGs(hops, true, !inplace);
+			Hop.resetVisitStatus(hops);
 
 			
 //			// codegen if enabled
@@ -325,11 +324,6 @@ public class Recompiler
 				//update stats after rewrites
 				hops.resetVisitStatus();
 				rUpdateStatistics( hops, vars );
-
-				// Todo call Spoof2Compiler
-				hops.resetVisitStatus();
-				hops = Spoof2Compiler.optimize(hops, true);
-				hops.resetVisitStatus();
 			}
 			
 			// refresh memory estimates (based on updated stats)
@@ -339,7 +333,10 @@ public class Recompiler
 			hops.resetVisitStatus();
 			hops.refreshMemEstimates(memo);
 
-
+			// Todo call Spoof2Compiler
+			hops.resetVisitStatus();
+			hops = Spoof2Compiler.optimize(hops, true, !inplace);
+			hops.resetVisitStatus();
 
 
 

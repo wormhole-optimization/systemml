@@ -77,14 +77,14 @@ object Spoof2Compiler {
             is WhileStatementBlock -> {
                 val wsb = current
                 val wstmt = wsb.getStatement(0) as WhileStatement
-                wsb.predicateHops = optimize(wsb.predicateHops, false)
+                wsb.predicateHops = optimize(wsb.predicateHops, false, true)
                 for (sb in wstmt.body)
                     generateCodeFromStatementBlock(sb)
             } 
             is IfStatementBlock -> {
                 val isb = current
                 val istmt = isb.getStatement(0) as IfStatement
-                isb.predicateHops = optimize(isb.predicateHops, false)
+                isb.predicateHops = optimize(isb.predicateHops, false, true)
                 for (sb in istmt.ifBody)
                     generateCodeFromStatementBlock(sb)
                 for (sb in istmt.elseBody)
@@ -93,14 +93,14 @@ object Spoof2Compiler {
             is ForStatementBlock -> { //incl parfor
                 val fsb = current
                 val fstmt = fsb.getStatement(0) as ForStatement
-                fsb.fromHops = optimize(fsb.fromHops, false)
-                fsb.toHops = optimize(fsb.toHops, false)
-                fsb.incrementHops = optimize(fsb.incrementHops, false)
+                fsb.fromHops = optimize(fsb.fromHops, false, true)
+                fsb.toHops = optimize(fsb.toHops, false, true)
+                fsb.incrementHops = optimize(fsb.incrementHops, false, true)
                 for (sb in fstmt.body)
                     generateCodeFromStatementBlock(sb)
             } 
             else -> { //generic (last-level)
-                current._hops = generateCodeFromHopDAGs(current._hops, false)
+                current._hops = generateCodeFromHopDAGs(current._hops, false, true)
                 current.updateRecompilationFlag()
             }
         }
@@ -108,11 +108,11 @@ object Spoof2Compiler {
 
     @JvmStatic
     @Throws(HopsException::class, DMLRuntimeException::class)
-    fun generateCodeFromHopDAGs(roots: ArrayList<Hop>?, recompile: Boolean): ArrayList<Hop>? {
+    fun generateCodeFromHopDAGs(roots: ArrayList<Hop>?, recompile: Boolean, doDynamicProgramRewriter: Boolean): ArrayList<Hop>? {
         if (roots == null)
             return null
 
-        val optimized = optimize(roots, recompile)
+        val optimized = optimize(roots, recompile, doDynamicProgramRewriter)
 //        Hop.resetVisitStatus(roots)
         Hop.resetVisitStatus(optimized)
 
@@ -130,15 +130,19 @@ object Spoof2Compiler {
      */
     @JvmStatic
     @Throws(DMLRuntimeException::class, HopsException::class)
-    fun optimize(root: Hop?, recompile: Boolean): Hop? {
+    fun optimize(root: Hop?, recompile: Boolean, doDynamicProgramRewriter: Boolean): Hop? {
         if (root == null)
             return null
-        return optimize(ArrayList(Arrays.asList(root)), recompile).get(0)
+        return optimize(ArrayList(Arrays.asList(root)), recompile, doDynamicProgramRewriter).get(0)
     }
 
-    private fun rewriteHopsDynamic(roots: ArrayList<Hop>, recompile: Boolean): ArrayList<Hop> {
+    private fun programRewriteHops(roots: ArrayList<Hop>, recompile: Boolean,
+                                   doDynamicProgramRewriter: Boolean): ArrayList<Hop> {
         Hop.resetVisitStatus(roots)
-        val rewriter2 = ProgramRewriter(!recompile, true) // don't run static rewrites during recompile
+//        initial compile          ==>  CSE; SumProduct; static + dynamic ProgramWriter
+//        recompile, inplace=false ==>  CSE; SumProduct; dynamic ProgramWriter
+//        recompile, inplace=true  ==>  CSE; SumProduct
+        val rewriter2 = ProgramRewriter(!recompile, doDynamicProgramRewriter)
             // todo - some fix with handling literals in predicates, as exposed by CSE in static rewrites during recompile - need fix from master
         rewriter2.rewriteHopDAGs(roots, ProgramRewriteStatus())
         Hop.resetVisitStatus(roots)
@@ -155,13 +159,13 @@ object Spoof2Compiler {
      * @throws HopsException -
      */
     @Throws(DMLRuntimeException::class, HopsException::class)
-    fun optimize(roots: ArrayList<Hop>, recompile: Boolean): ArrayList<Hop> {
+    fun optimize(roots: ArrayList<Hop>, recompile: Boolean, doDynamicProgramRewriter: Boolean): ArrayList<Hop> {
         // if any sizes unknown, don't do Spoof2
         if( roots.any { !allKnownSizes(it)} ) {
             if (LOG.isTraceEnabled) {
                 LOG.trace("Skipping Spoof2 due to unknown sizes")
             }
-            return rewriteHopsDynamic(roots, recompile)
+            return programRewriteHops(roots, recompile, doDynamicProgramRewriter)
         }
 
         if (LOG.isTraceEnabled) {
@@ -187,7 +191,7 @@ object Spoof2Compiler {
             if (LOG.isTraceEnabled) {
                 LOG.trace("Skipping Spoof2 on DAG that is entirely composed of Data, Ext, and == nodes")
             }
-            return rewriteHopsDynamic(roots, recompile)
+            return programRewriteHops(roots, recompile, doDynamicProgramRewriter)
         }
 
 
@@ -232,7 +236,7 @@ object Spoof2Compiler {
         HopDagValidator.validateHopDag(roots2)
 
         //rewrite after applied sum-product optimizer
-        rewriteHopsDynamic(roots2, recompile)
+        programRewriteHops(roots2, recompile, doDynamicProgramRewriter)
 
         HopDagValidator.validateHopDag(roots2)
 
@@ -572,13 +576,14 @@ object Spoof2Compiler {
             }
 
             // minindex, maxindex only defined on Row aggregation
+            // In general it is difficult to tell whether the input should be tranposed or not. We do our best.
             if( agg.op == Hop.AggOp.MININDEX || agg.op == Hop.AggOp.MAXINDEX ) {
-                if( dir == Hop.Direction.RowCol )
-                    dir = Hop.Direction.Row
-                else if( dir == Hop.Direction.Col ) {
+                if( dir == Hop.Direction.RowCol && hop0.classify() == HopClass.COL_VECTOR || dir == Hop.Direction.Col ) {
                     hop0 = HopRewriteUtils.createTranspose(hop0)
-                    dir = Hop.Direction.Row
+                    if( LOG.isDebugEnabled )
+                        LOG.debug("Creating transpose on input to ${agg.op} hopid=${hop0.hopID}")
                 }
+                dir = Hop.Direction.Row
             }
 
             val ret = HopRewriteUtils.createAggUnaryOp(hop0, agg.op, dir)
