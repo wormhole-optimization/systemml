@@ -22,10 +22,9 @@
 args<-commandArgs(TRUE)
 options(digits=22)
 library(Matrix)
-X = matrix(  c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15), nrow=5, ncol=3, byrow = TRUE)
-Y = matrix(  c(9,8,7,6,5,4,3,2,1), nrow=3, ncol=3, byrow = TRUE)
-Z = matrix(  c(9,8,7,6,5,4,3,2,1,2,3,4,5,6,7), nrow=5, ncol=3, byrow = TRUE)
+A = matrix(  c(1,2,3,4,5,6,7,8,9), nrow=3, ncol=3, byrow = TRUE)
+B = matrix(  c(9,8,7,6,5,4,3,2,1), nrow=3, ncol=3, byrow = TRUE)
 
-R = (X * Z) %*% Y
+R = (A%*%B)%*%(A%*%B)
 
 writeMM(as(R, "CsparseMatrix"), paste(args[2], "S", sep=""));

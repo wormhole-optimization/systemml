@@ -71,6 +71,7 @@ class Spoof2Test(
         //	TEST_NAME+28;  //((X * X) %*% Y)
         //	TEST_NAME+29;  //((X * X^2.2) %*% Y)
         //	TEST_NAME+30;  //((X * Z) %*% Y)
+        //	TEST_NAME+31;  //(A%*%B)%*%(A%*%B)
         private const val NUM_TESTS = 31
 
         private const val TEST_DIR = "functions/spoof2/"
