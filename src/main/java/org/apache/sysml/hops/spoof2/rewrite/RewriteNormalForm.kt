@@ -188,7 +188,7 @@ class RewriteNormalForm : SPlanRewriteRule() {
         // Tracks largest sum-product statistics; see RewriteNormalForm, Statistics, AutomatedTestBase
         val recSchema = spb.recUnionSchema()
 
-        val thisSize = spb.edges.size + recSchema.size
+        val thisSize = numForks // spb.edges.size + recSchema.size +
         var oldLargestSize: Int
         do {
             oldLargestSize = Statistics.spoof2NormalFormNameLength.get()

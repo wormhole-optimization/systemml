@@ -387,21 +387,39 @@ sealed class SumProduct {
         check( inputNodes.isNotEmpty() )
         if(inputNodes.size == 1)
             return inputNodes[0]
-        // check for a--x--y case
-        if(inputNodes.size == 3 && inputNodes.count { it.schema.size == 1 } == 1
-                && inputNodes.count { it.schema.size == 2 } == 2) {
-            val vector = inputNodes.find { it.schema.size == 1 }!!
+        // check for case VMV -- choose which MxV is better to do first
+        // if there is no aggregate then it doesn't actually matter, but no harm done
+        if( inputNodes.size == 3) {
+            val size1count = inputNodes.count { it.schema.size == 1 }
+            val size2count = inputNodes.count { it.schema.size == 2 }
+            if (size2count == 1 && size1count == 2) {
+                val matrix = inputNodes.find { it.schema.size == 2 }!!
+                var v1 = inputNodes.find { it.schema.size == 1 }!!
+                var v2 = inputNodes.findLast { it.schema.size == 1 }!!
+                val s1 = (v1.schema.shapes).first()
+                val s2 = (v2.schema.shapes).first()
+                if (s1 < s2) // ensure s1 >= s2
+                    run { val t = v1; v1 = v2; v2 = t }
+                val nary1 = SNodeNary(this.product, matrix, v1) // aggregate will be pushed down
+                val nary2 = SNodeNary(this.product, nary1, v2)
+                return nary2
+            }
+            // check for a--x--y case MVM
+            // choose whether to multiply the vector with the first or second matrix first.
+            if (size1count == 1 && size2count == 2) {
+                val vector = inputNodes.find { it.schema.size == 1 }!!
 //            val n12 = vector.schema.names.first()
-            val s12 = vector.schema.shapes.first()
-            var m1 = inputNodes.find { it.schema.size == 2 }!!
-            var m2 = inputNodes.findLast { it.schema.size == 2 }!!
-            val s1 = (m1.schema.shapes - s12).first()
-            val s2 = (m2.schema.shapes - s12).first()
-            if( s1 > s2 )
-                run { val t = m1; m1 = m2; m2 = t }
-            val nary1 = SNodeNary(this.product, m1, vector)
-            val nary2 = SNodeNary(this.product, nary1, m2)
-            return nary2
+                val s12 = vector.schema.shapes.first()
+                var m1 = inputNodes.find { it.schema.size == 2 }!!
+                var m2 = inputNodes.findLast { it.schema.size == 2 }!!
+                val s1 = (m1.schema.shapes - s12).first()
+                val s2 = (m2.schema.shapes - s12).first()
+                if (s1 > s2)
+                    run { val t = m1; m1 = m2; m2 = t }
+                val nary1 = SNodeNary(this.product, m1, vector)
+                val nary2 = SNodeNary(this.product, nary1, m2)
+                return nary2
+            }
         }
         return SNodeNary(this.product, inputNodes)
     }

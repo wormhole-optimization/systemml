@@ -212,7 +212,8 @@ object Spoof2Compiler {
         // shouldn't be necessary because the roots are generally Writes, which correct orientation on their own
         roots2.mapInPlaceIndexed { idx, root2 ->
             if( rootClasses[idx].isVector && root2.classify() != rootClasses[idx] ) {
-                check( root2.classify().isVector ) {"root changed type after reconstruction? Old type ${rootClasses[idx]}; new type ${root2.classify()} dims ${root2.dim1}, ${root2.dim2} hopid=${root2.hopID}"}
+                check( root2.classify().isVector ) {"root changed type after reconstruction? Old type ${rootClasses[idx]}; new type ${root2.classify()} dims ${root2.dim1}, ${root2.dim2} hopid=${root2.hopID}" +
+                        "\n modified Hop Dag is:\n" + Explain.explainHops(roots2)}
                 if( LOG.isTraceEnabled )
                     LOG.trace("creating root transpose at root $idx to enforce orientation ${rootClasses[idx]}")
                 HopRewriteUtils.createTranspose(root2)
@@ -440,6 +441,7 @@ object Spoof2Compiler {
         val mult = agg.inputs[0]
         return if( mult is SNodeNary && mult.op == NaryOp.MULT && agg.op == Hop.AggOp.SUM
                 && mult.inputs.size == 2
+                && mult.inputs[0].schema.names.intersect(mult.inputs[1].schema.names).size == 1 // forbear element-wise multiplication followed by agg
                 && agg.aggreateNames.size == 1 )
         {   // MxM
             var mult0 = mult.inputs[0]
@@ -546,7 +548,7 @@ object Spoof2Compiler {
             }
 
             // Determine direction
-            SNodeException.check(agg.aggreateNames.size == 1 || agg.aggreateNames.size == 2, agg)
+            SNodeException.check(agg.aggreateNames.size in 1..2, agg)
             {"don't know how to compile aggregate to Hop with aggregates ${agg.aggreateNames}"}
             var dir = when {
                 agg.aggreateNames.size == 2 -> Hop.Direction.RowCol

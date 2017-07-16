@@ -129,7 +129,12 @@ class Schema private constructor(
         when( permutation.filter { (k,v) -> k != v }.size ) {
         // common cases
             0 -> return
-            1 -> throw IllegalArgumentException("bad permutation $permutation on $this")
+            1 -> {
+                // this could occur if an Unbind is partially eliminated
+                val (k,v) = permutation.iterator().next()
+                names.swap(k,v)
+                shapes.swap(k,v)
+            }
             2 -> {
                 val (a, b) = permutation.keys.iterator().let { it.next() to it.next() }
                 names.swap(a,b)
