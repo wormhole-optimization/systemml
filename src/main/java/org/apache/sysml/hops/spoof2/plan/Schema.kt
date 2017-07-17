@@ -26,6 +26,7 @@ class Schema private constructor(
     companion object {
         private val _idSeq = IDSequence()
         private fun nextNameId(): String = _idSeq.nextID.toString()
+        fun freshNameCopy(n: Name) = n+'_'+ 1//nextNameId()
     }
 
     fun deepCopy() = Schema(this)

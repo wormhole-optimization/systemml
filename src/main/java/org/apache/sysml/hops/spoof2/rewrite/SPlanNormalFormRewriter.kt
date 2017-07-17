@@ -19,10 +19,10 @@ class SPlanNormalFormRewriter {
             RewriteMultiplyElim()
     )
     private val _rulesNormalForm = listOf(
-//            RewriteMultiplyCSEToPower(),
             RewriteNormalForm()
     )
     private val _rulesToHopReady = listOf(
+            RewriteMultiplyCSEToPower(), // RewriteNormalForm factorizes, so we can't get powers >2. Need to reposition.
             RewriteMultiplySplit(),
             RewritePushAggIntoMult()
     )

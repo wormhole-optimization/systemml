@@ -6,29 +6,43 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
 
 /**
  * Pattern:
- * <pre>
+ * ```
  *      \ /    ->    \ /
  *       *     ->     +
  *     / | \   ->     |
  *    +  .. .. ->     *
  * \ /         -> \ / | \
  *  C          ->  C  .. ..
- * </pre>
+ * ```
  * and no foreign parents on +.
  *
- * Later, we will add the following functionality.
- * Requires providing fresh names for the agg +.
- * <pre>
- *      \ /    ->     \ /
- *       *     ->      +
- *     // \    ->      |
- *    +    ..  ->      *
- * \ /         -> \ // | \
- *  C          ->  C  .. ..
- * </pre>
+ * Illustrated above is the "no other parents on +" case.
+ * Illustrated below is the "+ has multiple parents, all of which are the *" case.
  *
+ * Common Subexpression Splitting:
+ * Copies the CSE and provides fresh names for the aggregated names.
+ * ```
+ *      \ /    ->   \ /
+ *       *     ->    +[a,a']
+ *     // \    ->    |
+ * F  +[a] ..  -> F  *
+ * \ /         -> \ /|            \
+ *  C          ->  C  C'[a -> a'] ..
+ * ```
+ *
+ * This is a tricky situation.
+ * Luckily it never seems to occur because the Bind rules are smarter than expected.
+ * ```
+ *      \ /    ->            \ /
+ *       *     ->             +[a']
+ *     /  \    ->             |
+ * F  +[a] D[a]->  F          *
+ * \ /         ->  |         / \
+ *  C          ->  C C'[a->a'] D[a]
+ * ```
  */
 class RewritePullAggAboveMult : SPlanRewriteRule() {
+
     override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
         if( node !is SNodeNary || node.op != NaryOp.MULT ) // todo generalize to other * functions that are semiring to +
             return RewriteResult.NoChange
@@ -37,35 +51,68 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
         var numApplied = 0
 
         for (iMultToAgg in mult.inputs.indices) { // index of agg in mult
-            val agg = mult.inputs[iMultToAgg]
-            if( agg is SNodeAggregate
-                    && agg.parents.size == 1 //agg.parents.all { it == mult } // this is incorrect if aggChild is an SNodeAggregate (or SNodeBind?); need to make fresh names
+            var agg = mult.inputs[iMultToAgg]
+            if( agg is SNodeAggregate // TODO check to make sure the aggBinding is *not* in the output schema of the mult. If it is, then copyAggRenameDown.
+                    && agg.parents.all { it == mult }
                     && agg.op == AggOp.SUM ) {
-                val numAggInMultInput = agg.parents.count() // add aggChild to mult.inputs numAggInMultInput times
-                val aggChild = agg.inputs[0]
+                val numAggInMultInput = agg.parents.count() // this is >1 if the mult has a CSE
+                if (SPlanRewriteRule.LOG.isDebugEnabled && numAggInMultInput > 1)
+                    SPlanRewriteRule.LOG.debug("In RewritePullAggAboveMult, splitting CSE id=${agg.id} $agg " +
+                            "that occurs $numAggInMultInput times as input to id=${mult.id} $mult")
 
-                val iAggChildToAgg = aggChild.parents.indexOf(agg)
-                aggChild.parents[iAggChildToAgg] = mult
-                repeat(numAggInMultInput-1) {
-                    aggChild.parents.add(mult)
+                val (overlapAggNames, nonOverlapAggNames) = agg.aggreateNames.partition { it in mult.schema }
+                // Todo: find a test case where this scenario actually occurs!
+                if( overlapAggNames.isNotEmpty() ) {
+                    if( nonOverlapAggNames.isNotEmpty() ) {
+                        // split agg into agg and aggDown. aggDown contains the non-overlapping agg names.
+                        agg.inputs[0].parents.remove(agg)
+                        val aggDown = SNodeAggregate(agg.op, agg.inputs[0], nonOverlapAggNames)
+                        aggDown.parents += agg
+                        agg.aggreateNames.removeAll(nonOverlapAggNames)
+                        agg.inputs[0] = aggDown
+                        if (SPlanRewriteRule.LOG.isDebugEnabled)
+                            SPlanRewriteRule.LOG.debug("In RewritePullAggAboveMult, " +
+                                    "split id=${agg.id} $agg into $overlapAggNames and $nonOverlapAggNames")
+                    }
+                    val newAgg = agg.copyAggRenameDown()
+                    repeat(numAggInMultInput) {
+                        newAgg.parents += mult
+                    }
+                    mult.inputs.mapInPlace {
+                        if( it == agg ) newAgg
+                        else it
+                    }
+                    if (SPlanRewriteRule.LOG.isDebugEnabled)
+                        SPlanRewriteRule.LOG.debug("In RewritePullAggAboveMult, " +
+                                "copy id=${agg.id} $agg to renamed id=${newAgg.id} $newAgg")
+                    agg = newAgg
                 }
+
+                for( multInputIdx in iMultToAgg+1..mult.inputs.size-1 ) {
+                    if( mult.inputs[multInputIdx] == agg ) {
+                        val newAgg = agg.copyAggRenameDown()
+                        agg.aggreateNames += newAgg.aggreateNames
+                        newAgg.inputs[0].parents[0] = mult
+                        mult.inputs[multInputIdx] = newAgg.inputs[0]
+                    }
+                }
+
+                val aggChild = agg.inputs[0]
+                aggChild.parents[aggChild.parents.indexOf(agg)] = mult
                 agg.inputs[0] = mult
                 agg.parents.clear()
-                agg.parents.addAll(mult.parents)
+                agg.parents += mult.parents
                 // set mult.parents to agg
                 mult.parents.forEach { multParent ->
                     for (iMultParentToMult in multParent.inputs.indices) {
-                        if( multParent.inputs[iMultParentToMult] === mult )
+                        if( multParent.inputs[iMultParentToMult] == mult )
                             multParent.inputs[iMultParentToMult] = agg
                     }
                 }
-                mult.inputs[iMultToAgg] = aggChild // replace with the following when we are ready to provide fresh names.
-//                mult.inputs.mapInPlace {
-//                    if( it == agg ) aggChild
-//                    else it
-//                }
+
+                mult.inputs[iMultToAgg] = aggChild
                 mult.parents.clear()
-                mult.parents.add(agg)
+                mult.parents += agg
                 //
                 mult.refreshSchema()
                 agg.refreshSchema()

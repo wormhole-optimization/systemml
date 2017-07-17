@@ -1,5 +1,6 @@
 package org.apache.sysml.hops.spoof2.plan
 
+import org.apache.sysml.hops.recompile.Recompiler
 import org.apache.sysml.hops.spoof2.plan.SNode.Companion.FN_RET
 
 /** Rename attribute names throughout this sub-DAG.
@@ -58,5 +59,35 @@ fun SNode.isEntirelyDataExtEquals(): Boolean {
     }
     val postVisit: (SNode, Boolean) -> Boolean = ::FN_RET // directly return the Boolean
     return acceptFoldUnordered(preVisit, postVisit, true, Boolean::and) // no memo guard because this is really cheap
+}
+
+fun SNodeAggregate.copyAggRenameDown(): SNodeAggregate {
+    val renaming = this.aggreateNames.map { it to Schema.freshNameCopy(it) }.toMap()
+    val aggInput = this.inputs[0].renameCopyDown(renaming, HashMap())
+    val agg = SNodeAggregate(this.op, aggInput, renaming.values)
+    return agg
+}
+
+
+private fun SNode.renameCopyDown(renaming: Map<Name, Name>, memo: HashMap<Long, SNode>): SNode {
+    check( this.schema.names.containsAll(renaming.keys) ) {"renameCopyDown should only touch SNodes that have a schema to rename; saw id=${this.id} $this ${this.schema}"}
+    if( this.id in memo )
+        return memo[this.id]!!
+    val newNode = when( this ) {
+        is SNodeBind -> {
+            val b = this.bindings.mapValues { (_,n) -> renaming[n] ?: n }
+            val r = renaming.filter { (orig,_) -> orig !in this.bindings.values }
+            val i: SNode = if( r.isNotEmpty() ) this.inputs[0].renameCopyDown(r, memo) else this.inputs[0]
+            SNodeBind(i, b)
+        }
+        is SNodeAggregate -> SNodeAggregate(this.op, this.inputs[0].renameCopyDown(renaming, memo), this.aggreateNames)
+        is SNodeNary -> SNodeNary(this.op, this.inputs.map { it.renameCopyDown(renaming, memo) })
+        is SNodeUnbind -> SNodeUnbind(this.inputs[0].renameCopyDown(renaming, memo), this.unbindings)
+        is SNodeData -> throw AssertionError("should not reach an SNodeData; should hit a Bind first") // Write Hops cannot have parents, right?
+        is SNodeExt -> SNodeExt(Recompiler.deepCopyHopsDag(this.hop), this.inputs.map { it.renameCopyDown(renaming, memo) })
+        else -> throw AssertionError("unknown SNode $this")
+    }
+    memo[this.id] = newNode
+    return newNode
 }
 

@@ -19,10 +19,11 @@
 #
 #-------------------------------------------------------------
 
-X= matrix( "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15", rows=3, cols=5)
-U= matrix( "9 8 7 6 5 4 3 2 1", rows=3, cols=3)
-V= matrix( "9 8 7 6 5 4 3 2 1 2 3 4 5 6 7", rows=5, cols=3)
+args<-commandArgs(TRUE)
+options(digits=22)
+library(Matrix)
+A = matrix(  c(1,2,3,4,5,6,7,8,9), nrow=3, ncol=3, byrow = TRUE)
 
-R = as.matrix(sum((X - U %*% t(V)) ^ 2))
+R = outer(rowSums(A*A),colSums(A*A))
 
-write(R,$1)
+writeMM(as(R, "CsparseMatrix"), paste(args[2], "S", sep=""));

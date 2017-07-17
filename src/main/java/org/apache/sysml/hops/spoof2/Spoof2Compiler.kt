@@ -168,12 +168,11 @@ object Spoof2Compiler {
             return programRewriteHops(roots, recompile, doDynamicProgramRewriter)
         }
 
+        ProgramRewriter(RewriteCommonSubexpressionElimination()).rewriteHopDAGs(roots, ProgramRewriteStatus())
+
         if (LOG.isTraceEnabled) {
             LOG.trace("Spoof2Compiler called for HOP DAG${if(recompile) " at RECOMPILE" else ""}: \n" + Explain.explainHops(roots))
         }
-
-        ProgramRewriter(RewriteCommonSubexpressionElimination()).rewriteHopDAGs(roots, ProgramRewriteStatus())
-
 
         // remember top-level orientations
         val rootClasses = roots.map(Hop::classify)

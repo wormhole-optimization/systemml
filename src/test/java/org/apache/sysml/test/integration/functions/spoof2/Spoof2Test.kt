@@ -74,7 +74,10 @@ class Spoof2Test(
         //	TEST_NAME+31;  //(A%*%B)%*%(A%*%B)
         //	TEST_NAME+32;  //sum((X - U %*% t(V)) ^ 2)
         //	TEST_NAME+33;  //(A%*%B)*(A%*%B)
-        private const val NUM_TESTS = 33
+        //	TEST_NAME+34;  //rowSums(A^2)*rowSums(A)
+        //	TEST_NAME+35;  //A*rowSums(A^2)
+        //	TEST_NAME+36;  //rowSums(A*A)%*%colSums(A*A) // R: outer(rowSums(A*A),colSums(A))
+        private const val NUM_TESTS = 36
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
