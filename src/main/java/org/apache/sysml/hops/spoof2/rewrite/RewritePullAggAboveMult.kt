@@ -1,9 +1,7 @@
 package org.apache.sysml.hops.spoof2.rewrite
 
 import org.apache.sysml.hops.Hop.AggOp
-import org.apache.sysml.hops.spoof2.plan.SNode
-import org.apache.sysml.hops.spoof2.plan.SNodeAggregate
-import org.apache.sysml.hops.spoof2.plan.SNodeNary
+import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
 
 /**
@@ -17,6 +15,18 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
  *  C          ->  C  .. ..
  * </pre>
  * and no foreign parents on +.
+ *
+ * Later, we will add the following functionality.
+ * Requires providing fresh names for the agg +.
+ * <pre>
+ *      \ /    ->     \ /
+ *       *     ->      +
+ *     // \    ->      |
+ *    +    ..  ->      *
+ * \ /         -> \ // | \
+ *  C          ->  C  .. ..
+ * </pre>
+ *
  */
 class RewritePullAggAboveMult : SPlanRewriteRule() {
     override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
@@ -29,11 +39,16 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
         for (iMultToAgg in mult.inputs.indices) { // index of agg in mult
             val agg = mult.inputs[iMultToAgg]
             if( agg is SNodeAggregate
-                    && agg.parents.size == 1
+                    && agg.parents.size == 1 //agg.parents.all { it == mult } // this is incorrect if aggChild is an SNodeAggregate (or SNodeBind?); need to make fresh names
                     && agg.op == AggOp.SUM ) {
+                val numAggInMultInput = agg.parents.count() // add aggChild to mult.inputs numAggInMultInput times
                 val aggChild = agg.inputs[0]
+
                 val iAggChildToAgg = aggChild.parents.indexOf(agg)
                 aggChild.parents[iAggChildToAgg] = mult
+                repeat(numAggInMultInput-1) {
+                    aggChild.parents.add(mult)
+                }
                 agg.inputs[0] = mult
                 agg.parents.clear()
                 agg.parents.addAll(mult.parents)
@@ -44,7 +59,11 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
                             multParent.inputs[iMultParentToMult] = agg
                     }
                 }
-                mult.inputs[iMultToAgg] = aggChild
+                mult.inputs[iMultToAgg] = aggChild // replace with the following when we are ready to provide fresh names.
+//                mult.inputs.mapInPlace {
+//                    if( it == agg ) aggChild
+//                    else it
+//                }
                 mult.parents.clear()
                 mult.parents.add(agg)
                 //
@@ -52,7 +71,7 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
                 agg.refreshSchema()
                 if( top === node ) // original parents connect to the first pulled aggregate
                     top = agg      // a later rewrite rule will combine consecutive aggregates
-                numApplied++
+                numApplied += numAggInMultInput
             }
         }
         if (numApplied > 0) {

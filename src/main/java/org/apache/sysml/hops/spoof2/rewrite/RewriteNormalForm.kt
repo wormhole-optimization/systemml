@@ -82,9 +82,13 @@ class RewriteNormalForm : SPlanRewriteRule() {
 
         numForks = 0
 
-        val (spbNew, spbCost) = factorSumProduct(spb)
+        var (spbNew, spbCost) = factorSumProduct(spb)
+
+        if( spbNew.sumBlocks.isEmpty() && spbNew.edges.size == 1 && spbNew.edges[0] is SumProduct.Block )
+            spbNew = spbNew.edges[0] as SumProduct.Block
+
         if( LOG.isDebugEnabled )
-            LOG.debug("New SumProduct.Block found with cost $spbCost\n" +
+            LOG.debug("New SumProduct.Block found with cost $spbCost (numForks=$numForks)\n" +
                     "$spbNew")
 
         trackStatistics(spb)
