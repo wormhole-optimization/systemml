@@ -9,7 +9,7 @@ import org.apache.sysml.hops.spoof2.plan.*
  *
  * Requires [RewriteMultiplyCSEToPower], which rewrites common subexpressions of the multiply to unary powers.
  */
-class RewriteSplitMultiply : SPlanRewriteRule() {
+class RewriteMultiplySplit : SPlanRewriteRule() {
 
     override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
         val origInputSize = node.inputs.size
@@ -21,7 +21,7 @@ class RewriteSplitMultiply : SPlanRewriteRule() {
             rSplitMultiply(curMult, curMult)
 
             if (SPlanRewriteRule.LOG.isDebugEnabled)
-                SPlanRewriteRule.LOG.debug("RewriteSplitMultiply (num=${origInputSize-2}) onto top ${curMult.id} $curMult.")
+                SPlanRewriteRule.LOG.debug("RewriteMultiplySplit (num=${origInputSize-2}) onto top ${curMult.id} $curMult.")
             return RewriteResult.NewNode(curMult)
         }
         return RewriteResult.NoChange
@@ -44,7 +44,7 @@ class RewriteSplitMultiply : SPlanRewriteRule() {
                 )
                 val changed = mult.refreshSchemasUpward()
                 if (changed && SPlanRewriteRule.LOG.isDebugEnabled)
-                    SPlanRewriteRule.LOG.debug("RewriteSplitMultiply reorder inputs of $mult id=${mult.id} to schema ${mult.schema}.")
+                    SPlanRewriteRule.LOG.debug("RewriteMultiplySplit reorder inputs of $mult id=${mult.id} to schema ${mult.schema}.")
             }
         }
 

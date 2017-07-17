@@ -17,8 +17,8 @@ class BasicSPlanRewriter {
         _ruleSet.add(RewriteBindElim())
         _ruleSet.add(RewritePullAggAboveMult())
         _ruleSet.add(RewriteAggregateElim())
-        _ruleSet.add(RewriteCombineMultiply()) // disrupts RewritePushAggIntoMult unless we choose a variable order and split the multiplies
-        _ruleSet.add(RewriteSplitMultiply())
+        _ruleSet.add(RewriteMultiplyElim()) // disrupts RewritePushAggIntoMult unless we choose a variable order and split the multiplies
+        _ruleSet.add(RewriteMultiplySplit())
         _ruleSet.add(RewritePushAggIntoMult())
     }
 

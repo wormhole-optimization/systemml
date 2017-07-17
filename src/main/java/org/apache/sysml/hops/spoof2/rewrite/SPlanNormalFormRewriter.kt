@@ -16,14 +16,14 @@ class SPlanNormalFormRewriter {
             RewriteBindElim(),
             RewritePullAggAboveMult(),
             RewriteAggregateElim(),
-            RewriteCombineMultiply()
+            RewriteMultiplyElim()
     )
     private val _rulesNormalForm = listOf(
 //            RewriteMultiplyCSEToPower(),
             RewriteNormalForm()
     )
     private val _rulesToHopReady = listOf(
-            RewriteSplitMultiply(),
+            RewriteMultiplySplit(),
             RewritePushAggIntoMult()
     )
 
