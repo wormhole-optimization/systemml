@@ -176,7 +176,7 @@ sealed class SumProduct {
                 repeat(tab) {sb.append('\t')}
                 sb.toString()
             }
-            return "Block$sumBlocks<$product>:" +
+            return "Block$sumBlocks<$product>: $schema" +
                     edges.joinToString(prefix = sep, separator = sep, transform = {it.toStringWithTab(tab+1)}) +(if(SHOW_NNZ) "(nnz=$nnz)" else "")
         }
 

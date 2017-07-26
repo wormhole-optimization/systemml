@@ -51,27 +51,6 @@ class RewriteNormalForm : SPlanRewriteRule() {
             spb.edges += CCspb
             spb.edges += NCspb
 
-
-//            // partition the names by CCnames
-//            // create:  CC-edges <<- aggp[CC-aggs] <- new-mult -> agg[not-CC-aggs] ->> not-CC-edges
-//            val (CCedges, NCedges) = mult.inputs.partition { it.schema.names.first() in CCnames }
-//            mult.inputs.forEach { it.parents.removeAt(it.parents.indexOf(mult)) }
-//            val CCaggNames = agg.aggreateNames.intersect(CCnames)
-//            val NCaggNames = agg.aggreateNames - CCaggNames
-//
-//            // For CC and NC, don't create mult if only one input; don't create agg if no aggregation.
-//            val CCmult = if (CCedges.size == 1) CCedges.first() else SNodeNary(mult.op, CCedges)
-//            val CCagg = if (CCaggNames.isEmpty()) CCmult else SNodeAggregate(agg.op, CCmult, CCaggNames)
-//            val NCmult = if (NCedges.size == 1) NCedges.first() else SNodeNary(mult.op, NCedges)
-//            val NCagg = if (NCaggNames.isEmpty()) NCmult else SNodeAggregate(agg.op, NCmult, NCaggNames)
-//            val newMult = SNodeNary(mult.op, CCagg, NCagg)
-//
-//            val parents = ArrayList(agg.parents)
-//            for( p in parents )
-//                SNodeRewriteUtils.replaceChildReference(p, agg, newMult)
-//            for( p in agg.parents )
-//                p.refreshSchemasUpward() // playing it safe, not sure if this is necessary
-
             if( LOG.isDebugEnabled )
                 LOG.debug("Partition Sum-Product block into disjoint components:\n" +
                         "Component 1: $CCspb\n" +

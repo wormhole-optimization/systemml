@@ -77,7 +77,8 @@ class Spoof2Test(
         //	TEST_NAME+34;  //rowSums(A^2)*rowSums(A)
         //	TEST_NAME+35;  //A*rowSums(A^2)
         //	TEST_NAME+36;  //rowSums(A*A)%*%colSums(A*A) // R: outer(rowSums(A*A),colSums(A))
-        private const val NUM_TESTS = 36
+        //	TEST_NAME+37;  //sum( (U%*%t(V))^2 ) // need common subexpression splitting, power-to-multiply
+        private const val NUM_TESTS = 37
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
