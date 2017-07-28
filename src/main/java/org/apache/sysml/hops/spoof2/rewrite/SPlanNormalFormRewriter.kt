@@ -22,7 +22,7 @@ class SPlanNormalFormRewriter {
             RewriteNormalForm()
     )
     private val _rulesToHopReady = listOf(
-            RewriteMultiplyCSEToPower(), // RewriteNormalForm factorizes, so we can't get powers >2. Need to reposition.
+            RewriteMultiplyCSEToPower(), // RewriteNormalForm factorizes, so we can't get powers >2. Need to reposition. // Obsolete by RewriteElementwiseMultiplyChain?
             RewriteMultiplySplit(),
             RewritePushAggIntoMult()
     )
