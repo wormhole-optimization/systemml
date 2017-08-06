@@ -93,7 +93,7 @@ data class SPCost(
                             // first multiply the groups together
                             val repSchemasToCount = spb.edgesGroupByIncidentNames().map { (_,edges) -> edges.first().schema to edges.size }
                             val multWithinGroupCost = repSchemasToCount.sumByLong { (repSchema,count) ->
-                                (count-1) * repSchema.shapes.reduce(Long::times)
+                                (count-1) * repSchema.shapes.fold(1L) { acc, shape -> acc * shape }
                             }
                             // now multiply across groups
                             val allSchema = spb.allSchema() //repSchemasToCount.map(Pair<Schema,Int>::first).fold(Schema()) { acc, schema -> acc.apply { unionWithBound(schema) } }

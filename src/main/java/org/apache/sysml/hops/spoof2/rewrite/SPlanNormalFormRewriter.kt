@@ -14,6 +14,7 @@ import org.apache.sysml.utils.Explain
 class SPlanNormalFormRewriter {
     private val _rulesToNormalForm = listOf(
             RewriteBindElim(),
+            RewriteDecompose(),         // Subtract  + and *(-1);   ^2  Self-*
             RewritePullAggAboveMult(),
             RewriteAggregateElim(),
             RewriteMultiplyElim()
