@@ -72,14 +72,15 @@ class Spoof2Test(
         //	TEST_NAME+29;  //((X * X^2.2) %*% Y)
         //	TEST_NAME+30;  //((X * Z) %*% Y)
         //	TEST_NAME+31;  //(A%*%B)%*%(A%*%B)
-        //	TEST_NAME+32;  //sum((X - U %*% t(V)) ^ 2)
+        //	TEST_NAME+32;  *//sum((X - U %*% t(V)) ^ 2)
         //	TEST_NAME+33;  //(A%*%B)*(A%*%B)
         //	TEST_NAME+34;  //rowSums(A^2)*rowSums(A)
         //	TEST_NAME+35;  //A*rowSums(A^2)
         //	TEST_NAME+36;  //rowSums(A*A)%*%colSums(A*A) // R: outer(rowSums(A*A),colSums(A))
         //	TEST_NAME+37;  //sum( (U%*%t(V))^2 ) // need common subexpression splitting, power-to-multiply
         //	TEST_NAME+38;  //sum( (X + X*(U%*%t(V))) ) // don't push the agg down because we can share the read of X
-        private const val NUM_TESTS = 38
+        //	TEST_NAME+39;  *//cbind(ABCD, BCDE)
+        private const val NUM_TESTS = 39
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
@@ -95,7 +96,7 @@ class Spoof2Test(
         fun testParams(): Collection<Array<Any>> {
             val params = ArrayList<Array<Any>>(NUM_TESTS * 3)
             for (testNum in 1..NUM_TESTS) {
-//                if (testNum != NUM_TESTS) continue
+                if (testNum != NUM_TESTS) continue
 
                 val testName = TEST_NAME + testNum
 //                params.add(arrayOf(testName, false, CP))
