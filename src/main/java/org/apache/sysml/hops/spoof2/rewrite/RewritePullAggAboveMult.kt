@@ -8,9 +8,9 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
  * Pattern:
  * ```
  *      \ /    ->    \ /
- *       *     ->     +
+ *       *     ->     Σ
  *     / | \   ->     |
- *    +  .. .. ->     *
+ *    Σ  .. .. ->     *
  * \ /         -> \ / | \
  *  C          ->  C  .. ..
  * ```
@@ -23,9 +23,9 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
  * Copies the CSE and provides fresh names for the aggregated names.
  * ```
  *      \ /    ->   \ /
- *       *     ->    +[a,a']
+ *       *     ->    Σ[a,a']
  *     // \    ->    |
- * F  +[a] ..  -> F  *
+ * F  Σ[a] ..  -> F  *
  * \ /         -> \ /|            \
  *  C          ->  C  C'[a -> a'] ..
  * ```
@@ -34,11 +34,32 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
  * Luckily it never seems to occur because the Bind rules are smarter than expected.
  * ```
  *      \ /    ->            \ /
- *       *     ->             +[a']
+ *       *     ->             Σ[a']
  *     /  \    ->             |
- * F  +[a] D[a]->  F          *
+ * F  Σ[a] D[a]->  F          *
  * \ /         ->  |         / \
  *  C          ->  C C'[a->a'] D[a]
+ * ```
+ *
+ * ```
+ *      \ /    ->          \ /
+ *       *     ->           Σ[a']
+ *     /  \    ->           |
+ *    Σ[a] D[a]->           *      (Σ[a] stripped)
+ *     \  /    ->          / \
+ *      C      ->  C'[a->a'] D[a]
+ *             ->              |
+ *             ->              C
+ * ```
+ * ```
+ *      \ /    ->          \ /
+ *  F    *     ->           Σ[a']
+ *   \ /  \    ->           |
+ *    Σ[a] D[a]->           *       F
+ *     \  /    ->          / \      |
+ *      C      ->   C'[a->a'] D[a]  Σ[a]
+ *             ->               \  /
+ *             ->                C
  * ```
  */
 class RewritePullAggAboveMult : SPlanRewriteRule() {
@@ -61,7 +82,6 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
                             "that occurs $numAggInMultInput times as input to id=${mult.id} $mult")
 
                 val (overlapAggNames, nonOverlapAggNames) = agg.aggreateNames.partition { it in mult.schema }
-                // Todo: find a test case where this scenario actually occurs!
                 if( overlapAggNames.isNotEmpty() ) {
                     if( nonOverlapAggNames.isNotEmpty() ) {
                         // split agg into agg and aggDown. aggDown contains the non-overlapping agg names.
@@ -79,9 +99,17 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
                         newAgg.parents += mult
                     }
                     mult.inputs.mapInPlace {
+                        if( agg in it.parents )
+                            it.parents.remove(agg)
                         if( it == agg ) newAgg
                         else it
                     }
+
+                    // Dead code elim, if agg has only one parent (mult)
+                    agg.parents.remove(mult)
+                    if( agg.parents.isEmpty() )
+                        stripDead(agg, HashSet())
+
                     if (SPlanRewriteRule.LOG.isDebugEnabled)
                         SPlanRewriteRule.LOG.debug("In RewritePullAggAboveMult, " +
                                 "copy id=${agg.id} $agg to renamed id=${newAgg.id} $newAgg")
@@ -129,4 +157,13 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
         return RewriteResult.NoChange
     }
 
+    companion object {
+        private fun stripDead(node: SNode, deadSet: HashSet<SNode>) {
+            node.parents.removeIf { it in deadSet }
+            if (node.parents.isEmpty()) {
+                deadSet += node
+            }
+            node.inputs.forEach { stripDead(it, deadSet) }
+        }
+    }
 }

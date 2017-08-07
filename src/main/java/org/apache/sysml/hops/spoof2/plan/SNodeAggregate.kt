@@ -10,6 +10,9 @@ class SNodeAggregate private constructor(
         inputs: List<SNode>,
         aggregateNames: Collection<Name>
 ) : SNode(inputs) {
+    var input: SNode
+        get() = inputs[0]
+        set(v) { inputs[0] = v }
     val aggreateNames: ArrayList<Name> = ArrayList(aggregateNames)
     init {
         refreshSchema()

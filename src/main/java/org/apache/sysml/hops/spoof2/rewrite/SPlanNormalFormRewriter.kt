@@ -12,9 +12,12 @@ import org.apache.sysml.utils.Explain
  * 3. Apply the rewrite rules that get us back to Hop-ready form, repeatedly until convergence.
  */
 class SPlanNormalFormRewriter {
+    private val _rulesFirstOnce = listOf(
+            RewriteDecompose()          // Subtract  + and *(-1);   ^2  Self-*
+    )
     private val _rulesToNormalForm = listOf(
             RewriteBindElim(),
-            RewriteDecompose(),         // Subtract  + and *(-1);   ^2  Self-*
+            RewriteSplitCSE(),          // split CSEs when they would block a sum-product rearrangement
             RewritePullAggAboveMult(),
             RewriteAggregateElim(),
             RewriteMultiplyElim()
@@ -34,6 +37,11 @@ class SPlanNormalFormRewriter {
     }
 
     fun rewriteSPlan(roots: ArrayList<SNode>): ArrayList<SNode> {
+
+        SNode.resetVisited(roots)
+        for (root in roots)
+            rRewriteSPlan(root, _rulesFirstOnce)
+
         var count = 0
         do {
             if( CHECK )
@@ -83,8 +91,6 @@ class SPlanNormalFormRewriter {
         for (i in node.inputs.indices) {
             var ci = node.inputs[i]
 
-            //process children recursively first (to allow roll-up)
-
             //apply actual rewrite rules
             for (r in rules) {
                 val result = r.rewriteNode(node, ci, i)
@@ -97,7 +103,7 @@ class SPlanNormalFormRewriter {
                 }
             }
 
-            //process children recursively after rewrites (to investigate pattern newly created by rewrites)
+            //process children recursively after rewrites
             changed = rRewriteSPlan(ci, rules) || changed
         }
 

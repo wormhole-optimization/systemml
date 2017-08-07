@@ -146,6 +146,8 @@ data class SPCost(
                         }
                         3 -> {
                             check( spb.aggNames().isNotEmpty() ) {"SumProduct not completely factored; output is a tensor from $spb"}
+                            //We could be
+
                             // The only possible pattern is a--x--y with matrix Aax, matrix Bxy, and possibly vector Vx
                             // If the vector Vx is present, then either multiply it with A or with B.
 
