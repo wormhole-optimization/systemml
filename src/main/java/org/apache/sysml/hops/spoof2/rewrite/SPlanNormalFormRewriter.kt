@@ -20,7 +20,7 @@ class SPlanNormalFormRewriter {
             RewriteSplitCSE(),          // split CSEs when they would block a sum-product rearrangement
             RewritePullAggAboveMult(),
             RewriteAggregateElim(),
-            RewriteMultiplyElim(),
+            RewriteMultiplyPlusElim(),
             RewritePullPlusAboveMult()
     )
     private val _rulesNormalForm = listOf(
@@ -28,7 +28,7 @@ class SPlanNormalFormRewriter {
     )
     private val _rulesToHopReady = listOf(
             RewriteMultiplyCSEToPower(), // RewriteNormalForm factorizes, so we can't get powers >2. Need to reposition. // Obsolete by RewriteElementwiseMultiplyChain?
-            RewriteMultiplySplit(),
+            RewriteSplitMultiplyPlus(),
             RewritePushAggIntoMult()
     )
 

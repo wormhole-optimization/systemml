@@ -9,19 +9,21 @@ import org.apache.sysml.hops.spoof2.plan.*
  *
  * Requires [RewriteMultiplyCSEToPower], which rewrites common subexpressions of the multiply to unary powers.
  */
-class RewriteMultiplySplit : SPlanRewriteRule() {
+class RewriteSplitMultiplyPlus : SPlanRewriteRule() {
 
     override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
         val origInputSize = node.inputs.size
-        if( node is SNodeNary && node.op == SNodeNary.NaryOp.MULT && origInputSize > 2 ) { // todo generalize to other * functions
+        if( node is SNodeNary
+                && (node.op == SNodeNary.NaryOp.MULT || node.op == SNodeNary.NaryOp.PLUS)
+                && origInputSize > 2 ) { // todo generalize to other * functions
             val curMult = node
 
             adjustInputOrder(curMult)
 
-            rSplitMultiply(curMult, curMult)
+            splitMultiply(curMult)
 
             if (SPlanRewriteRule.LOG.isDebugEnabled)
-                SPlanRewriteRule.LOG.debug("RewriteMultiplySplit (num=${origInputSize-2}) onto top ${curMult.id} $curMult.")
+                SPlanRewriteRule.LOG.debug("RewriteSplitMultiplyPlus (num=${origInputSize-2}) onto top ${curMult.id} $curMult.")
             return RewriteResult.NewNode(curMult)
         }
         return RewriteResult.NoChange
@@ -44,7 +46,7 @@ class RewriteMultiplySplit : SPlanRewriteRule() {
                 )
                 val changed = mult.refreshSchemasUpward()
                 if (changed && SPlanRewriteRule.LOG.isDebugEnabled)
-                    SPlanRewriteRule.LOG.debug("RewriteMultiplySplit reorder inputs of $mult id=${mult.id} to schema ${mult.schema}.")
+                    SPlanRewriteRule.LOG.debug("In RewriteSplitMultiplyPlus, reorder inputs of $mult id=${mult.id} to schema ${mult.schema}.")
             }
         }
 

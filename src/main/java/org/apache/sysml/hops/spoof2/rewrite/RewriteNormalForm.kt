@@ -138,7 +138,7 @@ class RewriteNormalForm : SPlanRewriteRule() {
 //        // 1. Multiply within groups
 //        if( spb.edgesGroupByIncidentNames.size == 1 ) {
 //            // all edges fit in a single group; chain them
-//            RewriteMultiplySplit.splitMultiply(mult)
+//            RewriteSplitMultiplyPlus.splitMultiply(mult)
 //            assert(mult.inputs.size == 2)
 //            return agg
 //        }
@@ -153,7 +153,7 @@ class RewriteNormalForm : SPlanRewriteRule() {
 //                val newMult = SNodeNary(mult.op, edgeNodes)
 //                mult.inputs += newMult
 //                newMult.parents += mult
-//                RewriteMultiplySplit.splitMultiply(newMult)
+//                RewriteSplitMultiplyPlus.splitMultiply(newMult)
 //                mult.refreshSchemasUpward()
 //
 //                if (LOG.isDebugEnabled)

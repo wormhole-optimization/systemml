@@ -7,10 +7,12 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary
  * Combine consecutive multiplies into one.
  * Handles common subexpresions, when multiple inputs are the same expression (and that expression has no other parents).
  */
-class RewriteMultiplyElim : SPlanRewriteRule() {
+class RewriteMultiplyPlusElim : SPlanRewriteRule() {
 
     override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
-        if( node is SNodeNary && node.op == SNodeNary.NaryOp.MULT ) { // todo generalize to other * functions
+        if( node is SNodeNary &&
+                (node.op == SNodeNary.NaryOp.MULT || node.op == SNodeNary.NaryOp.PLUS)
+                ) { // todo generalize to other * functions
             val mult1 = node
             var i1to2 = 0
             var numApplied = 0
@@ -58,7 +60,7 @@ class RewriteMultiplyElim : SPlanRewriteRule() {
 
             if (numApplied > 0) {
                 if (SPlanRewriteRule.LOG.isDebugEnabled)
-                    SPlanRewriteRule.LOG.debug("RewriteMultiplyElim (num=$numApplied) onto top ${mult1.id} $mult1.")
+                    SPlanRewriteRule.LOG.debug("RewriteMultiplyPlusElim (num=$numApplied) onto top ${mult1.id} $mult1.")
                 return RewriteResult.NewNode(mult1)
             }
         }
