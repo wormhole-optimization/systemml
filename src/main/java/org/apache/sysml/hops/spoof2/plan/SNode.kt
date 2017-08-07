@@ -265,4 +265,6 @@ abstract class SNode(inputs: List<SNode>) {
         return postVisit(this, ret)
     }
 
+    abstract fun shallowCopyNoParentsYesInputs(): SNode
+
 }

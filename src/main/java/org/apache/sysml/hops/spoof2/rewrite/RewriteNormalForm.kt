@@ -91,7 +91,7 @@ class RewriteNormalForm : SPlanRewriteRule() {
                 // Push aggregations down if they are not join conditions (present in >1 edge).
                 spb.factorEdgesToBlock(edges)
                 if (LOG.isDebugEnabled)
-                    LOG.debug("Isolating edge group $edges")
+                    LOG.debug("Isolating edge group\n[${edges.joinToString(",\n")}]")
             }
         }
 

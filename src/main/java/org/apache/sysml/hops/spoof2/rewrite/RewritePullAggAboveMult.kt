@@ -67,8 +67,8 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
     override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
         if( node !is SNodeNary || node.op != NaryOp.MULT ) // todo generalize to other * functions that are semiring to +
             return RewriteResult.NoChange
-        val mult = node
-        var top = mult
+        val mult: SNodeNary = node
+        var top: SNode = mult
         var numApplied = 0
 
         for (iMultToAgg in mult.inputs.indices) { // index of agg in mult

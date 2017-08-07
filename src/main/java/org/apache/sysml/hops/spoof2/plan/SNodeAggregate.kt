@@ -13,6 +13,9 @@ class SNodeAggregate private constructor(
     var input: SNode
         get() = inputs[0]
         set(v) { inputs[0] = v }
+
+    override fun shallowCopyNoParentsYesInputs() = SNodeAggregate(op, inputs, aggreateNames)
+
     val aggreateNames: ArrayList<Name> = ArrayList(aggregateNames)
     init {
         refreshSchema()

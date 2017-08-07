@@ -12,6 +12,8 @@ class SNodeData private constructor(
         val hop: Hop,
         input: List<SNode>
 ) : SNode(input) {
+    override fun shallowCopyNoParentsYesInputs() = SNodeData(hop, inputs)
+
     constructor(hop: Hop): this(hop, listOf())
     constructor(hop: Hop, input: SNode): this(hop, listOf(input))
 

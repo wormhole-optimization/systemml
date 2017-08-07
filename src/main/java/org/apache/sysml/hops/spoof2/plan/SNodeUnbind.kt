@@ -7,6 +7,12 @@ class SNodeUnbind(
         input: SNode,
         names: Map<Int,Name>
 ) : SNode(input) {
+    var input: SNode
+        get() = inputs[0]
+        set(v) { inputs[0] = v }
+
+    override fun shallowCopyNoParentsYesInputs() = SNodeUnbind(input, unbindings)
+
     val unbindings: HashMap<Int,Name> = HashMap(names) // defensive copy
     init {
         refreshSchema()

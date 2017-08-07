@@ -36,6 +36,8 @@ class SNodeNary(
         }
     }
 
+    override fun shallowCopyNoParentsYesInputs() = SNodeNary(op, inputs)
+
     constructor(op: NaryOp, vararg inputs: SNode) : this(op, inputs.asList())
 
     override fun toString(): String {

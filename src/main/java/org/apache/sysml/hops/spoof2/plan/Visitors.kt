@@ -81,7 +81,14 @@ private fun SNode.renameCopyDown(renaming: Map<Name, Name>, memo: HashMap<Long, 
             SNodeBind(i, b)
         }
         is SNodeAggregate -> SNodeAggregate(this.op, this.inputs[0].renameCopyDown(renaming, memo), this.aggreateNames)
-        is SNodeNary -> SNodeNary(this.op, this.inputs.map { it.renameCopyDown(renaming, memo) })
+        is SNodeNary -> {
+            SNodeNary(this.op, this.inputs.map { input ->
+                val renamingIntersect = renaming.filterKeys { it in input.schema.names }
+                if( renamingIntersect.isNotEmpty() )
+                    input.renameCopyDown(renamingIntersect, memo)
+                else input
+            })
+        }
         is SNodeUnbind -> SNodeUnbind(this.inputs[0].renameCopyDown(renaming, memo), this.unbindings)
         is SNodeData -> throw AssertionError("should not reach an SNodeData; should hit a Bind first") // Write Hops cannot have parents, right?
         is SNodeExt -> SNodeExt(Recompiler.deepCopyHopsDag(this.hop), this.inputs.map { it.renameCopyDown(renaming, memo) })

@@ -22,7 +22,7 @@
 X= matrix( "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15", rows=3, cols=5)
 U= matrix( "9 8 7 6 5 4 3 2 1", rows=3, cols=3)
 V= matrix( "9 8 7 6 5 4 3 2 1 2 3 4 5 6 7", rows=5, cols=3)
-
+while(FALSE) {}
 R = as.matrix(sum((X - U %*% t(V)) ^ 2))
 
 write(R,$1)

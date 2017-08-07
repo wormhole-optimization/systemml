@@ -20,7 +20,8 @@ class SPlanNormalFormRewriter {
             RewriteSplitCSE(),          // split CSEs when they would block a sum-product rearrangement
             RewritePullAggAboveMult(),
             RewriteAggregateElim(),
-            RewriteMultiplyElim()
+            RewriteMultiplyElim(),
+            RewritePullPlusAboveMult()
     )
     private val _rulesNormalForm = listOf(
             RewriteNormalForm()

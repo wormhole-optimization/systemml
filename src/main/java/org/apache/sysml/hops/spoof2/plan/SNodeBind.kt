@@ -7,6 +7,12 @@ class SNodeBind(
         input: SNode,
         bindings: Map<Int, Name>
 ) : SNode(input) {
+    var input: SNode
+        get() = inputs[0]
+        set(v) { inputs[0] = v }
+
+    override fun shallowCopyNoParentsYesInputs() = SNodeBind(input, bindings)
+
     val bindings: MutableMap<Int, Name> = HashMap(bindings) // defensive copy
     init {
         refreshSchema()

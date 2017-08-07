@@ -7,6 +7,7 @@ class SNodeExt(
         val hop: Hop,
         inputs: List<SNode>
 ) : SNode(inputs) {
+    override fun shallowCopyNoParentsYesInputs() = SNodeExt(hop, inputs)
 
     constructor(hop: Hop, vararg inputs: SNode) : this(hop, inputs.asList())
 
