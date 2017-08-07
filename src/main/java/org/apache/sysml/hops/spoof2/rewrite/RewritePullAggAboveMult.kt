@@ -108,7 +108,7 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
                     // Dead code elim, if agg has only one parent (mult)
                     agg.parents.remove(mult)
                     if( agg.parents.isEmpty() )
-                        stripDead(agg, HashSet())
+                        stripDead(agg)
 
                     if (SPlanRewriteRule.LOG.isDebugEnabled)
                         SPlanRewriteRule.LOG.debug("In RewritePullAggAboveMult, " +
@@ -158,12 +158,29 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
     }
 
     companion object {
-        private fun stripDead(node: SNode, deadSet: HashSet<SNode>) {
-            node.parents.removeIf { it in deadSet }
-            if (node.parents.isEmpty()) {
-                deadSet += node
+        private fun stripDead(node: SNode) {
+            val sb: StringBuilder?
+            val action: (SNode) -> Unit
+            if (SPlanRewriteRule.LOG.isDebugEnabled) {
+                sb = StringBuilder()
+                action = {sb.append(',').append(it.id)}
+            } else {
+                sb = null
+                action = {}
             }
-            node.inputs.forEach { stripDead(it, deadSet) }
+            stripDead(node, action)
+            if (SPlanRewriteRule.LOG.isDebugEnabled) {
+                val s = sb!!.substring(1).toString()
+                SPlanRewriteRule.LOG.debug("In RewritePullAggAboveMult, " +
+                        "dead code eliminate $s")
+            }
+        }
+        private fun stripDead(node: SNode, action: (SNode) -> Unit) {
+            node.parents.removeIf { it.parents.isEmpty() }
+            if (node.parents.isEmpty()) {
+                action(node)
+            }
+            node.inputs.forEach { stripDead(it, action) }
         }
     }
 }
