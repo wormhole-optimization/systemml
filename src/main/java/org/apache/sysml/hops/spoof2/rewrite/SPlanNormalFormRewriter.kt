@@ -24,12 +24,15 @@ class SPlanNormalFormRewriter {
             RewritePullPlusAboveMult()
     )
     private val _rulesNormalForm = listOf(
+            RewritePushAggIntoPlus(),
+            RewriteAggregateElim(),
             RewriteNormalForm()
     )
     private val _rulesToHopReady = listOf(
             RewriteMultiplyCSEToPower(), // RewriteNormalForm factorizes, so we can't get powers >2. Need to reposition. // Obsolete by RewriteElementwiseMultiplyChain?
             RewriteSplitMultiplyPlus(),
             RewritePushAggIntoMult()
+            // todo RewriteRestoreCompound - subtract
     )
 
     companion object {
