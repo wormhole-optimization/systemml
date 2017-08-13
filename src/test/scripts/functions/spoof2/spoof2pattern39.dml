@@ -19,13 +19,13 @@
 #
 #-------------------------------------------------------------
 
-A= matrix( "0 5 0 3 0 1 0 1 0 3 0 5 0 7 0 0", rows=4, cols=4)
-B= matrix( "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16", rows=4, cols=4)
-C= matrix( "9 8 7 6 5 4 3 2 1 2 3 4", rows=4, cols=3)
-D= matrix( "9 8 7 6 5 4", rows=3, cols=2)
-E= matrix( "8 7 6 5 4 3 2 1", rows=2, cols=4)
-if (1==1) {}
+A= matrix(1, rows=2, cols=4)
+B= matrix(1, rows=4, cols=4)
+C= matrix(1, rows=4, cols=3)
+D= matrix(1, rows=3, cols=5)
+E= matrix(1, rows=5, cols=2)
+while(FALSE) {}
 X = A%*%B%*%C%*%D
 Y = B%*%C%*%D%*%E
-Z = cbind(X,Y)
+Z = cbind(X,t(Y))
 write(Z,$1)

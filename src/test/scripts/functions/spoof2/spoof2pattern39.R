@@ -22,12 +22,12 @@
 args<-commandArgs(TRUE)
 options(digits=22)
 library(Matrix)
-A = matrix(  c(0,5,0,3,0,1,0,1,0,3,0,5,0,7,0,0), nrow=4, ncol=4, byrow = TRUE)
-B = matrix(  c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16), nrow=4, ncol=4, byrow = TRUE)
-C = matrix(  c(9,8,7,6,5,4,3,2,1,2,3,4), nrow=4, ncol=3, byrow = TRUE)
-D = matrix(  c(9,8,7,6,5,4), nrow=3, ncol=2, byrow = TRUE)
-E = matrix(  c(8,7,6,5,4,3,2,1), nrow=2, ncol=4, byrow = TRUE)
+A = matrix(1, nrow=2, ncol=4, byrow = TRUE)
+B = matrix(1, nrow=4, ncol=4, byrow = TRUE)
+C = matrix(1, nrow=4, ncol=3, byrow = TRUE)
+D = matrix(1, nrow=3, ncol=5, byrow = TRUE)
+E = matrix(1, nrow=5, ncol=2, byrow = TRUE)
 X = A%*%B%*%C%*%D
 Y = B%*%C%*%D%*%E
-Z = cbind(X,Y)
+Z = cbind(X,t(Y))
 writeMM(as(Z, "CsparseMatrix"), paste(args[2], "S", sep=""));

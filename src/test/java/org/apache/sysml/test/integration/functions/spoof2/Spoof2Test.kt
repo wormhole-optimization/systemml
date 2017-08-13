@@ -79,7 +79,7 @@ class Spoof2Test(
         //	TEST_NAME+36;  //rowSums(A*A)%*%colSums(A*A) // R: outer(rowSums(A*A),colSums(A))
         //	TEST_NAME+37;  //sum( (U%*%t(V))^2 ) // need common subexpression splitting, power-to-multiply
         //	TEST_NAME+38;  //sum( (X + X*(U%*%t(V))) ) // don't push the agg down because we can share the read of X
-        //	TEST_NAME+39;  *//cbind(ABCD, BCDE)
+        //	TEST_NAME+39;  *//cbind(ABCD, BCDE) // todo: check we take advantage of the CSE to get a cheaper plan
         private const val NUM_TESTS = 39
 
         private const val TEST_DIR = "functions/spoof2/"

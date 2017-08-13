@@ -61,7 +61,7 @@ public class RewriteMatrixMultChainOptimization extends HopRewriteRule
 			return null;
 
 		// Find the optimal order for the chain whose result is the current HOP
-		for( Hop h : roots ) 
+		for( Hop h : roots )
 			rule_OptimizeMMChains(h);
 		
 		return roots;
