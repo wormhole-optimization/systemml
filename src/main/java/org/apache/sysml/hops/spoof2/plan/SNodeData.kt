@@ -15,6 +15,10 @@ class SNodeData private constructor(
     override fun shallowCopyNoParentsYesInputs() = SNodeData(hop, inputs)
 
     constructor(hop: Hop): this(hop, listOf())
+
+    override fun compare(o: SNode) =
+            o is SNodeData && o.hop == this.hop && o.inputs == this.inputs
+
     constructor(hop: Hop, input: SNode): this(hop, listOf(input))
 
     val isLiteral = hop is LiteralOp
@@ -31,7 +35,7 @@ class SNodeData private constructor(
             return (hop as LiteralOp).doubleValue
         }
 
-    val inputHopClasses = hop.input.map(Hop::classify)
+//    val inputHopClasses = hop.input.map(Hop::classify)
 
     override fun toString() = "data(${hop.hopID} ${hop.opString})"
 

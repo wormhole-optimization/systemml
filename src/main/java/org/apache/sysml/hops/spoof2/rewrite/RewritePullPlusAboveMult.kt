@@ -40,6 +40,7 @@ class RewritePullPlusAboveMult : SPlanRewriteRule() {
         mult.parents += plus
         mult.inputs[multToPlus] = plusInputs[0]
         plusInputs[0].parents += mult
+        mult.refreshSchema()
 
         for (i in 1..plusInputs.size-1) {
             multInputs[multToPlus] = plusInputs[i]
@@ -47,6 +48,7 @@ class RewritePullPlusAboveMult : SPlanRewriteRule() {
             plus.inputs += m
             m.parents += plus
         }
+        plus.refreshSchema()
 
         if (SPlanRewriteRule.LOG.isDebugEnabled)
             SPlanRewriteRule.LOG.debug("RewritePullPlusAboveMult on mult ${mult.id} and plus ${plus.id}")

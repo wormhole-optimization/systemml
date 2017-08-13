@@ -11,6 +11,9 @@ class SNodeUnbind(
         get() = inputs[0]
         set(v) { inputs[0] = v }
 
+    override fun compare(o: SNode) =
+            o is SNodeUnbind && this.unbindings == o.unbindings && this.input == o.input
+
     override fun shallowCopyNoParentsYesInputs() = SNodeUnbind(input, unbindings)
 
     val unbindings: HashMap<Int,Name> = HashMap(names) // defensive copy

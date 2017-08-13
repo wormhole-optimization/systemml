@@ -8,6 +8,8 @@ class SNodeExt(
         inputs: List<SNode>
 ) : SNode(inputs) {
     override fun shallowCopyNoParentsYesInputs() = SNodeExt(hop, inputs)
+    override fun compare(o: SNode) =
+            o is SNodeExt && o.hop == this.hop && o.inputs == this.inputs
 
     constructor(hop: Hop, vararg inputs: SNode) : this(hop, inputs.asList())
 

@@ -63,7 +63,7 @@ public class RewriteCommonSubexpressionElimination extends HopRewriteRule
 			int cseMerged = 0;
 			if( _mergeLeafs ) {
 				cseMerged += rule_CommonSubexpressionElimination_MergeLeafs(h, dataops, literalops);
-				h.resetVisitStatus();		
+				h.resetVisitStatus();
 			}
 			cseMerged += rule_CommonSubexpressionElimination(h);
 				
@@ -205,7 +205,7 @@ public class RewriteCommonSubexpressionElimination extends HopRewriteRule
 									h1.setVisited();
 								}
 						
-						//replace h2 w/ h1 in h2-input parents
+						//remove h2 from h2-input parents
 						for( Hop in : h2.getInput() )
 							in.getParent().remove(h2);
 						

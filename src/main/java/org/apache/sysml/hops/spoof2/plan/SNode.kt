@@ -265,6 +265,14 @@ abstract class SNode(inputs: List<SNode>) {
         return postVisit(this, ret)
     }
 
+    /** Create a copy of this SNode whose inputs point to the same inputs, adding the new copy to the inputs' parents.
+     * The new copy has no parents. */
     abstract fun shallowCopyNoParentsYesInputs(): SNode
+
+    /**
+     * Compare this SNode with another based on type equality (same class, same operator, etc.)
+     * and input identity equality (all inputs are referentially equal).
+     */
+    abstract fun compare(o: SNode): Boolean
 
 }

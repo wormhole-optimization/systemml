@@ -92,7 +92,7 @@ class Spoof2Test(
         private const val eps = 10.0e-10
 
         @JvmStatic
-        @Parameterized.Parameters(name = "t({0}, rewrites={1}, {2})")
+        @Parameterized.Parameters(name = "{0}, rewrites={1}, {2}")
         fun testParams(): Collection<Array<Any>> {
             val params = ArrayList<Array<Any>>(NUM_TESTS * 3)
             for (testNum in 1..NUM_TESTS) {

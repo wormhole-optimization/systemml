@@ -15,6 +15,8 @@ class SNodeAggregate private constructor(
         set(v) { inputs[0] = v }
 
     override fun shallowCopyNoParentsYesInputs() = SNodeAggregate(op, inputs, aggreateNames)
+    override fun compare(o: SNode) =
+            o is SNodeAggregate && o.op == this.op && o.aggreateNames == this.aggreateNames && o.input == this.input
 
     val aggreateNames: ArrayList<Name> = ArrayList(aggregateNames)
     init {

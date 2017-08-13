@@ -11,6 +11,9 @@ class SNodeBind(
         get() = inputs[0]
         set(v) { inputs[0] = v }
 
+    override fun compare(o: SNode) =
+            o is SNodeBind && o.bindings == this.bindings && o.input == this.input
+
     override fun shallowCopyNoParentsYesInputs() = SNodeBind(input, bindings)
 
     val bindings: MutableMap<Int, Name> = HashMap(bindings) // defensive copy

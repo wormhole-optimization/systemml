@@ -4,6 +4,7 @@ import java.util.ArrayList
 
 import org.apache.sysml.hops.spoof2.plan.SNode
 import org.apache.sysml.hops.spoof2.plan.SPlanValidator
+import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter.RewriterResult
 import org.apache.sysml.utils.Explain
 
 /**
@@ -11,7 +12,7 @@ import org.apache.sysml.utils.Explain
  * 2. Apply RewriteNormalForm.
  * 3. Apply the rewrite rules that get us back to Hop-ready form, repeatedly until convergence.
  */
-class SPlanNormalFormRewriter {
+class SPlanNormalFormRewriter : SPlanRewriter {
     private val _rulesFirstOnce = listOf(
             RewriteDecompose()          // Subtract  + and *(-1);   ^2  Self-*
     )
@@ -40,7 +41,8 @@ class SPlanNormalFormRewriter {
         internal const val CHECK = true
     }
 
-    fun rewriteSPlan(roots: ArrayList<SNode>): ArrayList<SNode> {
+    override fun rewriteSPlan(roots: ArrayList<SNode>): RewriterResult {
+        val cseElim = SPlanCSEElimRewriter()
 
         SNode.resetVisited(roots)
         for (root in roots)
@@ -52,18 +54,20 @@ class SPlanNormalFormRewriter {
                 SPlanValidator.validateSPlan(roots)
             var changed = false
             SNode.resetVisited(roots)
-            for (node in roots)
-                changed = rRewriteSPlan(node, _rulesToNormalForm) || changed
+            for (root in roots)
+                changed = rRewriteSPlan(root, _rulesToNormalForm) || changed
             count++
         } while (changed)
 
         if( count == 1 ) {
             if( SPlanRewriteRule.LOG.isTraceEnabled )
                 SPlanRewriteRule.LOG.trace("'to normal form' rewrites did not affect SNodePlan; skipping rest")
-            return roots
+            return RewriterResult.NoChange
         }
         if( SPlanRewriteRule.LOG.isTraceEnabled )
             SPlanRewriteRule.LOG.trace("Ran 'to normal form' rewrites $count times to yield: "+Explain.explainSPlan(roots))
+
+        cseElim.rewriteSPlan(roots)
 
         SNode.resetVisited(roots)
         for (node in roots)
@@ -75,15 +79,17 @@ class SPlanNormalFormRewriter {
                 SPlanValidator.validateSPlan(roots)
             var changed = false
             SNode.resetVisited(roots)
-            for (node in roots)
-                changed = rRewriteSPlan(node, _rulesToHopReady) || changed
+            for (root in roots)
+                changed = rRewriteSPlan(root, _rulesToHopReady) || changed
             count++
         } while (changed)
+
+        cseElim.rewriteSPlan(roots)
 
         if( SPlanRewriteRule.LOG.isTraceEnabled )
             SPlanRewriteRule.LOG.trace("Ran 'to Hop-ready' rewrites $count times to yield: "+Explain.explainSPlan(roots))
 
-        return roots
+        return RewriterResult.NewRoots(roots)
     }
 
     private fun rRewriteSPlan(node: SNode, rules: List<SPlanRewriteRule>): Boolean {
@@ -91,27 +97,27 @@ class SPlanNormalFormRewriter {
             return false
         var changed = false
 
-        //recursively process children
         for (i in node.inputs.indices) {
-            var ci = node.inputs[i]
+            var child = node.inputs[i]
 
             //apply actual rewrite rules
             for (r in rules) {
-                val result = r.rewriteNode(node, ci, i)
+                val result = r.rewriteNode(node, child, i)
                 when( result ) {
                     SPlanRewriteRule.RewriteResult.NoChange -> {}
                     is SPlanRewriteRule.RewriteResult.NewNode -> {
-                        ci = result.newNode
+                        child = result.newNode
                         changed = true
                     }
                 }
             }
 
             //process children recursively after rewrites
-            changed = rRewriteSPlan(ci, rules) || changed
+            changed = rRewriteSPlan(child, rules) || changed
         }
 
         node.visited = true
         return changed
     }
 }
+

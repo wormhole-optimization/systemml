@@ -25,6 +25,7 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
 import org.apache.sysml.hops.spoof2.rewrite.BasicSPlanRewriter
 import org.apache.sysml.hops.spoof2.rewrite.RewriteBindElim
 import org.apache.sysml.hops.spoof2.rewrite.SPlanNormalFormRewriter
+import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter
 import org.apache.sysml.parser.*
 import org.apache.sysml.runtime.DMLRuntimeException
 import org.apache.sysml.utils.Explain
@@ -142,7 +143,7 @@ object Spoof2Compiler {
 //        initial compile          ==>  CSE; SumProduct; static + dynamic ProgramWriter
 //        recompile, inplace=false ==>  CSE; SumProduct; dynamic ProgramWriter
 //        recompile, inplace=true  ==>  CSE; SumProduct
-        LOG.trace("Call ProgramRewriter with static=${!recompile} dynamic=$doDynamicProgramRewriter")
+//        LOG.trace("Call ProgramRewriter with static=${!recompile} dynamic=$doDynamicProgramRewriter")
         val rewriter2 = ProgramRewriter(!recompile, doDynamicProgramRewriter)
             // todo - some fix with handling literals in predicates, as exposed by CSE in static rewrites during recompile - need fix from master
         rewriter2.rewriteHopDAGs(roots, ProgramRewriteStatus())
@@ -205,11 +206,15 @@ object Spoof2Compiler {
 
         //rewrite sum-product plan
         val rewriter = SPlanNormalFormRewriter()
-        sroots = rewriter.rewriteSPlan(sroots)
-
-        if (LOG.isTraceEnabled) {
-//            LOG.trace("Explain after SPlan rewriting: " + Explain.explainSPlan(sroots))
+        val rewriterResult = rewriter.rewriteSPlan(sroots)
+        when( rewriterResult ) {
+            is SPlanRewriter.RewriterResult.NewRoots -> sroots = rewriterResult.newRoots
+            SPlanRewriter.RewriterResult.NoChange -> {}
         }
+
+//        if (LOG.isTraceEnabled) {
+//            LOG.trace("Explain after SPlan rewriting: " + Explain.explainSPlan(sroots))
+//        }
 
         //re-construct modified HOP DAG
         var roots2 = ArrayList<Hop>()

@@ -26,6 +26,7 @@ object SPlanValidator {
                 rValidateNode(node, state)
         } catch (ex: SNodeException) {
             try {
+                SNode.resetVisited(roots)
                 LOG.error("\n" + Explain.explainSPlan(roots), ex)
             } catch (e: DMLRuntimeException) {}
             throw ex
@@ -42,6 +43,7 @@ object SPlanValidator {
             rValidateNode(root, state)
         } catch (ex: SNodeException) {
             try {
+                root.resetVisited()
                 LOG.error("\n" + Explain.explain(root), ex)
             } catch (e: DMLRuntimeException) {}
             throw ex
