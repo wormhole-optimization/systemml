@@ -6,14 +6,30 @@ import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriteRule.RewriteResult
 /**
  * Eliminate pairs of Bind-Unbind.
  *
- * 0. If a Bind or Unbind is empty, eliminate it.
- * 0. Combine consecutive Binds/Unbinds when the child has no foreign parents.
- * 0. If at least two parents are Binds (or Unbinds) and they contain some of the same mappings,
- *    then move the common mappings into a common SNode(Un)Bind and rewire.
- * 1. Bind-Unbind, when Unbind has no foreign parents.
- *    Rename Unbound names to Bound names, recursively downwards.
- *    Do this for as many Unbound names as possible. Eliminate the Unbound/Bound if they become empty.
- * 2. Unbind-Bind, when Bind has no foreign parents. Eliminate names in identical positions.
+ * Given the pattern
+ * ```
+ * +a  +b
+ *  \ /
+ *   A
+ * ```
+ * attempt to change the `b` to `a` for the operation above `b`.
+ * Suppose `X` has `a` in its schema and `Y` does not.
+ * Suppose `C` has `b` in its schema and `D` does not.
+ * ```
+ *                         Z
+ *                         |
+ *                        +b
+ *         Z    ->        -a
+ *         |    ->         |
+ *  W  X   Y    ->  X  W   Y
+ *  |  | / | \  ->  |  | / | \
+ * +a  +b  C  D -> +b  +a +a  D
+ *  \ /         ->  \ /   -b
+ *   A          ->   A     |
+ *                         C
+ * ```
+ *
+ *
  */
 class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
 
@@ -64,8 +80,8 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                             // for each input to bind2parent, if it has oldName in its schema, add a Bind[newName] -> Unbind[oldName] -> child
                             bind2parent.inputs.toSet().forEach { bind2parentInput ->
                                 if( oldName in bind2parentInput.schema ) {
-                                    // Modify in place if possible.
-                                    if( bind2parentInput is SNodeBind && oldName in bind2parentInput.bindings.values ) {
+                                    // Modify in place if possible. Otherwise let future rules handle this.
+                                    if( bind2parentInput is SNodeBind && oldName in bind2parentInput.bindings.values && bind2parentInput.parents.size == 1 ) {
                                         bind2parentInput.bindings.mapValuesInPlace { if( it == oldName ) newName else it }
                                         bind2parentInput.refreshSchema()
                                     } else {
@@ -86,13 +102,17 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
 
                         bind2parentsNoOverlap.toSet().forEach { bind2parent ->
                             val bind2parentParentSet = bind2parent.parents.toSet()
-                            val unbindNew = SNodeUnbind(bind2parent, mapOf(bindingPosition to newName))
-                            val bindOld = SNodeBind(unbindNew, mapOf(bindingPosition to oldName))
-                            bind2parentParentSet.forEach { bind2parentParent ->
-                                bind2parentParent.inputs.withIndex().filter { (_,input) -> input == bind2parent }.map { (i,_) -> i }.forEach {
-                                    bind2parentParent.inputs[it] = bindOld
-                                    bindOld.parents += bind2parentParent
-                                    bind2parent.parents -= bind2parentParent
+                            val (nonUnbind, unbind) = bind2parentParentSet.partition { it !is SNodeUnbind || oldName !in it.unbindings.values }
+                            unbind.forEach { (it as SNodeUnbind).unbindings.mapValuesInPlace { if( it == oldName ) newName else it } }
+                            if( nonUnbind.isNotEmpty() ) {
+                                val unbindNew = SNodeUnbind(bind2parent, mapOf(bindingPosition to newName))
+                                val bindOld = SNodeBind(unbindNew, mapOf(bindingPosition to oldName))
+                                nonUnbind.forEach { bind2parentParent ->
+                                    bind2parentParent.inputs.withIndex().filter { (_, input) -> input == bind2parent }.map { (i, _) -> i }.forEach {
+                                        bind2parentParent.inputs[it] = bindOld
+                                        bindOld.parents += bind2parentParent
+                                        bind2parent.parents -= bind2parentParent
+                                    }
                                 }
                             }
                         }
