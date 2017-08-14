@@ -120,7 +120,7 @@ class Spoof2Test(
 
 
     private fun testIt(testname: String, rewrites: Boolean, instType: LopProperties.ExecType) {
-        val oldFlag = OptimizerUtils.ALLOW_ALGEBRAIC_SIMPLIFICATION
+//        val oldFlag = OptimizerUtils.ALLOW_ALGEBRAIC_SIMPLIFICATION
         val platformOld = AutomatedTestBase.rtplatform
         when (instType) {
             MR -> AutomatedTestBase.rtplatform = DMLScript.RUNTIME_PLATFORM.HADOOP
@@ -138,7 +138,7 @@ class Spoof2Test(
 
             val HOME = AutomatedTestBase.SCRIPT_DIR + TEST_DIR
             fullDMLScriptName = HOME + testname + ".dml"
-            if ( rewrites ) // "-explain", "recompile_hops",
+//            if ( rewrites ) // "-explain", "recompile_hops",
             programArgs = arrayOf("-stats", "-args", output("S"))
 
 
@@ -164,9 +164,7 @@ class Spoof2Test(
         } finally {
             AutomatedTestBase.rtplatform = platformOld
             DMLScript.USE_LOCAL_SPARK_CONFIG = sparkConfigOld
-            OptimizerUtils.ALLOW_ALGEBRAIC_SIMPLIFICATION = oldFlag
-            OptimizerUtils.ALLOW_AUTO_VECTORIZATION = true
-            OptimizerUtils.ALLOW_OPERATOR_FUSION = true
+//            OptimizerUtils.ALLOW_ALGEBRAIC_SIMPLIFICATION = oldFlag
         }
     }
 

@@ -135,3 +135,10 @@ inline fun <T> Iterable<T>.sumByLong(selector: (T) -> Long): Long {
 fun <T> Iterable<T>.disjoint(b: Iterable<T>): Boolean {
     return this.all { it !in b }
 }
+
+/** "Agnostic bindings", for SNodeBind or SNodeUnbind. */
+fun SNode.agBindings(): MutableMap<Int, String> = when(this) {
+    is SNodeBind -> this.bindings
+    is SNodeUnbind -> this.unbindings
+    else -> throw IllegalArgumentException()
+}

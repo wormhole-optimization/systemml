@@ -2,11 +2,23 @@ package org.apache.sysml.hops.spoof2.rewrite
 
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriteRule.RewriteResult
+import org.apache.sysml.hops.spoof2.plan.agBindings
 
 /**
- * Eliminate pairs of Bind-Unbind.
+ * 0. Eliminate empty bind/unbind.
  *
- * Given the pattern
+ * 1. For Bind-Unbind and Unbind-Bind pairs that match on part of their schema
+ * ```
+ *  Z     ->
+ *  |  F' ->     F'
+ * -a /   ->     |
+ * +a     -> Z  +a
+ *  |     -> | /
+ *  A     -> A
+ * ```
+ * The `+a` is `node` and the `-a` is above.
+ *
+ * 2. Given the pattern
  * ```
  * +a  +b
  *  \ /
@@ -15,6 +27,7 @@ import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriteRule.RewriteResult
  * attempt to change the `b` to `a` for the operation above `b`.
  * Suppose `X` has `a` in its schema and `Y` does not.
  * Suppose `C` has `b` in its schema and `D` does not.
+ * Perform the following:
  * ```
  *                         Z
  *                         |
@@ -29,14 +42,63 @@ import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriteRule.RewriteResult
  *                         C
  * ```
  *
- *
  */
 class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
+
+    companion object {
+        private fun SNode.isBindOrUnbind() = this is SNodeBind || this is SNodeUnbind
+    }
 
     override fun rewriteNodeUp(node: SNode): RewriteResult {
         return rRewriteBindUnify(node, false)
     }
     private tailrec fun rRewriteBindUnify(node: SNode, changed: Boolean): RewriteResult {
+        if( node.isBindOrUnbind() ) {
+            // empty bind/unbind
+            if( node.agBindings().isEmpty() ) {
+                val child = RewriteBindElim.eliminateEmpty(node)
+                child.visited = false
+                if( LOG.isTraceEnabled )
+                    LOG.trace("RewriteBindUnify: on empty ${node.id} $node; replace with child ${child.id} $child")
+                return rRewriteBindUnify(child, true)
+            }
+
+            // bind-unbind or unbind-bind with common bindings -- eliminate the common ones
+            // Split CSE if foreign parent present on node.
+            val above = node.parents.find { it.isBindOrUnbind() && it.javaClass != node.javaClass
+                    && it.agBindings().any { (p,n) -> node.agBindings()[p] == n }
+            }
+            if( above != null ) {
+                // above can only be a parent once because it is a bind/unbind
+                val otherNodeParents = node.parents.filter { it !== above }
+                if( otherNodeParents.isNotEmpty() ) {
+                    // Split CSE: connect otherNodeParents to a copy of node
+                    val copy = node.shallowCopyNoParentsYesInputs()
+                    otherNodeParents.forEach {
+                        it.inputs[it.inputs.indexOf(node)] = copy
+                        copy.parents += it
+                        node.parents -= it
+                    }
+                }
+                // only parent of node is above :)
+                assert(node.parents.size == 1)
+                val commonBindings = node.agBindings().intersectEntries(above.agBindings())
+                commonBindings.forEach { (k,_) ->
+                    node.agBindings() -= k
+                    above.agBindings() -= k
+                }
+
+                if( above.agBindings().isEmpty() )
+                    RewriteBindElim.eliminateEmpty(above)
+                val newNode = if( node.agBindings().isEmpty() ) RewriteBindElim.eliminateEmpty(node) else node
+                if( LOG.isTraceEnabled )
+                    LOG.trace("RewriteBindUnify: elim redundant bindings $commonBindings in ${node.id} $above -- ${node.id} $node ${if(otherNodeParents.isNotEmpty()) "(with split CSE)" else ""}")
+                return rRewriteBindUnify(newNode, true)
+            }
+        }
+
+
+
         // check if two parents have a Bind to the same dimension. If so, try to unify them.
         val bindIndices = node.parents.withIndex().filter { (_,p) -> p is SNodeBind }.map { (i,_) -> i }
         for( bindi in 0..bindIndices.size-2) {

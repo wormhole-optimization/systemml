@@ -15,24 +15,19 @@ import org.apache.sysml.hops.spoof2.plan.*
  * 2. Unbind-Bind, when Bind has no foreign parents. Eliminate names in identical positions.
  */
 class RewriteBindElim : SPlanRewriteRule() {
-    private fun canEliminateEmpty(node: SNode) =
-            node is SNodeBind && node.bindings.isEmpty()
-            || node is SNodeUnbind && node.unbindings.isEmpty()
+    companion object {
 
-    private fun eliminateEmpty(node: SNode): SNode {
-        val child = node.inputs[0]
-        SNodeRewriteUtils.removeAllChildReferences(node) // clear node.inputs, child.parents
-        SNodeRewriteUtils.rewireAllParentChildReferences(node, child) // for each parent of node, change its input from node to child and add the parent to child
-        return child
-    }
+        private fun canEliminateEmpty(node: SNode) =
+                node is SNodeBind && node.bindings.isEmpty()
+                        || node is SNodeUnbind && node.unbindings.isEmpty()
 
-    /** "Agnostic bindings", for SNodeBind or SNodeUnbind. */
-    private val SNode.agbindings: MutableMap<Int, String>
-        get() = when(this) {
-            is SNodeBind -> this.bindings
-            is SNodeUnbind -> this.unbindings
-            else -> throw IllegalArgumentException()
+        fun eliminateEmpty(node: SNode): SNode {
+            val child = node.inputs[0]
+            SNodeRewriteUtils.removeAllChildReferences(node) // clear node.inputs, child.parents
+            SNodeRewriteUtils.rewireAllParentChildReferences(node, child) // for each parent of node, change its input from node to child and add the parent to child
+            return child
         }
+    }
 
     override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
         return rRewriteNode(parent, node, false)
@@ -45,9 +40,9 @@ class RewriteBindElim : SPlanRewriteRule() {
         }
         if( parent is SNodeBind || parent is SNodeUnbind ) {
             // try to find another parent that is the same type and has overlapping bindings
-            val parent2 = node.parents.find { np -> np !== parent && np.javaClass == parent.javaClass && parent.agbindings.any { (dim,n) -> np.agbindings[dim] == n } }
+            val parent2 = node.parents.find { np -> np !== parent && np.javaClass == parent.javaClass && parent.agBindings().any { (dim,n) -> np.agBindings()[dim] == n } }
             if( parent2 != null ) {
-                val commonBindings = parent.agbindings.intersectEntries(parent2.agbindings)
+                val commonBindings = parent.agBindings().intersectEntries(parent2.agBindings())
                 node.parents.remove(parent)
                 node.parents.remove(parent2)
                 val newBind =
@@ -57,8 +52,8 @@ class RewriteBindElim : SPlanRewriteRule() {
                 parent2.inputs[0] = newBind
                 newBind.parents += parent
                 newBind.parents += parent2
-                parent.agbindings -= commonBindings.keys   // could create an empty Bind/Unbind in the parent; need another pass
-                parent2.agbindings -= commonBindings.keys
+                parent.agBindings() -= commonBindings.keys   // could create an empty Bind/Unbind in the parent; need another pass
+                parent2.agBindings() -= commonBindings.keys
                 if (SPlanRewriteRule.LOG.isDebugEnabled)
                     SPlanRewriteRule.LOG.debug("RewriteBindElim combine common mappings of parents " +
                             "${parent.id} and ${parent2.id} into new ${newBind.id} $newBind.")
@@ -70,8 +65,8 @@ class RewriteBindElim : SPlanRewriteRule() {
                     || node is SNodeUnbind && node.inputs[0] is SNodeUnbind)
                 && node.inputs[0].parents.size == 1 ) {
             val child = node.inputs[0]
-            node.check(node.agbindings.keys != child.agbindings.keys) {"Overlap between keys of consecutive ${node.id} $node $child"}
-            node.agbindings += child.agbindings
+            node.check(node.agBindings().keys != child.agBindings().keys) {"Overlap between keys of consecutive ${node.id} $node $child"}
+            node.agBindings() += child.agBindings()
 
             eliminateEmpty(child)
 
