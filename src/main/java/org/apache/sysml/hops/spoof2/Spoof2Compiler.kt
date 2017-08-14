@@ -782,7 +782,7 @@ object Spoof2Compiler {
                     is SNodeBind -> { // unbind-bind
                         rReconstructHopDag(bu.inputs[0], hopMemo)
                     }
-                    else -> throw SNodeException("don't know how to translate $bu")
+                    else -> throw SNodeException("don't know how to translate (${bu.id}) $bu")
                 }
                 // check if the Unbind necessitates a permutation
                 // if the Unbind has a map of Int to Attribute that does not agree with the schema of the input, then transpose

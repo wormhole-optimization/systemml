@@ -36,7 +36,7 @@ class RewriteSplitCSE : SPlanRewriteRule() {
             }
             else return RewriteResult.NoChange
 
-        val numCSEsplits = node.inputs.withIndex().filter(FilterFun).map(ChildIdxFun).size
+        val numCSEsplits = node.inputs.withIndex().distinctBy(IndexedValue<SNode>::value).filter(FilterFun).map(ChildIdxFun).size
         if( numCSEsplits > 0 ) {
             if (SPlanRewriteRule.LOG.isDebugEnabled)
                 SPlanRewriteRule.LOG.debug("RewriteSplitCSE $numCSEsplits split CSEs on (${node.id}) $node")

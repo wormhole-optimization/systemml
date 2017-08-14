@@ -38,16 +38,19 @@ class RewriteBindElim : SPlanRewriteRule() {
                 SPlanRewriteRule.LOG.debug("RewriteBindElim on empty ${node.id} $node.")
             return rRewriteNode(parent, eliminateEmpty(node), true)
         }
+        if( node.visited || parent.visited )
+            return if (changed) RewriteResult.NewNode(node) else RewriteResult.NoChange
         if( parent is SNodeBind || parent is SNodeUnbind ) {
             // try to find another parent that is the same type and has overlapping bindings
             val parent2 = node.parents.find { np -> np !== parent && np.javaClass == parent.javaClass && parent.agBindings().any { (dim,n) -> np.agBindings()[dim] == n } }
-            if( parent2 != null ) {
+            if( parent2 != null && !parent2.visited ) {
                 val commonBindings = parent.agBindings().intersectEntries(parent2.agBindings())
                 node.parents.remove(parent)
                 node.parents.remove(parent2)
                 val newBind =
                         if( parent is SNodeBind ) SNodeBind(node, commonBindings)
                         else SNodeUnbind(node, commonBindings)
+//                newBind.visited = node.visited
                 parent.inputs[0] = newBind
                 parent2.inputs[0] = newBind
                 newBind.parents += parent
@@ -55,7 +58,7 @@ class RewriteBindElim : SPlanRewriteRule() {
                 parent.agBindings() -= commonBindings.keys   // could create an empty Bind/Unbind in the parent; need another pass
                 parent2.agBindings() -= commonBindings.keys
                 if (SPlanRewriteRule.LOG.isDebugEnabled)
-                    SPlanRewriteRule.LOG.debug("RewriteBindElim combine common mappings of parents " +
+                    SPlanRewriteRule.LOG.debug("RewriteBindElim combine common mappings of ${node.id}'s parents " +
                             "${parent.id} and ${parent2.id} into new ${newBind.id} $newBind.")
                 return rRewriteNode(parent, newBind, true)
             }

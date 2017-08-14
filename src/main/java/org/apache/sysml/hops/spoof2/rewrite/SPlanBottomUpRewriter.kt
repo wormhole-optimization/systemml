@@ -5,13 +5,16 @@ import org.apache.log4j.Level
 import org.apache.log4j.Logger
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter.RewriterResult
+import org.apache.sysml.utils.Explain
 import java.util.*
 
 /**
  * Apply rewrites from the leaves up to the roots.
  */
 class SPlanBottomUpRewriter : SPlanRewriter {
-    val _rules: List<SPlanRewriteRuleBottomUp> = listOf(RewriteBindUnify())
+    val _rules: List<SPlanRewriteRuleBottomUp> = listOf(
+            RewriteBindUnify()
+    )
 
     companion object {
         /** Whether to invoke the SPlanValidator after every rewrite pass. */
@@ -51,7 +54,7 @@ class SPlanBottomUpRewriter : SPlanRewriter {
     override fun rewriteSPlan(roots: ArrayList<SNode>): RewriterResult {
         val cseElim = SPlanCSEElimRewriter(true)
         val (rr0,leaves) = cseElim.rewriteSPlanAndGetLeaves(roots)
-        val rr = rr0
+        var rr = rr0
 
         if( CHECK )
             SPlanValidator.validateSPlan(roots)
@@ -70,8 +73,14 @@ class SPlanBottomUpRewriter : SPlanRewriter {
         }
         SNode.resetVisited(collectedRoots)
 
+        val cseElimNoLeaves = SPlanCSEElimRewriter(false)
+        rr = rr.map(cseElimNoLeaves.rewriteSPlan(collectedRoots))
+
         if( CHECK )
             SPlanValidator.validateSPlan(collectedRoots)
+
+        if( LOG.isTraceEnabled )
+            LOG.trace("After bottom up rewrites:"+ Explain.explainSPlan(collectedRoots))
 
         return if( changed ) RewriterResult.NewRoots(collectedRoots) else rr
     }

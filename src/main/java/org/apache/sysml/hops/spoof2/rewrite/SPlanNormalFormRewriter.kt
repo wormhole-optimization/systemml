@@ -16,7 +16,7 @@ class SPlanNormalFormRewriter : SPlanRewriter {
     private val _rulesFirstOnce = listOf(
             RewriteDecompose()          // Subtract  + and *(-1);   ^2  Self-*
     )
-    private val _rulesToNormalForm = listOf(
+    private val _rulesToNormalForm: List<SPlanRewriteRule> = listOf(
             RewriteBindElim(),
             RewriteSplitCSE(),          // split CSEs when they would block a sum-product rearrangement
             RewritePullAggAboveMult(),
@@ -78,10 +78,15 @@ class SPlanNormalFormRewriter : SPlanRewriter {
             SPlanRewriteRule.LOG.trace("Ran 'to normal form' rewrites $count times to yield: "+Explain.explainSPlan(roots))
 
         rr0 = bottomUpRewrite(roots)
+        if( CHECK )
+            SPlanValidator.validateSPlan(roots)
 
         SNode.resetVisited(roots)
         for (node in roots)
             rRewriteSPlan(node, _rulesNormalForm)
+
+        if( SPlanRewriteRule.LOG.isTraceEnabled )
+            SPlanRewriteRule.LOG.trace("After processing normal form: "+Explain.explainSPlan(roots))
 
         count = 0
         do {
@@ -94,7 +99,9 @@ class SPlanNormalFormRewriter : SPlanRewriter {
             count++
         } while (changed)
 
-        rr0 = bottomUpRewrite(roots)
+//        rr0 = bottomUpRewrite(roots)
+        if( CHECK )
+            SPlanValidator.validateSPlan(roots)
 
         if( SPlanRewriteRule.LOG.isTraceEnabled )
             SPlanRewriteRule.LOG.trace("Ran 'to Hop-ready' rewrites $count times to yield: "+Explain.explainSPlan(roots))

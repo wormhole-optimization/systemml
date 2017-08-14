@@ -25,6 +25,7 @@ object SPlanValidator {
             for (node in roots)
                 rValidateNode(node, state)
             SNode.resetVisited(roots)
+            checkAllRootsAreReal(roots, state)
         } catch (ex: SNodeException) {
             try {
                 SNode.resetVisited(roots)
@@ -42,6 +43,8 @@ object SPlanValidator {
             root.resetVisited()
             val state = ValidatorState()
             rValidateNode(root, state)
+            root.resetVisited()
+            checkAllRootsAreReal(listOf(root), state)
         } catch (ex: SNodeException) {
             try {
                 root.resetVisited()
@@ -52,8 +55,25 @@ object SPlanValidator {
 
     }
 
+    private fun checkAllRootsAreReal(roots: List<SNode>, state: ValidatorState) {
+        state.seen.clear()
+        state.leaves.forEach { rCheckAllRootsAreReal(roots, state, it) }
+    }
+
+    private fun rCheckAllRootsAreReal(roots: List<SNode>, state: ValidatorState, node: SNode) {
+        if( node.id in state.seen )
+            return
+        state.seen += node.id
+        if( node.parents.isEmpty() )
+            node.check(node in roots) {"A no-parent node is reachable from the leaves but is not a root. Children: ${node.inputs}"}
+        else {
+            node.parents.forEach { rCheckAllRootsAreReal(roots, state, it) }
+        }
+    }
+
     private class ValidatorState {
         internal val seen: MutableSet<Long> = HashSet()
+        internal val leaves: MutableSet<SNode> = HashSet()
     }
 
     @Throws(SNodeException::class)
@@ -79,9 +99,11 @@ object SPlanValidator {
             node.check(node in child.parents) {"not properly linked to its child cid=${child.id} $child"}
 
         //check empty children (other variable-length Nodes must have at least one child)
-        if (inputs.isEmpty())
+        if (inputs.isEmpty()) {
             node.check(node is SNodeData || node is SNodeExt)
             {"is not a data or ext SNode but has no children"}
+            state.leaves += node
+        }
 
         // check Node has a legal arity (number of children)
         node.checkArity()

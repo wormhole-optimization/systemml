@@ -136,16 +136,22 @@ class Schema private constructor(
                 names.swap(k,v)
                 shapes.swap(k,v)
             }
-            2 -> {
-                val (a, b) = permutation.keys.iterator().let { it.next() to it.next() }
-                names.swap(a,b)
-                shapes.swap(a,b)
-            }
+//            2 -> {
+//                val (a, b) = permutation.keys.iterator().let { it.next() to it.next() }
+//                names.swap(a,b)
+//                shapes.swap(a,b)
+//            }
             else -> { // advanced case with >2 permutes
+                // Complete the permutation
+                val newPerm = if( size != permutation.size ) {
+                    val rng = (0..size-1).filter { it !in permutation.values }
+                    permutation + ((0..size-1) - permutation.keys).zip(rng)
+                } else permutation
+
                 val tmpNames = ArrayList(names)
-                names.mapInPlaceIndexed { idx, _ -> tmpNames[if (idx in permutation) permutation[idx]!! else idx] }
+                names.mapInPlaceIndexed { idx, _ -> tmpNames[if (idx in newPerm) newPerm[idx]!! else idx] }
                 val tmpShapes = ArrayList(shapes)
-                shapes.mapInPlaceIndexed { idx, _ -> tmpShapes[if (idx in permutation) permutation[idx]!! else idx] }
+                shapes.mapInPlaceIndexed { idx, _ -> tmpShapes[if (idx in newPerm) newPerm[idx]!! else idx] }
             }
         }
     }
