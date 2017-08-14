@@ -64,15 +64,21 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                             // for each input to bind2parent, if it has oldName in its schema, add a Bind[newName] -> Unbind[oldName] -> child
                             bind2parent.inputs.toSet().forEach { bind2parentInput ->
                                 if( oldName in bind2parentInput.schema ) {
-//                                    val cnt = bind2parentInput.parents.count { it == bind2parent }
-//                                    val bind2parentInputParents = ArrayList(bind2parentInput.parents)
-                                    bind2parentInput.parents.removeIf { it == bind2parent }
-                                    val unbindOld = SNodeUnbind(bind2parentInput, mapOf(bindingPosition to oldName))
-                                    val bindNew = SNodeBind(unbindOld, mapOf(bindingPosition to newName))
-                                    bind2parent.inputs.mapInPlace { if( it == bind2parentInput ) {
-                                        bindNew.parents += bind2parent
-                                        bindNew
-                                    } else it }
+                                    // Modify in place if possible.
+                                    if( bind2parentInput is SNodeBind && oldName in bind2parentInput.bindings.values ) {
+                                        bind2parentInput.bindings.mapValuesInPlace { if( it == oldName ) newName else it }
+                                        bind2parentInput.refreshSchema()
+                                    } else {
+                                        bind2parentInput.parents.removeIf { it == bind2parent }
+                                        val unbindOld = SNodeUnbind(bind2parentInput, mapOf(bindingPosition to oldName))
+                                        val bindNew = SNodeBind(unbindOld, mapOf(bindingPosition to newName))
+                                        bind2parent.inputs.mapInPlace {
+                                            if (it == bind2parentInput) {
+                                                bindNew.parents += bind2parent
+                                                bindNew
+                                            } else it
+                                        }
+                                    }
                                 }
                             }
                             bind2parent.refreshSchema()
