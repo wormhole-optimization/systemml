@@ -96,17 +96,17 @@ class SPlanBottomUpRewriter : SPlanRewriter {
 
         if( node.parents.isEmpty() ) {
             collectedRoots += node
-        }
+        } else {
 
-        var i = 0
-        while (i < node.parents.size) {
-            val parent = node.parents[i]
-            val result = rRewriteSPlan(parent, rules, collectedRoots)
-            if( changed == SPlanRewriteRule.RewriteResult.NoChange && result is SPlanRewriteRule.RewriteResult.NewNode )
-                changed = SPlanRewriteRule.RewriteResult.NewNode(node)
-            i++
+            var i = 0
+            while (i < node.parents.size) {
+                val parent = node.parents[i]
+                val result = rRewriteSPlan(parent, rules, collectedRoots)
+                if (changed == SPlanRewriteRule.RewriteResult.NoChange && result is SPlanRewriteRule.RewriteResult.NewNode)
+                    changed = SPlanRewriteRule.RewriteResult.NewNode(node)
+                i++
+            }
         }
-
         node.visited = true
         return changed
     }

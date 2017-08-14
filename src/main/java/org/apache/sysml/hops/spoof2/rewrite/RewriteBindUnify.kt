@@ -50,7 +50,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                     val bindingPosition = commonBindingPositions.first()
                     val newName = bind1.bindings[bindingPosition]!!
                     val oldName = bind2.bindings[bindingPosition]!!
-                    val (bind2parentsOverlap, bind2parentsNoOverlap) = bind2.parents.partition { newName in it.schema }
+                    val (bind2parentsOverlap, bind2parentsNoOverlap) = bind2.parents.partition { newName in it.schema || it.visited }
                     if( bind2parentsNoOverlap.isNotEmpty() ) {
                         // Create new bind on this position to the new name:
                         // bind2parentParents -> Bind[oldName] -> Unbind[newName] -> bind2parent -> Bind[newName] -> node
@@ -117,7 +117,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                             }
                         }
                         if( LOG.isTraceEnabled )
-                            LOG.trace("RewriteBindUnify: propagate binding $bindingPosition: $oldName(${bind1.id}) -> $newName(${bind2.id}) across parents")
+                            LOG.trace("RewriteBindUnify: unify binding $bindingPosition: $oldName(${bind1.id}) -> $newName(${bind2.id}) above ${node.id}")
                         return rRewriteBindUnify(node, true)
                     }
                 }

@@ -43,7 +43,7 @@ class SPlanNormalFormRewriter : SPlanRewriter {
         val bottomUp = SPlanBottomUpRewriter()
         fun bottomUpRewrite(roots: ArrayList<SNode>): RewriterResult {
             val rr0 = bottomUp.rewriteSPlan(roots)
-            if( rr0 is RewriterResult.NewRoots ) {
+            if( rr0 is RewriterResult.NewRoots && rr0.newRoots !== roots ) {
                 roots.clear()
                 roots += rr0.newRoots
             }

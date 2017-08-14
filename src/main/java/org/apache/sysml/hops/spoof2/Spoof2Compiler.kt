@@ -573,11 +573,11 @@ object Spoof2Compiler {
                 hop0.dim2 == 1L -> Hop.Direction.RowCol // sum first dimension ==> row vector : Hop.Direction.Col
                 hop0.dim1 == 1L -> Hop.Direction.RowCol // sum second dimension ==> col vector: Hop.Direction.Row
                 agg.aggreateNames[0] == aggInput.schema.names[0] -> {
-                    agg.check(aggInput.schema.size == 2) {"this may be erroneous if aggInput is not a matrix: $aggInput"}
+                    agg.check(aggInput.schema.size == 2) {"this may be erroneous if aggInput is not a matrix: ${aggInput.id} $aggInput ${aggInput.schema}"}
                     Hop.Direction.Col
                 }
                 else -> {
-                    agg.check(aggInput.schema.size == 2) {"this may be erroneous if aggInput is not a matrix: $aggInput"}
+                    agg.check(aggInput.schema.size == 2) {"this may be erroneous if aggInput is not a matrix: ${aggInput.id} $aggInput ${aggInput.schema}"}
                     Hop.Direction.Row
                 }
             }
