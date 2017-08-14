@@ -53,6 +53,7 @@ class SPlanNormalFormRewriter : SPlanRewriter {
 
     override fun rewriteSPlan(roots: ArrayList<SNode>): RewriterResult {
         var rr0 = bottomUpRewrite(roots)
+//        rr0 = rr0.map(bottomUpRewrite(roots))
 
         SNode.resetVisited(roots)
         for (root in roots)

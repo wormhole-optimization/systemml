@@ -160,6 +160,33 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
             }
         }
 
+        // todo - fix this pattern. Need to switch above in addition to fixing below.
+//        if( node is SNodeBind ) {
+//            // check for unbind parent and bind parent with same mappings // test pattern 4
+//            // todo - expand this pattern toward when the binds and unbinds are split up / shared
+//            val p1Unbind = node.parents.find { it is SNodeUnbind && it.unbindings.values.toSet() == node.bindings.values.toSet() } as? SNodeUnbind
+//            if( p1Unbind != null ) {
+//                val p2Bind = p1Unbind.parents.find { it is SNodeBind && it.bindings == p1Unbind.unbindings } as? SNodeBind
+//                if( p2Bind != null ) {
+//                    var res = node
+//                    p2Bind.input = node.input
+//                    p1Unbind.parents -= p2Bind
+//                    node.input.parents += p2Bind
+//                    // Dead code elim, if p1Unbind has only one parent (p2Bind)
+//                    if( p1Unbind.parents.isEmpty() ) {
+//                        node.parents -= p1Unbind
+//                        if( node.parents.isEmpty() ) {
+//                            node.input.parents -= node
+//                            res = p2Bind
+//                        }
+//                    }
+//                    if (LOG.isTraceEnabled)
+//                        LOG.trace("RewriteBindUnify: eliminate transpose-like renaming pattern (${p2Bind.id}) $p2Bind -- (${p1Unbind.id}) $p1Unbind -- (${node.id}) $node")
+//                    return rRewriteBindUnify(res, true)
+//                }
+//            }
+//        }
+
         // check if two parents have a Bind to the same dimension. If so, try to unify them.
         val bindIndices = node.parents.withIndex().filter { (_,p) -> p is SNodeBind }.map { (i,_) -> i }
         for( bindi in 0..bindIndices.size-2) {
