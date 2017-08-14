@@ -42,8 +42,8 @@ class Spoof2Test(
     companion object {
         private const val TEST_NAME = "spoof2pattern"
         //	TEST_NAME+ 1;  //t(X)
-        //	TEST_NAME+ 2;  //rowSum(t(X))
-        //	TEST_NAME+ 3;  //colSum(t(X))
+        //	TEST_NAME+ 2;  //rowSum(t(X)) -- check for +C
+        //	TEST_NAME+ 3;  //colSum(t(X)) -- check for +R
         //	TEST_NAME+ 4;  //sum(t(X))
         //	TEST_NAME+ 5;  //X%*%Y
         //	TEST_NAME+ 6;  //t(t(X)%*%t(Y))

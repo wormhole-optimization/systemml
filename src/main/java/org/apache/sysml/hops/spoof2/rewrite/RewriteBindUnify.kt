@@ -110,12 +110,8 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
             }
             if( above != null ) {
                 val commonBindings = node.agBindings().intersectEntries(above.agBindings())
-                val unbind = when( node ) {
-                    is SNodeBind -> above
-                    is SNodeUnbind -> node
-                    else -> throw AssertionError()
-                } as SNodeUnbind
-                if( commonBindings.none { (p,n) -> unbind.input.schema.names[p] != n } ) {
+                // Safe to elim if the bottom is unbind OR if the bottom is bind and the unbind does not change name positions
+                if( node is SNodeUnbind || commonBindings.none { (p,n) -> node.schema.names[p] != n } ) {
                     // above can only be a parent once because it is a bind/unbind
                     val otherNodeParents = node.parents.filter { it !== above }
                     if (otherNodeParents.isNotEmpty()) {
