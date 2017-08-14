@@ -79,70 +79,70 @@ class RewriteBindElim : SPlanRewriteRule() {
                 SPlanRewriteRule.LOG.debug("RewriteBindElim on consecutve Unbinds at ${node.id} to $node.")
             return rRewriteNode(parent, node, true)
         }
-        if( node is SNodeBind ) {
-            val bind = node
-            // bind-unbind
-            if( bind.inputs[0] is SNodeUnbind && bind.inputs[0].parents.size == 1 ) {
-                val unbind = bind.inputs[0] as SNodeUnbind
-                val renamings = mutableMapOf<Name,Name>()
-                val iter = bind.bindings.iterator()
-                while( iter.hasNext() ) {
-                    val (dim,newName) = iter.next()
-                    if( dim in unbind.unbindings ) {
-                        // this dim is unbound and then bound. Rename the unbound name to the bound name.
-                        val oldName = unbind.unbindings.remove(dim)!!
-                        iter.remove()
-                        renamings += oldName to newName
-                    }
-                }
-                if( renamings.isNotEmpty() ) {
-                    val unbindChild = unbind.inputs[0]
-                    unbindChild.renameAttributes(renamings, false)
-                    if (SPlanRewriteRule.LOG.isDebugEnabled)
-                        SPlanRewriteRule.LOG.debug("RewriteBindElim Bind(${bind.id})-Unbind(${unbind.id}): " +
-                                "rename sub-tree of Unbind by $renamings" +
-                                (if(bind.bindings.isEmpty()) " and elim Bind" else "") +
-                                if(unbind.unbindings.isEmpty()) " and elim Unbind" else "")
-
-                    // Common case: the resulting bind-unbind is empty.
-                    if (unbind.unbindings.isEmpty()) eliminateEmpty(unbind)
-                    return if (bind.bindings.isEmpty())
-                        rRewriteNode(parent, eliminateEmpty(bind), true)
-                    else RewriteResult.NewNode(bind)
-                }
-            }
-        }
-        if( node is SNodeUnbind ) {
-            val unbind = node
-            // unbind-bind
-            if( unbind.inputs[0] is SNodeBind && unbind.inputs[0].parents.size == 1 ) {
-                val bind = node.inputs[0] as SNodeBind
-                // elminate unbindings and bindings where the names are in the same position
-                val iter = unbind.unbindings.iterator()
-                var numRemoved = 0
-                while( iter.hasNext() ) {
-                    val (dim,unboundName) = iter.next()
-                    if( unboundName == bind.bindings[dim] ) {
-                        bind.bindings.remove(dim)
-                        iter.remove()
-                        numRemoved++
-                    }
-                }
-                if (numRemoved > 0) {
-                    if (SPlanRewriteRule.LOG.isDebugEnabled)
-                        SPlanRewriteRule.LOG.debug("RewriteBindElim Unbind(${unbind.id})-Bind(${bind.id}) " +
-                                "to $unbind and $bind, removing $numRemoved names" +
-                                (if(unbind.unbindings.isEmpty()) " and elim Unbind" else "" +
-                                        if(bind.bindings.isEmpty()) " and elim Bind" else ""))
-
-                    // Common case: the resulting unbind-bind is empty.
-                    if (bind.bindings.isEmpty()) eliminateEmpty(bind)
-                    return if (unbind.unbindings.isEmpty())
-                        rRewriteNode(parent, eliminateEmpty(unbind), true)
-                    else RewriteResult.NewNode(unbind)
-                }
-            }
-        }
+//        if( node is SNodeBind ) {
+//            val bind = node
+//            // bind-unbind
+//            if( bind.inputs[0] is SNodeUnbind && bind.inputs[0].parents.size == 1 ) {
+//                val unbind = bind.inputs[0] as SNodeUnbind
+//                val renamings = mutableMapOf<Name,Name>()
+//                val iter = bind.bindings.iterator()
+//                while( iter.hasNext() ) {
+//                    val (dim,newName) = iter.next()
+//                    if( dim in unbind.unbindings ) {
+//                        // this dim is unbound and then bound. Rename the unbound name to the bound name.
+//                        val oldName = unbind.unbindings.remove(dim)!!
+//                        iter.remove()
+//                        renamings += oldName to newName
+//                    }
+//                }
+//                if( renamings.isNotEmpty() ) {
+//                    val unbindChild = unbind.inputs[0]
+//                    unbindChild.renameAttributes(renamings, false)
+//                    if (SPlanRewriteRule.LOG.isDebugEnabled)
+//                        SPlanRewriteRule.LOG.debug("RewriteBindElim Bind(${bind.id})-Unbind(${unbind.id}): " +
+//                                "rename sub-tree of Unbind by $renamings" +
+//                                (if(bind.bindings.isEmpty()) " and elim Bind" else "") +
+//                                if(unbind.unbindings.isEmpty()) " and elim Unbind" else "")
+//
+//                    // Common case: the resulting bind-unbind is empty.
+//                    if (unbind.unbindings.isEmpty()) eliminateEmpty(unbind)
+//                    return if (bind.bindings.isEmpty())
+//                        rRewriteNode(parent, eliminateEmpty(bind), true)
+//                    else RewriteResult.NewNode(bind)
+//                }
+//            }
+//        }
+//        if( node is SNodeUnbind ) {
+//            val unbind = node
+//            // unbind-bind
+//            if( unbind.inputs[0] is SNodeBind && unbind.inputs[0].parents.size == 1 ) {
+//                val bind = node.inputs[0] as SNodeBind
+//                // elminate unbindings and bindings where the names are in the same position
+//                val iter = unbind.unbindings.iterator()
+//                var numRemoved = 0
+//                while( iter.hasNext() ) {
+//                    val (dim,unboundName) = iter.next()
+//                    if( unboundName == bind.bindings[dim] ) {
+//                        bind.bindings.remove(dim)
+//                        iter.remove()
+//                        numRemoved++
+//                    }
+//                }
+//                if (numRemoved > 0) {
+//                    if (SPlanRewriteRule.LOG.isDebugEnabled)
+//                        SPlanRewriteRule.LOG.debug("RewriteBindElim Unbind(${unbind.id})-Bind(${bind.id}) " +
+//                                "to $unbind and $bind, removing $numRemoved names" +
+//                                (if(unbind.unbindings.isEmpty()) " and elim Unbind" else "" +
+//                                        if(bind.bindings.isEmpty()) " and elim Bind" else ""))
+//
+//                    // Common case: the resulting unbind-bind is empty.
+//                    if (bind.bindings.isEmpty()) eliminateEmpty(bind)
+//                    return if (unbind.unbindings.isEmpty())
+//                        rRewriteNode(parent, eliminateEmpty(unbind), true)
+//                    else RewriteResult.NewNode(unbind)
+//                }
+//            }
+//        }
         return if (changed) RewriteResult.NewNode(node) else RewriteResult.NoChange
     }
 

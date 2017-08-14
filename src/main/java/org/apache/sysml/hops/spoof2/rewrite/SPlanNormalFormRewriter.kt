@@ -38,11 +38,21 @@ class SPlanNormalFormRewriter : SPlanRewriter {
 
     companion object {
         /** Whether to invoke the SPlanValidator after every rewrite pass. */
-        internal const val CHECK = true
+        private const val CHECK = true
+
+        val bottomUp = SPlanBottomUpRewriter()
+        fun bottomUpRewrite(roots: ArrayList<SNode>): RewriterResult {
+            val rr0 = bottomUp.rewriteSPlan(roots)
+            if( rr0 is RewriterResult.NewRoots ) {
+                roots.clear()
+                roots += rr0.newRoots
+            }
+            return rr0
+        }
     }
 
     override fun rewriteSPlan(roots: ArrayList<SNode>): RewriterResult {
-        val cseElim = SPlanCSEElimRewriter()
+        var rr0 = bottomUpRewrite(roots)
 
         SNode.resetVisited(roots)
         for (root in roots)
@@ -62,12 +72,12 @@ class SPlanNormalFormRewriter : SPlanRewriter {
         if( count == 1 ) {
             if( SPlanRewriteRule.LOG.isTraceEnabled )
                 SPlanRewriteRule.LOG.trace("'to normal form' rewrites did not affect SNodePlan; skipping rest")
-            return RewriterResult.NoChange
+            return rr0
         }
         if( SPlanRewriteRule.LOG.isTraceEnabled )
             SPlanRewriteRule.LOG.trace("Ran 'to normal form' rewrites $count times to yield: "+Explain.explainSPlan(roots))
 
-        cseElim.rewriteSPlan(roots)
+        rr0 = bottomUpRewrite(roots)
 
         SNode.resetVisited(roots)
         for (node in roots)
@@ -84,7 +94,7 @@ class SPlanNormalFormRewriter : SPlanRewriter {
             count++
         } while (changed)
 
-        cseElim.rewriteSPlan(roots)
+        rr0 = bottomUpRewrite(roots)
 
         if( SPlanRewriteRule.LOG.isTraceEnabled )
             SPlanRewriteRule.LOG.trace("Ran 'to Hop-ready' rewrites $count times to yield: "+Explain.explainSPlan(roots))

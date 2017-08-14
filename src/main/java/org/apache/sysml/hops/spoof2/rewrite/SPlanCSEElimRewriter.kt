@@ -33,11 +33,11 @@ class SPlanCSEElimRewriter(
 
     companion object {
         /** Whether to invoke the SPlanValidator after every rewrite pass. */
-        internal const val CHECK = true
+        private const val CHECK = true
         internal val LOG = LogFactory.getLog(SPlanCSEElimRewriter::class.java)!!
 
         //internal configuration flags
-        const val LDEBUG = true
+        private const val LDEBUG = true
         init {
             if (LDEBUG) Logger.getLogger(SPlanCSEElimRewriter::class.java).level = Level.TRACE
         }
@@ -60,6 +60,10 @@ class SPlanCSEElimRewriter(
     }
 
     override fun rewriteSPlan(roots: ArrayList<SNode>): RewriterResult {
+        return rewriteSPlanAndGetLeaves(roots).first
+    }
+
+    fun rewriteSPlanAndGetLeaves(roots: ArrayList<SNode>): Pair<RewriterResult, MutableList<SNode>> {
         val dataops = HashMap<Long, SNode>()
         val literalops = HashMap<String, SNode>() //key: <VALUETYPE>_<LITERAL>
 
@@ -77,11 +81,12 @@ class SPlanCSEElimRewriter(
         if( CHECK )
             SPlanValidator.validateSPlan(roots)
 
-        if( changed + changedLeaves > 0 ) {
+        val rr = if( changed + changedLeaves > 0 ) {
             if( LOG.isTraceEnabled )
                 LOG.trace("SPlanCSEElimRewriter: Eliminate $changedLeaves leaf and $changed internal node CSEs.")
-            return RewriterResult.NewRoots(roots)
-        } else return RewriterResult.NoChange
+            RewriterResult.NewRoots(roots)
+        } else RewriterResult.NoChange
+        return rr to (dataops.values + literalops.values).toMutableList()
     }
 
     private fun rCSEElim_Leaves(node: SNode,

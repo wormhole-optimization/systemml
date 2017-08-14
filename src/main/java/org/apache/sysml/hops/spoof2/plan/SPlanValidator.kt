@@ -24,6 +24,7 @@ object SPlanValidator {
             val state = ValidatorState()
             for (node in roots)
                 rValidateNode(node, state)
+            SNode.resetVisited(roots)
         } catch (ex: SNodeException) {
             try {
                 SNode.resetVisited(roots)

@@ -19,7 +19,7 @@ abstract class SPlanRewriteRule {
         internal val LOG = LogFactory.getLog(SPlanRewriteRule::class.java)!!
 
         //internal configuration flags
-        const val LDEBUG = true
+        private const val LDEBUG = true
         // for internal debugging only
         init {
             if (LDEBUG) Logger.getLogger(SPlanRewriteRule::class.java).level = Level.TRACE

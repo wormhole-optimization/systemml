@@ -198,10 +198,10 @@ object Spoof2Compiler {
         }
 
 
-        BasicSPlanRewriter().rewriteSPlan(sroots, listOf(RewriteBindElim()))
+//        BasicSPlanRewriter().rewriteSPlan(sroots, listOf(RewriteBindElim()))
         if (LOG.isTraceEnabled) {
-//            LOG.trace("Explain after initial SPlan construction: " + Explain.explainSPlan(sroots))
-            LOG.trace("Explain after SPlan construction and RewriteBindElim: " + Explain.explainSPlan(sroots))
+            LOG.trace("Explain after initial SPlan construction: " + Explain.explainSPlan(sroots))
+//            LOG.trace("Explain after SPlan construction and RewriteBindElim: " + Explain.explainSPlan(sroots))
         }
 
         //rewrite sum-product plan
