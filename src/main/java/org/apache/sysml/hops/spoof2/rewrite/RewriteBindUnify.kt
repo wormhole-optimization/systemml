@@ -109,33 +109,40 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                     && it.agBindings().any { (p,n) -> node.agBindings()[p] == n }
             }
             if( above != null ) {
-                // above can only be a parent once because it is a bind/unbind
-                val otherNodeParents = node.parents.filter { it !== above }
-                if( otherNodeParents.isNotEmpty() ) {
-                    // Split CSE: connect otherNodeParents to a copy of node
-                    val copy = node.shallowCopyNoParentsYesInputs()
-                    otherNodeParents.forEach {
-                        it.inputs[it.inputs.indexOf(node)] = copy
-                        copy.parents += it
-                        node.parents -= it
-                    }
-                }
-                // only parent of node is above
-                assert(node.parents.size == 1)
                 val commonBindings = node.agBindings().intersectEntries(above.agBindings())
-                commonBindings.forEach { (k,_) ->
-                    node.agBindings() -= k
-                    above.agBindings() -= k
-                }
-                node.refreshSchema()
-                above.refreshSchemasUpward() // insidious situation: The unbind in unbind-bind shifts the indices // todo make a cleaner transpose handling
+                val unbind = when( node ) {
+                    is SNodeBind -> above
+                    is SNodeUnbind -> node
+                    else -> throw AssertionError()
+                } as SNodeUnbind
+                if( commonBindings.none { (p,n) -> unbind.input.schema.names[p] != n } ) {
+                    // above can only be a parent once because it is a bind/unbind
+                    val otherNodeParents = node.parents.filter { it !== above }
+                    if (otherNodeParents.isNotEmpty()) {
+                        // Split CSE: connect otherNodeParents to a copy of node
+                        val copy = node.shallowCopyNoParentsYesInputs()
+                        otherNodeParents.forEach {
+                            it.inputs[it.inputs.indexOf(node)] = copy
+                            copy.parents += it
+                            node.parents -= it
+                        }
+                    }
+                    // only parent of node is above
+                    assert(node.parents.size == 1)
+                    commonBindings.forEach { (k, _) ->
+                        node.agBindings() -= k
+                        above.agBindings() -= k
+                    }
+                    node.refreshSchema()
+//                    above.refreshSchemasUpward() // insidious situation: The unbind in unbind-bind shifts the indices // todo make a cleaner transpose handling
 
-                if( above.agBindings().isEmpty() )
-                    RewriteBindElim.eliminateEmpty(above)
-                val newNode = if( node.agBindings().isEmpty() ) RewriteBindElim.eliminateEmpty(node) else node
-                if( LOG.isTraceEnabled )
-                    LOG.trace("RewriteBindUnify: elim redundant bindings $commonBindings in ${above.id} $above -- ${node.id} $node ${if(otherNodeParents.isNotEmpty()) "(with split CSE)" else ""}")
-                return rRewriteBindUnify(newNode, true)
+                    if (above.agBindings().isEmpty())
+                        RewriteBindElim.eliminateEmpty(above)
+                    val newNode = if (node.agBindings().isEmpty()) RewriteBindElim.eliminateEmpty(node) else node
+                    if (LOG.isTraceEnabled)
+                        LOG.trace("RewriteBindUnify: elim redundant bindings $commonBindings in ${above.id} $above -- ${node.id} $node ${if (otherNodeParents.isNotEmpty()) "(with split CSE)" else ""}")
+                    return rRewriteBindUnify(newNode, true)
+                }
             }
         }
 
@@ -145,7 +152,9 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
             if( above != null ) {
                 above as SNodeBind
                 for (unbindBindPos in node.unbindings.keys.intersect(above.bindings.keys)) {
-                    if( tryRenameSingle(above, above.bindings[unbindBindPos]!!, node.unbindings[unbindBindPos]!!) )
+                    val oldName = above.bindings[unbindBindPos]!!
+                    val newName = node.unbindings[unbindBindPos]!!
+                    if( tryRenameSingle(above, oldName, newName) )
                         return rRewriteBindUnify(node, true)
                 }
             }
@@ -175,6 +184,8 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
     }
 
     private fun tryRenameSingle(bind: SNodeBind, oldName: Name, newName: Name): Boolean {
+        if(oldName == newName)
+            return false
         val (bind2parentsOverlap, bind2parentsNoOverlap) = bind.parents.partition { newName in it.schema }
         if (bind2parentsNoOverlap.isNotEmpty()) {
             val bindingPosition = bind.bindings.entries.find { (_,n) -> n == oldName }!!.key
