@@ -17,7 +17,7 @@ class SPlanNormalFormRewriter : SPlanRewriter {
             RewriteDecompose()          // Subtract  + and *(-1);   ^2  Self-*
     )
     private val _rulesToNormalForm: List<SPlanRewriteRule> = listOf(
-//            RewriteBindElim(),
+            RewriteBindElim(),
             RewriteSplitCSE(),          // split CSEs when they would block a sum-product rearrangement
             RewritePullAggAboveMult(),
             RewriteAggregateElim(),
@@ -53,14 +53,14 @@ class SPlanNormalFormRewriter : SPlanRewriter {
 
     override fun rewriteSPlan(roots: ArrayList<SNode>): RewriterResult {
         rewriteDown(roots, _rulesFirstOnce)
-        val rr0 = bottomUpRewrite(roots)
+        val rr0: RewriterResult = RewriterResult.NoChange //bottomUpRewrite(roots)
 
         var count = 0
         do {
             count++
             if( CHECK ) SPlanValidator.validateSPlan(roots)
             var changed = rewriteDown(roots, _rulesToNormalForm)
-            changed = bottomUpRewrite(roots) is RewriterResult.NewRoots || changed
+//            changed = bottomUpRewrite(roots) is RewriterResult.NewRoots || changed
         } while (changed)
 
         if( count == 1 ) {
