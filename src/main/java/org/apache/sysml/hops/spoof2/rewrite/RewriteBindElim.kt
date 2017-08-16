@@ -38,8 +38,8 @@ class RewriteBindElim : SPlanRewriteRule() {
                 SPlanRewriteRule.LOG.debug("RewriteBindElim on empty ${node.id} $node.")
             return rRewriteNode(parent, eliminateEmpty(node), true)
         }
-        if( node.visited || parent.visited ) // safety; try removing this later
-            return if (changed) RewriteResult.NewNode(node) else RewriteResult.NoChange
+//        if( node.visited || parent.visited ) // safety; try removing this later
+//            return if (changed) RewriteResult.NewNode(node) else RewriteResult.NoChange
         // DISABLED combine common mappings.
         // Defer to CSE Elim if the mappings are identical. Otherwise if not identical, don't combine.
 //        if( parent is SNodeBind || parent is SNodeUnbind ) {
