@@ -405,8 +405,12 @@ public class Explain
 		return explainCNode(node, level);
 	}
 	
-	public static String explainSPlan( ArrayList<SNode> splan ) 
-		throws DMLRuntimeException 
+	public static String explainSPlan( ArrayList<SNode> splan )
+		throws DMLRuntimeException {
+		return explainSPlan(splan, false);
+	}
+	public static String explainSPlan( ArrayList<SNode> splan, boolean useExternalId )
+		throws DMLRuntimeException
 	{
 		StringBuilder sb = new StringBuilder();
 		
@@ -416,22 +420,37 @@ public class Explain
 		sb.append("----------------------------------------\n");
 		
 		//explain body dag
-		SNode.resetVisited(splan);
-		for( SNode root : splan )
-			sb.append(explainSNode(root, 1));
-		SNode.resetVisited(splan);
-		
+		if( useExternalId ) {
+			HashSet<Long> ids = new HashSet<>();
+			for (SNode root : splan)
+				sb.append(explainSNode(root, 1, ids));
+		} else {
+			SNode.resetVisited(splan);
+			for (SNode root : splan)
+				sb.append(explainSNode(root, 1));
+			SNode.resetVisited(splan);
+		}
+
 		sb.append("----------------------------------------\n");
 		
 		return sb.toString();
 	}
 	
 	public static String explain( SNode node ) throws DMLRuntimeException {
-		return explain(node, 0);
+		return explain(node, false);
+	}
+	public static String explain( SNode node, boolean useExternalId ) throws DMLRuntimeException {
+		if( useExternalId )
+			return explain(node, 0, new HashSet<Long>());
+		else
+			return explain(node, 0);
 	}
 	
 	public static String explain( SNode node, int level ) throws DMLRuntimeException {
 		return explainSNode(node, level);
+	}
+	public static String explain( SNode node, int level, HashSet<Long> ids ) throws DMLRuntimeException {
+		return explainSNode(node, level, ids);
 	}
 
 	public static String explainGDFNodes( ArrayList<GDFNode> gdfnodes ) 
@@ -752,6 +771,59 @@ public class Explain
 		sb.append('\n');
 		snode.setVisited(true);
 		
+		return sb.toString();
+	}
+
+	private static String explainSNode(SNode snode, int level, HashSet<Long> ids )
+			throws DMLRuntimeException
+	{
+		if( ids.contains(snode.getId()) )
+			return "";
+
+		StringBuilder sb = new StringBuilder();
+		String offset = createOffset(level);
+
+		for( SNode input : snode.getInputs() )
+			sb.append(explainSNode(input, level, ids));
+
+		//indentation
+		sb.append(offset);
+
+		//hop id
+		if( SHOW_DATA_DEPENDENCIES )
+			sb.append("("+snode.getId()+") ");
+
+		//operation string
+		sb.append(snode.toString());
+
+		//input hop references
+		if( SHOW_DATA_DEPENDENCIES ) {
+			StringBuilder childs = new StringBuilder();
+			childs.append(" (");
+			boolean childAdded = false;
+			for( SNode input : snode.getInputs() ) {
+				childs.append(childAdded?",":"");
+				childs.append(input.getId());
+				childAdded = true;
+			}
+			childs.append(")");
+			if( childAdded )
+				sb.append(childs.toString());
+		}
+
+		//schema and tensor characteristics
+		sb.append(" ").append(snode.getSchema());
+		//		sb.append(" [");
+		//		for( int i=0; i<snode.getNumDims(); i++ ) {
+		//			if( i > 0 )
+		//				sb.append(",");
+		//			sb.append(snode.getShape(i));
+		//		}
+		//		sb.append("]");
+
+		sb.append('\n');
+		ids.add(snode.getId());
+
 		return sb.toString();
 	}
 	

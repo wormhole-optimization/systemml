@@ -154,12 +154,55 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                     // if nodeName < aboveName, then rename nodeName to aboveName and propagate down
                     val aboveName = above.bindings[unbindBindPos]!!
                     val nodeName = node.unbindings[unbindBindPos]!!
-                    val success = if( Schema.nameComparator.compare(aboveName, nodeName) > 0 ) // flip!
+                    val success = if( Schema.nameComparator.compare(aboveName, nodeName) < 0 ) // flip!
                         tryRenameSingle(above, aboveName, nodeName)
                     else
                         tryRenameSingle(node, nodeName, aboveName)
                     if( success )
                         return rRewriteBindUnify(node, true)
+                }
+            }
+        }
+
+        // bind-unbind-bind with changing positions - try to collapse transpose
+        // only applies when the bottom bind (node) has foreign parents; otherwise other rules handle this case
+        if( node is SNodeBind  ) { // node.parents.size > 1
+            // p1Unbind may have fewer bindings
+            val p1Unbind = node.parents.find { it is SNodeUnbind && node.bindings.values.containsAll(it.unbindings.values) } as? SNodeUnbind
+            if( p1Unbind != null ) {
+                // p2Bind binds to the same positions as p1Unbind
+                val p2Bind = p1Unbind.parents.find { it is SNodeBind && it.bindings.keys == p1Unbind.unbindings.keys } as? SNodeBind
+                if( p2Bind != null ) {
+                    val p1UnbindRev = p1Unbind.unbindings.map { (p,n) -> n to p }.toMap()
+                    val newBindings = node.bindings.mapValues { (p,n) ->
+                         if( p in p1Unbind.unbindings ) p2Bind.bindings[p1UnbindRev[n]]!! else n
+                    }
+
+                    // Split the bottom bind (node) and wire it to the parents of p2Bind
+                    val belowBind = node.input
+                    // reuse an existing bind if possible
+                    val bindNewName = belowBind.parents.find {
+                        it !== node && it is SNodeBind &&
+                                it.bindings == newBindings
+                    } ?: if (node.parents.size == 1) {
+                        // safe to do a destructive rename
+                        node.bindings.putAll(newBindings)
+                        node.refreshSchema()
+                        node
+                    } else SNodeBind(belowBind, newBindings).apply { this.visited = belowBind.visited }
+
+                    p1Unbind.parents -= p2Bind
+                    if( p1Unbind.parents.isEmpty() )
+                        node.parents -= p1Unbind
+                    p2Bind.parents.forEach {
+                        it.inputs[it.inputs.indexOf(p2Bind)] = bindNewName
+                        bindNewName.parents += it
+                    }
+                    bindNewName.parents.forEach { it.refreshSchemasUpward() }
+
+                    if (LOG.isTraceEnabled)
+                        LOG.trace("RewriteBindUnify: eliminate transpose-like renaming pattern (${p2Bind.id}) $p2Bind -- (${p1Unbind.id}) $p1Unbind -- (${node.id}) $node")
+                    return rRewriteBindUnify(node, true)
                 }
             }
         }
@@ -177,7 +220,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                         .filter { bind1.bindings[it]!! != bind2.bindings[it]!! }) {
                     val name1 = bind1.bindings[bindingPosition]!!
                     val name2 = bind2.bindings[bindingPosition]!!
-                    val success = if( Schema.nameComparator.compare(name1, name2) > 0 ) // flip!
+                    val success = if( Schema.nameComparator.compare(name1, name2) < 0 ) // flip!
                         tryRenameSingle(bind1, name1, name2)
                     else
                         tryRenameSingle(bind2, name2, name1)

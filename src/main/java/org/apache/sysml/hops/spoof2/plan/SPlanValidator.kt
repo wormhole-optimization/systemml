@@ -28,8 +28,7 @@ object SPlanValidator {
             checkAllRootsAreReal(roots, state)
         } catch (ex: SNodeException) {
             try {
-                SNode.resetVisited(roots)
-                LOG.error("\n" + Explain.explainSPlan(roots), ex)
+                LOG.error("\n" + Explain.explainSPlan(roots, true), ex)
             } catch (e: DMLRuntimeException) {}
             throw ex
         }
@@ -47,8 +46,7 @@ object SPlanValidator {
             checkAllRootsAreReal(listOf(root), state)
         } catch (ex: SNodeException) {
             try {
-                root.resetVisited()
-                LOG.error("\n" + Explain.explain(root), ex)
+                LOG.error("\n" + Explain.explain(root, true), ex)
             } catch (e: DMLRuntimeException) {}
             throw ex
         }
