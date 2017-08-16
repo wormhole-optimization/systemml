@@ -20,8 +20,7 @@
 #-------------------------------------------------------------
 
 v= matrix( "1 2 3 4 5 6 7 8 9", rows=9, cols=1)
-if (1==1) {
-    print(sum(v))
-    S = t(exp(v))
-    write(S,$1)
-}
+while (FALSE) {}
+print(sum(v))
+S = t(exp(v))
+write(S,$1)

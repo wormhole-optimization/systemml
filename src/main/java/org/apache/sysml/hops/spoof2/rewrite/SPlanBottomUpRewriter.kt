@@ -73,6 +73,9 @@ class SPlanBottomUpRewriter : SPlanRewriter {
         }
         SNode.resetVisited(collectedRoots)
 
+        if( LOG.isTraceEnabled )
+            LOG.trace("After bottom up and before CSE:"+ Explain.explainSPlan(collectedRoots))
+
         val cseElimNoLeaves = SPlanCSEElimRewriter(false)
         rr = rr.map(cseElimNoLeaves.rewriteSPlan(collectedRoots))
 
@@ -82,7 +85,11 @@ class SPlanBottomUpRewriter : SPlanRewriter {
         if( LOG.isTraceEnabled )
             LOG.trace("After bottom up rewrites:"+ Explain.explainSPlan(collectedRoots))
 
-        return if( changed ) RewriterResult.NewRoots(collectedRoots) else rr
+        // we rely on the order of roots during Hop reconstruction. Check that it hasn't changed.
+        if( collectedRoots.toSet() != roots.toSet() )
+            throw SNodeException("roots have changed as a result of bottom-up rewrites from $roots to $collectedRoots")
+
+        return if( changed ) RewriterResult.NewRoots(roots) else rr
     }
 
     private fun rRewriteSPlan(node0: SNode, rules: List<SPlanRewriteRuleBottomUp>, collectedRoots: ArrayList<SNode>): SPlanRewriteRule.RewriteResult {

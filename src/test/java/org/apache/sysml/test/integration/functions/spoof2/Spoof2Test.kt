@@ -61,8 +61,8 @@ class Spoof2Test(
         //	TEST_NAME+18;  //t(t(X))
         //	TEST_NAME+19;  //t(X)%*%(Y%*%y)  // this rewrites to t(X%*%t(Y%*%y)), which is normally good (tranpose the vector rather than the matrix) but messes up a fusion pattern
         //	TEST_NAME+20;  //sum(X)*Y
-        //	TEST_NAME+21;  //X*Y*Z
-        //	TEST_NAME+22;  //X%*%Y%*%Z;
+        //	TEST_NAME+21;  //X*Y*X
+        //	TEST_NAME+22;  //X%*%Y%*%X;
         //	TEST_NAME+23;  //CSE
         //	TEST_NAME+24;  //sum(X%*%Y)
         //	TEST_NAME+25;  //sum( (U%*%t(V))^2 ) // need common subexpression splitting, power-to-multiply
@@ -77,7 +77,7 @@ class Spoof2Test(
         //	TEST_NAME+34;  //rowSums(A^2)*rowSums(A)
         //	TEST_NAME+35;  //A*rowSums(A^2)
         //	TEST_NAME+36;  //rowSums(A*A)%*%colSums(A*A) // R: outer(rowSums(A*A),colSums(A))
-        //	TEST_NAME+37;  //sum( (U%*%t(V))^2 ) // need common subexpression splitting, power-to-multiply
+        //	TEST_NAME+37;  //(X + U%*%t(V))^2
         //	TEST_NAME+38;  //sum( (X + X*(U%*%t(V))) ) // don't push the agg down because we can share the read of X
         //	TEST_NAME+39;  *//cbind(ABCD, BCDE) // todo: check we take advantage of the CSE to get a cheaper plan
         private const val NUM_TESTS = 39

@@ -26,7 +26,15 @@ class Schema private constructor(
     companion object {
         private val _idSeq = IDSequence()
         private fun nextNameId(): String = _idSeq.nextID.toString()
-        fun freshNameCopy(n: Name) = n+'_'+ 1//nextNameId()
+        fun freshNameCopy(n: Name): Name {
+            return n+'_'+_idSeq.nextID
+        }
+
+        /** Compare names by id. */
+        val nameComparator: Comparator<Name> = compareBy {
+            val i = it.lastIndexOf('_', 2)
+            if( i == -1 ) it.substring(1).toLong() else it.substring(i + 1).toLong()
+        }
     }
 
     fun deepCopy() = Schema(this)
@@ -127,12 +135,13 @@ class Schema private constructor(
     }
 
     fun permutePositions(permutation: Map<Int,Int>) {
-        when( permutation.filter { (k,v) -> k != v }.size ) {
+        val pf = permutation.filter { (k,v) -> k != v }
+        when( pf.size ) {
         // common cases
             0 -> return
             1 -> {
                 // this could occur if an Unbind is partially eliminated
-                val (k,v) = permutation.iterator().next()
+                val (k,v) = pf.iterator().next()
                 names.swap(k,v)
                 shapes.swap(k,v)
             }

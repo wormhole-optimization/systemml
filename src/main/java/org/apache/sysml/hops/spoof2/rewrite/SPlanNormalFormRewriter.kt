@@ -17,7 +17,7 @@ class SPlanNormalFormRewriter : SPlanRewriter {
             RewriteDecompose()          // Subtract  + and *(-1);   ^2  Self-*
     )
     private val _rulesToNormalForm: List<SPlanRewriteRule> = listOf(
-            RewriteBindElim(),
+//            RewriteBindElim(),
             RewriteSplitCSE(),          // split CSEs when they would block a sum-product rearrangement
             RewritePullAggAboveMult(),
             RewriteAggregateElim(),
@@ -68,6 +68,7 @@ class SPlanNormalFormRewriter : SPlanRewriter {
             for (root in roots)
                 changed = rRewriteSPlan(root, _rulesToNormalForm) || changed
             count++
+            rr0 = bottomUpRewrite(roots)
         } while (changed)
 
         if( count == 1 ) {

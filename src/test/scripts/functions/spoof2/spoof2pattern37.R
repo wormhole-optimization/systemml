@@ -25,5 +25,5 @@ library(Matrix)
 X = matrix(  c(6,5,4,3,2,1,0,1,2,3,4,5,6,7,8,9), nrow=4, ncol=4, byrow = TRUE)
 U = matrix(  c(1,2,3,4,5,6,7,8), nrow=4, ncol=2, byrow = TRUE)
 V = matrix(  c(9,8,7,6,5,4,3,2), nrow=4, ncol=2, byrow = TRUE)
-S = sum( (X - U%*%t(V))^2 )
+S = (X + U%*%t(V))^2
 writeMM(as(S, "CsparseMatrix"), paste(args[2], "S", sep=""));
