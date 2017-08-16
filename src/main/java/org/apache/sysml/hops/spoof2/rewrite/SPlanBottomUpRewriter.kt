@@ -73,15 +73,10 @@ class SPlanBottomUpRewriter : SPlanRewriter {
         }
         SNode.resetVisited(collectedRoots)
 
-        if( LOG.isTraceEnabled )
-            LOG.trace("After bottom up and before CSE:"+ Explain.explainSPlan(collectedRoots))
-
         val cseElimNoLeaves = SPlanCSEElimRewriter(false)
         rr = rr.map(cseElimNoLeaves.rewriteSPlan(collectedRoots))
 
-        if( CHECK )
-            SPlanValidator.validateSPlan(collectedRoots)
-
+        if( CHECK ) SPlanValidator.validateSPlan(collectedRoots)
         if( LOG.isTraceEnabled )
             LOG.trace("After bottom up rewrites:"+ Explain.explainSPlan(collectedRoots))
 

@@ -112,8 +112,6 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
             }
             if( above != null ) {
                 val commonBindings = node.agBindings().intersectEntries(above.agBindings())
-                // Safe to elim if the bottom is unbind OR if the bottom is bind and the unbind does not change name positions
-                if( node is SNodeBind || commonBindings.none { (p,n) -> node.schema.names[p] != n } ) {
                     // above can only be a parent once because it is a bind/unbind
                     val otherNodeParents = node.parents.filter { it !== above }
                     if (otherNodeParents.isNotEmpty()) {
@@ -133,7 +131,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                     }
                     node.refreshSchema()
                     // Be careful!
-                    val tmp = above.refreshSchemasUpward() // insidious situation: The unbind in unbind-bind shifts the indices
+                    above.refreshSchemasUpward() // insidious situation: The unbind in unbind-bind shifts the indices
 
                     if (above.agBindings().isEmpty())
                         RewriteBindElim.eliminateEmpty(above)
@@ -141,7 +139,6 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                     if (LOG.isTraceEnabled)
                         LOG.trace("RewriteBindUnify: elim redundant bindings $commonBindings in ${above.id} $above -- ${node.id} $node ${if (otherNodeParents.isNotEmpty()) "(with split CSE)" else ""}")
                     return rRewriteBindUnify(newNode, true)
-                }
             }
         }
 
@@ -157,7 +154,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                     // if nodeName < aboveName, then rename nodeName to aboveName and propagate down
                     val aboveName = above.bindings[unbindBindPos]!!
                     val nodeName = node.unbindings[unbindBindPos]!!
-                    val success = if( Schema.nameComparator.compare(aboveName, nodeName) < 0 )
+                    val success = if( Schema.nameComparator.compare(aboveName, nodeName) > 0 ) // flip!
                         tryRenameSingle(above, aboveName, nodeName)
                     else
                         tryRenameSingle(node, nodeName, aboveName)
@@ -180,7 +177,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                         .filter { bind1.bindings[it]!! != bind2.bindings[it]!! }) {
                     val name1 = bind1.bindings[bindingPosition]!!
                     val name2 = bind2.bindings[bindingPosition]!!
-                    val success = if( Schema.nameComparator.compare(name1, name2) < 0 )
+                    val success = if( Schema.nameComparator.compare(name1, name2) > 0 ) // flip!
                         tryRenameSingle(bind1, name1, name2)
                     else
                         tryRenameSingle(bind2, name2, name1)

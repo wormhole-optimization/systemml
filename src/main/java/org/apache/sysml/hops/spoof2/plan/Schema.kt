@@ -32,7 +32,7 @@ class Schema private constructor(
 
         /** Compare names by id. */
         val nameComparator: Comparator<Name> = compareBy {
-            val i = it.lastIndexOf('_', 2)
+            val i = it.lastIndexOf('_', it.length-2)
             if( i == -1 ) it.substring(1).toLong() else it.substring(i + 1).toLong()
         }
     }

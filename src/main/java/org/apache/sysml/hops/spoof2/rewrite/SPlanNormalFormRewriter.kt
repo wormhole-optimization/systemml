@@ -52,23 +52,15 @@ class SPlanNormalFormRewriter : SPlanRewriter {
     }
 
     override fun rewriteSPlan(roots: ArrayList<SNode>): RewriterResult {
-        var rr0 = bottomUpRewrite(roots)
-//        rr0 = rr0.map(bottomUpRewrite(roots))
-
-        SNode.resetVisited(roots)
-        for (root in roots)
-            rRewriteSPlan(root, _rulesFirstOnce)
+        rewriteDown(roots, _rulesFirstOnce)
+        val rr0 = bottomUpRewrite(roots)
 
         var count = 0
         do {
-            if( CHECK )
-                SPlanValidator.validateSPlan(roots)
-            var changed = false
-            SNode.resetVisited(roots)
-            for (root in roots)
-                changed = rRewriteSPlan(root, _rulesToNormalForm) || changed
             count++
-            rr0 = bottomUpRewrite(roots)
+            if( CHECK ) SPlanValidator.validateSPlan(roots)
+            var changed = rewriteDown(roots, _rulesToNormalForm)
+            changed = bottomUpRewrite(roots) is RewriterResult.NewRoots || changed
         } while (changed)
 
         if( count == 1 ) {
@@ -79,36 +71,34 @@ class SPlanNormalFormRewriter : SPlanRewriter {
         if( SPlanRewriteRule.LOG.isTraceEnabled )
             SPlanRewriteRule.LOG.trace("Ran 'to normal form' rewrites $count times to yield: "+Explain.explainSPlan(roots))
 
-        rr0 = bottomUpRewrite(roots)
-        if( CHECK )
-            SPlanValidator.validateSPlan(roots)
+        bottomUpRewrite(roots)
+        if( CHECK ) SPlanValidator.validateSPlan(roots)
 
-        SNode.resetVisited(roots)
-        for (node in roots)
-            rRewriteSPlan(node, _rulesNormalForm)
+        rewriteDown(roots, _rulesNormalForm)
 
         if( SPlanRewriteRule.LOG.isTraceEnabled )
             SPlanRewriteRule.LOG.trace("After processing normal form: "+Explain.explainSPlan(roots))
 
         count = 0
         do {
-            if( CHECK )
-                SPlanValidator.validateSPlan(roots)
-            var changed = false
-            SNode.resetVisited(roots)
-            for (root in roots)
-                changed = rRewriteSPlan(root, _rulesToHopReady) || changed
             count++
+            if( CHECK ) SPlanValidator.validateSPlan(roots)
+            var changed = rewriteDown(roots, _rulesToHopReady)
+            changed = bottomUpRewrite(roots) is RewriterResult.NewRoots || changed
         } while (changed)
 
-//        rr0 = bottomUpRewrite(roots)
-        if( CHECK )
-            SPlanValidator.validateSPlan(roots)
-
+        if( CHECK ) SPlanValidator.validateSPlan(roots)
         if( SPlanRewriteRule.LOG.isTraceEnabled )
             SPlanRewriteRule.LOG.trace("Ran 'to Hop-ready' rewrites $count times to yield: "+Explain.explainSPlan(roots))
 
         return RewriterResult.NewRoots(roots)
+    }
+
+    private fun rewriteDown(roots: ArrayList<SNode>, rules: List<SPlanRewriteRule>): Boolean {
+        SNode.resetVisited(roots)
+        val changed = roots.fold(false) { changed, root -> rRewriteSPlan(root, rules) || changed }
+        SNode.resetVisited(roots)
+        return changed
     }
 
     private fun rRewriteSPlan(node: SNode, rules: List<SPlanRewriteRule>): Boolean {
