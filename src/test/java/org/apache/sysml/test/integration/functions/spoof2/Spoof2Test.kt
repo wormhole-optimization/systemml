@@ -80,7 +80,8 @@ class Spoof2Test(
         //	TEST_NAME+37;  //(X + U%*%t(V))^2
         //	TEST_NAME+38;  //sum( (X + X*(U%*%t(V))) ) // don't push the agg down because we can share the read of X
         //	TEST_NAME+39;  *//cbind(ABCD, BCDE) // todo: check we take advantage of the CSE to get a cheaper plan
-        private const val NUM_TESTS = 39
+        //	TEST_NAME+40;  *//A%*%A%*%A%*%A%*%A
+        private const val NUM_TESTS = 40
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
@@ -96,7 +97,7 @@ class Spoof2Test(
         fun testParams(): Collection<Array<Any>> {
             val params = ArrayList<Array<Any>>(NUM_TESTS * 3)
             for (testNum in 1..NUM_TESTS) {
-//                if (testNum != NUM_TESTS) continue
+                if (testNum != NUM_TESTS) continue
 
                 val testName = TEST_NAME + testNum
 //                params.add(arrayOf(testName, false, CP))
