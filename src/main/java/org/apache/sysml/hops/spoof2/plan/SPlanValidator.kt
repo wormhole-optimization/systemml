@@ -116,6 +116,7 @@ object SPlanValidator {
         // check if schema is up to date
         val oldSchema = Schema(node.schema)
         node.refreshSchema()
+        // Check names, not shapes; shapes may be messed up due to Structural CSE Elim
         node.check( node.schema.names == oldSchema.names ) {"refreshing changed schema from old schema $oldSchema"}
         node.check( node.schema.names.filter(Name::isBound).let { it.toSet().size == it.size }) {"duplicate bound names: ${node.schema}"}
 

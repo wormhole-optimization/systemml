@@ -157,23 +157,12 @@ class SPlanCSEElimRewriter(
         return changed
     }
 
-//    private data class StructuralAnalysis(
-//            val
-//    )
-//
-//    /** Return a set of parents of this node that are not bind or unbind. */
-//    private fun SNode.mapRealParentsToRealChildren(): StructuralAnalysis {
-//        val set = HashSet<SNode>()
-//        this.getRealParents(set)
-//    }
-
-    // construct name mapping from original node schema position to names in real above
-
     private fun Map<Int,Name>.namesToPositions(): Map<Name, Int> = this.map { (i, n) -> n to i }.toMap()
     private fun List<Name>.namesToPositions(): Map<Name, Int> = this.mapIndexed { i, n -> n to i }.toMap()
 
     data class RealAbove(
             val ra: SNode,
+            /** construct name mapping from original node schema position to names in real above */
             val schemaMapping: Map<Name, Int>
     )
 
@@ -288,6 +277,8 @@ class SPlanCSEElimRewriter(
                         SNodeAggregate::class.java -> {
                             val n1 = r1.ra as SNodeAggregate
                             val n2 = r2.ra as SNodeAggregate
+                            if( n1.op != n2.op )
+                                continue@inner
                             // we care about the position of the aggregateNames
                             if( n1.aggreateNames.size != n2.aggreateNames.size )
                                 continue@inner

@@ -77,8 +77,8 @@ class SPlanBottomUpRewriter : SPlanRewriter {
         rr = rr.map(cseElimNoLeaves.rewriteSPlan(collectedRoots))
 
         if( CHECK ) SPlanValidator.validateSPlan(collectedRoots)
-        if( LOG.isTraceEnabled )
-            LOG.trace("After bottom up rewrites:"+ Explain.explainSPlan(collectedRoots))
+//        if( LOG.isTraceEnabled )
+//            LOG.trace("After bottom up rewrites:"+ Explain.explainSPlan(collectedRoots))
 
         // we rely on the order of roots during Hop reconstruction. Check that it hasn't changed.
         if( collectedRoots.toSet() != roots.toSet() )

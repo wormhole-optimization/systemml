@@ -25,6 +25,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.stream.Collectors;
 
 import org.apache.sysml.hops.Hop;
 import org.apache.sysml.hops.HopsException;
@@ -83,7 +84,8 @@ public class Explain
 	private static final boolean SHOW_LITERAL_HOPS          = false;
 	private static final boolean SHOW_DATA_DEPENDENCIES     = true;
 	private static final boolean SHOW_DATA_FLOW_PROPERTIES  = true;
-	public static boolean SHOW_VISIT_STATUS = false;
+	public static boolean SHOW_VISIT_STATUS = false; // modified for SPlans in SNodeValidator, to help debug visit status
+	private static final boolean SNODE_SHOW_PARENTS = false;
 
 	//different explain levels
 	public enum ExplainType { 
@@ -761,13 +763,11 @@ public class Explain
 		
 		//schema and tensor characteristics
 		sb.append(" ").append(snode.getSchema());
-//		sb.append(" [");
-//		for( int i=0; i<snode.getNumDims(); i++ ) {
-//			if( i > 0 )
-//				sb.append(",");
-//			sb.append(snode.getShape(i));
-//		}
-//		sb.append("]");
+
+		if( SNODE_SHOW_PARENTS ) {
+			sb.append(snode.getParents().stream().mapToLong(SNode::getId).mapToObj(Long::toString)
+					.collect(Collectors.joining(","," <",">")));
+		}
 		
 		sb.append('\n');
 		snode.setVisited(true);
@@ -818,15 +818,14 @@ public class Explain
 				sb.append(childs.toString());
 		}
 
+
 		//schema and tensor characteristics
-		sb.append(" ").append(snode.getSchema());
-		//		sb.append(" [");
-		//		for( int i=0; i<snode.getNumDims(); i++ ) {
-		//			if( i > 0 )
-		//				sb.append(",");
-		//			sb.append(snode.getShape(i));
-		//		}
-		//		sb.append("]");
+		sb.append(' ').append(snode.getSchema());
+
+		if( SNODE_SHOW_PARENTS ) {
+			sb.append(snode.getParents().stream().mapToLong(SNode::getId).mapToObj(Long::toString)
+					.collect(Collectors.joining(","," <",">")));
+		}
 
 		sb.append('\n');
 		ids.add(snode.getId());
