@@ -342,7 +342,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
      */
     private fun rRenamePropagate(oldName: Name, newName: Name, node: SNode, fromNode: SNode, refreshParentsList: MutableList<SNode>) {
         if( LOG.isTraceEnabled )
-            LOG.trace("at (${node.id}) $node from (${fromNode.id}) $fromNode")
+            LOG.trace("at (${node.id}) $node ${node.schema} from (${fromNode.id}) $fromNode")
         val fromInput = fromNode in node.inputs
         // Stop on Name Conflict.
 //        if( node is SNodeAggregate && newName in node.aggreateNames )
