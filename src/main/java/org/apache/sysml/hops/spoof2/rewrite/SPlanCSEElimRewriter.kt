@@ -282,7 +282,7 @@ class SPlanCSEElimRewriter(
                 val iter = rs2[jc]!!.iterator()
                 inner@ while( iter.hasNext() ) {
                     val (r2, idx2) = iter.next()
-                    if( r2.ra.inputs.size != r1.ra.inputs.size )
+                    if( r2.ra.inputs.size != r1.ra.inputs.size || r1.ra == r2.ra )
                         continue
                     when( jc ) {
                         SNodeAggregate::class.java -> {

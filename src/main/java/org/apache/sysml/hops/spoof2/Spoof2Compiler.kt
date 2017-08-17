@@ -455,7 +455,21 @@ object Spoof2Compiler {
 
 
     private fun reconstructAggregate(agg: SNodeAggregate, hopMemo: MutableMap<SNode, Hop>): Hop {
-        val mult = agg.inputs[0]
+        val multOrig = agg.input
+        // check mult <- Unbind <- Bind <- agg
+        val mult = if( multOrig is SNodeBind ) {
+            val ub = multOrig.input
+            if( ub is SNodeUnbind ) {
+                val mult = ub.input
+                if( mult is SNodeNary && mult.op == NaryOp.MULT && agg.op == Hop.AggOp.SUM
+                        && mult.inputs.size == 2
+                        && mult.inputs[0].schema.names.intersect(mult.inputs[1].schema.names).size == 1 // forbear element-wise multiplication followed by agg
+                        && agg.aggreateNames.size == 1 ) {
+                    mult
+                } else multOrig
+            } else multOrig
+        } else multOrig
+
         return if( mult is SNodeNary && mult.op == NaryOp.MULT && agg.op == Hop.AggOp.SUM
                 && mult.inputs.size == 2
                 && mult.inputs[0].schema.names.intersect(mult.inputs[1].schema.names).size == 1 // forbear element-wise multiplication followed by agg

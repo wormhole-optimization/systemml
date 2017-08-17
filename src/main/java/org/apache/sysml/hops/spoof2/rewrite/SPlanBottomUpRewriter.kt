@@ -52,7 +52,7 @@ class SPlanBottomUpRewriter : SPlanRewriter {
     }
 
     override fun rewriteSPlan(roots: ArrayList<SNode>): RewriterResult {
-        val cseElim = SPlanCSEElimRewriter(true)
+        val cseElim = SPlanCSEElimRewriter(true, true)
         val (rr0,leaves) = cseElim.rewriteSPlanAndGetLeaves(roots)
         var rr = rr0
 
@@ -73,7 +73,7 @@ class SPlanBottomUpRewriter : SPlanRewriter {
         }
         SNode.resetVisited(collectedRoots)
 
-        val cseElimNoLeaves = SPlanCSEElimRewriter(false)
+        val cseElimNoLeaves = SPlanCSEElimRewriter(false, true)
         rr = rr.map(cseElimNoLeaves.rewriteSPlan(collectedRoots))
 
         if( CHECK ) SPlanValidator.validateSPlan(collectedRoots)

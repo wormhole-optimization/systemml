@@ -24,10 +24,9 @@ class SPlanNormalFormRewriter : SPlanRewriter {
             RewriteMultiplyPlusElim(),
             RewritePullPlusAboveMult()
     )
-    private val _rulesNormalForm = listOf(
+    private val _rulesNormalFormPrior = listOf(
             RewritePushAggIntoPlus(),
-            RewriteAggregateElim(),
-            RewriteNormalForm()
+            RewriteAggregateElim()
     )
     private val _rulesToHopReady = listOf(
             RewriteMultiplyCSEToPower(), // RewriteNormalForm factorizes, so we can't get powers >2. Need to reposition. // Obsolete by RewriteElementwiseMultiplyChain?
@@ -60,7 +59,8 @@ class SPlanNormalFormRewriter : SPlanRewriter {
             count++
             if( CHECK ) SPlanValidator.validateSPlan(roots)
             var changed = rewriteDown(roots, _rulesToNormalForm)
-//            changed = bottomUpRewrite(roots) is RewriterResult.NewRoots || changed
+            if( !changed && count == 1 )
+            changed = bottomUpRewrite(roots) is RewriterResult.NewRoots || changed
         } while (changed)
 
         if( count == 1 ) {
@@ -74,7 +74,11 @@ class SPlanNormalFormRewriter : SPlanRewriter {
         bottomUpRewrite(roots)
         if( CHECK ) SPlanValidator.validateSPlan(roots)
 
-        rewriteDown(roots, _rulesNormalForm)
+        rewriteDown(roots, _rulesNormalFormPrior)
+        bottomUpRewrite(roots)
+        rewriteDown(roots, _rulesNormalFormPrior)
+        rewriteDown(roots, listOf(RewriteNormalForm()))
+
 
         if( SPlanRewriteRule.LOG.isTraceEnabled )
             SPlanRewriteRule.LOG.trace("After processing normal form: "+Explain.explainSPlan(roots))
