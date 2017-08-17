@@ -83,6 +83,7 @@ public class Explain
 	private static final boolean SHOW_LITERAL_HOPS          = false;
 	private static final boolean SHOW_DATA_DEPENDENCIES     = true;
 	private static final boolean SHOW_DATA_FLOW_PROPERTIES  = true;
+	public static boolean SHOW_VISIT_STATUS = false;
 
 	//different explain levels
 	public enum ExplainType { 
@@ -791,7 +792,13 @@ public class Explain
 
 		//hop id
 		if( SHOW_DATA_DEPENDENCIES )
-			sb.append("("+snode.getId()+") ");
+			sb.append("("+snode.getId()+")");
+		if( SHOW_VISIT_STATUS )
+			if( snode.getVisited() )
+				sb.append('V');
+			else
+				sb.append('-');
+		sb.append(' ');
 
 		//operation string
 		sb.append(snode.toString());

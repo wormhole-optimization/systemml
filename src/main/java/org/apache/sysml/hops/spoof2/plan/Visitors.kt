@@ -46,6 +46,17 @@ fun SNode.refreshSchemasUpward(): Boolean {
     } else return false
 }
 
+
+fun SNode.refreshSchemasUpwardPermuteName(): Boolean {
+    val origSchema = Schema(this.schema)
+    this.refreshSchema()
+    if( origSchema != this.schema ) // only if schema changed (also acts as a memo guard)
+    {
+        this.parents.forEach { it.refreshSchemasUpward() }
+        return true
+    } else return false
+}
+
 /**
  * Is this SNode and all children recursively composed of entirely SNodeDatas and SNodeExts
  * and `==` SNodeNarys?

@@ -42,6 +42,12 @@ class SNodeNary(
             return false
         if( o.inputs == this.inputs )
             return true
+        return false
+    }
+
+    fun compareCommutative(o: SNode): Boolean {
+        if( o !is SNodeNary || o.op != this.op)
+            return false
         return op.commutative && o.inputs.toSet() == this.inputs.toSet()
     }
 

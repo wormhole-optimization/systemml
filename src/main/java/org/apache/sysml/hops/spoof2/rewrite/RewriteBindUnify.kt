@@ -64,7 +64,7 @@ import java.util.*
 class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
 
     companion object {
-        private fun SNode.isBindOrUnbind() = this is SNodeBind || this is SNodeUnbind
+        fun SNode.isBindOrUnbind() = this is SNodeBind || this is SNodeUnbind
     }
 
     override fun rewriteNodeUp(node: SNode): RewriteResult {

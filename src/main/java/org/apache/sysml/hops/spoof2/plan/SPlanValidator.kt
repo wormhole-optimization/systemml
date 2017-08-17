@@ -82,6 +82,7 @@ object SPlanValidator {
         val seen = !state.seen.add(id)
         if (seen != node.visited) {
             val parentIDs = node.parents.map(SNode::id)
+            Explain.SHOW_VISIT_STATUS = true
             throw SNodeException(node, "problem with visit status, incorrectly set to ${node.visited}; parentIDs=$parentIDs")
         }
         if (seen) return  // we saw the Node previously, no need to re-validate
@@ -115,7 +116,7 @@ object SPlanValidator {
         // check if schema is up to date
         val oldSchema = Schema(node.schema)
         node.refreshSchema()
-        node.check( node.schema == oldSchema ) {"refreshing changed schema from old schema $oldSchema"}
+        node.check( node.schema.names == oldSchema.names ) {"refreshing changed schema from old schema $oldSchema"}
         node.check( node.schema.names.filter(Name::isBound).let { it.toSet().size == it.size }) {"duplicate bound names: ${node.schema}"}
 
 

@@ -18,16 +18,17 @@ class RewriteAggregateElim : SPlanRewriteRule() {
     }
     private tailrec fun rRewriteNode(parent: SNode, node: SNode, changed: Boolean): RewriteResult {
         if( node is SNodeAggregate ) {
-            if( node.inputs[0] is SNodeAggregate ) {
-                val agg1 = node
-                val agg2 = node.inputs[0] as SNodeAggregate
+            val agg1 = node
+            val agg2 = node.input
+            if( agg2 is SNodeAggregate && agg2.parents.size == 1 ) { // RewriteSplitCSE handles the foreign parent case
                 if (agg1.op == agg2.op) {
                     // consecutive aggregates; let agg1 do all the aggregating
                     // eliminate agg2; connect agg1 to child of agg2
                     agg1.aggreateNames += agg2.aggreateNames
-                    val agg2child = agg2.inputs[0]
-                    SNodeRewriteUtils.removeAllChildReferences(agg2)
-                    SNodeRewriteUtils.replaceChildReference(agg1, agg2, agg2child)
+                    val agg2child = agg2.input
+                    agg2child.parents -= agg2
+                    agg1.input = agg2child
+                    agg2child.parents += agg1
                     agg1.refreshSchema()
                     if (SPlanRewriteRule.LOG.isDebugEnabled)
                         SPlanRewriteRule.LOG.debug("RewriteAggregateElim on consecutive aggs ${agg1.id}-${agg2.id} to form $agg1.")
