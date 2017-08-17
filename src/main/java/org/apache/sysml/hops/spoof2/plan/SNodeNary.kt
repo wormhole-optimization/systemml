@@ -12,7 +12,7 @@ class SNodeNary(
         refreshSchema()
     }
 
-    enum class NaryOp {
+    enum class NaryOp(val commutative: Boolean = false) {
         //unary operations
         NOT,
         ABS, SIN, COS, TAN, ASIN, ACOS, ATAN, SIGN, SQRT, LOG, EXP,
@@ -20,10 +20,10 @@ class SNodeNary(
         SPROP, SIGMOID, SELP, LOG_NZ,
 
         //binary operations
-        PLUS,
-        MINUS, MULT, DIV, MODULUS, INTDIV,
-        LESS, LESSEQUAL, GREATER, GREATEREQUAL, EQUAL, NOTEQUAL,
-        MIN, MAX, AND, OR, POW, //LOG (see unary)
+        PLUS(true),
+        MINUS, MULT(true), DIV, MODULUS, INTDIV,
+        LESS, LESSEQUAL, GREATER, GREATEREQUAL, EQUAL(true), NOTEQUAL(true),
+        MIN(true), MAX(true), AND(true), OR(true), POW, //LOG (see unary)
 
         //ternary operations
         PLUS_MULT,
@@ -37,7 +37,13 @@ class SNodeNary(
     }
 
     override fun shallowCopyNoParentsYesInputs() = SNodeNary(op, inputs)
-    override fun compare(o: SNode) = o is SNodeNary && o.op == this.op && o.inputs == this.inputs
+    override fun compare(o: SNode): Boolean {
+        if( o !is SNodeNary || o.op != this.op)
+            return false
+        if( o.inputs == this.inputs )
+            return true
+        return op.commutative && o.inputs.toSet() == this.inputs.toSet()
+    }
 
     constructor(op: NaryOp, vararg inputs: SNode) : this(op, inputs.asList())
 
