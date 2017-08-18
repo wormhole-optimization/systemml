@@ -268,6 +268,7 @@ class SPlanCSEElimRewriter(
     private fun tryStructuralElim(node: SNode, p1: SNode, p2: SNode): Boolean {
         if( !p1.isBindOrUnbind() && !p2.isBindOrUnbind() || node.schema.size > 2 )
             return false
+        var changed = false
         val rs1 = getRealAboveSet(node, p1)
         val rs2 = getRealAboveSet(node, p2)
         for( jc in rs1.keys.intersect(rs2.keys) ) {
@@ -291,6 +292,7 @@ class SPlanCSEElimRewriter(
                             if( i1 == i2 ) {
                                 doElim(n1, n2)
                                 iter.remove()
+                                changed = true
                             }
                         }
                         SNodeNary::class.java -> {
@@ -299,6 +301,7 @@ class SPlanCSEElimRewriter(
                             if( n1.inputs.size == 1 ) { // we should never have a unary mult, but in case we do...
                                 doElim(n1, n2)
                                 iter.remove()
+                                changed = true
                             }
                             assert(n1.inputs.size == 2)
                             // ensure there is a common input, and get the schema mappings from the common input to the multiply nodes
@@ -341,14 +344,14 @@ class SPlanCSEElimRewriter(
                             }
                             doElim(n1, n2)
                             iter.remove()
+                            changed = true
                         }
                         else -> throw AssertionError("unreachable class: $jc $r1 $r2")
                     }
                 }
             }
         }
-
-        return false
+        return changed
     }
 
 

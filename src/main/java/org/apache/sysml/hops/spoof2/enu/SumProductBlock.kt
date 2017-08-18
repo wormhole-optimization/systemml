@@ -377,17 +377,7 @@ sealed class SumProduct {
      * rewrite the SNodes in the sum-product block to reflect the factorized structure of the SumProduct.
      */
     fun applyToNormalForm(_top: SNode): SNode {
-//        var top = _top
-//        while (top is SNodeAggregate) {
-//            top = top.inputs[0]
-//        }
-//        require( top is SNodeNary ) {"sum-product block does not have a product; found $top id=${top.id}"}
-//        top as SNodeNary
-//        val origInputs: Map<Id, SNode> = top.inputs.map { it.id to it }.toMap()
-//        top.inputs.forEach { it.parents.remove(top) } // free the inputs from the multiply
-
         val newTop: SNode = rConstructSPlan()
-
         SNodeRewriteUtils.rewireAllParentChildReferences(_top, newTop)
         newTop.parents.forEach { it.refreshSchemasUpward() }
         return newTop
