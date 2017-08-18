@@ -8,6 +8,8 @@ import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter.RewriterResult
 import java.util.ArrayList
 import java.util.HashMap
 import org.apache.sysml.hops.spoof2.rewrite.RewriteBindUnify.Companion.isBindOrUnbind
+import org.apache.sysml.hops.spoof2.plan.stripDead
+import org.apache.sysml.hops.spoof2.plan.swap
 
 /**
  * Eliminate Common Sub-Expressions.
@@ -122,8 +124,10 @@ class SPlanCSEElimRewriter(
             return 0
         // do children first
         var changed = 0
-        for (i in node.inputs.indices) {
-            changed += rCSEElim(node.inputs[i])
+        var inputIdx = 0
+        while (inputIdx < node.inputs.size) {
+            changed += rCSEElim(node.inputs[inputIdx])
+            inputIdx++
         }
 
         if( node.parents.size > 1 ) { // multiple consumers
@@ -169,7 +173,7 @@ class SPlanCSEElimRewriter(
     private fun case4(below: SNode, nodeUnbind: SNodeUnbind, bind: SNodeBind): Map<Name,Int> {
         val Ninv = below.schema.names.namesToPositions()
         val Binv = bind.bindings.namesToPositions()
-        return bind.schema.names.mapIndexed { bp, n ->
+        return bind.schema.names.mapIndexed { bp, n: Name ->
             n to if( n in Binv ) {
                 Ninv[nodeUnbind.unbindings[bp]]!!
             } else Ninv[nodeUnbind.schema.names[bp]]!!
@@ -325,10 +329,10 @@ class SPlanCSEElimRewriter(
                             if( idx1 != idx2 ) {
                                 val n2p = ArrayList(n2.parents)
                                 n2.parents.clear()
-                                val oldSchema = n2.schema.names.mapIndexed { i, s -> i to s }.toMap()
+                                val oldSchema = n2.schema.names.mapIndexed { i, s: Name -> i to s }.toMap()
                                 n2.inputs.swap(0, 1)
                                 n2.refreshSchema()
-                                val u = SNodeUnbind(n2, n2.schema.names.mapIndexed { i, s -> i to s }.toMap())
+                                val u = SNodeUnbind(n2, n2.schema.names.mapIndexed { i, s: Name -> i to s }.toMap())
                                 val b = SNodeBind(u, oldSchema)
                                 b.parents.addAll(n2p)
                                 n2p.forEach {
@@ -354,8 +358,8 @@ class SPlanCSEElimRewriter(
             LOG.trace("Structure CSE merge (${h2.id}) $h2 ${h2.schema} into (${h1.id}) $h1 ${h1.schema}")
         val h2p = ArrayList(h2.parents)
         h2.parents.clear()
-        val oldSchema = h2.schema.names.mapIndexed { i, s -> i to s }.toMap()
-        val newSchema = h1.schema.names.mapIndexed { i, s -> i to s }.toMap()
+        val oldSchema = h2.schema.names.mapIndexed { i, n -> i to n }.toMap()
+        val newSchema = h1.schema.names.mapIndexed { i, n -> i to n }.toMap()
         val os = oldSchema.filter { (op,on) -> newSchema[op] != on }
         val ns = newSchema.filterKeys { it in os }
         val u = SNodeUnbind(h1, ns)
@@ -364,23 +368,11 @@ class SPlanCSEElimRewriter(
             it.inputs[it.inputs.indexOf(h2)] = b
             b.parents += it
         }
-        h2.inputs.toSet().forEach {
-            it.parents.removeIf { it == h2 }
-            stripDead(it)
-        }
+        stripDead(h2)
 
         // schema change upward - if an input has one of these names in its schema, change it
 //        val nameMapToOld = ns.map { (np, nn) -> nn to os[np]!! }.toMap()
         // TODO ^^ Shapes change as a result of the rename. Names seem to be fine.
         h2p.forEach { it.refreshSchemasUpward() }
-    }
-
-    private fun stripDead(node: SNode) {
-        if (node.parents.isEmpty()) {
-            node.inputs.toSet().forEach {
-                it.parents.removeIf { it == node }
-                stripDead(it)
-            }
-        }
     }
 }

@@ -1,6 +1,7 @@
 package org.apache.sysml.hops.spoof2.rewrite
 
 import org.apache.sysml.hops.Hop.AggOp
+import org.apache.sysml.hops.spoof2.plan.mapInPlace
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
 

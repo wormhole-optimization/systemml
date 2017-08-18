@@ -1,11 +1,12 @@
-package org.apache.sysml.hops.spoof2.rewrite
+package org.apache.sysml.hops.spoof2.enu
 
 import org.apache.commons.logging.LogFactory
 import org.apache.sysml.hops.spoof2.plan.*
+import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriteRule
 import org.apache.sysml.utils.Statistics
 
 /**
- * Applies to `sum(+)-mult(*)` when mult has no foreign parents and has >2 inputs.
+ *
  */
 class RewriteNormalForm : SPlanRewriteRule() {
     companion object {
@@ -15,17 +16,12 @@ class RewriteNormalForm : SPlanRewriteRule() {
     override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
         if( !SumProduct.isSumProductBlock(node))
             return RewriteResult.NoChange
-        val spb = SumProduct.constructBlock(node)
-        if( node.schema.names.any { !it.isBound() } ) {
-            LOG.warn("Found unbound name in Sum-Product block; may not be handled incorrectly. $spb")
-        }
-
+        val spb = SumProduct.constructBlock(node, true)
+        if( node.schema.names.any { !it.isBound() } )
+            throw SNodeException(node, "Found unbound name in Sum-Product block; may not be handled incorrectly. $spb")
         if( LOG.isDebugEnabled )
             LOG.debug("Found Sum-Product Block:\n"+spb)
 
-
-//        val agg = node as SNodeAggregate
-//        val mult = agg.inputs[0] as SNodeNary
         // 0. Check if this normal form can be partitioned into two separate connected components.
         // This occurs if some portion of the multiplies produces a scalar.
         val CCnames = findConnectedNames(spb, spb.allSchema().names.first())
@@ -63,7 +59,7 @@ class RewriteNormalForm : SPlanRewriteRule() {
 
         var (spbNew, spbCost) = factorSumProduct(spb)
 
-        if( spbNew.sumBlocks.isEmpty() && spbNew.edges.size == 1 && spbNew.edges[0] is SumProduct.Block )
+        if( spbNew.sumBlocks.isEmpty() && spbNew.edges.size == 1 && spbNew.edges[0] is SumProduct.Block)
             spbNew = spbNew.edges[0] as SumProduct.Block
 
         if( LOG.isDebugEnabled )

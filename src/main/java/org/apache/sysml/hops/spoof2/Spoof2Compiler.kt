@@ -22,14 +22,11 @@ import org.apache.sysml.hops.UnaryOp
 import org.apache.sysml.hops.rewrite.*
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
-import org.apache.sysml.hops.spoof2.rewrite.BasicSPlanRewriter
-import org.apache.sysml.hops.spoof2.rewrite.RewriteBindElim
 import org.apache.sysml.hops.spoof2.rewrite.SPlanNormalFormRewriter
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter
 import org.apache.sysml.parser.*
 import org.apache.sysml.runtime.DMLRuntimeException
 import org.apache.sysml.utils.Explain
-
 
 object Spoof2Compiler {
     private val LOG = LogFactory.getLog(Spoof2Compiler::class.java.name)
@@ -322,7 +319,7 @@ object Spoof2Compiler {
                     // if both are vectors, bind to same name
                     // if vector and matrix... depends on orientation of vector. Get it from the original Hop.
                     // if both are matrices, bind rows and cols to same name
-                    var (i0, i1, iMap) = largerSmaller(inputs[0], inputs[1]) {it.schema.size}
+                    var (i0, i1, iMap) = largerSmaller(inputs[0], inputs[1]) { it.schema.size }
                     // i0's dimension is >= i1's dimension
 
                     val boundNames = mutableMapOf<Int,Name>()

@@ -1,5 +1,6 @@
 package org.apache.sysml.hops.spoof2.rewrite
 
+import org.apache.sysml.hops.spoof2.enu.RewriteNormalForm
 import java.util.ArrayList
 
 import org.apache.sysml.hops.spoof2.plan.SNode

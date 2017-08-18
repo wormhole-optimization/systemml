@@ -1,5 +1,6 @@
 package org.apache.sysml.hops.spoof2.rewrite
 
+import org.apache.sysml.hops.spoof2.plan.agBindings
 import org.apache.sysml.hops.spoof2.plan.*
 
 /**

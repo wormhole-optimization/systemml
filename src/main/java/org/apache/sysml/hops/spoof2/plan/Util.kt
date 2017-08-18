@@ -142,3 +142,31 @@ fun SNode.agBindings(): MutableMap<Int, String> = when(this) {
     is SNodeUnbind -> this.unbindings
     else -> throw IllegalArgumentException()
 }
+
+/**
+ * Dead code elimination.
+ * If the node does not have parents, then eliminate it and remove it from the parents of all inputs.
+ * Repeat recursively.
+ *
+ * @param noStrip do not strip the inputs of these nodes (forced dead code elim stop points)
+ */
+fun stripDead(node: SNode, noStrip: Set<SNode> = setOf()) {
+    if( node.parents.isEmpty() && node.inputs.isNotEmpty() && node !in noStrip )
+        rStripDead(mutableSetOf(node), noStrip)
+}
+private tailrec fun rStripDead(toRemove: MutableSet<SNode>, noStrip: Set<SNode>) {
+    if( toRemove.isEmpty() )
+        return
+    val node = toRemove.first()
+    toRemove -= node
+    toRemove += node.inputs.toSet().filter {
+        it.parents.removeIf { it == node }
+        it.parents.isEmpty() && it.inputs.isNotEmpty() && it !in noStrip
+    }
+    node.inputs.clear()
+    return rStripDead(toRemove, noStrip)
+}
+
+
+
+

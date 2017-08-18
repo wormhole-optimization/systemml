@@ -1,7 +1,9 @@
-package org.apache.sysml.hops.spoof2.rewrite
+package org.apache.sysml.hops.spoof2.enu
 
 import org.apache.sysml.hops.Hop
+import org.apache.sysml.hops.spoof2.plan.disjoint
 import org.apache.sysml.hops.spoof2.plan.*
+import org.apache.sysml.hops.spoof2.rewrite.SNodeRewriteUtils
 
 
 private const val SHOW_NNZ = false
@@ -54,21 +56,21 @@ sealed class SumProduct {
 
     companion object {
 
-        val ALLOWED_SUMS = setOf(Hop.AggOp.SUM)
-        val ALLOWED_PRODUCTS = setOf(SNodeNary.NaryOp.MULT)
+        private val ALLOWED_SUMS = setOf(Hop.AggOp.SUM)
+        private val ALLOWED_PRODUCTS = setOf(SNodeNary.NaryOp.MULT)
 
         fun isSumProductBlock(_top: SNode): Boolean {
             var top = _top
             while (top is SNodeAggregate) {
-                if( top.op !in ALLOWED_SUMS )
+                if( top.op !in ALLOWED_SUMS)
                     return false
                 // no foreign parents below the top agg
-                if( top !== _top && top.parents.size > 1 )
+                if( top !== _top )//&& top.parents.size > 1 )
                     return false
                 top = top.inputs[0]
             }
             if( top !is SNodeNary || top.op !in ALLOWED_PRODUCTS
-                    || top.parents.size > 1 // foreign parent
+//                    || top.parents.size > 1 // foreign parent
                     || top.inputs.size <= 2 // too few inputs
                     || top.schema.isEmpty() // all-scalar case
                     )
@@ -76,17 +78,33 @@ sealed class SumProduct {
             return true
         }
 
-        fun constructBlock(_top: SNode): Block {
+        /** Strips references as it constructs the sum-product block. */
+        fun constructBlock(_top: SNode, splitCse: Boolean): Block {
             var top = _top
             val sumBlocks = ArrayList<SumBlock>()
             while (top is SNodeAggregate) {
                 sumBlocks += SumBlock(top.op, top.aggreateNames.toMutableSet())
+                val topTemp = top
                 top = top.inputs[0]
+                top.parents -= topTemp
+//                if( splitCse && top.parents.size > 1 ) {
+//                    // Split CSE
+//                    val copy = top.shallowCopyNoParentsYesInputs()
+//                    val otherParents = ArrayList(top.parents)
+//                    otherParents -= topTemp
+//                    top.parents.clear()
+//                    top.parents += topTemp
+//                    otherParents.forEach {
+//                        it.inputs[it.inputs.indexOf(top)] = copy
+//                    }
+//                    copy.parents.addAll(otherParents)
+//                }
             }
             require( top is SNodeNary ) {"sum-product block does not have a product; found $top id=${top.id}"}
             top as SNodeNary
             val product = top.op
-            val edges = top.inputs.mapTo(ArrayList(), ::Input)
+            val edges = top.inputs.mapTo(ArrayList(), SumProduct::Input)
+            top.inputs.forEach { it.parents -= top }
             return Block(sumBlocks, product, edges)
         }
     }
@@ -96,25 +114,29 @@ sealed class SumProduct {
     // possibly add a Constant subclass
 
     data class Input(
-            val id: Id,
+            val snode: SNode,
             override val schema: Schema,
             override val nnz: Long?
     ) : SumProduct() {
+        override fun getAllInputs(inputs: MutableSet<SNode>) {
+            inputs += snode
+        }
+
         constructor(snode: SNode)
-                : this(snode.id, Schema(snode.schema), null) // todo fill with nnz estimate
+                : this(snode, Schema(snode.schema), null) // todo fill with nnz estimate
 
         // Edges are equal if they have the same id.
         override fun equals(other: Any?): Boolean {
              if (this === other) return true
              if (other?.javaClass != javaClass) return false
              other as Input
-             return id == other.id
+             return snode == other.snode
          }
-        override fun hashCode() = id.hashCode()
+        override fun hashCode() = snode.hashCode()
         // Input is immutable
         override fun deepCopy() = this
         override fun toString(): String {
-            return "Input($id${if(SHOW_NNZ) ", nnz=$nnz" else ""}):$schema"
+            return "Input($snode${if(SHOW_NNZ) ", nnz=$nnz" else ""}):$schema"
         }
 
     }
@@ -124,6 +146,10 @@ sealed class SumProduct {
             val product: SNodeNary.NaryOp,
             val edges: ArrayList<SumProduct>
     ) : SumProduct() {
+        override fun getAllInputs(inputs: MutableSet<SNode>) {
+            TODO("not implemented")
+        }
+
         override val nnz: Long? = null // todo compute nnz estimate
 
 
@@ -213,7 +239,7 @@ sealed class SumProduct {
             if( refresh || _nameToIncidentEdge == null ) {
                 _nameToIncidentEdge = edges.flatMap { edge ->
                     edge.schema.names.map { name -> name to edge }
-                }.groupBy(Pair<Name,SumProduct>::first).mapValues { (_,v) -> v.map(Pair<Name,SumProduct>::second) }
+                }.groupBy(Pair<Name, SumProduct>::first).mapValues { (_,v) -> v.map(Pair<Name, SumProduct>::second) }
             }
             return _nameToIncidentEdge!!
         }
@@ -251,7 +277,7 @@ sealed class SumProduct {
 
 
         fun factorEdgesToBlock(toMove: Collection<SumProduct>) {
-            val groupBlock = SumProduct.Block(this.product, toMove)
+            val groupBlock = Block(this.product, toMove)
             this.edges.removeIf { it in toMove }
             this.edges += groupBlock
             this.refresh()
@@ -351,29 +377,29 @@ sealed class SumProduct {
      * rewrite the SNodes in the sum-product block to reflect the factorized structure of the SumProduct.
      */
     fun applyToNormalForm(_top: SNode): SNode {
-        var top = _top
-        while (top is SNodeAggregate) {
-            top = top.inputs[0]
-        }
-        require( top is SNodeNary ) {"sum-product block does not have a product; found $top id=${top.id}"}
-        top as SNodeNary
-        val origInputs: Map<Id, SNode> = top.inputs.map { it.id to it }.toMap()
-        top.inputs.forEach { it.parents.remove(top) } // free the inputs from the multiply
+//        var top = _top
+//        while (top is SNodeAggregate) {
+//            top = top.inputs[0]
+//        }
+//        require( top is SNodeNary ) {"sum-product block does not have a product; found $top id=${top.id}"}
+//        top as SNodeNary
+//        val origInputs: Map<Id, SNode> = top.inputs.map { it.id to it }.toMap()
+//        top.inputs.forEach { it.parents.remove(top) } // free the inputs from the multiply
 
-        val newTop: SNode = rConstructSPlan(origInputs)
+        val newTop: SNode = rConstructSPlan()
 
         SNodeRewriteUtils.rewireAllParentChildReferences(_top, newTop)
         newTop.parents.forEach { it.refreshSchemasUpward() }
         return newTop
     }
 
-    private fun rConstructSPlan(origInputs: Map<Id, SNode>): SNode = when( this ) {
-        is Input -> origInputs[this.id]!!
+    private fun rConstructSPlan(): SNode = when( this ) {
+        is Input -> this.snode
         is Block -> {
             // children are recursively created
             // create an SNodeNary for the product, if there are at least two inputs
             // create an SNodeAggregate for each SumBlock
-            val inputNodes = this.edges.map { it.rConstructSPlan(origInputs) }
+            val inputNodes = this.edges.map { it.rConstructSPlan() }
             val mult: SNode = createMultiply(inputNodes)
 //            val mult = if(inputNodes.size >= 2) SNodeNary(this.product, inputNodes) else inputNodes[0]
             sumBlocks.foldRight(mult) { sumBlock, acc ->
@@ -431,6 +457,9 @@ sealed class SumProduct {
         }
         return rSchema
     }
+
+    fun getAllInputs(): Set<SNode> = mutableSetOf<SNode>().let { getAllInputs(it); it }
+    protected abstract fun getAllInputs(inputs: MutableSet<SNode>)
 
 }
 

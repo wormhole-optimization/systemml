@@ -1,8 +1,7 @@
-package org.apache.sysml.hops.spoof2.rewrite
+package org.apache.sysml.hops.spoof2.enu
 
 import org.apache.sysml.hops.spoof2.plan.Name
 import org.apache.sysml.hops.spoof2.plan.Schema
-import org.apache.sysml.hops.spoof2.plan.Shape
 import org.apache.sysml.hops.spoof2.plan.sumByLong
 
 data class SPCost(
@@ -15,20 +14,16 @@ data class SPCost(
         return (nMultiply + nAdd - other.nMultiply - other.nAdd).toInt()
     }
 
-    operator fun plus(c: SPCost): SPCost {
-        return SPCost(this.nMultiply + c.nMultiply, this.nAdd + c.nAdd)
-    }
-
+    operator fun plus(c: SPCost) = SPCost(this.nMultiply + c.nMultiply, this.nAdd + c.nAdd)
     fun plusMultiply(m: Long) = SPCost(nMultiply + m, nAdd)
     fun plusAdd(m: Long) = SPCost(nMultiply, nAdd + m)
-
-    fun min(c: SPCost): SPCost {
-        return if( this <= c ) this else c
-    }
+    fun min(c: SPCost) = if( this <= c ) this else c
+    operator fun minus(c: SPCost) = SPCost(this.nMultiply - c.nMultiply, this.nAdd - c.nAdd)
+    operator fun unaryMinus() = SPCost(-this.nMultiply, -this.nAdd)
 
 
     companion object {
-        val MAX_COST = SPCost(Long.MAX_VALUE, Long.MAX_VALUE)//, Long.MAX_VALUE)
+        val MAX_COST = SPCost(Long.MAX_VALUE, Long.MAX_VALUE)
         val ZERO_COST = SPCost(0, 0)
 
         /**
@@ -116,7 +111,7 @@ data class SPCost(
                             val costCrossGroup = if( !h12 ) {
                                 check( !a1 && !a2 ) {"SumProduct not completely factored; can be partitioned into disjoint vectors; $spb"}
                                 if( h1 && h2 )
-                                    SPCost(s1*s2, 0) // outer product
+                                    SPCost(s1 * s2, 0) // outer product
                                 else
                                     ZERO_COST
                             }
@@ -124,18 +119,18 @@ data class SPCost(
                             if( h1 ) {
                                 if( h2 ) {
                                     if( a1 )
-                                        if( a2 ) SPCost(s1*s2+s1, s1*(s2-1) + s1-1).min(SPCost(s1*s2+s2, (s1-1)*s2 + s2-1))
-                                        else     SPCost(s1*s2+s2, (s1-1)*s2)
+                                        if( a2 ) SPCost(s1 * s2 + s1, s1 * (s2 - 1) + s1 - 1).min(SPCost(s1 * s2 + s2, (s1 - 1) * s2 + s2 - 1))
+                                        else SPCost(s1 * s2 + s2, (s1 - 1) * s2)
                                     else
-                                        if( a2 ) SPCost(s1*s2+s1, s1*(s2-1))
-                                        else     SPCost(2*s1*s2, 0)
+                                        if( a2 ) SPCost(s1 * s2 + s1, s1 * (s2 - 1))
+                                        else SPCost(2 * s1 * s2, 0)
                                 } else {
                                     if( a1 )
-                                        if( a2 ) SPCost(s1, s1*(s2-1) + s1-1)
-                                        else     SPCost(s1*s2, (s1-1)*s2)
+                                        if( a2 ) SPCost(s1, s1 * (s2 - 1) + s1 - 1)
+                                        else SPCost(s1 * s2, (s1 - 1) * s2)
                                     else
-                                        if( a2 ) SPCost(s1, s1*(s2-1))
-                                        else     SPCost(s1*s2, 0)
+                                        if( a2 ) SPCost(s1, s1 * (s2 - 1))
+                                        else SPCost(s1 * s2, 0)
                                 }
                             } else {
                                 assert(!h2)
@@ -188,7 +183,7 @@ data class SPCost(
                                 check( vSchema!!.names.first() == n12 ) {"SumProduct not completely factored; vector is not over shared dimension in $spb"}
                                 Math.min(s1, s2) * s12
                             } else 0L
-                            val matrixMultCost = SPCost(s1*s12*s2, s1*(s12-1)*s2)
+                            val matrixMultCost = SPCost(s1 * s12 * s2, s1 * (s12 - 1) * s2)
 
                             matrixMultCost.plusMultiply(multWithinGroupCost + vectorMultCost)
                         }
