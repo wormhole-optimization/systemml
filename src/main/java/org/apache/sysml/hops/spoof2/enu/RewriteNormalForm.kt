@@ -63,7 +63,7 @@ class RewriteNormalForm : SPlanRewriteRule() {
             spbNew = spbNew.edges[0] as SumProduct.Block
 
         if( LOG.isDebugEnabled )
-            LOG.debug("New SumProduct.Block found with cost $spbCost (numForks=$numForks)\n" +
+            LOG.debug("New SumProduct.Block found with cost $spbCost (numCalls=$numForks)\n" +
                     "$spbNew")
 
         trackStatistics(spb)
