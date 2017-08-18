@@ -1,27 +1,29 @@
 package org.apache.sysml.hops.spoof2.enu
 
 import org.apache.sysml.hops.spoof2.plan.SNode
+import org.apache.sysml.hops.spoof2.plan.Schema
+import org.apache.sysml.hops.spoof2.plan.mapInPlace
 
-class ENode(initialInput: SNode) : SNode(initialInput) {
+class ENode(schema: Schema) : SNode() {
     init {
-        refreshSchema()
+        this.schema.setTo(schema)
+        this.schema.names.mapInPlace { it.substring(0,1) } // force all unbound
     }
+
     /** These correspond to the SNodes in [inputs]. */
     val ePaths: ArrayList<EPath> = arrayListOf()
 
     data class EPath(
             val eNode: ENode,
             val input: SNode,
-            val costNoShare: SPCost,
-            val contingencyCostMod: MutableMap<EPath, SPCost>
+            var costNoShare: SPCost = SPCost.MAX_COST,
+            val contingencyCostMod: MutableMap<EPath, SPCost> = mutableMapOf()
     )
 
-    override fun refreshSchema() {
-        schema.setTo(inputs[0].schema)
-    }
+    override fun refreshSchema() {}
 
     override fun toString(): String {
-        return "ENode::$ePaths"
+        return "ENode"
     }
 
     override fun checkArity() {}
@@ -31,6 +33,13 @@ class ENode(initialInput: SNode) : SNode(initialInput) {
     }
 
     override fun compare(o: SNode): Boolean {
-        TODO("not implemented")
+        return false
+    }
+
+    fun addNewEPath(newTopInput: SNode) {
+        val ePath = ENode.EPath(this, newTopInput)
+        inputs += newTopInput
+        newTopInput.parents += this
+        ePaths += ePath
     }
 }

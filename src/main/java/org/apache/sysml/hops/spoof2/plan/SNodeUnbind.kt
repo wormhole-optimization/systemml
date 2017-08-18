@@ -11,6 +11,10 @@ class SNodeUnbind(
         get() = inputs[0]
         set(v) { inputs[0] = v }
 
+    /** Unbind all bound attributes in the input's schema. */
+    constructor(input: SNode)
+            : this(input, input.schema.names.mapIndexed { i, n -> i to n }.filter { (_, n) -> n.isBound() }.toMap())
+
     override fun compare(o: SNode) =
             o is SNodeUnbind && this.unbindings == o.unbindings && this.input == o.input
 

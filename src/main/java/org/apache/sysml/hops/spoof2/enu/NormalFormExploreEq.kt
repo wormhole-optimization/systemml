@@ -2,21 +2,113 @@ package org.apache.sysml.hops.spoof2.enu
 
 import org.apache.commons.logging.LogFactory
 import org.apache.sysml.hops.spoof2.plan.*
-import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriteRule
-import org.apache.sysml.utils.Statistics
-import kotlin.coroutines.experimental.EmptyCoroutineContext.plus
+import org.apache.sysml.hops.spoof2.rewrite.SPlanBottomUpRewriter
+import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriteRule.RewriteResult
+import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter
+import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter.RewriterResult
+import org.apache.sysml.utils.Explain
+import java.util.ArrayList
 
 /**
  * Fill an E-DAG.
  */
-class NormalFormExploreEq : SPlanRewriteRule() {
+class NormalFormExploreEq : SPlanRewriter {
     companion object {
         private val LOG = LogFactory.getLog(NormalFormExploreEq::class.java)!!
     }
 
-    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
+    val eNodes: ArrayList<ENode> = arrayListOf()
+    var totalSP = 0
+    var totalFactorCalls = 0L
+    var totalAggPlusMultiply = 0L // # of different agg, plus, multiply ops constructed
+    val cseElim = SPlanBottomUpRewriter()
+
+    override fun rewriteSPlan(roots: ArrayList<SNode>): RewriterResult {
+        // for each sum-product block, place an ENode at the top
+        // fill the ENode with different rewrites.
+        // do CSE Elim and Bind Unify
+
+        eNodes.clear()
+        totalSP = 0
+        totalFactorCalls = 0L
+        totalAggPlusMultiply = 0L
+
+        val skip = HashSet<Long>()
+        var changed = false
+        for( root in roots)
+            changed = rRewriteSPlan(root, skip) || changed
+        SNode.resetVisited(roots)
+
+        if( !changed )
+            return RewriterResult.NoChange
+
+        if( LOG.isDebugEnabled )
+            LOG.debug("totalSP: $totalSP, totalFactorCalls: $totalFactorCalls, totalAggPlusMultiply: $totalAggPlusMultiply")
+
+        if( LOG.isTraceEnabled )
+            LOG.trace("E-DAG before CSE Elim: "+Explain.explainSPlan(roots))
+
+        SPlanValidator.validateSPlan(roots)
+        cseElim.rewriteSPlan(roots)
+
+        if( LOG.isTraceEnabled )
+            LOG.trace("E-DAG before costing: "+Explain.explainSPlan(roots))
+
+        // temporary replace with first such plan, whatever it is
+        eNodes.forEach { eNode ->
+            val chosenInput = eNode.inputs.first()
+            chosenInput.parents.addAll(eNode.parents)
+            eNode.parents.forEach { it.inputs[it.inputs.indexOf(eNode)] = chosenInput }
+            eNode.inputs.forEach {
+                it.parents -= eNode
+                stripDead(it)
+            }
+            if(eNode.schema.isNotEmpty()) {
+                val bi = eNode.parents[0]
+                if( bi is SNodeBind ) {
+                    bi.bindings.clear()
+                    chosenInput as SNodeUnbind
+                    bi.bindings.putAll(chosenInput.unbindings)
+                    bi.refreshSchemasUpward()
+                }
+            }
+        }
+
+        return RewriterResult.NewRoots(roots)
+    }
+
+    private fun rRewriteSPlan(node: SNode, skip: HashSet<Long>): Boolean {
+        if (node.visited)
+            return false
+        var changed = false
+
+        for (i in node.inputs.indices) {
+            var child = node.inputs[i]
+
+            if( child.id !in skip) {
+                val result = rewriteNode(child, skip)
+                when (result) {
+                    RewriteResult.NoChange -> {
+                    }
+                    is RewriteResult.NewNode -> {
+                        child = result.newNode
+                        changed = true
+                    }
+                }
+            }
+
+            //process children recursively after rewrites
+            changed = rRewriteSPlan(child, skip) || changed
+        }
+
+        node.visited = true
+        return changed
+    }
+
+    private fun rewriteNode(node: SNode, skip: HashSet<Long>): RewriteResult {
         if( !SumProduct.isSumProductBlock(node))
             return RewriteResult.NoChange
+//        val origSchema = Schema(node.schema)
         val spb = SumProduct.constructBlock(node, false)
         if( node.schema.names.any { !it.isBound() } )
             throw SNodeException(node, "Found unbound name in Sum-Product block; may not be handled incorrectly. $spb")
@@ -57,20 +149,27 @@ class NormalFormExploreEq : SPlanRewriteRule() {
         }
 
         // Create ENode
-        val parents = ArrayList(node.parents)
-        val eNode = ENode(node)
-        eNode.parents.addAll(parents)
-        parents.forEach { it.inputs[it.inputs.indexOf(node)] = eNode }
+        val eNode = ENode(node.schema)
+        val bind = SNodeBind(eNode, node.schema.names.mapIndexed { i, n -> i to n }.toMap())
+        node.parents.forEach { it.inputs[it.inputs.indexOf(node)] = bind }
+        bind.parents.addAll(node.parents)
+        eNodes += eNode
         // disconnect and dead code elim the input
         node.parents.clear() // can no longer use applyToNormalForm
-        eNode.inputs.clear()
 //        stripDead(node, spb.getAllInputs()) // performed by constructBlock()
 
+        // 1. Insert all paths into the E-DAG
         val numFactorCalls = factorAndInsert(eNode, spb)
         if( LOG.isTraceEnabled )
             LOG.trace("numFactorCalls: $numFactorCalls")
 
-        return RewriteResult.NewNode(eNode)
+//        // 2. CSE
+//        SPlanBottomUpRewriter().rewriteSPlan(roots)
+
+        totalSP++
+        totalFactorCalls += numFactorCalls
+        skip.addAll(eNode.inputs.flatMap { if(it is SNodeUnbind) listOf(it.id, it.input.id) else listOf(it.id) })
+        return RewriteResult.NewNode(bind) //(bind)
     }
 
     private fun factorAndInsert(eNode: ENode, spb: SumProduct.Block): Int {
@@ -111,17 +210,19 @@ class NormalFormExploreEq : SPlanRewriteRule() {
             val incidentEdges = spb.nameToIncidentEdge()[elimName]!!
             if( incidentEdges.size == spb.edges.size && spb.aggNames().isEmpty() ) { // if all edges remaining touch this one, nothing to do.
                 insert(eNode, spb)
-                return 1
+                1
+            } else {
+                val factoredSpb = spb.deepCopy()
+                factoredSpb.factorEdgesToBlock(incidentEdges)
+                factorAndInsert(eNode, factoredSpb)
             }
-
-            val factoredSpb = spb.deepCopy()
-            factoredSpb.factorEdgesToBlock(incidentEdges)
-            factorAndInsert(eNode, factoredSpb)
         }
     }
 
     private fun insert(eNode: ENode, spb: SumProduct.Block) {
-
+        val newTopInput = spb.constructSPlan().let { SNodeUnbind(it) }
+        eNode.addNewEPath(newTopInput)
+        totalAggPlusMultiply += spb.countAggsAndInternalBlocks()
     }
 
 

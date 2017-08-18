@@ -3,6 +3,7 @@ package org.apache.sysml.test.integration.functions.spoof2
 import org.apache.sysml.hops.DataOp
 import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.spoof2.plan.*
+import org.apache.sysml.hops.spoof2.rewrite.SPlanBottomUpRewriter
 import org.apache.sysml.hops.spoof2.rewrite.SPlanCSEElimRewriter
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter
 import org.apache.sysml.parser.Expression
@@ -53,16 +54,20 @@ class HandTest {
         val p = Hop.AggOp.SUM
         val m = SNodeNary.NaryOp.MULT
         val r1 = SNodeData(createWriteHop("X"),
+                SNodeUnbind(
                 SNodeAggregate(p, SNodeNary(m,
                 SNodeAggregate(p, SNodeNary(m, ab, bc), b),
                 cd
                 ), c)
+                , mapOf(0 to a, 1 to d))
         )
         val r2 = SNodeData(createWriteHop("Y"),
+                SNodeUnbind(
                 SNodeAggregate(p, SNodeNary(m,
                 SNodeAggregate(p, SNodeNary(m, bc, cd), c),
                 de
                 ), d)
+                , mapOf(0 to b, 1 to e))
         )
         val roots = arrayListOf<SNode>(r1, r2)
         System.out.print("Before:")
@@ -79,7 +84,12 @@ class HandTest {
 
         val aggs = countAggs(roots)
         Assert.assertEquals("CSE Elim should reduce the number of aggregate nodes to 2",2, aggs)
+
+        SPlanBottomUpRewriter().rewriteSPlan(roots)
+        System.out.print("After Bind Unify:")
+        System.out.println(Explain.explainSPlan(roots))
     }
+
 
 
 }

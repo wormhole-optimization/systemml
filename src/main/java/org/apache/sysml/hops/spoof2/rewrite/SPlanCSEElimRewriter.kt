@@ -74,14 +74,16 @@ class SPlanCSEElimRewriter(
 
         var changedLeaves = 0
         SNode.resetVisited(roots)
-        if( mergeLeaves ) {
+//        if( mergeLeaves ) {
             for (root in roots)
                 changedLeaves += rCSEElim_Leaves(root, dataops, literalops)
             SNode.resetVisited(roots)
-        }
+//        }
+
+        val leaves = dataops.values + literalops.values
         var changed = 0
-        for (root in roots)
-            changed += rCSEElim(root)
+        for (leaf in leaves)
+            changed += rCSEElim(leaf)
         SNode.resetVisited(roots)
         if( CHECK )
             SPlanValidator.validateSPlan(roots)
@@ -91,7 +93,7 @@ class SPlanCSEElimRewriter(
                 LOG.trace("Eliminate $changedLeaves leaf and $changed internal node CSEs.")
             RewriterResult.NewRoots(roots)
         } else RewriterResult.NoChange
-        return rr to (dataops.values + literalops.values).toMutableList()
+        return rr to leaves.toMutableList()
     }
 
     private fun rCSEElim_Leaves(node: SNode,
@@ -122,19 +124,18 @@ class SPlanCSEElimRewriter(
     private fun rCSEElim(node: SNode): Int {
         if( node.visited )
             return 0
-        // do children first
         var changed = 0
-        var inputIdx = 0
-        while (inputIdx < node.inputs.size) {
-            changed += rCSEElim(node.inputs[inputIdx])
-            inputIdx++
-        }
-
         if( node.parents.size > 1 ) { // multiple consumers
             var i = 0
             while (i < node.parents.size-1) {
+                if( node.parents[i].visited ) {
+                    i++; continue
+                }
                 var j = i+1
                 while (j < node.parents.size) {
+                    if( node.parents[j].visited ) {
+                        j++; continue
+                    }
                     val h1 = node.parents[i]
                     val h2 = node.parents[j]
                     if( h1 !== h2 && h1.compare(h2) ) {
@@ -156,6 +157,12 @@ class SPlanCSEElimRewriter(
                 }
                 i++
             }
+        }
+        // bottom up
+        var pidx = 0
+        while (pidx < node.parents.size) {
+            changed += rCSEElim(node.parents[pidx])
+            pidx++
         }
         node.visited = true
         return changed
@@ -365,8 +372,8 @@ class SPlanCSEElimRewriter(
         val newSchema = h1.schema.names.mapIndexed { i, n -> i to n }.toMap()
         val os = oldSchema.filter { (op,on) -> newSchema[op] != on }
         val ns = newSchema.filterKeys { it in os }
-        val u = SNodeUnbind(h1, ns)
-        val b = SNodeBind(u, os)
+        val u = if(os.isEmpty()) h1 else SNodeUnbind(h1, ns).apply { visited = h1.visited }
+        val b = if(os.isEmpty()) h1 else SNodeBind(u, os).apply { visited = h1.visited }
         h2p.forEach {
             it.inputs[it.inputs.indexOf(h2)] = b
             b.parents += it

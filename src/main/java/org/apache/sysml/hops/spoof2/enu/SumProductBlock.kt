@@ -118,9 +118,13 @@ sealed class SumProduct {
             override val schema: Schema,
             override val nnz: Long?
     ) : SumProduct() {
-        override fun getAllInputs(inputs: MutableSet<SNode>) {
-            inputs += snode
-        }
+
+        val baseInput: SNode = if( snode is SNodeBind )
+            if( snode.input is SNodeUnbind )
+                snode.input.inputs[0]
+            else
+                snode.input
+        else snode
 
         constructor(snode: SNode)
                 : this(snode, Schema(snode.schema), null) // todo fill with nnz estimate
@@ -146,9 +150,6 @@ sealed class SumProduct {
             val product: SNodeNary.NaryOp,
             val edges: ArrayList<SumProduct>
     ) : SumProduct() {
-        override fun getAllInputs(inputs: MutableSet<SNode>) {
-            TODO("not implemented")
-        }
 
         override val nnz: Long? = null // todo compute nnz estimate
 
@@ -383,6 +384,8 @@ sealed class SumProduct {
         return newTop
     }
 
+    fun constructSPlan(): SNode = rConstructSPlan()
+
     private fun rConstructSPlan(): SNode = when( this ) {
         is Input -> this.snode
         is Block -> {
@@ -449,7 +452,17 @@ sealed class SumProduct {
     }
 
     fun getAllInputs(): Set<SNode> = mutableSetOf<SNode>().let { getAllInputs(it); it }
-    protected abstract fun getAllInputs(inputs: MutableSet<SNode>)
+    private fun getAllInputs(inputs: MutableSet<SNode>) {
+        when(this) {
+            is Input -> inputs += snode
+            is Block -> this.edges.forEach { it.getAllInputs(inputs) }
+        }
+    }
+
+    fun countAggsAndInternalBlocks(): Int = when(this) {
+        is Input -> 0
+        is Block -> this.sumBlocks.size + 1 + this.edges.sumBy { it.countAggsAndInternalBlocks() }
+    }
 
 }
 

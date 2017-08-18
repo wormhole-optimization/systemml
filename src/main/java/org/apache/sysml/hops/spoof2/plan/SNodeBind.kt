@@ -11,12 +11,18 @@ class SNodeBind(
         get() = inputs[0]
         set(v) { inputs[0] = v }
 
+    /** Bind all unbound attributes in the input's schema. */
+    constructor(input: SNode)
+            : this(input, input.schema)
+    constructor(input: SNode, schema: Schema)
+            : this(input, schema.names.mapIndexed { i, n -> i to n }.filter { (_, n) -> !n.isBound() }.toMap())
+
     override fun compare(o: SNode) =
             o is SNodeBind && o.bindings == this.bindings && o.input == this.input
 
     override fun shallowCopyNoParentsYesInputs() = SNodeBind(input, bindings)
-
     val bindings: MutableMap<Int, Name> = HashMap(bindings) // defensive copy
+
     init {
         refreshSchema()
     }

@@ -545,6 +545,8 @@ object Spoof2Compiler {
                             0 -> hop0 = HopRewriteUtils.createTranspose(hop0)       //[b,a]x[b,c]
                             1 -> { val tmp = hop0; hop0 = hop1; hop1 = tmp     //[b,a]x[c,b]
                                 // also switch the SNode plan inputs and refresh schema, for later reconstruction
+                                if( LOG.isTraceEnabled )
+                                    LOG.trace("Switch MxM inputs of (${mult.id}) $mult ${mult.schema}")
                                 mult.inputs.reverse()
                                 mult.refreshSchemasUpward() // refresh schema of all parents above, as long as schema changes
                             }
@@ -797,10 +799,10 @@ object Spoof2Compiler {
                 }
                 // check if the Unbind necessitates a permutation
                 // if the Unbind has a map of Int to Attribute that does not agree with the schema of the input, then transpose
-                if( current.unbindings.any { (pos,n) -> current.inputs[0].schema.names[pos] != n } ) {
+                if( current.unbindings.any { (pos,n) -> current.input.schema.names[pos] != n } ) {
                     // log this in case we encounter transpose issues
                     if( LOG.isDebugEnabled )
-                        LOG.debug("insert transpose at Unbind id=${current.id} $current with input ${current.inputs[0]}")
+                        LOG.debug("insert transpose at Unbind (${current.id}) $current with input (${current.input.id}) ${current.input} ${current.input.schema}")
                     HopRewriteUtils.createTranspose(hop)
                 }
                 else

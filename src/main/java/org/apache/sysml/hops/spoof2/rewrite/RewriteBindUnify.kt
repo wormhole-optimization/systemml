@@ -1,5 +1,6 @@
 package org.apache.sysml.hops.spoof2.rewrite
 
+import org.apache.sysml.hops.spoof2.enu.ENode
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriteRule.RewriteResult
 import java.util.*
@@ -247,8 +248,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
         assert( node.isBindOrUnbind() )
 
         if( node is SNodeUnbind ) {
-            if( newName !in node.input.schema &&
-                    node.input.let { it !is SNodeAggregate || newName !in it.aggreateNames } ) {
+            if( node.input.let { newName !in it.schema && (it !is SNodeAggregate || newName !in it.aggreateNames) && it !is ENode } ) {
                 val bindingPosition = node.unbindings.entries.find { (_,n) -> n == oldName }!!.key
                 node.unbindings.mapValuesInPlace { if( it == oldName ) newName else it }
                 rRenamePropagate(oldName, newName, node.input, node)
@@ -260,7 +260,9 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
             }
         } else {
             node as SNodeBind
-            val (bind2parentsOverlap, bind2parentsNoOverlap) = node.parents.partition { newName in it.schema }
+            val (bind2parentsOverlap, bind2parentsNoOverlap) = node.parents.partition {
+                newName in it.schema || (it is SNodeAggregate && newName in it.aggreateNames) || it is ENode
+            }
             if (bind2parentsNoOverlap.isNotEmpty()) {
                 val bindingPosition = node.bindings.entries.find { (_, n) -> n == oldName }!!.key
                 // Create new bind on this position to the new name:
@@ -290,7 +292,9 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                 }
 
                 bind2parentsNoOverlap.toSet().forEach {
-                    if( newName !in it.schema ) // we may handle a parent in the middle of rRenamePropagate
+                    if( newName !in it.schema
+                            && node.input.let { (it !is SNodeAggregate || newName !in it.aggreateNames) && it !is ENode }
+                            ) // we may handle a parent in the middle of rRenamePropagate
                         rRenamePropagate(oldName, newName, it, bindNewName)
                 }
 
@@ -346,7 +350,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
         // Stop on Name Conflict.
 //        if( node is SNodeAggregate && newName in node.aggreateNames )
 //            return
-        if( newName in node.schema || node is SNodeAggregate && newName in node.aggreateNames ) {
+        if( newName in node.schema || node is SNodeAggregate && newName in node.aggreateNames || node is ENode ) {
             if( fromInput ) {
                 val bindingPosition = fromNode.schema.names.indexOf(newName)
                 val unbindNew = SNodeUnbind(fromNode, mapOf(bindingPosition to newName)).apply { this.visited = fromNode.visited }
