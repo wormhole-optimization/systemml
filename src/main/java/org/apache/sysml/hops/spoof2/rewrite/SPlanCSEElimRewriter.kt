@@ -266,7 +266,7 @@ class SPlanCSEElimRewriter(
     }
 
     private fun tryStructuralElim(node: SNode, p1: SNode, p2: SNode): Boolean {
-        if( !p1.isBindOrUnbind() && !p2.isBindOrUnbind() || node.schema.size > 2 )
+        if( !p1.isBindOrUnbind() && !p2.isBindOrUnbind() )
             return false
         var changed = false
         val rs1 = getRealAboveSet(node, p1)
