@@ -21,21 +21,6 @@ class HandTest {
             return DataOp(name, Expression.DataType.MATRIX, Expression.ValueType.DOUBLE, Hop.DataOpTypes.TRANSIENTWRITE, name, 3, 3, 9, 3, 3)
         }
 
-        private fun countAggs(roots: ArrayList<SNode>): Int {
-            SNode.resetVisited(roots)
-            val cnt = roots.sumBy { rCountAggs(it) }
-            SNode.resetVisited(roots)
-            return cnt
-        }
-        private fun rCountAggs(node: SNode): Int {
-            if( node.visited ) // already counted
-                return 0
-            node.visited = true
-            return when(node) {
-                is SNodeAggregate -> 1 + rCountAggs(node.input)
-                else -> node.inputs.sumBy { rCountAggs(it) }
-            }
-        }
     }
 
 //    @Test
@@ -43,20 +28,21 @@ class HandTest {
 //        println(false < true)
 //    }
 
+    private val A = SNodeData(createReadHop("A"))
+    private val a = "a1"
+    private val b = "b2"
+    private val c = "c3"
+    private val d = "d4"
+    private val e = "e5"
+    private val p = Hop.AggOp.SUM
+    private val m = SNodeNary.NaryOp.MULT
+
     @Test
-    fun testStructureCSEElim() {
-        val A = SNodeData(createReadHop("A"))
-        val a = "a1"
-        val b = "b2"
-        val c = "c3"
-        val d = "d4"
-        val e = "e5"
+    fun testStructureCSEElim_AAA() {
         val ab = SNodeBind(A, mapOf(0 to a, 1 to b))
         val bc = SNodeBind(A, mapOf(0 to b, 1 to c))
         val cd = SNodeBind(A, mapOf(0 to c, 1 to d))
         val de = SNodeBind(A, mapOf(0 to d, 1 to e))
-        val p = Hop.AggOp.SUM
-        val m = SNodeNary.NaryOp.MULT
         val r1 = SNodeData(createWriteHop("X"),
                 SNodeUnbind(
                 SNodeAggregate(p, SNodeNary(m,
@@ -86,12 +72,54 @@ class HandTest {
         System.out.print("After (count=$cnt):")
         System.out.println(Explain.explainSPlan(roots))
 
-        val aggs = countAggs(roots)
+        val aggs = countPred(roots) { it is SNodeAggregate }
         Assert.assertEquals("CSE Elim should reduce the number of aggregate nodes to 2",2, aggs)
 
         SPlanBottomUpRewriter().rewriteSPlan(roots)
         System.out.print("After Bind Unify:")
         System.out.println(Explain.explainSPlan(roots))
+    }
+
+
+    /**
+     * Should not unify A %*% B with B %*% A; these are different expressions.
+     */
+    @Test
+    fun testStructureCSEElim_AB_BA() {
+        val A = SNodeData(createReadHop("A"))
+        val B = SNodeData(createReadHop("B"))
+        val ab = SNodeBind(A, mapOf(0 to a, 1 to b))
+        val bc = SNodeBind(B, mapOf(0 to b, 1 to c))
+        val cd = SNodeBind(B, mapOf(0 to c, 1 to d))
+        val de = SNodeBind(A, mapOf(0 to d, 1 to e))
+        val AB = SNodeAggregate(p,
+                    SNodeNary(m, ab, bc)
+                , b)
+        val BA = SNodeAggregate(p,
+                    SNodeNary(m, cd, de)
+                , d)
+        val roots = arrayListOf<SNode>(AB, BA)
+        System.out.print("Before:")
+        System.out.println(Explain.explainSPlan(roots))
+
+        val cseElim = SPlanCSEElimRewriter(true, true)
+        var cnt = 0
+        do {
+            val result = cseElim.rewriteSPlan(roots)
+            cnt++
+        } while( result != SPlanRewriter.RewriterResult.NoChange )
+        System.out.print("After (count=$cnt):")
+        System.out.println(Explain.explainSPlan(roots))
+
+        SPlanBottomUpRewriter().rewriteSPlan(roots)
+        SPlanBottomUpRewriter().rewriteSPlan(roots)
+        System.out.print("After Bind Unify:")
+        System.out.println(Explain.explainSPlan(roots))
+
+        val aggs = countPred(roots) { it is SNodeAggregate }
+        val nary = countPred(roots) { it is SNodeNary }
+        Assert.assertEquals("CSE Elim should not unify AB and BA",2, aggs)
+        Assert.assertEquals("CSE Elim should not unify AB and BA",2, nary)
     }
 
 

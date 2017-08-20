@@ -109,3 +109,21 @@ private fun SNode.renameCopyDown(renaming: Map<Name, Name>, memo: HashMap<Long, 
     return newNode
 }
 
+/**
+ * Count the nodes in this SPlan for which [pred] evaluates to true.
+ */
+fun countPred(roots: ArrayList<SNode>, pred: (SNode) -> Boolean): Int {
+    SNode.resetVisited(roots)
+    val cnt = roots.sumBy { rCountPred(it, pred) }
+    SNode.resetVisited(roots)
+    return cnt
+}
+private fun rCountPred(node: SNode, pred: (SNode) -> Boolean): Int {
+    if( node.visited ) // already counted
+        return 0
+    node.visited = true
+    val cnt = if( pred(node) ) 1 else 0
+    return cnt + node.inputs.sumBy { rCountPred(it, pred) }
+}
+
+

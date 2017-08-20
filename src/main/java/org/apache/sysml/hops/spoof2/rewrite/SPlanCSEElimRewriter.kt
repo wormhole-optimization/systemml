@@ -147,9 +147,9 @@ class SPlanCSEElimRewriter(
                             it.parents -= h2
                         }
                         changed++
-                    } else if( h1 !== h2 && h1 is SNodeNary && h1.compareCommutative(h2) ) {
-                        doElim(h1, h2)
-                        changed++
+//                    } else if( h1 !== h2 && h1 is SNodeNary && h1.compareCommutative(h2) ) {
+//                        doElim(h1, h2)
+//                        changed++
                     } else if( structural && h1 !== h2 && tryStructuralElim(node, h1, h2) )
                         changed++
                     else

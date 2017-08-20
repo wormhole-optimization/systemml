@@ -46,8 +46,9 @@ class SNodeNary(
     }
 
     fun compareCommutative(o: SNode): Boolean {
-        if( o !is SNodeNary || o.op != this.op)
+        if( o !is SNodeNary || o.op != op)
             return false
+        // warning: if the schema is different, need to adjust
         return op.commutative && o.inputs.toSet() == this.inputs.toSet()
     }
 
