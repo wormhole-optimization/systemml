@@ -24,7 +24,7 @@ class RewriteBindElim : SPlanRewriteRule() {
 
         fun eliminateEmpty(node: SNode): SNode {
             val child = node.inputs[0]
-            SNodeRewriteUtils.removeAllChildReferences(node) // clear node.inputs, child.parents
+            SNodeRewriteUtils.removeAllChildReferences(node) // clear node.inputs, remove node from child.parents
             SNodeRewriteUtils.rewireAllParentChildReferences(node, child) // for each parent of node, change its input from node to child and add the parent to child
             return child
         }

@@ -140,6 +140,33 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                         LOG.trace("RewriteBindUnify: elim redundant bindings $commonBindings in ${above.id} $above -- ${node.id} $node ${if (otherNodeParents.isNotEmpty()) "(with split CSE)" else ""}")
                     return rRewriteBindUnify(newNode, true)
             }
+
+            // unbind-bind-unbind or bind-unbind-bind with disjoint mappings on the common one
+            // e.g. unbind[0]-bind[0]-unbind[1] --> unbind[0,1]-bind[0]
+            // e.g. bind[0]-unbind[0]-bind[1] --> bind[0,1]-unbind[0]
+            val a2 = node.parents.find { it.isBindOrUnbind() && it.javaClass != node.javaClass }
+            if( a2 != null ) {
+                val a3 = a2.parents.find {
+                    it.javaClass == node.javaClass
+                            && it.agBindings().keys.disjoint(a2.agBindings().keys)
+                            && it.agBindings().keys.disjoint(node.agBindings().keys)
+                }
+                if (a3 != null) {
+                    if( node.parents.size > 1 || a2.parents.size > 1 ) {
+                        if( LOG.isInfoEnabled )
+                            LOG.info("Skipping opportunity to combine $node <- $a2 <- $a3 due to foreign parents; todo add this functionality")
+                    } else {
+                        if (LOG.isTraceEnabled)
+                            LOG.trace("RewriteBindUnify: combine disjoint triple (${node.id}) $node <- $a2 <- $a3, eliminating (${a3.id}) $a3")
+                        node.agBindings().putAll(a3.agBindings())
+                        a3.agBindings().clear()
+                        RewriteBindElim.eliminateEmpty(a3)
+                        node.refreshSchema()
+                        a2.refreshSchema()
+                        return rRewriteBindUnify(node, true)
+                    }
+                }
+            }
         }
 
         if( node is SNodeUnbind ) {
