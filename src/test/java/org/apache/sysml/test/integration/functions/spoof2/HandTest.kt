@@ -38,9 +38,13 @@ class HandTest {
         }
     }
 
+//    @Test
+//    fun testCompare() {
+//        println(false < true)
+//    }
+
     @Test
     fun testStructureCSEElim() {
-
         val A = SNodeData(createReadHop("A"))
         val a = "a1"
         val b = "b2"

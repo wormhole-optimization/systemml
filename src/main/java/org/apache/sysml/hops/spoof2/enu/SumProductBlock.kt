@@ -240,7 +240,18 @@ sealed class SumProduct {
             if( refresh || _nameToIncidentEdge == null ) {
                 _nameToIncidentEdge = edges.flatMap { edge ->
                     edge.schema.names.map { name -> name to edge }
-                }.groupBy(Pair<Name, SumProduct>::first).mapValues { (_,v) -> v.map(Pair<Name, SumProduct>::second) }
+                }.groupBy(Pair<Name, SumProduct>::first)
+                        .mapValues { (n,v) ->
+                            v.map(Pair<Name, SumProduct>::second)
+                                    // matrix[x,n], vector [n], matrix[n,x]
+                                    .sortedBy {
+                                        when( it.schema.size ) {
+                                            0 -> 0
+                                            1 -> 2
+                                            else -> if( it.schema.names[0] == n ) 3 else 1
+                                        }
+                                    }
+                        }
             }
             return _nameToIncidentEdge!!
         }
