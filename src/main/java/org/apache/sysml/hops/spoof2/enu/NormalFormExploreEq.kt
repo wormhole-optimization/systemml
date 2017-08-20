@@ -19,7 +19,7 @@ class NormalFormExploreEq : SPlanRewriter {
 
     val eNodes: ArrayList<ENode> = arrayListOf()
     var totalSP = 0
-    var totalFactorCalls = 0L
+    var totalInserts = 0L
     var totalAggPlusMultiply = 0L // # of different agg, plus, multiply ops constructed
     val cseElim = SPlanBottomUpRewriter()
 
@@ -30,7 +30,7 @@ class NormalFormExploreEq : SPlanRewriter {
 
         eNodes.clear()
         totalSP = 0
-        totalFactorCalls = 0L
+        totalInserts = 0L
         totalAggPlusMultiply = 0L
 
         val skip = HashSet<Long>()
@@ -43,7 +43,7 @@ class NormalFormExploreEq : SPlanRewriter {
             return RewriterResult.NoChange
 
         if( LOG.isDebugEnabled )
-            LOG.debug("totalSP: $totalSP, totalFactorCalls: $totalFactorCalls, totalAggPlusMultiply: $totalAggPlusMultiply")
+            LOG.debug("totalSP: $totalSP, totalInserts: $totalInserts, totalAggPlusMultiply: $totalAggPlusMultiply")
 
         if( LOG.isTraceEnabled )
             LOG.trace("E-DAG before CSE Elim: "+Explain.explainSPlan(roots))
@@ -159,24 +159,26 @@ class NormalFormExploreEq : SPlanRewriter {
 //        stripDead(node, spb.getAllInputs()) // performed by constructBlock()
 
         // 1. Insert all paths into the E-DAG
-        val numFactorCalls = factorAndInsert(eNode, spb)
+        val numInserts = factorAndInsert(eNode, spb)
         if( LOG.isTraceEnabled )
-            LOG.trace("numFactorCalls: $numFactorCalls")
+            LOG.trace("numInserts: $numInserts")
 
 //        // 2. CSE
 //        SPlanBottomUpRewriter().rewriteSPlan(roots)
 
         totalSP++
-        totalFactorCalls += numFactorCalls
+        totalInserts += numInserts
         skip.addAll(eNode.inputs.flatMap { if(it is SNodeUnbind) listOf(it.id, it.input.id) else listOf(it.id) })
         return RewriteResult.NewNode(bind) //(bind)
     }
 
+    /**
+     * @return The number of inserts performed
+     */
     private fun factorAndInsert(eNode: ENode, spb: SumProduct.Block): Int {
         if (spb.edgesGroupByIncidentNames().size == 1) {
             // all edges fit in a single group; nothing to do
-            insert(eNode, spb)
-            return 1
+            return insert(eNode, spb)
         }
 
         // 1. Multiply within groups
@@ -186,15 +188,14 @@ class NormalFormExploreEq : SPlanRewriter {
                 // Move these inputs to the new block and wire the new block to this block.
                 // Push aggregations down if they are not join conditions (present in >1 edge).
                 spb.factorEdgesToBlock(edges)
-                if (LOG.isTraceEnabled)
-                    LOG.trace("Isolating edge group\n[${edges.joinToString(",\n")}]")
+//                if (LOG.isTraceEnabled)
+//                    LOG.trace("Isolating edge group\n[${edges.joinToString(",\n")}]")
             }
         }
 
         // Done if no aggregations remain
         if (spb.aggNames().isEmpty()) {
-            insert(eNode, spb)
-            return 1
+            return insert(eNode, spb)
         }
 
         // Determine what variables we could eliminate at this point
@@ -210,7 +211,6 @@ class NormalFormExploreEq : SPlanRewriter {
             val incidentEdges = spb.nameToIncidentEdge()[elimName]!!
             if( incidentEdges.size == spb.edges.size && spb.aggNames().isEmpty() ) { // if all edges remaining touch this one, nothing to do.
                 insert(eNode, spb)
-                1
             } else {
                 val factoredSpb = spb.deepCopy()
                 factoredSpb.factorEdgesToBlock(incidentEdges)
@@ -219,10 +219,11 @@ class NormalFormExploreEq : SPlanRewriter {
         }
     }
 
-    private fun insert(eNode: ENode, spb: SumProduct.Block) {
+    private fun insert(eNode: ENode, spb: SumProduct.Block): Int {
         val newTopInput = spb.constructSPlan().let { SNodeUnbind(it) }
         eNode.addNewEPath(newTopInput)
         totalAggPlusMultiply += spb.countAggsAndInternalBlocks()
+        return 1
     }
 
 
