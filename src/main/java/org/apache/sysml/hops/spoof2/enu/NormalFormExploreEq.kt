@@ -8,6 +8,7 @@ import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter.RewriterResult
 import org.apache.sysml.utils.Explain
 import java.util.ArrayList
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.collections.HashSet
 import kotlin.collections.Map
 import kotlin.collections.MutableSet
@@ -40,13 +41,42 @@ import kotlin.collections.toSet
 class NormalFormExploreEq : SPlanRewriter {
     companion object {
         private val LOG = LogFactory.getLog(NormalFormExploreEq::class.java)!!
+        private val statsAll = Stats()
+        private val _addedHook = AtomicBoolean(false)
+        private fun addHook() {
+            if( !_addedHook.getAndSet(true) )
+                Runtime.getRuntime().addShutdownHook(object : Thread() {
+                    override fun run() {
+                        if( LOG.isInfoEnabled )
+                            LOG.info("Sum-Product all stats: $statsAll")
+                    }
+                })
+        }
     }
 
+    data class Stats(
+            var totalSP: Int = 0,
+            var totalInserts: Long = 0L,
+            /** # of different agg, plus, multiply ops constructed */
+            var totalAggPlusMultiply: Long = 0L
+    ) {
+        operator fun plusAssign(s: Stats) {
+            totalSP += s.totalSP
+            totalInserts += s.totalInserts
+            totalAggPlusMultiply += s.totalAggPlusMultiply
+        }
+        fun reset() {
+            totalSP = 0
+            totalInserts = 0
+            totalAggPlusMultiply = 0
+        }
+    }
+
+
     val eNodes: ArrayList<ENode> = arrayListOf()
-    var totalSP = 0
-    var totalInserts = 0L
-    var totalAggPlusMultiply = 0L // # of different agg, plus, multiply ops constructed
+    var stats = Stats()
     val cseElim = SPlanBottomUpRewriter()
+
 
     override fun rewriteSPlan(roots: ArrayList<SNode>): RewriterResult {
         // for each sum-product block, place an ENode at the top
@@ -54,9 +84,9 @@ class NormalFormExploreEq : SPlanRewriter {
         // do CSE Elim and Bind Unify
 
         eNodes.clear()
-        totalSP = 0
-        totalInserts = 0L
-        totalAggPlusMultiply = 0L
+        stats.reset()
+        if( !_addedHook.get() )
+            addHook()
 
         if( LOG.isTraceEnabled )
             LOG.trace("before normal form rewriting: "+Explain.explainSPlan(roots))
@@ -71,7 +101,7 @@ class NormalFormExploreEq : SPlanRewriter {
             return RewriterResult.NoChange
 
         if( LOG.isDebugEnabled )
-            LOG.debug("totalSP: $totalSP, totalInserts: $totalInserts, totalAggPlusMultiply: $totalAggPlusMultiply")
+            LOG.debug("$stats")
 
         if( LOG.isTraceEnabled )
             LOG.trace("E-DAG before CSE Elim: "+Explain.explainSPlan(roots))
@@ -82,6 +112,10 @@ class NormalFormExploreEq : SPlanRewriter {
         if( LOG.isTraceEnabled )
             LOG.trace("E-DAG before costing: "+Explain.explainSPlan(roots))
 
+
+
+
+
         // temporary replace with first such plan, whatever it is
         eNodes.forEach { eNode ->
             val chosenInput = eNode.inputs.first()
@@ -91,18 +125,16 @@ class NormalFormExploreEq : SPlanRewriter {
                 it.parents -= eNode
                 stripDead(it)
             }
-            if(eNode.schema.isNotEmpty()) {
-                val bi = eNode.parents[0]
-                if( bi is SNodeBind ) {
-                    chosenInput as SNodeUnbind
-//                    RewriteBindUnify.renameTwoSteps(bi, chosenInput.unbindings)
-//                    bi.bindings.clear()
-//                    bi.bindings.putAll(chosenInput.unbindings)
-//                    bi.refreshSchemasUpward()
-                }
-            }
+//            if(eNode.schema.isNotEmpty()) {
+//                val bi = eNode.parents[0]
+//                if( bi is SNodeBind ) {
+//                    chosenInput as SNodeUnbind
+//                    // do nothing; the bind-unbind should handle this
+//                }
+//            }
         }
 
+        statsAll += stats
         return RewriterResult.NewRoots(roots)
     }
 
@@ -195,8 +227,8 @@ class NormalFormExploreEq : SPlanRewriter {
 //        // 2. CSE
 //        SPlanBottomUpRewriter().rewriteSPlan(roots)
 
-        totalSP++
-        totalInserts += numInserts
+        stats.totalSP++
+        stats.totalInserts += numInserts
         skip.addAll(eNode.inputs.flatMap { if(it is SNodeUnbind) listOf(it.id, it.input.id) else listOf(it.id) })
         return RewriteResult.NewNode(bind) //(bind)
     }
@@ -251,7 +283,7 @@ class NormalFormExploreEq : SPlanRewriter {
     private fun insert(eNode: ENode, spb: SumProduct.Block): Int {
         val newTopInput = spb.constructSPlan().let { SNodeUnbind(it) }
         eNode.addNewEPath(newTopInput)
-        totalAggPlusMultiply += spb.countAggsAndInternalBlocks()
+        stats.totalAggPlusMultiply += spb.countAggsAndInternalBlocks()
         return 1
     }
 
