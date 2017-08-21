@@ -160,8 +160,7 @@ object Spoof2Compiler {
     @Throws(DMLRuntimeException::class, HopsException::class)
     fun optimize(roots: ArrayList<Hop>, recompile: Boolean, doDynamicProgramRewriter: Boolean): ArrayList<Hop> {
 
-        if( !doDynamicProgramRewriter  ) {
-            // && roots.any { it !is DataOp }
+        if( !doDynamicProgramRewriter && roots.any { it !is DataOp } ) {
             // Todo: better handling of dynamic recompile during inplace. What is safe to change during recompile?
             // GLMDML fails to converge if this is not handled carefully.
             if( LOG.isTraceEnabled )
