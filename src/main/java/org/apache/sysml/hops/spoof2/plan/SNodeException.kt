@@ -6,8 +6,8 @@ class SNodeException : DMLException {
     constructor(message: String): super(message)
     constructor(cause: Throwable) : super(cause)
     constructor(message: String, cause: Throwable) : super(message, cause)
-    constructor(sop: SNode, message: String): super("$sop id=${sop.id} ${sop.schema}: $message")
-    constructor(sop: SNode, message: String, cause: Throwable) : super("$sop id=${sop.id} ${sop.schema}: $message", cause)
+    constructor(sop: SNode, message: String): super("(${sop.id}) $sop ${sop.schema}: $message")
+    constructor(sop: SNode, message: String, cause: Throwable) : super("(${sop.id}) $sop ${sop.schema}: $message", cause)
 
     companion object {
         private const val serialVersionUID = 1L

@@ -14,7 +14,17 @@ class RewritePushAggIntoPlus : SPlanRewriteRule() {
                 && node.inputs[0] is SNodeNary
                 && (node.inputs[0] as SNodeNary).op == NaryOp.PLUS) {
             val agg = node
-            val plus = node.inputs[0] as SNodeNary
+            var plus = node.inputs[0] as SNodeNary
+
+            // split CSE
+            if( plus.parents.size > 1 ) {
+                val copy = plus.shallowCopyNoParentsYesInputs()
+                plus.parents -= agg
+                agg.input = copy
+                copy.parents += agg
+                plus = copy
+            }
+
             plus.inputs.mapInPlace { plusInput ->
                 plusInput.parents -= plus
                 agg.input = plusInput

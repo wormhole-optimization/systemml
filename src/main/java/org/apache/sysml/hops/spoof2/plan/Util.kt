@@ -137,7 +137,7 @@ fun <T> Iterable<T>.disjoint(b: Iterable<T>): Boolean {
 }
 
 /** "Agnostic bindings", for SNodeBind or SNodeUnbind. */
-fun SNode.agBindings(): MutableMap<Int, String> = when(this) {
+fun SNode.agBindings(): MutableMap<Int, Name> = when(this) {
     is SNodeBind -> this.bindings
     is SNodeUnbind -> this.unbindings
     else -> throw IllegalArgumentException()

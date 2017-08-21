@@ -85,6 +85,7 @@ public class Explain
 	private static final boolean SHOW_DATA_DEPENDENCIES     = true;
 	private static final boolean SHOW_DATA_FLOW_PROPERTIES  = true;
 	public static boolean SHOW_VISIT_STATUS = false; // modified for SPlans in SNodeValidator, to help debug visit status
+	private static final boolean HOP_SHOW_PARENTS = false;
 	private static final boolean SNODE_SHOW_PARENTS = false;
 
 	//different explain levels
@@ -667,6 +668,11 @@ public class Explain
 		//exec type
 		if (hop.getExecType() != null)
 			sb.append(", " + hop.getExecType());
+
+		if( HOP_SHOW_PARENTS ) {
+			sb.append(hop.getParent().stream().mapToLong(Hop::getHopID).mapToObj(Long::toString)
+					.collect(Collectors.joining(","," <",">")));
+		}
 		
 		sb.append('\n');
 		

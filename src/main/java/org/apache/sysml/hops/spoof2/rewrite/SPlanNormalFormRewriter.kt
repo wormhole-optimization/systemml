@@ -18,8 +18,11 @@ class SPlanNormalFormRewriter : SPlanRewriter {
     private val _rulesFirstOnce = listOf(
             RewriteDecompose()          // Subtract  + and *(-1);   ^2  Self-*
     )
+    private val _ruleBindElim = listOf(
+            RewriteBindElim()
+    )
     private val _rulesToNormalForm: List<SPlanRewriteRule> = listOf(
-            RewriteBindElim(),
+//            RewriteBindElim(),
             RewriteSplitCSE(),          // split CSEs when they would block a sum-product rearrangement
             RewritePullAggAboveMult(),
             RewriteAggregateElim(),
@@ -36,7 +39,8 @@ class SPlanNormalFormRewriter : SPlanRewriter {
     private val _rulesToHopReady = listOf(
             RewriteMultiplyCSEToPower(), // RewriteNormalForm factorizes, so we can't get powers >2. Need to reposition. // Obsolete by RewriteElementwiseMultiplyChain?
             RewriteSplitMultiplyPlus(),
-            RewritePushAggIntoMult()
+            RewritePushAggIntoMult(),
+            RewriteClearMxM()
             // todo RewriteRestoreCompound - subtract
     )
 
@@ -59,12 +63,20 @@ class SPlanNormalFormRewriter : SPlanRewriter {
         rewriteDown(roots, _rulesFirstOnce)
         val rr0: RewriterResult = RewriterResult.NoChange //bottomUpRewrite(roots)
 
+        // first bind elim
         var count = 0
         do {
             count++
             if( CHECK ) SPlanValidator.validateSPlan(roots)
+            val changed = rewriteDown(roots, _ruleBindElim)
+        } while (changed)
+
+        count = 0
+        do {
+            count++
+            if( CHECK ) SPlanValidator.validateSPlan(roots)
             var changed = rewriteDown(roots, _rulesToNormalForm)
-            if( !changed && count == 1 )
+//            if( !changed && count == 1 )
             changed = bottomUpRewrite(roots) is RewriterResult.NewRoots || changed
         } while (changed)
 
@@ -81,7 +93,6 @@ class SPlanNormalFormRewriter : SPlanRewriter {
 
         rewriteDown(roots, _rulesNormalFormPrior)
         bottomUpRewrite(roots)
-        rewriteDown(roots, _rulesNormalFormPrior)
         _normalFormRewrite(roots)
 
 

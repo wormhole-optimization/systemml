@@ -8,6 +8,31 @@ import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter.RewriterResult
 import org.apache.sysml.utils.Explain
 import java.util.ArrayList
+import kotlin.collections.HashSet
+import kotlin.collections.Map
+import kotlin.collections.MutableSet
+import kotlin.collections.Set
+import kotlin.collections.any
+import kotlin.collections.arrayListOf
+import kotlin.collections.component1
+import kotlin.collections.component2
+import kotlin.collections.filter
+import kotlin.collections.first
+import kotlin.collections.flatMap
+import kotlin.collections.forEach
+import kotlin.collections.indices
+import kotlin.collections.isNotEmpty
+import kotlin.collections.listOf
+import kotlin.collections.map
+import kotlin.collections.mapIndexed
+import kotlin.collections.min
+import kotlin.collections.minus
+import kotlin.collections.minusAssign
+import kotlin.collections.mutableSetOf
+import kotlin.collections.plusAssign
+import kotlin.collections.sumBy
+import kotlin.collections.toMap
+import kotlin.collections.toSet
 
 /**
  * Fill an E-DAG.
@@ -32,6 +57,9 @@ class NormalFormExploreEq : SPlanRewriter {
         totalSP = 0
         totalInserts = 0L
         totalAggPlusMultiply = 0L
+
+        if( LOG.isTraceEnabled )
+            LOG.trace("before normal form rewriting: "+Explain.explainSPlan(roots))
 
         val skip = HashSet<Long>()
         var changed = false
@@ -66,10 +94,11 @@ class NormalFormExploreEq : SPlanRewriter {
             if(eNode.schema.isNotEmpty()) {
                 val bi = eNode.parents[0]
                 if( bi is SNodeBind ) {
-                    bi.bindings.clear()
                     chosenInput as SNodeUnbind
-                    bi.bindings.putAll(chosenInput.unbindings)
-                    bi.refreshSchemasUpward()
+//                    RewriteBindUnify.renameTwoSteps(bi, chosenInput.unbindings)
+//                    bi.bindings.clear()
+//                    bi.bindings.putAll(chosenInput.unbindings)
+//                    bi.refreshSchemasUpward()
                 }
             }
         }

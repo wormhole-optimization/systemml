@@ -100,7 +100,7 @@ public class HopDagValidator {
 		for( Hop parent : hop.getParent() )
 			check(parent.getInput().contains(hop), hop,
 					"not properly linked to its parent pid=%d %s",
-					parent.getHopID(), parent.getClass().getName());
+					parent.getHopID(), parent.getClass().getSimpleName());
 
 		final ArrayList<Hop> input = hop.getInput();
 		final Expression.DataType dt = hop.getDataType();
@@ -109,7 +109,7 @@ public class HopDagValidator {
 		//check child linking
 		for( Hop child : input )
 			check(child.getParent().contains(hop), hop, "not properly linked to its child cid=%d %s",
-					child.getHopID(), child.getClass().getName());
+					child.getHopID(), child.getClass().getSimpleName());
 
 		//check empty children (other variable-length Hops must have at least one child)
 		if( input.isEmpty() )

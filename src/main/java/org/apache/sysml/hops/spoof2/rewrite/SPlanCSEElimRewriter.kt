@@ -372,8 +372,8 @@ class SPlanCSEElimRewriter(
         val newSchema = h1.schema.names.mapIndexed { i, n -> i to n }.toMap()
         val os = oldSchema.filter { (op,on) -> newSchema[op] != on }
         val ns = newSchema.filterKeys { it in os }
-        val u = if(os.isEmpty()) h1 else SNodeUnbind(h1, ns).apply { visited = h1.visited }
-        val b = if(os.isEmpty()) h1 else SNodeBind(u, os).apply { visited = h1.visited }
+        val u = if(os.isEmpty()) h1 else SNodeUnbind(h1, ns)
+        val b = if(os.isEmpty()) h1 else SNodeBind(u, os)
         h2p.forEach {
             it.inputs[it.inputs.indexOf(h2)] = b
             b.parents += it

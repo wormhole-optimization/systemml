@@ -82,8 +82,9 @@ class Spoof2Test(
         //	TEST_NAME+39;  *//cbind(ABCD, t(BCDE)) // todo: check we take advantage of the CSE to get a cheaper plan
         //	TEST_NAME+40;  //A%*%A%*%A%*%A%*%A
         //	TEST_NAME+41;  //cbind(A%*%B%*%A%*%B, B%*%A%*%B%*%A)
-        //	TEST_NAME+41;  //sum(A - U %*% S %*% t(V))
-        private const val NUM_TESTS = 42
+        //	TEST_NAME+42;  //sum(A - U %*% S %*% t(V))
+        //	TEST_NAME+43;  *//AB, ABC, BCD, where B=log(CDE)
+        private const val NUM_TESTS = 43
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
