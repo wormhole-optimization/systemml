@@ -159,6 +159,16 @@ object Spoof2Compiler {
      */
     @Throws(DMLRuntimeException::class, HopsException::class)
     fun optimize(roots: ArrayList<Hop>, recompile: Boolean, doDynamicProgramRewriter: Boolean): ArrayList<Hop> {
+
+        if( !doDynamicProgramRewriter  ) {
+            // && roots.any { it !is DataOp }
+            // Todo: better handling of dynamic recompile during inplace. What is safe to change during recompile?
+            // GLMDML fails to converge if this is not handled carefully.
+            if( LOG.isTraceEnabled )
+                LOG.trace("Skipping due to inplace recompile setting")
+            return roots
+        }
+
         // if any sizes unknown, don't do Spoof2
         if( roots.any { !allKnownSizes(it)} ) {
             if (LOG.isTraceEnabled) {
@@ -232,6 +242,23 @@ object Spoof2Compiler {
             }
             else
                 root2
+        }
+
+        // during recompile, we may need to do inplace updates. If so, we must use the original Hop roots.
+        // Todo: proper handling of dynamic recompile
+        if( !doDynamicProgramRewriter ) {
+            if( roots.size != roots2.size )
+                throw RuntimeException("changed the number of roots during recompile from $roots to $roots2")
+            roots.mapInPlaceIndexed { rootNum, root ->
+                val root2 = roots2[rootNum]
+                root.input.mapInPlaceIndexed { inPos, _ ->
+                    val newInput = root2.input[inPos]
+                    newInput.parent[newInput.parent.indexOf(root2)] = root
+                    newInput
+                }
+                root
+            }
+            roots2 = roots
         }
 
         if (LOG.isTraceEnabled) {
