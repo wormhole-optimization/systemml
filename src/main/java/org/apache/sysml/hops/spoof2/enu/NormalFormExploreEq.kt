@@ -102,13 +102,11 @@ class NormalFormExploreEq : SPlanRewriter {
         for( root in roots)
             changed = rRewriteSPlan(root, skip) || changed
         SNode.resetVisited(roots)
-
         if( !changed )
             return RewriterResult.NoChange
 
         if( LOG.isDebugEnabled )
             LOG.debug("$stats")
-
         if( LOG.isTraceEnabled )
             LOG.trace("E-DAG before CSE Elim: "+Explain.explainSPlan(roots))
 
@@ -322,7 +320,8 @@ class NormalFormExploreEq : SPlanRewriter {
         // Partition the ENodes into connected components.
         // Find the best EPath for each ENode individually and use this as a baseline.
         // Consider alternative EPaths that are locally suboptimal but allow sharing oppportunities.
-
+        val CCs = partitionByConnectedComponent()
+        LOG.trace(CCs.map { it.map { it.id } })
 
     }
 
@@ -368,5 +367,21 @@ class NormalFormExploreEq : SPlanRewriter {
         }
     }
 
-
+    private fun partitionByConnectedComponent(): List<List<ENode>> {
+        val CCs = ArrayList<List<ENode>>()
+        val eNs = ArrayList(eNodes)
+        do {
+            val last = eNs.removeAt(eNs.size - 1)
+            var newContingent = last.getContingentENodes()
+            val recContingent = HashSet(newContingent)
+            recContingent += last
+            do {
+                newContingent = newContingent.flatMap { it.getContingentENodes() }.toSet() - newContingent
+                recContingent.addAll(newContingent)
+            } while (newContingent.isNotEmpty())
+            eNs.removeAll(recContingent)
+            CCs += recContingent.sortedBy { it.id }
+        } while( eNs.isNotEmpty() )
+        return CCs
+    }
 }

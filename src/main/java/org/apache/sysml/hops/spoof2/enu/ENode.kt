@@ -33,6 +33,12 @@ class ENode(schema: Schema) : SNode() {
         ePaths += ePath
     }
 
+    fun getContingentENodes(): Set<ENode> {
+        return ePaths.flatMap { ePath ->
+            ePath.contingencyCostMod.keySet().map { it.eNode }
+        }.toSet()
+    }
+
 //    fun costLowerBound(): SPCost {
 //        // least cost is if the cheapest ePath is selected with maximum overlap with other ePaths
 //        return this.ePaths.minBy { it.leastPossibleCost() }?.leastPossibleCost() ?: SPCost.ZERO_COST
@@ -65,11 +71,11 @@ class EPath(
 //    fun greatestPossibleCost(): SPCost {
 //        return costNoContingent
 //    }
-    val contingencyCostReduceThis = Multimaps.filterKeys(contingencyCostMod) { otherEPath -> eNode.id > otherEPath!!.eNode.id }
-    fun canHaveCostReducedByOthers() = !contingencyCostReduceThis.isEmpty
-
-    val contingencyCostReduceOther = Multimaps.filterKeys(contingencyCostMod) { otherEPath -> eNode.id < otherEPath!!.eNode.id }
-    fun canReduceOthersCost(): Boolean = !contingencyCostReduceOther.isEmpty
+//    val contingencyCostReduceThis = Multimaps.filterKeys(contingencyCostMod) { otherEPath -> eNode.id > otherEPath!!.eNode.id }
+//    fun canHaveCostReducedByOthers() = !contingencyCostReduceThis.isEmpty
+//
+//    val contingencyCostReduceOther = Multimaps.filterKeys(contingencyCostMod) { otherEPath -> eNode.id < otherEPath!!.eNode.id }
+//    fun canReduceOthersCost(): Boolean = !contingencyCostReduceOther.isEmpty
 
     private fun contingenciesToString(): String {
         if( contingencyCostMod.isEmpty )

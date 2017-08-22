@@ -25,9 +25,9 @@ D= matrix(4, rows=3, cols=5)
 E= matrix(5, rows=5, cols=4)
 while(FALSE) {}
 B = log( C %*% D %*% E )
-X = A%*%B
-Y = A%*%B%*%C
-Z = B%*%C%*%D
+X = A %*% B
+Y = A %*% B %*% C
+Z = B %*% C %*% D
 while(FALSE) {}
 sX = sum(X)
 sY = sum(Y)
