@@ -100,12 +100,15 @@ class NormalFormExploreEq : SPlanRewriter {
         if( LOG.isTraceEnabled )
             LOG.trace("before normal form rewriting: "+Explain.explainSPlan(roots))
 
-        val skip = HashSet<Long>()
-        var changed = false
-        for( root in roots)
-            changed = rRewriteSPlan(root, skip) || changed
-        SNode.resetVisited(roots)
-        if( !changed )
+        do {
+            val skip = HashSet<Long>()
+            var changed = false // this could be due to a partitioning or a real Sum-Product block
+            for (root in roots)
+                changed = rRewriteSPlan(root, skip) || changed
+            SNode.resetVisited(roots)
+        } while( changed && eNodes.isEmpty() )
+
+        if( eNodes.isEmpty() )
             return RewriterResult.NoChange
 
         if( LOG.isDebugEnabled )
@@ -199,6 +202,7 @@ class NormalFormExploreEq : SPlanRewriter {
             spb.edges.clear()
             spb.edges += CCspb
             spb.edges += NCspb
+            spb.refresh()
 
             if( LOG.isDebugEnabled )
                 LOG.debug("Partition Sum-Product block into disjoint components:\n" +
