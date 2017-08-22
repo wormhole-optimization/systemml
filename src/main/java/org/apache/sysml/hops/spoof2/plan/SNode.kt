@@ -1,6 +1,8 @@
 package org.apache.sysml.hops.spoof2.plan
 
 import org.apache.sysml.hops.HopsException
+import org.apache.sysml.hops.spoof2.enu.EPath
+import org.apache.sysml.hops.spoof2.enu.SPCost
 import java.util.ArrayList
 
 import org.apache.sysml.runtime.controlprogram.parfor.util.IDSequence
@@ -275,4 +277,7 @@ abstract class SNode(inputs: List<SNode>) {
      */
     abstract fun compare(o: SNode): Boolean
 
+    val ePathLabels: ArrayList<EPath> = arrayListOf()
+    var cachedCost: SPCost = SPCost.ZERO_COST
+    var onRootPath: Boolean = false
 }

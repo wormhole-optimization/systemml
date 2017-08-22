@@ -382,6 +382,31 @@ sealed class SumProduct {
             return result
         }
 
+        internal fun buildAndCostAggs(mult: SNode): SNode {
+            return when( this.sumBlocks.size ) {
+                0 -> {
+                    val cost = SPCost.costFactoredBlock(this, false)
+                    mult.cachedCost += cost.multiplyPart()
+                    mult
+                }
+                1 -> {
+                    val sumBlock = this.sumBlocks[0]
+                    val agg = SNodeAggregate(sumBlock.op, mult, sumBlock.names)
+                    val cost = SPCost.costFactoredBlock(this, false)
+                    agg.cachedCost = cost.addPart()
+                    mult.cachedCost += cost.multiplyPart()
+                    agg
+                }
+                else -> {
+                    val spb = SumProduct.Block(this.sumBlocks.subList(1, this.sumBlocks.size), this.product, this.edges)
+                    val aggBelow = spb.buildAndCostAggs(mult)
+                    val sumBlock = this.sumBlocks[0]
+                    val agg = SNodeAggregate(sumBlock.op, aggBelow, sumBlock.names)
+                    agg.cachedCost = SPCost.costFactoredBlock(this, false).addPart() - agg.cachedCost
+                    agg
+                }
+            }
+        }
     }
 
     /**
@@ -395,6 +420,9 @@ sealed class SumProduct {
         return newTop
     }
 
+    /**
+     * Construct SNodes from this block. Each multiply and agg SNode has a cached cost according to SPCost.
+     */
     fun constructSPlan(): SNode = rConstructSPlan()
 
     private fun rConstructSPlan(): SNode = when( this ) {
@@ -405,12 +433,11 @@ sealed class SumProduct {
             // create an SNodeAggregate for each SumBlock
             val inputNodes = this.edges.map { it.rConstructSPlan() }
             val mult: SNode = createMultiply(inputNodes)
-//            val mult = if(inputNodes.size >= 2) SNodeNary(this.product, inputNodes) else inputNodes[0]
-            sumBlocks.foldRight(mult) { sumBlock, acc ->
-                SNodeAggregate(sumBlock.op, acc, sumBlock.names)
-            }
+            buildAndCostAggs(mult) // assigns add costs to each SNAggregate
         }
     }
+
+
 
     private fun createMultiply(inputNodes: List<SNode>): SNode {
         this as Block

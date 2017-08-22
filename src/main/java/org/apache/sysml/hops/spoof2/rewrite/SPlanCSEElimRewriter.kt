@@ -103,19 +103,16 @@ class SPlanCSEElimRewriter(
             return 0
         // do children first
         var changed = 0
-        for (i in node.inputs.indices) {
+        for (i in node.inputs.indices)
             changed += rCSEElim_Leaves(node.inputs[i], dataops, literalops)
-        }
 
         if( node.inputs.isEmpty() ) { // leaf
             val real = if( node is SNodeData && node.isLiteral ) {
                 literalops.putIfAbsent(node.getLiteralKey(), node)
-            } else {
+            } else
                 dataops.putIfAbsent(node.getHopId(), node)
-            }
-            if( real != null ) {
+            if( real != null )
                 changed += replaceWithReal(node, real)
-            }
         }
         node.visited = true
         return changed

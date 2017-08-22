@@ -6,21 +6,24 @@ import org.apache.sysml.hops.spoof2.plan.sumByLong
 
 data class SPCost(
         val nMultiply: Long = 0L,
-        val nAdd: Long = 0L//,
-        //val nMemory: Long = 0L
+        val nAdd: Long = 0L
+//        val nUnknownENode: List<ENode> = emptyList()
 ) : Comparable<SPCost> {
     override fun compareTo(other: SPCost): Int {
         // todo consider memory - check if below distributed threshold
-        return (nMultiply + nAdd - other.nMultiply - other.nAdd).toInt()
+        return (nMultiply + nAdd - other.nMultiply - other.nAdd ).toInt()
     }
 
-    operator fun plus(c: SPCost) = SPCost(this.nMultiply + c.nMultiply, this.nAdd + c.nAdd)
-    fun plusMultiply(m: Long) = SPCost(nMultiply + m, nAdd)
-    fun plusAdd(m: Long) = SPCost(nMultiply, nAdd + m)
+    operator fun plus(c: SPCost) = SPCost(this.nMultiply + c.nMultiply, this.nAdd + c.nAdd) //, this.nUnknownENode + c.nUnknownENode)
+    fun plusMultiply(m: Long) = SPCost(nMultiply + m, nAdd) //, nUnknownENode)
+    fun plusAdd(m: Long) = SPCost(nMultiply, nAdd + m) //, nUnknownENode)
     fun min(c: SPCost) = if( this <= c ) this else c
+    fun max(c: SPCost) = if( this >= c ) this else c
     operator fun minus(c: SPCost) = SPCost(this.nMultiply - c.nMultiply, this.nAdd - c.nAdd)
     operator fun unaryMinus() = SPCost(-this.nMultiply, -this.nAdd)
-
+    fun addPart() = SPCost(0, nAdd)
+    fun multiplyPart() = SPCost(nMultiply, 0)
+    override fun toString() = "cost($nMultiply, $nAdd)"
 
     companion object {
         val MAX_COST = SPCost(Long.MAX_VALUE, Long.MAX_VALUE)
@@ -68,11 +71,13 @@ data class SPCost(
             return matrix1.shapes[i1] <= matrix2.shapes[i2]
         }
 
-        fun costFactoredBlock(spb: SumProduct): SPCost {
+        fun costFactoredBlock(spb: SumProduct, recursive: Boolean = true): SPCost {
             return when( spb ) {
                 is SumProduct.Input -> ZERO_COST
                 is SumProduct.Block -> {
-                    val recCost = spb.edges.fold(ZERO_COST) { acc, edge -> acc + costFactoredBlock(edge) }
+                    val recCost =
+                            if(recursive) spb.edges.fold(ZERO_COST) { acc, edge -> acc + costFactoredBlock(edge, recursive) }
+                            else SPCost.ZERO_COST
 
                     recCost + when( spb.allSchema().size ) {
                         0 -> ZERO_COST

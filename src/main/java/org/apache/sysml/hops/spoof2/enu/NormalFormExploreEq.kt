@@ -48,27 +48,33 @@ class NormalFormExploreEq : SPlanRewriter {
                 Runtime.getRuntime().addShutdownHook(object : Thread() {
                     override fun run() {
                         if( LOG.isInfoEnabled )
-                            LOG.info("Sum-Product all stats: $statsAll")
+                            LOG.info("Sum-Product all stats:\n\t$statsAll")
                     }
                 })
         }
     }
 
     data class Stats(
-            var totalSP: Int = 0,
-            var totalInserts: Long = 0L,
+            var numSP: Int = 0,
+            var numInserts: Long = 0L,
             /** # of different agg, plus, multiply ops constructed */
-            var totalAggPlusMultiply: Long = 0L
+            var numAggPlusMultiply: Long = 0L,
+            var numLabels: Long = 0L,
+            var numContingencies: Long = 0L
     ) {
         operator fun plusAssign(s: Stats) {
-            totalSP += s.totalSP
-            totalInserts += s.totalInserts
-            totalAggPlusMultiply += s.totalAggPlusMultiply
+            numSP += s.numSP
+            numInserts += s.numInserts
+            numAggPlusMultiply += s.numAggPlusMultiply
+            numLabels += s.numLabels
+            numContingencies += s.numContingencies
         }
         fun reset() {
-            totalSP = 0
-            totalInserts = 0
-            totalAggPlusMultiply = 0
+            numSP = 0
+            numInserts = 0
+            numAggPlusMultiply = 0
+            numLabels = 0
+            numContingencies = 0
         }
     }
 
@@ -110,10 +116,12 @@ class NormalFormExploreEq : SPlanRewriter {
         cseElim.rewriteSPlan(roots)
 
         if( LOG.isTraceEnabled )
-            LOG.trace("E-DAG before costing: "+Explain.explainSPlan(roots))
+            LOG.trace("E-DAG before labeling: "+Explain.explainSPlan(roots))
 
+        doCosting(roots)
 
-
+        if( LOG.isTraceEnabled )
+            LOG.trace("E-DAG after labeling: "+Explain.explainSPlan(roots))
 
 
         // temporary replace with first such plan, whatever it is
@@ -125,13 +133,6 @@ class NormalFormExploreEq : SPlanRewriter {
                 it.parents -= eNode
                 stripDead(it)
             }
-//            if(eNode.schema.isNotEmpty()) {
-//                val bi = eNode.parents[0]
-//                if( bi is SNodeBind ) {
-//                    chosenInput as SNodeUnbind
-//                    // do nothing; the bind-unbind should handle this
-//                }
-//            }
         }
 
         statsAll += stats
@@ -227,8 +228,8 @@ class NormalFormExploreEq : SPlanRewriter {
 //        // 2. CSE
 //        SPlanBottomUpRewriter().rewriteSPlan(roots)
 
-        stats.totalSP++
-        stats.totalInserts += numInserts
+        stats.numSP++
+        stats.numInserts += numInserts
         skip.addAll(eNode.inputs.flatMap { if(it is SNodeUnbind) listOf(it.id, it.input.id) else listOf(it.id) })
         return RewriteResult.NewNode(bind) //(bind)
     }
@@ -283,29 +284,9 @@ class NormalFormExploreEq : SPlanRewriter {
     private fun insert(eNode: ENode, spb: SumProduct.Block): Int {
         val newTopInput = spb.constructSPlan().let { SNodeUnbind(it) }
         eNode.addNewEPath(newTopInput)
-        stats.totalAggPlusMultiply += spb.countAggsAndInternalBlocks()
+        stats.numAggPlusMultiply += spb.countAggsAndInternalBlocks()
         return 1
     }
-
-
-//    private fun trackStatistics(spb: SumProduct.Block) {
-//        // Tracks largest sum-product statistics; see RewriteNormalForm, Statistics, AutomatedTestBase
-//        val recSchema = spb.recUnionSchema()
-//
-//        val thisSize = numForks // spb.edges.size + recSchema.size +
-//        var oldLargestSize: Int
-//        do {
-//            oldLargestSize = Statistics.spoof2NormalFormNameLength.get()
-//        } while(thisSize > oldLargestSize && !Statistics.spoof2NormalFormNameLength.compareAndSet(oldLargestSize, thisSize))
-//        // not exactly thread safe because we need to lock the other fields, but good enough for this hack.
-//
-//        if( thisSize > oldLargestSize ) {
-//            Statistics.spoof2NormalFormAggs = recSchema.toString()
-//            Statistics.spoof2NormalFormFactoredSpb = spb.toString() //.edges.map { it.schema }.toString()
-//            Statistics.spoof2NormalFormNumForks = numForks
-//            Statistics.spoof2NormalFormChanged.set(true)
-//        }
-//    }
 
 
     private fun findConnectedNames(spb: SumProduct.Block, name: Name): Set<Name> {
@@ -319,5 +300,73 @@ class NormalFormExploreEq : SPlanRewriter {
         foundNames += adjacentNotFound
         adjacentNotFound.forEach { rFindConnectedNames(adjMap, it, foundNames) }
     }
+
+
+
+
+
+
+
+    private fun doCosting(roots: ArrayList<SNode>) {
+        for( root in roots )
+            rMarkRooted(root)
+
+        eNodes.sortBy { it.id } // ascending least id to greatest id
+        for( eNode in eNodes ) {
+            for( ePath in eNode.ePaths ) {
+                // compute cost recursively, add this ePath to the labels of significant nodes (nodes with actual cost) along the way
+                ePath.costNoContingent = rAddLabels(ePath.input, ePath, setOf())
+            }
+        }
+        // all contingencies and costs computed.
+        // Partition the ENodes into connected components.
+        // Find the best EPath for each ENode individually and use this as a baseline.
+        // Consider alternative EPaths that are locally suboptimal but allow sharing oppportunities.
+
+
+    }
+
+    private fun rMarkRooted(node: SNode) {
+        if( node.onRootPath )
+            return
+        if( node is ENode )
+            return
+        node.onRootPath = true
+        node.inputs.forEach { rMarkRooted(it) }
+    }
+
+    private fun rAddLabels(node: SNode, ePath: EPath, overlappedEPaths: Set<EPath>): SPCost {
+        return when {
+            node.onRootPath -> {
+                // do not include cost of nodes that are required to compute another root; these nodes are always shared
+                // do not include recursive costs
+                SPCost.ZERO_COST
+            }
+            node is ENode -> {
+                // do not continue past ENode
+                SPCost.ZERO_COST
+            }
+            node.cachedCost != SPCost.ZERO_COST -> {
+                val newOverlapped = node.ePathLabels.filter { it.eNode != ePath.eNode && it !in overlappedEPaths }.toSet()
+                val allOverlapped = if(newOverlapped.isNotEmpty()) overlappedEPaths + newOverlapped else overlappedEPaths
+                val recCost = node.cachedCost + node.inputs.fold(SPCost.ZERO_COST) { acc, input -> acc + rAddLabels(input, ePath, allOverlapped) }
+
+                newOverlapped.forEach { otherEPath ->
+//                    otherEPath.contingencyCostMod.put(ePath, node)
+                    if( !ePath.contingencyCostMod.containsKey(otherEPath) )
+                        stats.numContingencies++
+                    ePath.contingencyCostMod.put(otherEPath, node to recCost)
+                    Unit
+                }
+                node.ePathLabels += ePath
+                stats.numLabels++
+                recCost
+            }
+            else -> {
+                node.inputs.fold(SPCost.ZERO_COST) { acc, input -> acc + rAddLabels(input, ePath, overlappedEPaths) }
+            }
+        }
+    }
+
 
 }

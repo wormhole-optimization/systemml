@@ -38,6 +38,8 @@ import org.apache.sysml.hops.globalopt.gdfgraph.GDFLoopNode;
 import org.apache.sysml.hops.globalopt.gdfgraph.GDFNode;
 import org.apache.sysml.hops.globalopt.gdfgraph.GDFNode.NodeType;
 import org.apache.sysml.hops.ipa.FunctionCallGraph;
+import org.apache.sysml.hops.spoof2.enu.ENode;
+import org.apache.sysml.hops.spoof2.enu.EPath;
 import org.apache.sysml.hops.spoof2.plan.SNode;
 import org.apache.sysml.lops.Lop;
 import org.apache.sysml.parser.DMLProgram;
@@ -86,7 +88,8 @@ public class Explain
 	private static final boolean SHOW_DATA_FLOW_PROPERTIES  = true;
 	public static boolean SHOW_VISIT_STATUS = false; // modified for SPlans in SNodeValidator, to help debug visit status
 	private static final boolean HOP_SHOW_PARENTS = false;
-	private static final boolean SNODE_SHOW_PARENTS = false;
+	private static final boolean SNODE_SHOW_PARENTS = true;
+	private static final boolean SNODE_SHOW_CACHED_COST = true;
 
 	//different explain levels
 	public enum ExplainType { 
@@ -770,14 +773,27 @@ public class Explain
 		//schema and tensor characteristics
 		sb.append(" ").append(snode.getSchema());
 
+		if( SNODE_SHOW_CACHED_COST ) {
+			sb.append(' ').append(snode.getCachedCost());
+		}
+
 		if( SNODE_SHOW_PARENTS ) {
 			sb.append(snode.getParents().stream().mapToLong(SNode::getId).mapToObj(Long::toString)
 					.collect(Collectors.joining(","," <",">")));
 		}
 		
 		sb.append('\n');
+
+		if( snode instanceof ENode ) {
+			final ENode enode = (ENode) snode;
+			for (final EPath ePath : enode.getEPaths()) {
+				sb.append('\t');
+				sb.append(ePath);
+				sb.append('\n');
+			}
+		}
+
 		snode.setVisited(true);
-		
 		return sb.toString();
 	}
 
