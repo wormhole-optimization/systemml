@@ -14,15 +14,15 @@ data class SPCost(
         return (nMultiply + nAdd - other.nMultiply - other.nAdd ).toInt()
     }
 
-    operator fun plus(c: SPCost) = SPCost(this.nMultiply + c.nMultiply, this.nAdd + c.nAdd) //, this.nUnknownENode + c.nUnknownENode)
-    fun plusMultiply(m: Long) = SPCost(nMultiply + m, nAdd) //, nUnknownENode)
-    fun plusAdd(m: Long) = SPCost(nMultiply, nAdd + m) //, nUnknownENode)
+    operator fun plus(c: SPCost) = if( c == SPCost.ZERO_COST ) this else SPCost(this.nMultiply + c.nMultiply, this.nAdd + c.nAdd)
+    fun plusMultiply(m: Long) = if(m == 0L) this else SPCost(nMultiply + m, nAdd) //, nUnknownENode)
+    fun plusAdd(m: Long) = if(m == 0L) this else SPCost(nMultiply, nAdd + m) //, nUnknownENode)
     fun min(c: SPCost) = if( this <= c ) this else c
     fun max(c: SPCost) = if( this >= c ) this else c
-    operator fun minus(c: SPCost) = SPCost(this.nMultiply - c.nMultiply, this.nAdd - c.nAdd)
-    operator fun unaryMinus() = SPCost(-this.nMultiply, -this.nAdd)
-    fun addPart() = SPCost(0, nAdd)
-    fun multiplyPart() = SPCost(nMultiply, 0)
+    operator fun minus(c: SPCost) = if(c == ZERO_COST) this else SPCost(this.nMultiply - c.nMultiply, this.nAdd - c.nAdd)
+    operator fun unaryMinus() = if(this == ZERO_COST) this else SPCost(-this.nMultiply, -this.nAdd)
+    fun addPart() = if(nMultiply == 0L) this else SPCost(0, nAdd)
+    fun multiplyPart() = if(nAdd == 0L) this else SPCost(nMultiply, 0)
     override fun toString() = "cost($nMultiply, $nAdd)"
 
     companion object {

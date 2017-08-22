@@ -20,8 +20,8 @@
 #-------------------------------------------------------------
 
 A= matrix(1, rows=2, cols=4)
-C= matrix(3, rows=4, cols=3)
-D= matrix(4, rows=3, cols=5)
+C= matrix(3, rows=4, cols=10) # best plan changes when cols is 3
+D= matrix(4, rows=10, cols=5)
 E= matrix(5, rows=5, cols=4)
 while(FALSE) {}
 B = log( C %*% D %*% E )

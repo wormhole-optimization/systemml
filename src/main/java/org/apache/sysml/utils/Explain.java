@@ -775,6 +775,8 @@ public class Explain
 
 		if( SNODE_SHOW_CACHED_COST ) {
 			sb.append(' ').append(snode.getCachedCost());
+			if( snode.getOnRootPath() )
+				sb.append('R');
 		}
 
 		if( SNODE_SHOW_PARENTS ) {

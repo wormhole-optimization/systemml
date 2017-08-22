@@ -7,7 +7,7 @@ import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriteRule.RewriteResult
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter.RewriterResult
 import org.apache.sysml.utils.Explain
-import java.util.ArrayList
+import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.collections.HashSet
 import kotlin.collections.Map
@@ -60,7 +60,8 @@ class NormalFormExploreEq : SPlanRewriter {
             /** # of different agg, plus, multiply ops constructed */
             var numAggPlusMultiply: Long = 0L,
             var numLabels: Long = 0L,
-            var numContingencies: Long = 0L
+            var numContingencies: Long = 0L,
+            var considerPlan: Long = 0L
     ) {
         operator fun plusAssign(s: Stats) {
             numSP += s.numSP
@@ -68,6 +69,7 @@ class NormalFormExploreEq : SPlanRewriter {
             numAggPlusMultiply += s.numAggPlusMultiply
             numLabels += s.numLabels
             numContingencies += s.numContingencies
+            considerPlan += s.considerPlan
         }
         fun reset() {
             numSP = 0
@@ -75,6 +77,7 @@ class NormalFormExploreEq : SPlanRewriter {
             numAggPlusMultiply = 0
             numLabels = 0
             numContingencies = 0
+            considerPlan = 0
         }
     }
 
@@ -113,25 +116,22 @@ class NormalFormExploreEq : SPlanRewriter {
         SPlanValidator.validateSPlan(roots)
         cseElim.rewriteSPlan(roots)
 
-        if( LOG.isTraceEnabled )
-            LOG.trace("E-DAG before labeling: "+Explain.explainSPlan(roots))
-
         doCosting(roots)
 
         if( LOG.isTraceEnabled )
-            LOG.trace("E-DAG after labeling: "+Explain.explainSPlan(roots))
+            LOG.trace("E-DAG after implementing best plans: "+Explain.explainSPlan(roots))
 
 
-        // temporary replace with first such plan, whatever it is
-        eNodes.forEach { eNode ->
-            val chosenInput = eNode.inputs.first()
-            chosenInput.parents.addAll(eNode.parents)
-            eNode.parents.forEach { it.inputs[it.inputs.indexOf(eNode)] = chosenInput }
-            eNode.inputs.forEach {
-                it.parents -= eNode
-                stripDead(it)
-            }
-        }
+//        // temporary replace with first such plan, whatever it is
+//        eNodes.forEach { eNode ->
+//            val chosenInput = eNode.inputs.first()
+//            chosenInput.parents.addAll(eNode.parents)
+//            eNode.parents.forEach { it.inputs[it.inputs.indexOf(eNode)] = chosenInput }
+//            eNode.inputs.forEach {
+//                it.parents -= eNode
+//                stripDead(it)
+//            }
+//        }
 
         statsAll += stats
         return RewriterResult.NewRoots(roots)
@@ -316,14 +316,22 @@ class NormalFormExploreEq : SPlanRewriter {
                 ePath.costNoContingent = rAddLabels(ePath.input, ePath, setOf())
             }
         }
+
+        if( LOG.isTraceEnabled )
+            LOG.trace("E-DAG after labeling: "+Explain.explainSPlan(roots))
+
         // all contingencies and costs computed.
         // Partition the ENodes into connected components.
         // Find the best EPath for each ENode individually and use this as a baseline.
         // Consider alternative EPaths that are locally suboptimal but allow sharing oppportunities.
         val CCs = partitionByConnectedComponent()
-        LOG.trace(CCs.map { it.map { it.id } })
-
+        if( LOG.isTraceEnabled )
+            LOG.trace("CCs: "+CCs.map { it.map { it.id } })
+        for( CC in CCs )
+            findImplementBestPlanForCC(CC)
     }
+
+
 
     private fun rMarkRooted(node: SNode) {
         if( node.onRootPath )
@@ -352,7 +360,7 @@ class NormalFormExploreEq : SPlanRewriter {
 
                 newOverlapped.forEach { otherEPath ->
 //                    otherEPath.contingencyCostMod.put(ePath, node)
-                    if( !ePath.contingencyCostMod.containsKey(otherEPath) )
+                    if( !ePath.contingencyCostMod.containsKey(otherEPath) ) // it could happen that we cross the same ePath in different branches
                         stats.numContingencies++
                     ePath.contingencyCostMod.put(otherEPath, node to recCost)
                     Unit
@@ -384,4 +392,205 @@ class NormalFormExploreEq : SPlanRewriter {
         } while( eNs.isNotEmpty() )
         return CCs
     }
+
+    private fun findImplementBestPlanForCC(CC: List<ENode>) {
+        // Consider contingencies
+        val CCchoiceBest = ConsiderContingencies(CC, stats).findBestPlan()
+
+        // Implement best plan
+        implementPlan(CCchoiceBest)
+    }
+
+    class ConsiderContingencies(CC: List<ENode>, val stats: Stats) {
+        private val num = CC.size
+        private val nodes = CC.toTypedArray()
+        private val nodeToIndex = nodes.mapIndexed { i, node -> node to i }.toMap()
+        private val nodeContingencies = Array(num) { nodes[it].ePaths.filter { !it.contingencyCostMod.isEmpty } }
+        private val nodeContingencyToIndex = Array(num) { nodeContingencies[it].mapIndexed { i, ePath -> ePath to i }.toMap() }
+        // 0 means not blacklisted; >0 means blacklisted at that position
+        private val nodeContingencyBlacklist = Array(num) { IntArray(nodeContingencies[it].size) }
+
+        private val localCheapest = Array<EPath>(num) { nodes[it].ePaths.minBy { it.costNoContingent }!! }
+        // inital best cost uses the lowest cost path for each ENode individually
+        private val best = localCheapest.copyOf()
+        private var bestTotalCost: SPCost
+        init {
+            var cum = SPCost.ZERO_COST
+            for( i in 0 until num) {
+                cum += localCheapest[i].costNoContingent
+                for( j in 0 until i) { // take advantage of any contingencies that happen to agree with our choice of path
+                    cum -= localCheapest[i].contingencyCostMod[localCheapest[j]]
+                            ?.fold(SPCost.ZERO_COST) { acc, (_,cost) -> acc + cost }
+                            ?: SPCost.ZERO_COST
+                }
+            }
+            bestTotalCost = cum
+        }
+        private val choices = Array<EPath?>(num) {null}
+
+        fun findBestPlan(): Array<EPath> {
+            rConsiderContingencies(num-1, SPCost.ZERO_COST)
+            if( LOG.isTraceEnabled )
+                LOG.trace("best plan found for CC ${nodes.map(ENode::id)}: " +
+                        "${best.joinToString("\n\t", "\n\t", "\n\t")}@$bestTotalCost; $stats")
+            return best
+        }
+
+        // pos: decreases from num-1 to -1
+        // invariant: choices[pos+1 until num] != null (assigned)
+        //            and choiceCumCost is the cummulative cost of those entries
+        private fun rConsiderContingencies(pos: Int, choiceCumCost: SPCost) {
+            if( pos == -1 ) { // base case: we have a complete assignment
+                if( choiceCumCost < bestTotalCost ) {
+                    System.arraycopy(choices, 0, best, 0, num)
+                    bestTotalCost = choiceCumCost
+                }
+                stats.considerPlan++
+                return
+            }
+            val origChoice = choices[pos] // remember the current assignment so we can restore it later
+            // origChoice is null if this position has not been fixed; non-null if it has been fixed
+            if( origChoice != null && origChoice.contingencyCostMod.isEmpty ) {
+                // no contingencies for this fixed choice
+                rConsiderContingencies(pos-1, choiceCumCost + origChoice.costNoContingent)
+                return
+            }
+            // If we did not fix an alternative from a past decision,
+            // first try the cheap option, if we won't try it later during the contingencies
+            if( origChoice == null && localCheapest[pos] !in nodeContingencies[pos] ) {
+                choices[pos] = localCheapest[pos]
+                rConsiderContingencies(pos-1, choiceCumCost + localCheapest[pos].costNoContingent)
+            }
+            // Search over contingent ePaths for this fixed choice if we fixed it;
+            // otherwise search over over all alternatives choices that are not blacklisted.
+            val contingencyList =
+                    if( origChoice != null ) listOf(origChoice)
+                    else nodeContingencies[pos].filterIndexed { i, _ -> nodeContingencyBlacklist[pos][i] == 0 }
+            for (chosenPath in contingencyList) {
+                choices[pos] = chosenPath
+                val (contingentPathToSavings_groupByENode, fixedSavings) =
+                        // cached in the EPath for efficiency; filter to those eNodes that are not yet fixed
+                        // for those ENodes that are fixed, if they are fixed to a contingent path, then we save the contingent cost
+                        chosenPath.contingentPathToSavings_groupByENode().let {
+                            val (fixed, free)
+                                    = it.partition { (eNode, _) -> choices[nodeToIndex[eNode]!!] != null }
+                            val fixedSavings = fixed.fold(SPCost.ZERO_COST) { acc, (eNode, list) ->
+                                val fixedChoice = choices[nodeToIndex[eNode]!!]!!
+                                list.filter { it.first == fixedChoice }.fold(acc) { acc2, (_, cost) -> acc2 + cost }
+                            }
+                            free to fixedSavings
+                        }
+
+                val cSize = contingentPathToSavings_groupByENode.size
+                if( cSize >= 62 )
+                    LOG.warn("Huge number of contingent ENodes: $cSize. The next line may overflow Long.")
+                val cSizeMax = (1 shl cSize) - 1
+                var indicator = 0L
+                val contPathChoiceIdx = IntArray(cSize)
+                // loop over the choices of which eNodes we will fix, given by indicator
+                do {
+                    indicator++
+                    // blacklist the contingent ePaths from each eNode we do not set
+                    var t0 = 1L
+                    for (j in 0 until cSize) {
+                        if ((indicator and t0) == 0L) { // if we do not fix this eNode
+                            blacklistContingent(contingentPathToSavings_groupByENode[j], pos)
+                            choices[nodeToIndex[contingentPathToSavings_groupByENode[j].first]!!] = null
+                            contPathChoiceIdx[j] = -1 // for tracing
+                        } else { // if we fix this eNode
+                            contPathChoiceIdx[j] = 0
+                        }
+                        t0 = t0 shl 1
+                    }
+
+                    // loop over the choices of which contingent chosenPath we will fix for each eNode that we decided to fix
+                    while(true) {
+                        var t = 1L
+                        var changed = false
+                        var cost = chosenPath.costNoContingent
+                        // for each eNode, if we choose to fix that eNode, fix it and reduce the cost
+                        for (j in 0 until cSize) {
+                            val (contNode, contPathsAndCosts) = contingentPathToSavings_groupByENode[j]
+                            if ((indicator and t) != 0L) { // if we fix this eNode
+                                // set this eNode to one of the contingent ePaths and reduce cost
+                                val (contPath, contCost) = if (!changed) {
+                                    if (contPathChoiceIdx[j] < contPathsAndCosts.size) {
+                                        val x = contPathsAndCosts[contPathChoiceIdx[j]]
+                                        contPathChoiceIdx[j]++
+                                        changed = true
+                                        x
+                                    } else {
+                                        contPathChoiceIdx[j] = 0
+                                        contPathsAndCosts[0]
+                                    }
+                                } else contPathsAndCosts[contPathChoiceIdx[j]]
+                                choices[nodeToIndex[contNode]!!] = contPath
+                                cost -= contCost
+                            }
+                            t = t shl 1
+                        }
+                        if( changed )
+                            rConsiderContingencies(pos-1, choiceCumCost - fixedSavings + cost)
+                        t = 1L
+                        for (j in 0 until cSize) {
+                            val (contNode, _) = contingentPathToSavings_groupByENode[j]
+                            choices[nodeToIndex[contNode]!!] = null
+                            t = t shl 1
+                        }
+                        if( !changed )
+                            break
+                    }
+
+                    // whitelist, undoing the blacklist
+                    t0 = 1L
+                    for (j in 0 until cSize) {
+                        // todo optimize to see if changed in indicator+1
+                        if ((indicator and t0) == 0L) { // if we do not fix this eNode
+                            whitelistContingent(contingentPathToSavings_groupByENode[j], pos)
+                        }
+                        t0 = t0 shl 1
+                    }
+                } while( indicator < cSizeMax )
+            } // end for each ePath
+            choices[pos] = origChoice
+        } // end function
+
+        private fun blacklistContingent(x: Pair<ENode, List<Pair<EPath, SPCost>>>, pos: Int) {
+            val (blackNode, blackEdges) = x
+            val blackNodeIdx = nodeToIndex[blackNode]!!
+            blackEdges.forEach { (blackEdge, _) ->
+                val idx = nodeContingencyToIndex[blackNodeIdx][blackEdge]!!
+                // if not already blacklisted at a higher level
+                if( nodeContingencyBlacklist[blackNodeIdx][idx] == 0 )
+                    nodeContingencyBlacklist[blackNodeIdx][idx] = pos
+            }
+        }
+
+        private fun whitelistContingent(x: Pair<ENode, List<Pair<EPath, SPCost>>>, pos: Int) {
+            val (blackNode, blackEdges) = x
+            val blackNodeIdx = nodeToIndex[blackNode]!!
+            blackEdges.forEach { (blackEdge, _) ->
+                val idx = nodeContingencyToIndex[blackNodeIdx][blackEdge]!!
+                if( nodeContingencyBlacklist[blackNodeIdx][idx] == pos )
+                    nodeContingencyBlacklist[blackNodeIdx][idx] = 0
+            }
+        }
+
+    }
+
+    private fun implementPlan(chosenPaths: Array<EPath>) {
+        for( chosenPath in chosenPaths ) {
+            val eNode = chosenPath.eNode
+            val chosenInput = chosenPath.input
+            chosenInput.parents.addAll(eNode.parents)
+            eNode.parents.forEach { it.inputs[it.inputs.indexOf(eNode)] = chosenInput }
+            eNode.inputs.forEach {
+                it.parents -= eNode
+                stripDead(it)
+            }
+        }
+
+    }
+
+
 }

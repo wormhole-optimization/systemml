@@ -2,7 +2,6 @@ package org.apache.sysml.hops.spoof2.enu
 
 import com.google.common.collect.HashMultimap
 import com.google.common.collect.Multimap
-import com.google.common.collect.Multimaps
 import org.apache.sysml.hops.spoof2.plan.SNode
 import org.apache.sysml.hops.spoof2.plan.Schema
 import org.apache.sysml.hops.spoof2.plan.mapInPlace
@@ -38,6 +37,14 @@ class ENode(schema: Schema) : SNode() {
             ePath.contingencyCostMod.keySet().map { it.eNode }
         }.toSet()
     }
+
+//    private var pathsWithContingencies: List<EPath>? = null
+//    fun cachePathsWithContingencies(): List<EPath> {
+//        if( pathsWithContingencies == null) {
+//            pathsWithContingencies = ePaths.filter { !it.contingencyCostMod.isEmpty }
+//        }
+//        return pathsWithContingencies!!
+//    }
 
 //    fun costLowerBound(): SPCost {
 //        // least cost is if the cheapest ePath is selected with maximum overlap with other ePaths
@@ -80,11 +87,25 @@ class EPath(
     private fun contingenciesToString(): String {
         if( contingencyCostMod.isEmpty )
             return "{}"
-        return contingencyCostMod.asMap().mapValues { (_,v) -> v.map { (node, cost) -> "${node.id}:$cost" } }.toString()
+        return contingencyCostMod.asMap().map { (ePath,v) ->
+            ePath.shortString() to v.map { (node, cost) -> "${node.id}:$cost" }
+        }.toMap().toString()
     }
 
-    override fun toString(): String {
-        return "EPath<${eNode.id}>(${input.id}, $costNoContingent, contingent:${contingenciesToString()})"
+    override fun toString() =
+            "EPath<${eNode.id}>(${input.id}, $costNoContingent, contingent:${contingenciesToString()})"
+    fun shortString(): String {
+        return "EPath<${eNode.id}>(${input.id})"
+    }
+
+    private var _contingentPathToSavings_groupByENode: List<Pair<ENode, List<Pair<EPath, SPCost>>>>? = null
+    internal fun contingentPathToSavings_groupByENode(): List<Pair<ENode, List<Pair<EPath, SPCost>>>> {
+        if( _contingentPathToSavings_groupByENode == null) {
+            _contingentPathToSavings_groupByENode = contingencyCostMod.asMap().map { (ePath, list) ->
+                (ePath to list.fold(SPCost.ZERO_COST) { acc, (_, cost) -> acc + cost })
+            }.groupBy { it.first.eNode }.toList()
+        }
+        return _contingentPathToSavings_groupByENode!!
     }
 
 
