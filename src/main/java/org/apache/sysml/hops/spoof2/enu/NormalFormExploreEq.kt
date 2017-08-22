@@ -119,6 +119,13 @@ class NormalFormExploreEq : SPlanRewriter {
         SPlanValidator.validateSPlan(roots)
         cseElim.rewriteSPlan(roots)
 
+        // check inputs to ensure that CSE Elim did not change them
+        eNodes.forEach { eNode ->
+            for (i in eNode.ePaths.indices) {
+                eNode.ePaths[i].input = eNode.inputs[i]
+            }
+        }
+
         doCosting(roots)
 
         if( LOG.isTraceEnabled )
@@ -454,14 +461,19 @@ class NormalFormExploreEq : SPlanRewriter {
             }
             val origChoice = choices[pos] // remember the current assignment so we can restore it later
             // origChoice is null if this position has not been fixed; non-null if it has been fixed
-            if( origChoice != null && origChoice.contingencyCostMod.isEmpty ) {
+            if( origChoice != null
+                    && (origChoice.contingencyCostMod.isEmpty ||
+                    nodeContingencyToIndex[pos][origChoice]!!.let { nodeContingencyBlacklist[pos][it] != 0 })
+                    ) {
                 // no contingencies for this fixed choice
                 rConsiderContingencies(pos-1, choiceCumCost + origChoice.costNoContingent)
                 return
             }
             // If we did not fix an alternative from a past decision,
             // first try the cheap option, if we won't try it later during the contingencies
-            if( origChoice == null && localCheapest[pos] !in nodeContingencies[pos] ) {
+            if( origChoice == null
+                    && localCheapest[pos] !in nodeContingencies[pos]
+                    ) {
                 choices[pos] = localCheapest[pos]
                 rConsiderContingencies(pos-1, choiceCumCost + localCheapest[pos].costNoContingent)
             }
@@ -469,7 +481,9 @@ class NormalFormExploreEq : SPlanRewriter {
             // otherwise search over over all alternatives choices that are not blacklisted.
             val contingencyList =
                     if( origChoice != null ) listOf(origChoice)
-                    else nodeContingencies[pos].filterIndexed { i, _ -> nodeContingencyBlacklist[pos][i] == 0 }
+                    else nodeContingencies[pos].filterIndexed { i, ePath ->
+                        ePath == localCheapest[pos] || nodeContingencyBlacklist[pos][i] == 0
+                    }
             for (chosenPath in contingencyList) {
                 choices[pos] = chosenPath
                 val (contingentPathToSavings_groupByENode, fixedSavings) =
@@ -486,6 +500,10 @@ class NormalFormExploreEq : SPlanRewriter {
                         }
 
                 val cSize = contingentPathToSavings_groupByENode.size
+                if( cSize == 0 ) {
+                    rConsiderContingencies(pos-1, choiceCumCost - fixedSavings + chosenPath.costNoContingent)
+                    continue
+                }
                 if( cSize >= 62 )
                     LOG.warn("Huge number of contingent ENodes: $cSize. The next line may overflow Long.")
                 val cSizeMax = (1 shl cSize) - 1
@@ -527,7 +545,10 @@ class NormalFormExploreEq : SPlanRewriter {
                                         contPathChoiceIdx[j] = 0
                                         contPathsAndCosts[0]
                                     }
-                                } else contPathsAndCosts[contPathChoiceIdx[j]]
+                                } else if (contPathChoiceIdx[j] < contPathsAndCosts.size)
+                                    contPathsAndCosts[contPathChoiceIdx[j]]
+                                else
+                                    contPathsAndCosts[0]
                                 choices[nodeToIndex[contNode]!!] = contPath
                                 cost -= contCost
                             }
@@ -537,8 +558,10 @@ class NormalFormExploreEq : SPlanRewriter {
                             rConsiderContingencies(pos-1, choiceCumCost - fixedSavings + cost)
                         t = 1L
                         for (j in 0 until cSize) {
-                            val (contNode, _) = contingentPathToSavings_groupByENode[j]
-                            choices[nodeToIndex[contNode]!!] = null
+                            if ((indicator and t) != 0L) {
+                                val (contNode, _) = contingentPathToSavings_groupByENode[j]
+                                choices[nodeToIndex[contNode]!!] = null
+                            }
                             t = t shl 1
                         }
                         if( !changed )
@@ -562,21 +585,27 @@ class NormalFormExploreEq : SPlanRewriter {
         private fun blacklistContingent(x: Pair<ENode, List<Pair<EPath, SPCost>>>, pos: Int) {
             val (blackNode, blackEdges) = x
             val blackNodeIdx = nodeToIndex[blackNode]!!
+            val ncti = nodeContingencyToIndex[blackNodeIdx]
             blackEdges.forEach { (blackEdge, _) ->
-                val idx = nodeContingencyToIndex[blackNodeIdx][blackEdge]!!
-                // if not already blacklisted at a higher level
-                if( nodeContingencyBlacklist[blackNodeIdx][idx] == 0 )
-                    nodeContingencyBlacklist[blackNodeIdx][idx] = pos
+                if( blackEdge in ncti ) {
+                    val idx = ncti[blackEdge]!!
+                    // if not already blacklisted at a higher level
+                    if (nodeContingencyBlacklist[blackNodeIdx][idx] == 0)
+                        nodeContingencyBlacklist[blackNodeIdx][idx] = pos
+                }
             }
         }
 
         private fun whitelistContingent(x: Pair<ENode, List<Pair<EPath, SPCost>>>, pos: Int) {
             val (blackNode, blackEdges) = x
             val blackNodeIdx = nodeToIndex[blackNode]!!
+            val ncti = nodeContingencyToIndex[blackNodeIdx]
             blackEdges.forEach { (blackEdge, _) ->
-                val idx = nodeContingencyToIndex[blackNodeIdx][blackEdge]!!
-                if( nodeContingencyBlacklist[blackNodeIdx][idx] == pos )
-                    nodeContingencyBlacklist[blackNodeIdx][idx] = 0
+                if( blackEdge in ncti ) {
+                    val idx = ncti[blackEdge]!!
+                    if (nodeContingencyBlacklist[blackNodeIdx][idx] == pos)
+                        nodeContingencyBlacklist[blackNodeIdx][idx] = 0
+                }
             }
         }
 

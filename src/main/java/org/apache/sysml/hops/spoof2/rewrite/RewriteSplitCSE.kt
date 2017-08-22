@@ -19,7 +19,7 @@ class RewriteSplitCSE : SPlanRewriteRule() {
             copy
         }
         val FilterFun: (IndexedValue<SNode>) -> Boolean =
-            // Pull agg above multiply; Combine *; Pull + above *
+            // Pull Σ above *; Combine *; Pull + above *
             if( node is SNodeNary && node.op == SNodeNary.NaryOp.MULT ) {
                 { (_,it) ->
                     it.parents.size > 1 && (

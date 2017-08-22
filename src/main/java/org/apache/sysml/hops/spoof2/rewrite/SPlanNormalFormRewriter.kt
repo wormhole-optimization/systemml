@@ -71,11 +71,17 @@ class SPlanNormalFormRewriter : SPlanRewriter {
             val changed = rewriteDown(roots, _ruleBindElim)
         } while (changed)
 
+        if( SPlanRewriteRule.LOG.isTraceEnabled )
+            SPlanRewriteRule.LOG.trace("After bind elim: "+Explain.explainSPlan(roots))
+
         count = 0
         do {
-            count++
-            if( CHECK ) SPlanValidator.validateSPlan(roots)
-            var changed = rewriteDown(roots, _rulesToNormalForm)
+            var changed: Boolean
+            do {
+                count++
+                if (CHECK) SPlanValidator.validateSPlan(roots)
+                changed = rewriteDown(roots, _rulesToNormalForm)
+            } while( changed )
 //            if( !changed && count == 1 )
             changed = bottomUpRewrite(roots) is RewriterResult.NewRoots || changed
         } while (changed)

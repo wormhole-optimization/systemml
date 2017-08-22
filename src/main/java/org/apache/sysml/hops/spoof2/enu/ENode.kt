@@ -66,7 +66,7 @@ class ENode(schema: Schema) : SNode() {
 
 class EPath(
         val eNode: ENode,
-        val input: SNode,
+        var input: SNode,
         var costNoContingent: SPCost = SPCost.ZERO_COST,
         val contingencyCostMod: Multimap<EPath, Pair<SNode, SPCost>> = HashMultimap.create()
 ) { //: ParentPath()
