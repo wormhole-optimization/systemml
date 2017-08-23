@@ -369,12 +369,15 @@ class NormalFormExploreEq : SPlanRewriter {
                 val allOverlapped = if(newOverlapped.isNotEmpty()) overlappedEPaths + newOverlapped else overlappedEPaths
                 val recCost = node.cachedCost + node.inputs.fold(SPCost.ZERO_COST) { acc, input -> acc + rAddLabels(input, ePath, allOverlapped) }
 
-                newOverlapped.forEach { otherEPath ->
-//                    otherEPath.contingencyCostMod.put(ePath, node)
+                val newOverlapList = newOverlapped.sortedBy { it.eNode.id }
+                for( i in newOverlapList.indices ) {
+                    val otherEPath = newOverlapList[i]
                     if( !ePath.contingencyCostMod.containsKey(otherEPath) ) // it could happen that we cross the same ePath in different branches
                         stats.numContingencies++
-                    ePath.contingencyCostMod.put(otherEPath, node to recCost)
-                    Unit
+                    // if an overlappedEPath is selected, it shadows sharing this node.
+                    // same story if an EPath from a different ENode also present here is picked.
+                    ePath.contingencyCostMod.put(otherEPath,
+                            EPath.EPathShare(otherEPath, recCost, node, overlappedEPaths + newOverlapList.subList(0, i)))
                 }
                 node.ePathLabels += ePath
                 stats.numLabels++
@@ -422,7 +425,7 @@ class NormalFormExploreEq : SPlanRewriter {
         private val nodeContingencies = Array(num) { nodes[it].ePaths.filter { !it.contingencyCostMod.isEmpty } }
         /** The EPath-to-index map for [nodeContingencies] (caching). */
         private val nodeContingencyToIndex = Array(num) { nodeContingencies[it].mapIndexed { i, ePath -> ePath to i }.toMap() }
-        /** 0 means that this EPath is allowed; >0 means that this EPath is blacklisted. Reference by position. */
+        /** 0 means that this EPath is allowed; >0 means that this EPath is blacklisted at that position. */
         private val nodeContingencyBlacklist = Array(num) { IntArray(nodeContingencies[it].size) }
 
         private val localCheapest = Array<EPath>(num) { nodes[it].ePaths.minBy { it.costNoContingent }!! }
@@ -465,19 +468,15 @@ class NormalFormExploreEq : SPlanRewriter {
             }
             val origChoice = choices[pos] // remember the current assignment so we can restore it later
             // origChoice is null if this position has not been fixed; non-null if it has been fixed
-            if( origChoice != null
-                    && (origChoice.contingencyCostMod.isEmpty ||
-                    nodeContingencyToIndex[pos][origChoice]!!.let { nodeContingencyBlacklist[pos][it] != 0 })
-                    ) {
+            if( origChoice != null && (origChoice.contingencyCostMod.isEmpty ||
+                    nodeContingencyToIndex[pos][origChoice]!!.let { nodeContingencyBlacklist[pos][it] != 0 }) ) {
                 // no contingencies for this fixed choice
                 rConsiderContingency(pos-1, choiceCumCost + origChoice.costNoContingent)
                 return
             }
             // If we did not fix an alternative from a past decision,
             // first try the cheap option, if we won't try it later during the contingencies
-            if( origChoice == null
-                    && localCheapest[pos] !in nodeContingencies[pos]
-                    ) {
+            if( origChoice == null && localCheapest[pos] !in nodeContingencies[pos] ) {
                 choices[pos] = localCheapest[pos]
                 rConsiderContingency(pos-1, choiceCumCost + localCheapest[pos].costNoContingent)
             }

@@ -69,7 +69,7 @@ class EPath(
         val eNode: ENode,
         var input: SNode,
         var costNoContingent: SPCost = SPCost.ZERO_COST,
-        val contingencyCostMod: Multimap<EPath, Pair<SNode, SPCost>> = HashMultimap.create()
+        val contingencyCostMod: Multimap<EPath, EPathShare> = HashMultimap.create()
 ) { //: ParentPath()
 
 //    fun leastPossibleCost(): SPCost {
@@ -89,7 +89,9 @@ class EPath(
         if( contingencyCostMod.isEmpty )
             return "{}"
         return contingencyCostMod.asMap().map { (ePath,v) ->
-            ePath.shortString() to v.map { (node, cost) -> "${node.id}:$cost" }
+            ePath.shortString() to v.map { share ->
+                "${share.shareNode.id}:${share.cost}${if(share.shadowedBy.isNotEmpty()) "^${share.shadowedBy}^" else ""}"
+            }
         }.toMap().toString()
     }
 
@@ -102,7 +104,8 @@ class EPath(
     class EPathShare(
             val ePath: EPath,
             val cost: SPCost,
-            val shareNode: SNode
+            val shareNode: SNode,
+            val shadowedBy: Set<EPath>
     ) {
         override fun toString() =
                 "EPathShare(${ePath.shortString()}, $cost, shareNode=${shareNode.id}$shareNode)"
@@ -114,11 +117,7 @@ class EPath(
         if( _pathShares_groupByENode == null) {
             _pathShares_groupByENode = contingencyCostMod.asMap().entries.groupBy { it.key.eNode }
                     .mapValues { (_, list) ->
-                        list.flatMap { (ePath, list) ->
-                            list.map { (shareNode, cost) ->
-                                EPathShare(ePath, cost, shareNode)
-                            }
-                        }.groupBy { it.ePath }.toList().sortedBy { it.first.input.id } //.map { it.second }
+                        list.flatMap { it.value }.groupBy { it.ePath }.toList().sortedBy { it.first.input.id } //.map { it.second }
                         //list.fold(SPCost.ZERO_COST) { acc, (_, cost) -> acc + cost }
                     }.toList().sortedBy { it.first.id } //.map { it.second }
         }
