@@ -11,7 +11,12 @@ data class SPCost(
 ) : Comparable<SPCost> {
     override fun compareTo(other: SPCost): Int {
         // todo consider memory - check if below distributed threshold
-        return (nMultiply + nAdd - other.nMultiply - other.nAdd ).toInt()
+        val x = nMultiply - other.nMultiply + nAdd - other.nAdd
+        return when {
+            x < 0L -> -1
+            x == 0L -> 0
+            else -> 1
+        }
     }
 
     operator fun plus(c: SPCost) = if( c == SPCost.ZERO_COST ) this else SPCost(this.nMultiply + c.nMultiply, this.nAdd + c.nAdd)
@@ -26,7 +31,7 @@ data class SPCost(
     override fun toString() = "cost($nMultiply, $nAdd)"
 
     companion object {
-        val MAX_COST = SPCost(Long.MAX_VALUE, Long.MAX_VALUE)
+        val MAX_COST = SPCost(1L shl 59, 1L shl 59)
         val ZERO_COST = SPCost(0, 0)
 
         /**

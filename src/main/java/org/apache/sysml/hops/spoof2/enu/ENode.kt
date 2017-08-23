@@ -5,6 +5,7 @@ import com.google.common.collect.Multimap
 import org.apache.sysml.hops.spoof2.plan.SNode
 import org.apache.sysml.hops.spoof2.plan.Schema
 import org.apache.sysml.hops.spoof2.plan.mapInPlace
+import java.util.*
 
 class ENode(schema: Schema) : SNode() {
     init {
@@ -98,19 +99,70 @@ class EPath(
         return "EPath<${eNode.id}>(${input.id})"
     }
 
-    private var _contingentPathToSavings_groupByENode: List<Pair<ENode, List<Pair<EPath, SPCost>>>>? = null
-    internal fun contingentPathToSavings_groupByENode(): List<Pair<ENode, List<Pair<EPath, SPCost>>>> {
-        if( _contingentPathToSavings_groupByENode == null) {
-            _contingentPathToSavings_groupByENode = contingencyCostMod.asMap().map { (ePath, list) ->
-                (ePath to list.fold(SPCost.ZERO_COST) { acc, (_, cost) -> acc + cost })
-            }.groupBy { it.first.eNode }.toList()
-        }
-        return _contingentPathToSavings_groupByENode!!
+    class EPathShare(
+            val ePath: EPath,
+            val cost: SPCost,
+            val shareNode: SNode
+    ) {
+        override fun toString() =
+                "EPathShare(${ePath.shortString()}, $cost, shareNode=${shareNode.id}$shareNode)"
     }
 
+    // sorted by eNode, then by ePath
+    private var _pathShares_groupByENode: List<GroupENode>? = null
+    internal fun pathShares_groupByENode(): List<GroupENode> {
+        if( _pathShares_groupByENode == null) {
+            _pathShares_groupByENode = contingencyCostMod.asMap().entries.groupBy { it.key.eNode }
+                    .mapValues { (_, list) ->
+                        list.flatMap { (ePath, list) ->
+                            list.map { (shareNode, cost) ->
+                                EPathShare(ePath, cost, shareNode)
+                            }
+                        }.groupBy { it.ePath }.toList().sortedBy { it.first.input.id } //.map { it.second }
+                        //list.fold(SPCost.ZERO_COST) { acc, (_, cost) -> acc + cost }
+                    }.toList().sortedBy { it.first.id } //.map { it.second }
+        }
+        return _pathShares_groupByENode!!
+    }
+
+    companion object {
+        private fun rFindParentIn(curPath: EPath, eligibleShareNodes: Set<SNode>, node: SNode): Boolean {
+            if( node in eligibleShareNodes )
+                return true
+            return node.parents.filter { it.ePathLabels.size > 1 && curPath in it.ePathLabels }
+                    .any { rFindParentIn(curPath, eligibleShareNodes, it) }
+        }
+
+        fun filterNotOverlapping(curPath: EPath, x: Collection<EPathShare>): List<EPathShare> {
+            val pathsPresent = x.map { it.ePath }.toSet()
+            val pathShares = ArrayList(x)
+            // remove those pathShares that overlap with a lesser one
+            x.forEach { pathShare ->
+                val otherLabels = pathShare.shareNode.ePathLabels.filter { pathLabel ->
+                    pathLabel != pathShare.ePath
+                            && pathLabel != curPath
+                            && pathLabel in pathsPresent // I think this includes the pathLabel != curPath case
+                }
+                if( otherLabels.isNotEmpty() ) {
+                    // bad case - try to find a different pathShare in the parents of this shareNode
+                    // if we find one, then discount this. Otherwise keep it.
+                    val otherShareNodes = pathShares.filter { it != pathShare && it.ePath in otherLabels }
+                            .map { it.shareNode }.toSet()
+                    if( rFindParentIn(curPath, otherShareNodes, pathShare.shareNode) )
+                        pathShares -= pathShare
+                }
+            }
+            return pathShares
+        }
+    }
 
 }
-//data class RootPath(
-//        override val pathParent: SNode
-//) : ParentPath()
+
+
+typealias GroupEPath = Pair<EPath, List<EPath.EPathShare>>
+typealias GroupENode = Pair<ENode, List<GroupEPath>>
+
+fun GroupEPath.sumShares(): SPCost = this.second.fold(SPCost.ZERO_COST) { acc, share -> acc + share.cost}
+fun GroupEPath.shares(): List<EPath.EPathShare> = this.second
+fun GroupENode.flatShares(): List<EPath.EPathShare> = this.second.flatMap { it.shares() }
 
