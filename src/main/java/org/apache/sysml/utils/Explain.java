@@ -40,6 +40,7 @@ import org.apache.sysml.hops.globalopt.gdfgraph.GDFNode.NodeType;
 import org.apache.sysml.hops.ipa.FunctionCallGraph;
 import org.apache.sysml.hops.spoof2.enu.ENode;
 import org.apache.sysml.hops.spoof2.enu.EPath;
+import org.apache.sysml.hops.spoof2.enu.SPCost;
 import org.apache.sysml.hops.spoof2.plan.SNode;
 import org.apache.sysml.lops.Lop;
 import org.apache.sysml.parser.DMLProgram;
@@ -774,7 +775,8 @@ public class Explain
 		sb.append(" ").append(snode.getSchema());
 
 		if( SNODE_SHOW_CACHED_COST ) {
-			sb.append(' ').append(snode.getCachedCost());
+			if( !snode.getCachedCost().equals(SPCost.Companion.getZERO_COST()) )
+				sb.append(' ').append(snode.getCachedCost());
 			if( snode.getOnRootPath() )
 				sb.append('R');
 		}
