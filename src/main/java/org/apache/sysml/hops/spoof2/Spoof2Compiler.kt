@@ -235,6 +235,7 @@ object Spoof2Compiler {
             if( rootClasses[idx].isVector && root2.classify() != rootClasses[idx] ) {
                 check( root2.classify().isVector ) {"root changed type after reconstruction? Old type ${rootClasses[idx]}; new type ${root2.classify()} dims ${root2.dim1}, ${root2.dim2} hopid=${root2.hopID}" +
                         "\n modified Hop Dag is:\n" + Explain.explainHops(roots2)}
+                // todo look at transposes
                 if( LOG.isTraceEnabled )
                     LOG.trace("creating root transpose at root $idx to enforce orientation ${rootClasses[idx]}")
                 HopRewriteUtils.createTranspose(root2)

@@ -158,8 +158,7 @@ class NormalFormExploreEq : SPlanRewriter {
             if( child.id !in skip) {
                 val result = rewriteNode(child, skip)
                 when (result) {
-                    RewriteResult.NoChange -> {
-                    }
+                    RewriteResult.NoChange -> {}
                     is RewriteResult.NewNode -> {
                         child = result.newNode
                         changed = true

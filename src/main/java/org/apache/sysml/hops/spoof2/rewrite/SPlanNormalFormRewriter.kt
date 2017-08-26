@@ -72,7 +72,7 @@ class SPlanNormalFormRewriter : SPlanRewriter {
         } while (changed)
 
         if( SPlanRewriteRule.LOG.isTraceEnabled )
-            SPlanRewriteRule.LOG.trace("After bind elim: "+Explain.explainSPlan(roots))
+            SPlanRewriteRule.LOG.trace("After bind elim: (count=$count) "+Explain.explainSPlan(roots))
 
         count = 0
         do {
@@ -82,7 +82,6 @@ class SPlanNormalFormRewriter : SPlanRewriter {
                 if (CHECK) SPlanValidator.validateSPlan(roots)
                 changed = rewriteDown(roots, _rulesToNormalForm)
             } while( changed )
-//            if( !changed && count == 1 )
             changed = bottomUpRewrite(roots) is RewriterResult.NewRoots || changed
         } while (changed)
 
