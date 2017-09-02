@@ -1,0 +1,151 @@
+\documentclass{vldb}
+
+\setlength{\pdfpagewidth}{8.5in}
+\setlength{\pdfpageheight}{11.0in}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+%\usepackage[algo2e,ruled,vlined]{algorithm2e}
+\usepackage{graphicx}
+\usepackage{color}
+\usepackage{euscript}
+\usepackage{subfigure}
+\usepackage[np,autolanguage]{numprint}
+\usepackage{units}
+\usepackage{balance}
+\usepackage{algorithm}
+\usepackage[noend]{algorithmic}
+
+\usepackage[pdftex,pdfpagelabels=false]{hyperref} %weiter: ,plainpages=false
+\hypersetup{
+    unicode=false,          % non-Latin characters in Acrobat’s bookmarks
+    pdftoolbar=true,        % show Acrobat’s toolbar?
+    pdfmenubar=true,        % show Acrobat’s menu?
+    pdffitwindow=true,      % window fit to page when opened
+    pdfstartview={FitV},    % fits the width of the page to the window
+    pdftitle={Holistic Sum-Product Optimization for Large-Scale Machine Learning},    % title
+    pdfauthor={Dylan Hutchison, Matthias Boehm, Alexandre V. Evfimievski, Berthold Reinwald, Prithviraj Sen}, % author
+    pdfsubject={},   % subject of the document
+    pdfcreator={},   % creator of the document
+    pdfproducer={}, % producer of the document
+    pdfkeywords={}, % list of keywords
+    pdfnewwindow=true,      % links in new window
+    bookmarksnumbered=true, % put section numbers in bookmarks
+    bookmarksopen=true,     % open up bookmark tree
+    bookmarksopenlevel=2,   % \maxdimen level to which bookmarks are open
+    colorlinks=false,        % false: boxed links; true: colored links
+    linkcolor=red,        % color of internal links  
+    citecolor=green,         % color of links to bibliography
+    filecolor=black,        % color of file links
+    urlcolor=black          % color of external links
+}
+
+
+% math commands
+\newcommand{\mat}[1]{\ensuremath{\mathbf{#1}}}
+\newcommand{\card}[1]{\lvert #1\rvert}
+\newcommand{\num}[1]{\numprint{#1}}
+
+% unit commands
+\newcommand{\h}{\unit{\,h}}
+\newcommand{\s}{\unit{\,s}}
+\newcommand{\ms}{\unit{\,ms}}
+\newcommand{\bb}{\unit{\,B}}
+\newcommand{\mb}{\unit{\,MB}}
+\newcommand{\gb}{\unit{\,GB}}
+\newcommand{\tb}{\unit{\,TB}}
+\newcommand{\mbs}{\unit{\,MB/s}} %{~\unitfrac{MB}{s}}
+\newcommand{\gbs}{\unit{\,GB/s}} %{~\unitfrac{GB}{s}} 
+\newcommand{\gflops}{\unit{\,GFLOP/s}} %{~\unitfrac{GFLOP}{s}}
+
+% algorithm commands
+\renewcommand{\algorithmiccomment}[1]{\hfill \textit{// #1}}
+\newcommand{\COMMENTLINE}[1]{\STATE \textit{// #1}}
+\renewcommand{\algorithmicrequire}{\textbf{Input:}}
+\renewcommand{\algorithmicensure}{\textbf{Output:}}
+\renewcommand{\algorithmicrepeat}{\textbf{do}}
+\renewcommand{\algorithmicuntil}{\textbf{while}}
+
+%\SetKwRepeat{Do}{do}{while}
+%\SetKwInOut{Input}{Input}\SetKwInOut{Output}{Output}
+
+% format specific commands
+\newenvironment{itemize*}{\begin{itemize}\setlength{\itemsep}{2.5pt}\setlength{\parskip}{0pt}\setlength{\parsep}{0pt}}{\end{itemize}}
+\renewcommand{\footnotesize}{\small}
+\newcommand{\eat}[1]{}
+\setlength{\textfloatsep}{9pt}	
+
+\DeclareRobustCommand{\ojoin}{\rule[0.10ex]{.3em}{.4pt}\llap{\rule[1.40ex]{.3em}{.4pt}}}
+\newcommand{\leftouterjoin}{\mathrel{\ojoin\mkern-6.5mu\Join}}
+\newcommand{\rightouterjoin}{\mathrel{\Join\mkern-6.5mu\ojoin}}
+\newcommand{\fullouterjoin}{\mathrel{\ojoin\mkern-6.5mu\Join\mkern-6.5mu\ojoin}}
+\newtheorem{definition}{Definition}
+\DeclareMathOperator*{\argmin}{arg\,min}
+
+\clubpenalty = 10000
+\widowpenalty = 10000
+\sloppy
+\frenchspacing
+
+\begin{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\title{Holistic Sum-Product Optimization\\for Large-Scale Machine Learning}
+
+\numberofauthors{1}
+\author{
+  \alignauthor 
+	~\vspace{-0.7cm}\\
+	Dylan Hutchison\textsuperscript{2}\thanks{Work done during an internship at IBM Research -- Almaden.},~~~Matthias Boehm\textsuperscript{1},~~~Alexandre V. Evfimievski\textsuperscript{1},\vspace{0.1cm}\\
+  Berthold Reinwald\textsuperscript{1},~~~Prithviraj Sen\textsuperscript{1}\\~\\
+  \affaddr{\textsuperscript{1} IBM Research -- Almaden;~~San Jose, CA, USA}\\
+	\affaddr{\textsuperscript{2} University of Washington;~~Seattle, WA, USA}
+}
+
+\maketitle
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{abstract}
+blah blah
+\end{abstract}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Introduction}
+
+Intro
+
+\section{System Architecture}
+\label{sec:sysarch}
+
+SystemML
+
+\section{Related Work}
+\label{sec:rwork}
+
+Sum-product optimization frameworks: FAQ \cite{KhamisNR16}, AJAR, PANDA.
+
+DB query compilation
+
+PL comprehensions
+
+HPC operator fusion
+
+ML systems operator fusion
+
+\section{Conclusions}
+
+We have the best theory and the best system!
+
+We have lots of future work!
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%bibliography
+\small
+\bibliographystyle{abbrv}
+\bibliography{SpoofHolistic}  
+%\enlargethispage{\baselineskip} %last row right
+\normalsize
+
+
+\end{document}
