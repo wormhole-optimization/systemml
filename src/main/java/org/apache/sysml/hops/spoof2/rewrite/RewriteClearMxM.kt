@@ -39,7 +39,7 @@ class RewriteClearMxM : SPlanRewriteRule() {
 
             // map the aggNames below the unbind-bind
             var offset = 0
-            agg.aggreateNames.mapInPlace {
+            agg.aggs.mapInPlace {
                 if( it !in bind.bindings.values )
                     it
                 else {

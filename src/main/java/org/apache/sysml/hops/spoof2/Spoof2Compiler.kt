@@ -486,7 +486,7 @@ object Spoof2Compiler {
         return if( mult is SNodeNary && mult.op == NaryOp.MULT && agg.op == Hop.AggOp.SUM
                 && mult.inputs.size == 2
                 && mult.inputs[0].schema.names.intersect(mult.inputs[1].schema.names).size == 1 // forbear element-wise multiplication followed by agg
-                && agg.aggreateNames.size == 1 )
+                && agg.aggs.size == 1 )
         {   // MxM
             var mult0 = mult.inputs[0]
             var mult1 = mult.inputs[1]
@@ -514,9 +514,8 @@ object Spoof2Compiler {
                 val tmp = mult0; mult0 = mult1; mult1 = tmp
                 val t = hop0; hop0 = hop1; hop1 = t
             }
-
             // check positions of labels and see if we need to transpose
-            val aggName: Name = agg.aggreateNames[0]
+            val aggName: Name = agg.aggs[0]
             when( mult0.schema.size ) {
                 1 -> when( mult1.schema.size ) { // hop0 is V
                     1 -> when( hop0.classify() ) { // hop1 is V; inner product
@@ -586,6 +585,10 @@ object Spoof2Compiler {
             val aggInput = mult
             var hop0 = rReconstructHopDag(aggInput, hopMemo)
 
+            // if aggInput does not have an aggName in its schema, then the aggregation is constant over that attribute.
+            // TODO constant aggregation over an attribute
+            // see Spoof2Test#44 sum(A+7)
+
             // AggUnaryOp always requires MATRIX input
             if( hop0.dataType == Expression.DataType.SCALAR ) {
                 hop0 = HopRewriteUtils.createUnary(hop0, OpOp1.CAST_AS_MATRIX)
@@ -594,14 +597,14 @@ object Spoof2Compiler {
             }
 
             // Determine direction
-            SNodeException.check(agg.aggreateNames.size in 1..2, agg)
-            {"don't know how to compile aggregate to Hop with aggregates ${agg.aggreateNames}"}
+            SNodeException.check(agg.aggs.size in 1..2, agg)
+            {"don't know how to compile aggregate to Hop with aggregates ${agg.aggs}"}
             var dir = when {
-                agg.aggreateNames.size == 2 -> Hop.Direction.RowCol
+                agg.aggs.size == 2 -> Hop.Direction.RowCol
                 // change to RowCol when aggregating vectors, in order to create a scalar rather than a 1x1 matrix
                 hop0.dim2 == 1L -> Hop.Direction.RowCol // sum first dimension ==> row vector : Hop.Direction.Col
                 hop0.dim1 == 1L -> Hop.Direction.RowCol // sum second dimension ==> col vector: Hop.Direction.Row
-                agg.aggreateNames[0] == aggInput.schema.names[0] -> {
+                agg.aggs[0] == aggInput.schema.names[0] -> {
                     agg.check(aggInput.schema.size == 2) {"this may be erroneous if aggInput is not a matrix: ${aggInput.id} $aggInput ${aggInput.schema}"}
                     Hop.Direction.Col
                 }
@@ -625,7 +628,7 @@ object Spoof2Compiler {
             val ret = HopRewriteUtils.createAggUnaryOp(hop0, agg.op, dir)
             if( LOG.isTraceEnabled )
                 LOG.trace("Decide direction $dir on input dims [${hop0.dim1},${hop0.dim2}], schema $aggInput, " +
-                        "aggregating on ${agg.aggreateNames} by ${agg.op} to schema ${agg.schema} for SNode ${agg.id} and new Hop ${ret.hopID}")
+                        "aggregating on ${agg.aggs} by ${agg.op} to schema ${agg.schema} for SNode ${agg.id} and new Hop ${ret.hopID}")
             ret
         }
     }

@@ -41,8 +41,8 @@ class RewriteSplitMultiplyPlus : SPlanRewriteRule() {
                 val parent = mult.parents[0] as SNodeAggregate
                 // heuristic: the first inputs to multiply should be the ones with the most things to aggregate.
                 mult.inputs.sortWith(
-                        (compareBy<SNode> { parent.aggreateNames.intersect(it.schema.names).count() })
-                                .thenComparing<Int> { -(it.schema.names - parent.aggreateNames).size }
+                        (compareBy<SNode> { parent.aggs.intersect(it.schema.names).count() })
+                                .thenComparing<Int> { -(it.schema.names - parent.aggs).size }
                 )
                 val changed = mult.refreshSchemasUpward()
                 if (changed && SPlanRewriteRule.LOG.isDebugEnabled)

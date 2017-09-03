@@ -10,7 +10,7 @@ fun SNode.renameAttributes(renaming: Map<Name, Name>, useInternalGuard: Boolean)
         var changed = c
         when( it ) {
             is SNodeAggregate -> {
-                changed = it.aggreateNames.mapInPlace { renaming[it] ?: it } || changed
+                changed = it.aggs.mapInPlace { renaming[it] ?: it } || changed
             }
             is SNodeUnbind -> {
                 changed = it.unbindings.mapValuesInPlace { renaming[it] ?: it } || changed
@@ -73,7 +73,7 @@ fun SNode.isEntirelyDataExtEquals(): Boolean {
 }
 
 fun SNodeAggregate.copyAggRenameDown(): SNodeAggregate {
-    val renaming = this.aggreateNames.map { it to Schema.freshNameCopy(it) }.toMap()
+    val renaming = this.aggs.map { it to Schema.freshNameCopy(it) }.toMap()
     val aggInput = this.inputs[0].renameCopyDown(renaming, HashMap())
     val agg = SNodeAggregate(this.op, aggInput, renaming.values)
     return agg
@@ -91,7 +91,7 @@ private fun SNode.renameCopyDown(renaming: Map<Name, Name>, memo: HashMap<Long, 
             val i: SNode = if( r.isNotEmpty() ) this.inputs[0].renameCopyDown(r, memo) else this.inputs[0]
             SNodeBind(i, b)
         }
-        is SNodeAggregate -> SNodeAggregate(this.op, this.inputs[0].renameCopyDown(renaming, memo), this.aggreateNames)
+        is SNodeAggregate -> SNodeAggregate(this.op, this.inputs[0].renameCopyDown(renaming, memo), this.aggs)
         is SNodeNary -> {
             SNodeNary(this.op, this.inputs.map { input ->
                 val renamingIntersect = renaming.filterKeys { it in input.schema.names }

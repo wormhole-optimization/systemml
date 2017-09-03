@@ -289,10 +289,10 @@ class SPlanCSEElimRewriter(
                             if( n1.op != n2.op )
                                 continue@inner
                             // we care about the position of the aggregateNames
-                            if( n1.aggreateNames.size != n2.aggreateNames.size )
+                            if( n1.aggs.size != n2.aggs.size )
                                 continue@inner
-                            val i1 = n1.aggreateNames.map { r1.schemaMapping[it]!! }.toSet()
-                            val i2 = n2.aggreateNames.map { r2.schemaMapping[it]!! }.toSet()
+                            val i1 = n1.aggs.map { r1.schemaMapping[it]!! }.toSet()
+                            val i2 = n2.aggs.map { r2.schemaMapping[it]!! }.toSet()
                             if( i1 == i2 ) {
                                 doElim(n1, n2)
                                 iter.remove()

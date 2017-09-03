@@ -178,7 +178,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                     val aboveName = above.bindings[unbindBindPos]!!
                     val nodeName = node.unbindings[unbindBindPos]!!
                     // exception: if aboveName has a parent that is an SNodeAggregate, then reverse the ordering
-                    val flip = above.parents.any { it is SNodeAggregate && nodeName in it.aggreateNames }
+                    val flip = above.parents.any { it is SNodeAggregate && nodeName in it.aggs }
                     val success = if( Schema.nameComparator.compare(aboveName, nodeName) > 0 ) // flip!
                         tryRenameSingle(above, aboveName, nodeName)
                     else
@@ -311,7 +311,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
             if (node is SNodeUnbind) {
                 if (newName in node.unbindings.values )
                     return false
-                if (node.input.let { newName !in it.schema && (it !is SNodeAggregate || newName !in it.aggreateNames) && it !is ENode && (it !is SNodeUnbind || newName !in it.unbindings.values) }) {
+                if (node.input.let { newName !in it.schema && (it !is SNodeAggregate || newName !in it.aggs) && it !is ENode && (it !is SNodeUnbind || newName !in it.unbindings.values) }) {
                     val bindingPosition = node.unbindings.entries.find { (_, n) -> n == oldName }!!.key
                     node.unbindings.mapValuesInPlace { if (it == oldName) newName else it }
                     rRenamePropagate(oldName, newName, node.input, node)
@@ -324,7 +324,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
             } else {
                 node as SNodeBind
                 val (bind2parentsOverlap, bind2parentsNoOverlap) = node.parents.partition {
-                    newName in it.schema || (it is SNodeAggregate && newName in it.aggreateNames) || it is ENode || it is SNodeUnbind && newName in it.unbindings.values
+                    newName in it.schema || (it is SNodeAggregate && newName in it.aggs) || it is ENode || it is SNodeUnbind && newName in it.unbindings.values
                 }
                 if (bind2parentsNoOverlap.isNotEmpty()) {
                     val bindingPosition = node.bindings.entries.find { (_, n) -> n == oldName }!!.key
@@ -356,7 +356,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
 
                     bind2parentsNoOverlap.toSet().forEach {
                         if (newName !in it.schema
-                                &&  (it !is SNodeAggregate || newName !in it.aggreateNames) && it !is ENode && (it !is SNodeUnbind || newName !in it.unbindings.values)
+                                &&  (it !is SNodeAggregate || newName !in it.aggs) && it !is ENode && (it !is SNodeUnbind || newName !in it.unbindings.values)
                                 ) // we may handle a parent in the middle of rRenamePropagate
                             rRenamePropagate(oldName, newName, it, bindNewName)
                     }
@@ -374,7 +374,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
             rRenamePropagate(oldName, newName, node, fromNode, refreshParentsList)
             refreshParentsList.forEach { n ->
                 n.parents.toSet().forEach {
-                    if (oldName in it.schema || (it is SNodeUnbind && oldName in it.unbindings.values) || it is SNodeAggregate && oldName in it.aggreateNames)
+                    if (oldName in it.schema || (it is SNodeUnbind && oldName in it.unbindings.values) || it is SNodeAggregate && oldName in it.aggs)
                         rRenamePropagate(oldName, newName, it, n)
                 }
             }
@@ -417,9 +417,9 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
             if (LOG.isTraceEnabled)
                 LOG.trace("at (${node.id}) $node ${node.schema} from ${if (fromInput) "input" else "parent"} (${fromNode.id}) $fromNode")
             // Stop on Name Conflict.
-//        if( node is SNodeAggregate && newName in node.aggreateNames )
+//        if( node is SNodeAggregate && newName in node.aggs )
 //            return
-            if (newName in node.schema || node is SNodeAggregate && newName in node.aggreateNames || node is ENode || node is SNodeUnbind && newName in node.unbindings.values) {
+            if (newName in node.schema || node is SNodeAggregate && newName in node.aggs || node is ENode || node is SNodeUnbind && newName in node.unbindings.values) {
                 if (fromInput) {
                     val bindingPosition = fromNode.schema.names.indexOf(newName)
                     val unbindNew = SNodeUnbind(fromNode, mapOf(bindingPosition to newName)).apply { this.visited = fromNode.visited }
@@ -447,8 +447,8 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
             // Stop when closing the scope of oldName via Agg or Unbind. (These have a single input.)
             when (node) {
                 is SNodeAggregate -> {
-                    if (oldName in node.aggreateNames) {
-                        node.aggreateNames[node.aggreateNames.indexOf(oldName)] = newName
+                    if (oldName in node.aggs) {
+                        node.aggs[node.aggs.indexOf(oldName)] = newName
                         return
                     }
                 }

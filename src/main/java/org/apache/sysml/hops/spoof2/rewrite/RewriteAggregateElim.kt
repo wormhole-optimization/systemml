@@ -24,7 +24,7 @@ class RewriteAggregateElim : SPlanRewriteRule() {
                 if (agg1.op == agg2.op) {
                     // consecutive aggregates; let agg1 do all the aggregating
                     // eliminate agg2; connect agg1 to child of agg2
-                    agg1.aggreateNames += agg2.aggreateNames
+                    agg1.aggs += agg2.aggs
                     val agg2child = agg2.input
                     agg2child.parents -= agg2
                     agg1.input = agg2child
@@ -35,7 +35,7 @@ class RewriteAggregateElim : SPlanRewriteRule() {
                     return rRewriteNode(parent, agg1, true)
                 }
             }
-            if( node.aggreateNames.isEmpty() ) {
+            if( node.aggs.isEmpty() ) {
                 // agg is empty; connect child to parent
                 // handle multiple parents
                 val child = node.inputs[0]

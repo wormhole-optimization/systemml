@@ -83,7 +83,7 @@ sealed class SumProduct {
             var top = _top
             val sumBlocks = ArrayList<SumBlock>()
             while (top is SNodeAggregate) {
-                sumBlocks += SumBlock(top.op, top.aggreateNames.toMutableSet())
+                sumBlocks += SumBlock(top.op, top.aggs.toMutableSet())
                 val topTemp = top
                 top = top.inputs[0]
                 top.parents -= topTemp
