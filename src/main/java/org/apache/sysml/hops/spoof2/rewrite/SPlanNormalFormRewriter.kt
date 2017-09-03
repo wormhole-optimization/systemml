@@ -64,17 +64,17 @@ class SPlanNormalFormRewriter : SPlanRewriter {
         val rr0: RewriterResult = RewriterResult.NoChange //bottomUpRewrite(roots)
 
         // first bind elim
-        var count = 0
+        var count0 = 0
         do {
-            count++
+            count0++
             if( CHECK ) SPlanValidator.validateSPlan(roots)
             val changed = rewriteDown(roots, _ruleBindElim)
         } while (changed)
 
         if( SPlanRewriteRule.LOG.isTraceEnabled )
-            SPlanRewriteRule.LOG.trace("After bind elim: (count=$count) "+Explain.explainSPlan(roots))
+            SPlanRewriteRule.LOG.trace("After bind elim: (count=$count0) "+Explain.explainSPlan(roots))
 
-        count = 0
+        var count = 0
         do {
             var changed: Boolean
             do {
@@ -85,7 +85,7 @@ class SPlanNormalFormRewriter : SPlanRewriter {
             changed = bottomUpRewrite(roots) is RewriterResult.NewRoots || changed
         } while (changed)
 
-        if( count == 1 ) {
+        if( count == 1 && count0 == 1 ) {
             if( SPlanRewriteRule.LOG.isTraceEnabled )
                 SPlanRewriteRule.LOG.trace("'to normal form' rewrites did not affect SNodePlan; skipping rest")
             return rr0
