@@ -18,7 +18,7 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
  */
 class RewritePullPlusAboveMult : SPlanRewriteRule() {
 
-    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
         if( node !is SNodeNary || node.op != NaryOp.MULT ) // todo generalize to other * functions that are semiring to +
             return RewriteResult.NoChange
         val mult: SNodeNary = node

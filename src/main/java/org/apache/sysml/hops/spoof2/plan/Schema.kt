@@ -35,11 +35,35 @@ class Schema private constructor(
             val i = it.lastIndexOf('_', it.length-2)
             if( i == -1 ) it.substring(1).toLong() else it.substring(i + 1).toLong()
         }
+
+        fun copyShapes(src: Schema, tgt: Iterable<Name>): Schema {
+            val s = Schema(arrayListOf(), arrayListOf())
+            tgt.forEach { n ->
+                check( n in src.names ) {"error copying schema information from $src to names $tgt; src does not contain name $n"}
+                s.names += n
+                s.shapes += src.getShape(n)
+            }
+            return s
+        }
+        fun copyShapes(src: Schema, vararg names: Name): Schema {
+             return copyShapes(src, names.asList())
+        }
     }
 
     fun deepCopy() = Schema(this)
 
+    operator fun get(pos: Int) = names[pos]
+    operator fun set(pos: Int, name: Name) { names[pos] = name }
     operator fun contains(name: Name) = name in names
+    operator fun plusAssign(schema: Schema) {
+        this.unionWithBound(schema)
+    }
+    operator fun minusAssign(schema: Schema) {
+        this.removeBoundAttributes(schema.names)
+    }
+    operator fun minusAssign(names: Iterable<Name>) {
+        this.removeBoundAttributes(names)
+    }
 
     fun zip(): List<Pair<Name,Shape>> = names.zip(shapes)
 

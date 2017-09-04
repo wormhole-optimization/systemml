@@ -11,7 +11,7 @@ import org.apache.sysml.hops.spoof2.plan.*
  */
 class RewriteSplitMultiplyPlus : SPlanRewriteRule() {
 
-    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
         val origInputSize = node.inputs.size
         if( node is SNodeNary
                 && (node.op == SNodeNary.NaryOp.MULT || node.op == SNodeNary.NaryOp.PLUS)
@@ -41,7 +41,7 @@ class RewriteSplitMultiplyPlus : SPlanRewriteRule() {
                 val parent = mult.parents[0] as SNodeAggregate
                 // heuristic: the first inputs to multiply should be the ones with the most things to aggregate.
                 mult.inputs.sortWith(
-                        (compareBy<SNode> { parent.aggs.intersect(it.schema.names).count() })
+                        (compareBy<SNode> { parent.aggs.names.intersect(it.schema.names).count() })
                                 .thenComparing<Int> { -(it.schema.names - parent.aggs).size }
                 )
                 val changed = mult.refreshSchemasUpward()

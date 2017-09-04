@@ -7,7 +7,7 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
 
 class RewritePushAggIntoMult : SPlanRewriteRule() {
-    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
 
         //pattern: agg(sum)-b(*)
         if (node is SNodeAggregate && node.op == AggOp.SUM
@@ -35,7 +35,7 @@ class RewritePushAggIntoMult : SPlanRewriteRule() {
 
             if (numApplied > 0) {
                 // check if the agg no longer needs some attributes
-                val fullyPushed = agg.aggs.filter { it !in mult.schema }
+                val fullyPushed = agg.aggs.names.filter { it !in mult.schema }
                 agg.aggs -= fullyPushed
                 if( SPlanRewriteRule.LOG.isDebugEnabled )
                     SPlanRewriteRule.LOG.debug("RewritePushAggIntoMult (num=$numApplied). Fully pushed: $fullyPushed."+(if(agg.aggs.isEmpty())" Eliminate agg." else ""))

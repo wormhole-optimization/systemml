@@ -10,7 +10,7 @@ import org.apache.sysml.hops.spoof2.plan.*
  */
 class RewriteSplitCSE : SPlanRewriteRule() {
 
-    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
         val ChildIdxFun: (IndexedValue<SNode>) -> SNode = { (i,child) ->
             val copy: SNode = child.shallowCopyNoParentsYesInputs()
             child.parents -= node

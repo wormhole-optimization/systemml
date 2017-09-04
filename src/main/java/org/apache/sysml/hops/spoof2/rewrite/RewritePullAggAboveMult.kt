@@ -65,7 +65,7 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
  */
 class RewritePullAggAboveMult : SPlanRewriteRule() {
 
-    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
         if( node !is SNodeNary || node.op != NaryOp.MULT ) // todo generalize to other * functions that are semiring to +
             return RewriteResult.NoChange
         val mult: SNodeNary = node
@@ -82,14 +82,14 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
                     SPlanRewriteRule.LOG.debug("In RewritePullAggAboveMult, splitting CSE id=${agg.id} $agg " +
                             "that occurs $numAggInMultInput times as input to id=${mult.id} $mult")
 
-                val (overlapAggNames, nonOverlapAggNames) = agg.aggs.partition { it in mult.schema }
+                val (overlapAggNames, nonOverlapAggNames) = agg.aggs.names.partition { it in mult.schema }
                 if( overlapAggNames.isNotEmpty() ) {
                     if( nonOverlapAggNames.isNotEmpty() ) {
                         // split agg into agg and aggDown. aggDown contains the non-overlapping agg names.
                         agg.inputs[0].parents.remove(agg)
                         val aggDown = SNodeAggregate(agg.op, agg.inputs[0], nonOverlapAggNames)
                         aggDown.parents += agg
-                        agg.aggs.removeAll(nonOverlapAggNames)
+                        agg.aggs.names.removeAll(nonOverlapAggNames)
                         agg.inputs[0] = aggDown
                         if (SPlanRewriteRule.LOG.isDebugEnabled)
                             SPlanRewriteRule.LOG.debug("In RewritePullAggAboveMult, " +
@@ -117,7 +117,7 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
                     agg = newAgg
                 }
 
-                for( multInputIdx in iMultToAgg+1..mult.inputs.size-1 ) {
+                for( multInputIdx in iMultToAgg+1 until mult.inputs.size) {
                     if( mult.inputs[multInputIdx] == agg ) {
                         val newAgg = agg.copyAggRenameDown()
                         agg.aggs += newAgg.aggs

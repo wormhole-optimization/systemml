@@ -167,6 +167,3 @@ private tailrec fun rStripDead(toRemove: MutableSet<SNode>, noStrip: Set<SNode>)
     return rStripDead(toRemove, noStrip)
 }
 
-
-
-

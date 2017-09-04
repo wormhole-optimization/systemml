@@ -5,26 +5,28 @@ import org.apache.sysml.hops.Hop.AggOp
 /**
  * Aggregate a single input.
  */
-class SNodeAggregate private constructor(
+class SNodeAggregate(
         val op: AggOp,
-        inputs: List<SNode>,
-        aggs0: Collection<Name>
-) : SNode(inputs) {
+        input: SNode,
+        aggs: Schema
+) : SNode(listOf(input)) {
     var input: SNode
         get() = inputs[0]
         set(v) { inputs[0] = v }
 
-    override fun shallowCopyNoParentsYesInputs() = SNodeAggregate(op, inputs, aggs)
+    constructor(op: AggOp, input: SNode, vararg names: Name) :
+            this(op, input, Schema.copyShapes(input.schema, *names))
+    constructor(op: AggOp, input: SNode, names: Iterable<Name>) :
+            this(op, input, Schema.copyShapes(input.schema, names))
+
+    override fun shallowCopyNoParentsYesInputs() = SNodeAggregate(op, input, aggs)
     override fun compare(o: SNode) =
             o is SNodeAggregate && o.op == this.op && o.aggs == this.aggs && o.input == this.input
 
-    val aggs: ArrayList<Name> = ArrayList(aggs0)
+    val aggs: Schema = Schema(aggs)
     init {
         refreshSchema()
     }
-
-    constructor(op: AggOp, input: SNode, names: Collection<Name>) : this(op, listOf(input), names)
-    constructor(op: AggOp, input: SNode, vararg names: Name) : this(op, listOf(input), names.asList())
 
     override fun toString() = "agg(${op.name.toLowerCase()}$aggs)"
 
@@ -35,6 +37,6 @@ class SNodeAggregate private constructor(
     override fun refreshSchema() {
         // input names minus aggregated names
         schema.setTo(inputs[0].schema)
-        schema.removeBoundAttributes(aggs)
+        schema.removeBoundAttributes(aggs.names)
     }
 }

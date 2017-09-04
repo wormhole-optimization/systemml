@@ -13,7 +13,7 @@ class RewriteNormalForm : SPlanRewriteRule() {
         private val LOG = LogFactory.getLog(RewriteNormalForm::class.java)!!
     }
 
-    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
         if( !SumProduct.isSumProductBlock(node))
             return RewriteResult.NoChange
         val spb = SumProduct.constructBlock(node, true)

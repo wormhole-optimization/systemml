@@ -448,7 +448,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
             when (node) {
                 is SNodeAggregate -> {
                     if (oldName in node.aggs) {
-                        node.aggs[node.aggs.indexOf(oldName)] = newName
+                        node.aggs[node.aggs.names.indexOf(oldName)] = newName
                         return
                     }
                 }

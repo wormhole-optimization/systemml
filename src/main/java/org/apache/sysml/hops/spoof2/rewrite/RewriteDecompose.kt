@@ -11,7 +11,7 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary
  */
 class RewriteDecompose : SPlanRewriteRule() {
 
-    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
         if( node is SNodeNary && node.op == SNodeNary.NaryOp.MINUS ) {
             val left = node.inputs[0]
             val right = node.inputs[1]

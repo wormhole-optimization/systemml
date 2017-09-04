@@ -8,7 +8,7 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
 import org.apache.sysml.hops.spoof2.plan.mapInPlace
 
 class RewritePushAggIntoPlus : SPlanRewriteRule() {
-    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
 
         if (node is SNodeAggregate && node.op == AggOp.SUM
                 && node.inputs[0] is SNodeNary

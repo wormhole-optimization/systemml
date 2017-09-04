@@ -22,7 +22,7 @@ class RewriteMultiplyCSEToPower : SPlanRewriteRule() {
                 && this.parents.size == 1
     }
 
-    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
         if( node is SNodeNary && node.op == SNodeNary.NaryOp.MULT ) { // todo generalize to other * functions - min and max don't change input, + doubles input
             var numCSEs = 0
             var multToChild = 0

@@ -14,7 +14,7 @@ import org.apache.sysml.hops.spoof2.plan.*
  * ```
  */
 class RewriteClearMxM : SPlanRewriteRule() {
-    override fun rewriteNode(parent: SNode, node: SNode, pos: Int): RewriteResult {
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
         if (node is SNodeAggregate
                 && node.input is SNodeBind && node.input.inputs[0] is SNodeUnbind) {
             val agg = node
@@ -38,8 +38,7 @@ class RewriteClearMxM : SPlanRewriteRule() {
             }
 
             // map the aggNames below the unbind-bind
-            var offset = 0
-            agg.aggs.mapInPlace {
+            agg.aggs.names.mapInPlace {
                 if( it !in bind.bindings.values )
                     it
                 else {

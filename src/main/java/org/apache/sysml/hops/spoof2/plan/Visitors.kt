@@ -10,7 +10,7 @@ fun SNode.renameAttributes(renaming: Map<Name, Name>, useInternalGuard: Boolean)
         var changed = c
         when( it ) {
             is SNodeAggregate -> {
-                changed = it.aggs.mapInPlace { renaming[it] ?: it } || changed
+                changed = it.aggs.names.mapInPlace { renaming[it] ?: it } || changed
             }
             is SNodeUnbind -> {
                 changed = it.unbindings.mapValuesInPlace { renaming[it] ?: it } || changed
@@ -73,9 +73,9 @@ fun SNode.isEntirelyDataExtEquals(): Boolean {
 }
 
 fun SNodeAggregate.copyAggRenameDown(): SNodeAggregate {
-    val renaming = this.aggs.map { it to Schema.freshNameCopy(it) }.toMap()
+    val renaming = this.aggs.names.map { it to Schema.freshNameCopy(it) }.toMap()
     val aggInput = this.inputs[0].renameCopyDown(renaming, HashMap())
-    val agg = SNodeAggregate(this.op, aggInput, renaming.values)
+    val agg = SNodeAggregate(this.op, aggInput, Schema.copyShapes(aggInput.schema, renaming.values))
     return agg
 }
 
