@@ -39,4 +39,8 @@ class SNodeAggregate(
         schema.setTo(inputs[0].schema)
         schema.removeBoundAttributes(aggs.names)
     }
+
+    fun aggsNotInInputSchema(): Schema {
+        return aggs.zip().filter { (n,_) -> n !in input.schema }.unzip().let { (n,s) -> Schema(n,s) }
+    }
 }

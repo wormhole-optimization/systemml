@@ -57,7 +57,7 @@ object Spoof2Compiler {
         }
 
         // handle regular statement blocks in "main" method
-        for (i in 0..dmlprog.numStatementBlocks - 1) {
+        for (i in 0 until dmlprog.numStatementBlocks) {
             val current = dmlprog.getStatementBlock(i)
             generateCodeFromStatementBlock(current)
         }
@@ -582,12 +582,32 @@ object Spoof2Compiler {
             mxm
         }
         else { // general Agg
-            val aggInput = mult
-            var hop0 = rReconstructHopDag(aggInput, hopMemo)
 
             // if aggInput does not have an aggName in its schema, then the aggregation is constant over that attribute.
-            // TODO constant aggregation over an attribute
-            // see Spoof2Test#44 sum(A+7)
+            // see Spoof2Test#44 sum(A+7) --> sum(A) + 7*nrow(A)*ncol(A)
+            val constantAggs = agg.aggsNotInInputSchema()
+            if( constantAggs.isNotEmpty() ) {
+                when( agg.op ) {
+                    Hop.AggOp.MIN, Hop.AggOp.MAX, Hop.AggOp.MEAN -> {}
+                    Hop.AggOp.SUM -> {
+                        val mFactor = constantAggs.shapes.fold(1L, Long::times)
+                        val lit = SNodeData(LiteralOp(mFactor))
+
+                        agg.input.parents -= agg
+                        val newInput = SNodeNary(NaryOp.MULT, agg.input, lit)
+                        newInput.parents += agg
+                        agg.input = newInput
+
+                        agg.aggs -= constantAggs
+                    }
+                    else -> throw UnsupportedOperationException("don't know how to handle constant aggregation with on $agg over constant attributes $constantAggs")
+                }
+            }
+
+            val aggInput = agg.input
+            var hop0 = rReconstructHopDag(aggInput, hopMemo)
+            if( agg.aggs.isEmpty() ) // empty aggregation
+                return hop0
 
             // AggUnaryOp always requires MATRIX input
             if( hop0.dataType == Expression.DataType.SCALAR ) {
