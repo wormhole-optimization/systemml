@@ -56,8 +56,9 @@ class SPlanBottomUpRewriter : SPlanRewriter {
         val (rr0,leaves) = cseElim.rewriteSPlanAndGetLeaves(roots)
         var rr = rr0
 
-        if( CHECK )
-            SPlanValidator.validateSPlan(roots)
+        if( CHECK ) SPlanValidator.validateSPlan(roots)
+        if( LOG.isTraceEnabled )
+            LOG.trace("After CSE Elim:"+ Explain.explainSPlan(roots))
 
         var changed = false
         val collectedRoots = arrayListOf<SNode>()

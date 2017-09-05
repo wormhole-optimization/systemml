@@ -181,8 +181,8 @@ class NormalFormExploreEq : SPlanRewriter {
         val spb = SumProduct.constructBlock(node, false)
         if( node.schema.names.any { !it.isBound() } )
             throw SNodeException(node, "Found unbound name in Sum-Product block; may not be handled incorrectly. $spb")
-        if( LOG.isDebugEnabled )
-            LOG.debug("Found Sum-Product Block:\n"+spb)
+        if( LOG.isTraceEnabled )
+            LOG.trace("Found Sum-Product Block:\n"+spb)
 
         // 0. Check if this normal form can be partitioned into two separate connected components.
         // This occurs if some portion of the multiplies produces a scalar.
@@ -291,8 +291,8 @@ class NormalFormExploreEq : SPlanRewriter {
     }
 
     private fun insert(eNode: ENode, spb: SumProduct.Block): Int {
-        if( LOG.isTraceEnabled )
-            LOG.trace("Insert: "+spb)
+//        if( LOG.isTraceEnabled )
+//            LOG.trace("Insert: "+spb)
         val newTopInput = spb.constructSPlan().let { SNodeUnbind(it) }
         eNode.addNewEPath(newTopInput)
         stats.numAggPlusMultiply += spb.countAggsAndInternalBlocks()

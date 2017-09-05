@@ -481,7 +481,8 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
             node.refreshSchema()
             // Recurse to renaming parents above
             node.parents.toSet().forEach {
-                if (it != fromNode)
+                // don't step into parents that we already visited (which can occur due to a loop: visiting a parent through an input)
+                if (it != fromNode && (oldName in it.schema || it is SNodeAggregate && oldName in it.aggs || it is SNodeUnbind && oldName in it.unbindings.values) )
                     rRenamePropagate(oldName, newName, it, node, refreshParentsList)
             }
         }

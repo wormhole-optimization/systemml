@@ -233,6 +233,7 @@ object Spoof2Compiler {
         // shouldn't be necessary because the roots are generally Writes, which correct orientation on their own
         roots2.mapInPlaceIndexed { idx, root2 ->
             if( rootClasses[idx].isVector && root2.classify() != rootClasses[idx] ) {
+
                 check( root2.classify().isVector ) {"root changed type after reconstruction? Old type ${rootClasses[idx]}; new type ${root2.classify()} dims ${root2.dim1}, ${root2.dim2} hopid=${root2.hopID}" +
                         "\n modified Hop Dag is:\n" + Explain.explainHops(roots2)}
                 // todo look at transposes
@@ -431,15 +432,18 @@ object Spoof2Compiler {
                     when (current.input[0].classify()) {
                         HopClass.SCALAR -> throw HopsException("AggBinaryOp id=${current.hopID} should not act on scalars but input SNodes are $inputs")
                         HopClass.COL_VECTOR -> {
-                            HopsException.check(current.input[1].classify() == HopClass.ROW_VECTOR, current,
+                            HopsException.check(current.input[1].classify() == HopClass.ROW_VECTOR
+                                    || current.input[1].classify() == HopClass.SCALAR, current,
                                     "Column vector on left must multiply with row vector on right")
                             // outer product
                             val bs0 = inputs[0].schema.genAllBindings()
                             inputs[0] = SNodeBind(inputs[0], bs0)
                             boundNames += 0 to bs0[0]!!
-                            val bs1 = inputs[1].schema.genAllBindings()
-                            inputs[1] = SNodeBind(inputs[1], bs1)
-                            boundNames += 1 to bs1[0]!!
+                            if( inputs[1].schema.isNotEmpty() ) { // check for multiply with scalar
+                                val bs1 = inputs[1].schema.genAllBindings()
+                                inputs[1] = SNodeBind(inputs[1], bs1)
+                                boundNames += 1 to bs1[0]!!
+                            }
                             aggName = null
                         }
                         HopClass.ROW_VECTOR, HopClass.MATRIX -> {

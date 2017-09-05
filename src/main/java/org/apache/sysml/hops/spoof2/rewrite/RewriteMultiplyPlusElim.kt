@@ -2,6 +2,7 @@ package org.apache.sysml.hops.spoof2.rewrite
 
 import org.apache.sysml.hops.spoof2.plan.SNode
 import org.apache.sysml.hops.spoof2.plan.SNodeNary
+import org.apache.sysml.hops.spoof2.plan.refreshSchemasUpward
 
 /**
  * Combine consecutive multiplies into one.
@@ -54,6 +55,7 @@ class RewriteMultiplyPlusElim : SPlanRewriteRule() {
                 // assign to mult1
                 mult1.inputs.clear()
                 mult1.inputs.addAll(newMult1Inputs)
+                mult1.refreshSchemasUpward()
                 // don't skip the added children; they could also be multiplies
                 numApplied += i1to2all.size
             }

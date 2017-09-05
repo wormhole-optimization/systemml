@@ -39,7 +39,9 @@ class RewriteClearMxM : SPlanRewriteRule() {
 
             // map the aggNames below the unbind-bind
             agg.aggs.names.mapInPlace {
-                if( it !in bind.bindings.values )
+                if( it in unbind.input.schema && it !in bind.bindings.values ) // todo Dylan WIP
+                    Schema.freshNameCopy(it)
+                else if( it !in bind.bindings.values )
                     it
                 else {
                     val pos = bind.bindings.entries.find { (_,n) -> n == it }!!.key
