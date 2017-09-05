@@ -23,6 +23,7 @@ class SPlanNormalFormRewriter : SPlanRewriter {
     )
     private val _rulesToNormalForm: List<SPlanRewriteRule> = listOf(
 //            RewriteBindElim(),
+            RewriteMultiplyPlusSimplify(),
             RewriteSplitCSE(),          // split CSEs when they would block a sum-product rearrangement
             RewritePullAggAboveMult(),
             RewriteAggregateElim(),
