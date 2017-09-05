@@ -34,21 +34,14 @@ fun SNode.renameAttributes(renaming: Map<Name, Name>, useInternalGuard: Boolean)
 /**
  * Refresh the schema. If it changed, refresh the schema of all parents recursively.
  *
- * @param killAttributes Attributes to delete
  * @return Whether the schema of this node changed.
  */
-fun SNode.refreshSchemasUpward(killAttributes: Set<Name> = setOf()): Boolean {
-    if( killAttributes.isNotEmpty() ) {
-        when( this ) {
-            is SNodeUnbind -> { this.unbindings -= this.unbindings.filterValues { it in killAttributes }.keys }
-            is SNodeAggregate -> { this.aggs -= this.aggs.names.filter { n -> n in killAttributes } }
-        }
-    }
+fun SNode.refreshSchemasUpward(): Boolean {
     val origSchema = Schema(this.schema)
     this.refreshSchema()
     return if( origSchema != this.schema ) // only if schema changed (also acts as a memo guard)
     {
-        this.parents.forEach { it.refreshSchemasUpward(killAttributes) }
+        this.parents.forEach { it.refreshSchemasUpward() }
         true
     } else false
 }

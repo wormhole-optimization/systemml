@@ -90,7 +90,7 @@ class EPath(
             return "{}"
         return contingencyCostMod.asMap().map { (ePath,v) ->
             ePath.shortString() to v.map { share ->
-                "${share.shareNode.id}:${share.cost}${if(share.shadowedBy.isNotEmpty()) "^${share.shadowedBy}^" else ""}"
+                "${share.shareNode.id}:${share.cost}${if(share.shadowedBy.isNotEmpty()) "^${share.shadowedBy.map { it.shortString() }}^" else ""}"
             }
         }.toMap().toString()
     }
