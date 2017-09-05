@@ -39,9 +39,10 @@ class RewriteClearMxM : SPlanRewriteRule() {
 
             // map the aggNames below the unbind-bind
             agg.aggs.names.mapInPlace {
-                if( it in unbind.input.schema && it !in bind.bindings.values ) // todo Dylan WIP
+                if( it in unbind.input.schema && it !in bind.schema ) // maintain constant aggregation
                     Schema.freshNameCopy(it)
-                else if( it !in bind.bindings.values )
+                else
+                    if( it !in bind.bindings.values )
                     it
                 else {
                     val pos = bind.bindings.entries.find { (_,n) -> n == it }!!.key
@@ -85,6 +86,7 @@ class RewriteClearMxM : SPlanRewriteRule() {
             agg.refreshSchema()
             unbind.refreshSchema()
             bind.refreshSchema()
+            bind.parents.forEach { it.refreshSchemasUpward() }
             if( LOG.isTraceEnabled )
                 LOG.trace("RewriteClearMxM: pull unbind/bind above (${agg.id}) $agg")
             return RewriteResult.NewNode(bind)

@@ -27,12 +27,12 @@ class RewriteSplitCSE : SPlanRewriteRule() {
                             || it is SNodeAggregate && it.op == Hop.AggOp.SUM )
                 }
             }
-//            // Pull Σ above +
-//            else if( node is SNodeNary && node.op == SNodeNary.NaryOp.PLUS ) {
-//                { (_,it) ->
-//                    it.parents.size > 1 && it is SNodeAggregate && it.op == Hop.AggOp.SUM
-//                }
-//            }
+            // Pull Σ above +
+            else if( node is SNodeNary && node.op == SNodeNary.NaryOp.PLUS ) {
+                { (_,it) ->
+                    it.parents.size > 1 && it is SNodeAggregate && it.op == Hop.AggOp.SUM
+                }
+            }
             // combine agg
             else if( node is SNodeAggregate && node.op == Hop.AggOp.SUM ) {
                 { (_,it):IndexedValue<SNode> ->

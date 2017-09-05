@@ -31,7 +31,6 @@ class RewritePullAggAbovePlus : SPlanRewriteRule() {
         if( node !is SNodeNary || node.op != NaryOp.PLUS )
             return RewriteResult.NoChange
         val plus: SNodeNary = node
-        var numApplied = 0
 
         val mapInputToNames: MutableMap<Name, Shape> = mutableMapOf()
         // for each input that is an SNodeAggregate,

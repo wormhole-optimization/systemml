@@ -5,7 +5,9 @@ import org.apache.sysml.hops.LiteralOp
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
 
-class RewritePushAggIntoPlus : SPlanRewriteRule() {
+class RewritePushAggIntoPlus(
+        val constantAggToMultiply: Boolean = false
+) : SPlanRewriteRule() {
 
     override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
         if (node is SNodeAggregate && node.op == AggOp.SUM
@@ -93,8 +95,13 @@ class RewritePushAggIntoPlus : SPlanRewriteRule() {
                 }
                 break
             }
-            if( notInInput.isNotEmpty() ) {
-                // todo multiply by shapes here or not?
+            if( constantAggToMultiply && notInInput.isNotEmpty() ) {
+                val mFactor = notInInput.shapes.fold(1L, Long::times)
+                val lit = SNodeData(LiteralOp(mFactor))
+
+                mult.inputs += lit
+                lit.parents += mult
+                agg.aggs -= notInInput
             }
         }
 
