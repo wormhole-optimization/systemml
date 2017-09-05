@@ -4,7 +4,7 @@ import org.apache.sysml.hops.spoof2.plan.*
 
 /**
  * ```
- *   \/                           \/
+ *   \/         ->                \/
  *  Σ[y]    E   ->         E    +[x,z]
  *   |     /  D ->        /  D  -[a,c]
  *  +[x,y,z] /  -> +[x,y,z] /   /
@@ -53,6 +53,17 @@ class RewriteClearMxM : SPlanRewriteRule() {
                     oldAggName
                 }
             }
+            // check for duplicate aggNames. This could happen during constant aggregation.
+            val nameSet = agg.aggs.names.toSet()
+            if( nameSet.size != agg.aggs.names.size ) {
+                nameSet.forEach { n ->
+                    val first = agg.aggs.names.indexOf(n)
+                    val last = agg.aggs.names.lastIndexOf(n)
+                    if( first != last )
+                        agg.aggs.names[last] = Schema.freshNameCopy(n)
+                }
+            }
+
             //wire agg to unbind.input and place bind and unbind above; dead code elim
             val aggParents = ArrayList(agg.parents)
             agg.input = unbind.input

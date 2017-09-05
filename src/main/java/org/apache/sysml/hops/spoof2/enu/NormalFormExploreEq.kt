@@ -271,7 +271,8 @@ class NormalFormExploreEq : SPlanRewriter {
         // Determine what variables we could eliminate at this point
         val eligibleAggNames = spb.eligibleAggNames()
         // Prune down to the agg names with minimum degree
-        val tmp = eligibleAggNames.map { it to (spb.nameToAdjacentNames()[it]!! - it).size }
+        // Dylan: The minimum degree heuristic is very good.
+        val tmp = eligibleAggNames.map { it to (spb.nameToAdjacentNames()[it]!!).size - 1 }
         val minDegree = tmp.map { it.second }.min()!!
         check(minDegree <= 2) { "Minimum degree is >2. Will form tensor intermediary. In spb $spb" }
         val minDegreeAggNames = tmp.filter { it.second == minDegree }.map { it.first }
@@ -290,6 +291,8 @@ class NormalFormExploreEq : SPlanRewriter {
     }
 
     private fun insert(eNode: ENode, spb: SumProduct.Block): Int {
+        if( LOG.isTraceEnabled )
+            LOG.trace("Insert: "+spb)
         val newTopInput = spb.constructSPlan().let { SNodeUnbind(it) }
         eNode.addNewEPath(newTopInput)
         stats.numAggPlusMultiply += spb.countAggsAndInternalBlocks()

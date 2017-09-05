@@ -6,7 +6,7 @@ import org.apache.sysml.hops.spoof2.plan.*
 /**
  * Split common subexpressions when they would block a sum-product rearrangement.
  *
- * *-Σ, Σ-Σ, *-*, *-+
+ * *-Σ, Σ-Σ, *-*, *-+, +-Σ
  */
 class RewriteSplitCSE : SPlanRewriteRule() {
 
@@ -25,6 +25,12 @@ class RewriteSplitCSE : SPlanRewriteRule() {
                     it.parents.size > 1 && (
                             it is SNodeNary && (it.op == SNodeNary.NaryOp.MULT || it.op == SNodeNary.NaryOp.PLUS)
                             || it is SNodeAggregate && it.op == Hop.AggOp.SUM )
+                }
+            }
+            // Pull Σ above +
+            else if( node is SNodeNary && node.op == SNodeNary.NaryOp.PLUS ) {
+                { (_,it) ->
+                    it.parents.size > 1 && it is SNodeAggregate && it.op == Hop.AggOp.SUM
                 }
             }
             // combine agg

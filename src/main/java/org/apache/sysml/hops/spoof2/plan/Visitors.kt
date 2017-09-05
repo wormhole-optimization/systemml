@@ -39,22 +39,11 @@ fun SNode.renameAttributes(renaming: Map<Name, Name>, useInternalGuard: Boolean)
 fun SNode.refreshSchemasUpward(): Boolean {
     val origSchema = Schema(this.schema)
     this.refreshSchema()
-    if( origSchema != this.schema ) // only if schema changed (also acts as a memo guard)
+    return if( origSchema != this.schema ) // only if schema changed (also acts as a memo guard)
     {
         this.parents.forEach { it.refreshSchemasUpward() }
-        return true
-    } else return false
-}
-
-
-fun SNode.refreshSchemasUpwardPermuteName(): Boolean {
-    val origSchema = Schema(this.schema)
-    this.refreshSchema()
-    if( origSchema != this.schema ) // only if schema changed (also acts as a memo guard)
-    {
-        this.parents.forEach { it.refreshSchemasUpward() }
-        return true
-    } else return false
+        true
+    } else false
 }
 
 /**
@@ -75,8 +64,7 @@ fun SNode.isEntirelyDataExtEquals(): Boolean {
 fun SNodeAggregate.copyAggRenameDown(): SNodeAggregate {
     val renaming = this.aggs.names.map { it to Schema.freshNameCopy(it) }.toMap()
     val aggInput = this.inputs[0].renameCopyDown(renaming, HashMap())
-    val agg = SNodeAggregate(this.op, aggInput, Schema.copyShapes(aggInput.schema, renaming.values))
-    return agg
+    return SNodeAggregate(op, aggInput, Schema.copyShapes(aggInput.schema, renaming.values))
 }
 
 

@@ -1,15 +1,13 @@
 package org.apache.sysml.hops.spoof2.rewrite
 
 import org.apache.sysml.hops.Hop.AggOp
-import org.apache.sysml.hops.spoof2.plan.SNode
-import org.apache.sysml.hops.spoof2.plan.SNodeAggregate
-import org.apache.sysml.hops.spoof2.plan.SNodeNary
+import org.apache.sysml.hops.LiteralOp
+import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
-import org.apache.sysml.hops.spoof2.plan.mapInPlace
 
 class RewritePushAggIntoPlus : SPlanRewriteRule() {
-    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
 
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
         if (node is SNodeAggregate && node.op == AggOp.SUM
                 && node.inputs[0] is SNodeNary
                 && (node.inputs[0] as SNodeNary).op == NaryOp.PLUS) {
@@ -36,11 +34,70 @@ class RewritePushAggIntoPlus : SPlanRewriteRule() {
             agg.parents.forEach { it.inputs[it.inputs.indexOf(agg)] = plus; plus.parents += it }
             plus.refreshSchema()
 
+            plus.inputs.indices.forEach { checkConstantAggMult(plus.inputs[it] as SNodeAggregate) }
+
             if( SPlanRewriteRule.LOG.isDebugEnabled )
                 SPlanRewriteRule.LOG.debug("RewritePushAggIntoPlus on (${agg.id}) $agg ${agg.schema} - (${plus.id}) $plus")
             return RewriteResult.NewNode(plus)
+        } else if(node is SNodeAggregate && node.op == AggOp.SUM) {
+            checkConstantAggMult(node)
         }
         return RewriteResult.NoChange
+    }
+
+    private fun checkConstantAggMult(agg: SNodeAggregate) {
+        val mult = agg.input
+        if( mult is SNodeNary && mult.op == NaryOp.MULT ) {
+            var needsSplitCSE = mult.parents.size > 1
+            val notInInput = agg.aggsNotInInputSchema()
+            @Suppress("UNCHECKED_CAST")
+            val litInputs = (mult.inputs.filter { it is SNodeData && it.isLiteral } as List<SNodeData>).toMutableList()
+
+            loop@while( notInInput.isNotEmpty() && litInputs.isNotEmpty() ) {
+                for( v in 1L until (1L shl notInInput.size) ) {
+                    val selectSchema = notInInput.zip().filterIndexed { p, _ ->
+                        v and (1L shl p) != 0L
+                    }.run(::Schema)
+                    val tgt = selectSchema.shapes.fold(1.0, Double::div)
+                    val exact = litInputs.find { (it.hop as LiteralOp).doubleValue == tgt }
+                    if( exact != null ) {
+                        if( needsSplitCSE ) {
+                            val otherParents = mult.parents.filter { it != agg }.toSet()
+                            otherParents.forEach { op ->
+                                val copy = mult.shallowCopyNoParentsYesInputs()
+                                op.inputs.mapInPlace { opi ->
+                                    if( opi == mult ) {
+                                        mult.parents -= op
+                                        copy.parents += op
+                                        copy
+                                    } else opi
+                                }
+                            }
+                            needsSplitCSE = false
+                        }
+                        // exact match with a literal - eliminate the literal
+                        exact.parents -= mult
+                        mult.inputs -= exact
+                        agg.aggs -= selectSchema
+                        notInInput -= selectSchema
+                        litInputs -= exact
+                        // eliminate the mult if it has a single input
+                        if( mult.inputs.size == 1 ) {
+                            val i = mult.inputs[0]
+                            i.parents -= mult
+                            i.parents += agg
+                            agg.input = i
+                        }
+                        continue@loop
+                    }
+                }
+                break
+            }
+            if( notInInput.isNotEmpty() ) {
+                // todo multiply by shapes here or not?
+            }
+        }
+
     }
 
 }

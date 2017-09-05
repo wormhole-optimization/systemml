@@ -15,10 +15,10 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
  * \ /         -> \ / | \
  *  C          ->  C  .. ..
  * ```
- * and no foreign parents on +.
+ * and no foreign parents on Σ.
  *
- * Illustrated above is the "no other parents on +" case.
- * Illustrated below is the "+ has multiple parents, all of which are the *" case.
+ * Illustrated above is the "no other parents on Σ" case.
+ * Illustrated below is the "Σ has multiple parents, all of which are the *" case.
  *
  * Common Subexpression Splitting:
  * Copies the CSE and provides fresh names for the aggregated names.
@@ -27,12 +27,11 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
  *       *     ->    Σ[a,a']
  *     // \    ->    |
  * F  Σ[a] ..  -> F  *
- * \ /         -> \ /|            \
- *  C          ->  C  C'[a -> a'] ..
+ * \ /         -> \ /|         \
+ *  C          ->  C C'[a->a'] ..
  * ```
  *
  * This is a tricky situation.
- * Luckily it never seems to occur because the Bind rules are smarter than expected.
  * ```
  *      \ /    ->            \ /
  *       *     ->             Σ[a']
@@ -52,6 +51,8 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
  *             ->              |
  *             ->              C
  * ```
+ *
+ * Due to RewriteSplitCSE:
  * ```
  *      \ /    ->          \ /
  *  F    *     ->           Σ[a']
@@ -74,7 +75,7 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
 
         for (iMultToAgg in mult.inputs.indices) { // index of agg in mult
             var agg = mult.inputs[iMultToAgg]
-            if( agg is SNodeAggregate // TODO check to make sure the aggBinding is *not* in the output schema of the mult. If it is, then copyAggRenameDown.
+            if( agg is SNodeAggregate
                     && agg.parents.all { it == mult }
                     && agg.op == AggOp.SUM ) {
                 val numAggInMultInput = agg.parents.count() // this is >1 if the mult has a CSE

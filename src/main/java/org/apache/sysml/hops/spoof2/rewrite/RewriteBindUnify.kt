@@ -167,7 +167,8 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
 
         if( node is SNodeUnbind ) {
             // unbind-bind with different bindings - try to unify
-            val above = node.parents.find { it is SNodeBind && !it.bindings.keys.disjoint(node.unbindings.keys) }
+            val above = node.parents.find { it is SNodeBind && !it.bindings.keys.disjoint(node.unbindings.keys)
+                    && it.parents.none { it is SNodeBind } } // if there is another bind above this bind, do not proceed; first advance to the bind and combine consecutive binds.
             if( above != null ) {
                 above as SNodeBind
                 for (unbindBindPos in node.unbindings.keys

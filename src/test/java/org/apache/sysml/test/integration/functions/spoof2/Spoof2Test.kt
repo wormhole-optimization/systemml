@@ -20,7 +20,6 @@
 package org.apache.sysml.test.integration.functions.spoof2
 
 import org.apache.sysml.api.DMLScript
-import org.apache.sysml.hops.OptimizerUtils
 import org.apache.sysml.lops.LopProperties
 import org.apache.sysml.lops.LopProperties.ExecType
 import org.apache.sysml.lops.LopProperties.ExecType.*
@@ -85,7 +84,8 @@ class Spoof2Test(
         //	TEST_NAME+42;  //sum(A - U %*% S %*% t(V))
         //	TEST_NAME+43;  //AB, ABC, BCD, where B=log(CDE)
         //	TEST_NAME+44;  //sum(A+7) // test aggregation over an edge that does not have the aggregated name
-        private const val NUM_TESTS = 44
+        //	TEST_NAME+45;  //sum(A)+7
+        private const val NUM_TESTS = 45
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"

@@ -27,11 +27,15 @@ class SPlanNormalFormRewriter : SPlanRewriter {
             RewritePullAggAboveMult(),
             RewriteAggregateElim(),
             RewriteMultiplyPlusElim(),
-            RewritePullPlusAboveMult()
+            RewritePullPlusAboveMult(),
+            RewritePullAggAbovePlus()
     )
     private val _rulesNormalFormPrior = listOf(
             RewritePushAggIntoPlus(),
-            RewriteAggregateElim()
+            RewriteSplitCSE(),
+            RewriteAggregateElim(),     // req. SplitCSE
+            RewriteClearMxM(),
+            RewritePushAggIntoPlus()    // req. ClearMxM
     )
     private val _normalFormRewrite: (ArrayList<SNode>) -> Unit =
 //            { rewriteDown(it, listOf(RewriteNormalForm())) }

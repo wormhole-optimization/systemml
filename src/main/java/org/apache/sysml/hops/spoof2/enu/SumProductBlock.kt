@@ -140,7 +140,7 @@ sealed class SumProduct {
         // Input is immutable
         override fun deepCopy() = this
         override fun toString(): String {
-            return "Input($snode${if(SHOW_NNZ) ", nnz=$nnz" else ""}):$schema"
+            return "Input<${snode.id}>($snode${if(SHOW_NNZ) ", nnz=$nnz" else ""}):$schema"
         }
 
     }
@@ -342,22 +342,24 @@ sealed class SumProduct {
         fun pushAggregations() {
             // no refresh on aggNames
             aggNames().forEach { aggName ->
-                val incidentEdges = nameToIncidentEdge()[aggName]!!
-                if( incidentEdges.size == 1 && canAggregate(aggName) ) {
-                    val sumOp = removeAggName(aggName)
-                    val edge = incidentEdges[0]
-                    when( edge ) {
-                        is Block -> {
-                            edge.addAggNamesToFront(sumOp, aggName)
-                            edge.refresh()
+                if( aggName in allSchema() ) {
+                    val incidentEdges = nameToIncidentEdge()[aggName]!!
+                    if (incidentEdges.size == 1 && canAggregate(aggName)) {
+                        val sumOp = removeAggName(aggName)
+                        val edge = incidentEdges[0]
+                        when (edge) {
+                            is Block -> {
+                                edge.addAggNamesToFront(sumOp, aggName)
+                                edge.refresh()
+                            }
+                            is Input -> {
+                                val newBlock = Block(SumBlock(sumOp, aggName), product, edge)
+                                this.edges -= edge
+                                this.edges += newBlock
+                            }
                         }
-                        is Input -> {
-                            val newBlock = Block(SumBlock(sumOp, aggName), product, edge)
-                            this.edges -= edge
-                            this.edges += newBlock
-                        }
+                        refresh()
                     }
-                    refresh()
                 }
             }
         }

@@ -1,7 +1,7 @@
 package org.apache.sysml.hops.spoof2.rewrite
 
-import org.apache.sysml.hops.Hop.AggOp
-import org.apache.sysml.hops.spoof2.plan.*
+import org.apache.sysml.hops.spoof2.plan.SNode
+import org.apache.sysml.hops.spoof2.plan.SNodeNary
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
 
 /**
@@ -42,7 +42,7 @@ class RewritePullPlusAboveMult : SPlanRewriteRule() {
         plusInputs[0].parents += mult
         mult.refreshSchema()
 
-        for (i in 1..plusInputs.size-1) {
+        for (i in 1 until plusInputs.size) {
             multInputs[multToPlus] = plusInputs[i]
             val m = SNodeNary(NaryOp.MULT, multInputs)
             plus.inputs += m

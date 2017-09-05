@@ -17,6 +17,8 @@ class Schema private constructor(
     constructor() : this(arrayListOf(), arrayListOf())
     constructor(names: List<Name>, shapes: List<Shape>) : this(ArrayList(names), ArrayList(shapes))
     constructor(s: Schema) : this(ArrayList(s.names), ArrayList(s.shapes))
+    constructor(m: List<Pair<Name,Shape>>) : this(m.unzip().first, m.unzip().second)
+    constructor(m: Map<Name,Shape>) : this(m.toList())
 
     init { check() }
     fun check() {
