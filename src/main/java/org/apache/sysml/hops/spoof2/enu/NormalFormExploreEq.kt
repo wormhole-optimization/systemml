@@ -7,33 +7,13 @@ import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriteRule.RewriteResult
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter.RewriterResult
 import org.apache.sysml.utils.Explain
+import java.io.File
+import java.io.FileWriter
 import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.collections.HashSet
-import kotlin.collections.Map
-import kotlin.collections.MutableSet
-import kotlin.collections.Set
-import kotlin.collections.any
-import kotlin.collections.arrayListOf
 import kotlin.collections.component1
 import kotlin.collections.component2
-import kotlin.collections.filter
-import kotlin.collections.first
-import kotlin.collections.flatMap
-import kotlin.collections.forEach
-import kotlin.collections.indices
-import kotlin.collections.isNotEmpty
-import kotlin.collections.listOf
-import kotlin.collections.map
-import kotlin.collections.mapIndexed
-import kotlin.collections.min
-import kotlin.collections.minus
-import kotlin.collections.minusAssign
-import kotlin.collections.mutableSetOf
-import kotlin.collections.plusAssign
-import kotlin.collections.sumBy
-import kotlin.collections.toMap
-import kotlin.collections.toSet
 
 /**
  * Fill an E-DAG.
@@ -41,14 +21,31 @@ import kotlin.collections.toSet
 class NormalFormExploreEq : SPlanRewriter {
     companion object {
         private val LOG = LogFactory.getLog(NormalFormExploreEq::class.java)!!
-        private val statsAll = Stats()
+        private val statsAll = mutableListOf<Stats>()
         private val _addedHook = AtomicBoolean(false)
         private fun addHook() {
             if( !_addedHook.getAndSet(true) )
                 Runtime.getRuntime().addShutdownHook(object : Thread() {
                     override fun run() {
-                        if( LOG.isInfoEnabled )
-                            LOG.info("Sum-Product all stats:\n\t$statsAll")
+                        if( LOG.isInfoEnabled ) {
+//                            au.com.bytecode.opencsv.CSVWriter
+                            if( statsAll.size in 1..99 )
+                                LOG.info("Sum-Product stats:\n${statsAll.joinToString("\n")}")
+                            val total = Stats()
+                            val f = File("stats.csv")
+                            FileWriter(f).buffered().use { writer ->
+                                writer.write(Stats.header())
+                                writer.newLine()
+                                statsAll.forEach { stat ->
+                                    writer.write(stat.toCSVString())
+                                    writer.newLine()
+                                    total += stat
+                                }
+//                                writer.write(total.toCSVString())
+//                                writer.newLine()
+                            }
+                            LOG.info("Sum-Product all stats:\n\t$total") // statsAll.fold(Stats()) {acc, s -> acc += s; acc}
+                        }
                     }
                 })
         }
@@ -61,6 +58,7 @@ class NormalFormExploreEq : SPlanRewriter {
             var numAggPlusMultiply: Long = 0L,
             var numLabels: Long = 0L,
             var numContingencies: Long = 0L,
+            var maxCC: Int = 0,
             var considerPlan: Long = 0L
     ) {
         operator fun plusAssign(s: Stats) {
@@ -69,6 +67,7 @@ class NormalFormExploreEq : SPlanRewriter {
             numAggPlusMultiply += s.numAggPlusMultiply
             numLabels += s.numLabels
             numContingencies += s.numContingencies
+            maxCC += s.maxCC
             considerPlan += s.considerPlan
         }
         fun reset() {
@@ -77,7 +76,16 @@ class NormalFormExploreEq : SPlanRewriter {
             numAggPlusMultiply = 0
             numLabels = 0
             numContingencies = 0
+            maxCC = 0
             considerPlan = 0
+        }
+        companion object {
+            fun header(): String {
+                return "numSP,numInserts,numAggPlusMultiply,numLabels,numContingencies,maxCC,considerPlan"
+            }
+        }
+        fun toCSVString(): String {
+            return "$numSP,$numInserts,$numAggPlusMultiply,$numLabels,$numContingencies,$maxCC,$considerPlan"
         }
     }
 
@@ -338,6 +346,7 @@ class NormalFormExploreEq : SPlanRewriter {
         // Find the best EPath for each ENode individually and use this as a baseline.
         // Consider alternative EPaths that are locally suboptimal but allow sharing oppportunities.
         val CCs = partitionByConnectedComponent()
+        stats.maxCC = Math.max(stats.maxCC, CCs.maxBy { it.size }?.size ?: 0)
         if( LOG.isTraceEnabled )
             LOG.trace("CCs: "+CCs.map { it.map { it.id } })
         for( CC in CCs )
