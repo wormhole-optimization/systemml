@@ -37,6 +37,8 @@ import scala.reflect.ClassManifestFactory;
 import scala.runtime.AbstractFunction1;
 
 import org.apache.sysml.hops.AggBinaryOp.SparkAggType;
+import org.apache.sysml.lops.LeftIndex;
+import org.apache.sysml.lops.RightIndex;
 import org.apache.sysml.lops.LeftIndex.LixCacheType;
 import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.runtime.DMLRuntimeException;
@@ -59,36 +61,23 @@ import org.apache.sysml.runtime.util.IndexRange;
 import org.apache.sysml.runtime.util.UtilFunctions;
 
 /**
- * This class implements the matrix indexing functionality inside CP.  
- * Example instructions: 
- *     rangeReIndex:mVar1:Var2:Var3:Var4:Var5:mVar6
- *         input=mVar1, output=mVar6, 
- *         bounds = (Var2,Var3,Var4,Var5)
- *         rowindex_lower: Var2, rowindex_upper: Var3 
- *         colindex_lower: Var4, colindex_upper: Var5
- *     leftIndex:mVar1:mVar2:Var3:Var4:Var5:Var6:mVar7
- *         triggered by "mVar1[Var3:Var4, Var5:Var6] = mVar2"
- *         the result is stored in mVar7
- *  
+ * This class implements the matrix indexing functionality inside CP.
  */
-public class MatrixIndexingSPInstruction  extends IndexingSPInstruction
-{
+public class MatrixIndexingSPInstruction extends IndexingSPInstruction {
 	private final LixCacheType _type;
 
-	public MatrixIndexingSPInstruction(Operator op, CPOperand in, CPOperand rl, CPOperand ru, CPOperand cl, CPOperand cu, 
-			                          CPOperand out, SparkAggType aggtype, String opcode, String istr)
-	{
+	protected MatrixIndexingSPInstruction(Operator op, CPOperand in, CPOperand rl, CPOperand ru, CPOperand cl,
+			CPOperand cu, CPOperand out, SparkAggType aggtype, String opcode, String istr) {
 		super(op, in, rl, ru, cl, cu, out, aggtype, opcode, istr);
 		_type = LixCacheType.NONE;
 	}
-	
-	public MatrixIndexingSPInstruction(Operator op, CPOperand lhsInput, CPOperand rhsInput, CPOperand rl, CPOperand ru, CPOperand cl, CPOperand cu, 
-			                          CPOperand out, LixCacheType type, String opcode, String istr)
-	{
+
+	protected MatrixIndexingSPInstruction(Operator op, CPOperand lhsInput, CPOperand rhsInput, CPOperand rl,
+			CPOperand ru, CPOperand cl, CPOperand cu, CPOperand out, LixCacheType type, String opcode, String istr) {
 		super(op, lhsInput, rhsInput, rl, ru, cl, cu, out, opcode, istr);
 		_type = type;
 	}
-	
+
 	@Override
 	public void processInstruction(ExecutionContext ec)
 			throws DMLRuntimeException 
@@ -104,7 +93,7 @@ public class MatrixIndexingSPInstruction  extends IndexingSPInstruction
 		IndexRange ixrange = new IndexRange(rl, ru, cl, cu);
 		
 		//right indexing
-		if( opcode.equalsIgnoreCase("rangeReIndex") )
+		if( opcode.equalsIgnoreCase(RightIndex.OPCODE) )
 		{
 			//update and check output dimensions
 			MatrixCharacteristics mcIn = sec.getMatrixCharacteristics(input1.getName());
@@ -116,10 +105,10 @@ public class MatrixIndexingSPInstruction  extends IndexingSPInstruction
 			JavaPairRDD<MatrixIndexes,MatrixBlock> in1 = sec.getBinaryBlockRDDHandleForVariable( input1.getName() );
 			
 			if( isSingleBlockLookup(mcIn, ixrange) ) {
-				sec.setMatrixOutput(output.getName(), singleBlockIndexing(in1, mcIn, mcOut, ixrange));
+				sec.setMatrixOutput(output.getName(), singleBlockIndexing(in1, mcIn, mcOut, ixrange), getExtendedOpcode());
 			}
 			else if( isMultiBlockLookup(in1, mcIn, mcOut, ixrange) ) {
-				sec.setMatrixOutput(output.getName(), multiBlockIndexing(in1, mcIn, mcOut, ixrange));
+				sec.setMatrixOutput(output.getName(), multiBlockIndexing(in1, mcIn, mcOut, ixrange), getExtendedOpcode());
 			}
 			else { //rdd output for general case
 				JavaPairRDD<MatrixIndexes,MatrixBlock> out = generalCaseRightIndexing(in1, mcIn, mcOut, ixrange, _aggType);
@@ -130,7 +119,7 @@ public class MatrixIndexingSPInstruction  extends IndexingSPInstruction
 			}
 		}
 		//left indexing
-		else if ( opcode.equalsIgnoreCase("leftIndex") || opcode.equalsIgnoreCase("mapLeftIndex"))
+		else if ( opcode.equalsIgnoreCase(LeftIndex.OPCODE) || opcode.equalsIgnoreCase("mapLeftIndex"))
 		{
 			String rddVar = (_type==LixCacheType.LEFT) ? input2.getName() : input1.getName();
 			String bcVar = (_type==LixCacheType.LEFT) ? input1.getName() : input2.getName();

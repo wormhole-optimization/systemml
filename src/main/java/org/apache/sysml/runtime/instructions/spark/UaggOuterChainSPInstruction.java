@@ -61,22 +61,21 @@ import org.apache.sysml.runtime.util.DataConverter;
  * 1. Array of type double: Matrix B is sorted at driver level and passed to every task for cases where operations are handled with special cases. e.g. &lt;, RowSum
  * 2. PartitionedMatrixBlock:  Any operations not implemented through this change goes through generic process, In that case, task takes Matrix B, in partitioned form and operate on it.
  */
-public class UaggOuterChainSPInstruction extends BinarySPInstruction 
-{
-	//operators
+public class UaggOuterChainSPInstruction extends BinarySPInstruction {
+	// operators
 	private AggregateUnaryOperator _uaggOp = null;
 	private AggregateOperator _aggOp = null;
 	private BinaryOperator _bOp = null;
 
-	public UaggOuterChainSPInstruction(BinaryOperator bop, AggregateUnaryOperator uaggop, AggregateOperator aggop, CPOperand in1, CPOperand in2, CPOperand out, String opcode, String istr )
-	{
+	private UaggOuterChainSPInstruction(BinaryOperator bop, AggregateUnaryOperator uaggop, AggregateOperator aggop,
+			CPOperand in1, CPOperand in2, CPOperand out, String opcode, String istr) {
 		super(bop, in1, in2, out, opcode, istr);
 		_sptype = SPINSTRUCTION_TYPE.UaggOuterChain;
-		
+
 		_uaggOp = uaggop;
 		_aggOp = aggop;
 		_bOp = bop;
-			
+
 		_sptype = SPINSTRUCTION_TYPE.UaggOuterChain;
 		instString = istr;
 	}
@@ -132,8 +131,8 @@ public class UaggOuterChainSPInstruction extends BinarySPInstruction
 		if (LibMatrixOuterAgg.isSupportedUaggOp(_uaggOp, _bOp))
 		{
 			//create sorted broadcast matrix 
-			MatrixBlock mb = sec.getMatrixInput(bcastVar);
-			sec.releaseMatrixInput(bcastVar);
+			MatrixBlock mb = sec.getMatrixInput(bcastVar, getExtendedOpcode());
+			sec.releaseMatrixInput(bcastVar, getExtendedOpcode());
 			bcastVar = null; //prevent lineage tracking
 			double[] vmb = DataConverter.convertToDoubleVector(mb);
 			Broadcast<int[]> bvi = null;
@@ -163,10 +162,10 @@ public class UaggOuterChainSPInstruction extends BinarySPInstruction
 			MatrixBlock tmp = RDDAggregateUtils.aggStable(out, _aggOp);
 			
 			//drop correction after aggregation
-			tmp.dropLastRowsOrColums(_aggOp.correctionLocation);
+			tmp.dropLastRowsOrColumns(_aggOp.correctionLocation);
 
 			//put output block into symbol table (no lineage because single block)
-			sec.setMatrixOutput(output.getName(), tmp);
+			sec.setMatrixOutput(output.getName(), tmp, getExtendedOpcode());
 		}
 		else //R/C AGG (output is rdd)
 		{			

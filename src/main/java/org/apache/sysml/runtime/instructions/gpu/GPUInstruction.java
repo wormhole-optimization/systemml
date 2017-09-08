@@ -30,9 +30,21 @@ import org.apache.sysml.runtime.matrix.operators.Operator;
 import org.apache.sysml.utils.GPUStatistics;
 import org.apache.sysml.utils.Statistics;
 
-public abstract class GPUInstruction extends Instruction
-{
-	public enum GPUINSTRUCTION_TYPE { AggregateUnary, AggregateBinary, Convolution, MMTSJ, Reorg, ArithmeticBinary, BuiltinUnary, BuiltinBinary, Builtin };
+public abstract class GPUInstruction extends Instruction {
+	public enum GPUINSTRUCTION_TYPE {
+		AggregateUnary,
+		AggregateBinary,
+		RelationalBinary,
+		Convolution,
+		MMTSJ,
+		Reorg,
+		Append,
+		ArithmeticBinary,
+		BuiltinUnary,
+		BuiltinBinary,
+		Builtin,
+		MatrixIndexing
+	};
 
 	// Memory/conversions
 	public final static String MISC_TIMER_HOST_TO_DEVICE =          "H2D";	// time spent in bringing data to gpu (from host)
@@ -46,7 +58,8 @@ public abstract class GPUInstruction extends Instruction
 
 	public final static String MISC_TIMER_CUDA_FREE =               "f";		// time spent in calling cudaFree
 	public final static String MISC_TIMER_ALLOCATE =                "a";		// time spent to allocate memory on gpu
-	public final static String MISC_TIMER_ALLOCATE_DENSE_OUTPUT =   "ao";		// time spent to allocate dense output (recorded differently than MISC_TIMER_ALLOCATE)
+	public final static String MISC_TIMER_ALLOCATE_DENSE_OUTPUT =   "ad";		// time spent to allocate dense output (recorded differently than MISC_TIMER_ALLOCATE)
+	public final static String MISC_TIMER_ALLOCATE_SPARSE_OUTPUT =  "as";		// time spent to allocate sparse output (recorded differently than MISC_TIMER_ALLOCATE)
 	public final static String MISC_TIMER_SET_ZERO =                "az";		// time spent to allocate
 	public final static String MISC_TIMER_REUSE =                   "r";		// time spent in reusing already allocated memory on GPU (mainly for the count)
 
@@ -89,6 +102,8 @@ public abstract class GPUInstruction extends Instruction
 	public final static String MISC_TIMER_ACOS_KERNEL =                      "acosk";   // time spent in the acos kernel
 	public final static String MISC_TIMER_ATAN_KERNEL =                      "atank";   // time spent in the atan kernel
 	public final static String MISC_TIMER_SIGN_KERNEL =                      "signk";   // time spent in the sign kernel
+	public final static String MISC_TIMER_CBIND_KERNEL =                     "cbindk";  // time spent in the cbind kernel
+	public final static String MISC_TIMER_RBIND_KERNEL =                     "rbindk";  // time spent in the rbind kernel
 
 	public final static String MISC_TIMER_DAXPY_MV_KERNEL =                  "daxpymv";// time spent in the daxpy_matrix_vector kernel
 	public final static String MISC_TIMER_UPPER_TO_LOWER_TRIANGLE_KERNEL =   "u2lk";   // time spent in the copy_u2l_dense kernel
@@ -97,6 +112,9 @@ public abstract class GPUInstruction extends Instruction
 	public final static String MISC_TIMER_REDUCE_ALL_KERNEL =                "rallk";  // time spent in reduce all kernel
 	public final static String MISC_TIMER_REDUCE_ROW_KERNEL =                "rrowk";  // time spent in reduce row kernel
 	public final static String MISC_TIMER_REDUCE_COL_KERNEL =                "rcolk";  // time spent in reduce column kernel
+	
+	public final static String MISC_TIMER_RIX_DENSE_OP =                     "drix";    // time spent in the right indexing dense kernel
+	public final static String MISC_TIMER_RIX_SPARSE_DENSE_OP =              "sdrix";   // time spent in the right indexing sparse dense kernel
 
 	// Deep learning operators
 	public final static String MISC_TIMER_ACTIVATION_FORWARD_LIB =         "nnaf";  // time spent in cudnnActivationForward
@@ -111,30 +129,29 @@ public abstract class GPUInstruction extends Instruction
 	public final static String MISC_TIMER_CUDNN_INIT =                     "nni";   // time spent in initializations for cudnn call
 	public final static String MISC_TIMER_CUDNN_CLEANUP =                  "nnc";   // time spent in cleanup for cudnn call
 
-
 	protected GPUINSTRUCTION_TYPE _gputype;
 	protected Operator _optr;
-	
+
 	protected boolean _requiresLabelUpdate = false;
-	
-	public GPUInstruction(String opcode, String istr) {
+
+	private GPUInstruction(String opcode, String istr) {
 		type = INSTRUCTION_TYPE.GPU;
 		instString = istr;
-		
-		//prepare opcode and update requirement for repeated usage
+
+		// prepare opcode and update requirement for repeated usage
 		instOpcode = opcode;
 		_requiresLabelUpdate = super.requiresLabelUpdate();
 	}
-	
-	public GPUInstruction(Operator op, String opcode, String istr) {
+
+	protected GPUInstruction(Operator op, String opcode, String istr) {
 		this(opcode, istr);
 		_optr = op;
 	}
-	
+
 	public GPUINSTRUCTION_TYPE getGPUInstructionType() {
 		return _gputype;
 	}
-	
+
 	@Override
 	public boolean requiresLabelUpdate() {
 		return _requiresLabelUpdate;
@@ -147,11 +164,11 @@ public abstract class GPUInstruction extends Instruction
 
 	@Override
 	public Instruction preprocessInstruction(ExecutionContext ec)
-		throws DMLRuntimeException 
+		throws DMLRuntimeException
 	{
 		//default preprocess behavior (e.g., debug state)
 		Instruction tmp = super.preprocessInstruction(ec);
-		
+
 		//instruction patching
 		if( tmp.requiresLabelUpdate() ) { //update labels only if required
 			//note: no exchange of updated instruction as labels might change in the general case
@@ -162,7 +179,7 @@ public abstract class GPUInstruction extends Instruction
 		return tmp;
 	}
 
-	@Override 
+	@Override
 	public abstract void processInstruction(ExecutionContext ec)
 			throws DMLRuntimeException;
 
@@ -193,12 +210,14 @@ public abstract class GPUInstruction extends Instruction
 	 * Also records performance information into {@link Statistics}
 	 * @param ec		active {@link ExecutionContext}
 	 * @param name	name of input matrix (that the {@link ExecutionContext} is aware of)
+	 * @param numRows number of rows of matrix object
+	 * @param numCols number of columns of matrix object
 	 * @return	the matrix object
 	 * @throws DMLRuntimeException	if an error occurs
 	 */
-	protected MatrixObject getDenseMatrixOutputForGPUInstruction(ExecutionContext ec, String name) throws DMLRuntimeException {
+	protected MatrixObject getDenseMatrixOutputForGPUInstruction(ExecutionContext ec, String name, long numRows, long numCols) throws DMLRuntimeException {
 		long t0 = System.nanoTime();
-		Pair<MatrixObject, Boolean> mb = ec.getDenseMatrixOutputForGPUInstruction(name);
+		Pair<MatrixObject, Boolean> mb = ec.getDenseMatrixOutputForGPUInstruction(name, numRows, numCols);
 		if (mb.getValue()) GPUStatistics.maintainCPMiscTimes(getExtendedOpcode(), GPUInstruction.MISC_TIMER_ALLOCATE_DENSE_OUTPUT, System.nanoTime() - t0);
 		return mb.getKey();
 	}

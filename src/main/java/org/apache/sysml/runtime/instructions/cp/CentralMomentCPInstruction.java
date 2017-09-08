@@ -29,11 +29,10 @@ import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.matrix.operators.CMOperator;
 import org.apache.sysml.runtime.matrix.operators.CMOperator.AggregateOperationTypes;
 
-public class CentralMomentCPInstruction extends AggregateUnaryCPInstruction
-{	
-	public CentralMomentCPInstruction(CMOperator cm, CPOperand in1, CPOperand in2, 
-			CPOperand in3, CPOperand out, String opcode, String str) 
-	{
+public class CentralMomentCPInstruction extends AggregateUnaryCPInstruction {
+
+	private CentralMomentCPInstruction(CMOperator cm, CPOperand in1, CPOperand in2, CPOperand in3, CPOperand out,
+			String opcode, String str) {
 		super(cm, in1, in2, in3, out, opcode, str);
 	}
 
@@ -102,7 +101,7 @@ public class CentralMomentCPInstruction extends AggregateUnaryCPInstruction
 		 * order and update the CMOperator, if needed.
 		 */
 		
-		MatrixBlock matBlock = ec.getMatrixInput(input1.getName());
+		MatrixBlock matBlock = ec.getMatrixInput(input1.getName(), getExtendedOpcode());
 
 		CPOperand scalarInput = (input3==null ? input2 : input3);
 		ScalarObject order = ec.getScalarInput(scalarInput.getName(), scalarInput.getValueType(), scalarInput.isLiteral()); 
@@ -117,12 +116,12 @@ public class CentralMomentCPInstruction extends AggregateUnaryCPInstruction
 			cmobj = matBlock.cmOperations(cm_op);
 		}
 		else {
-			MatrixBlock wtBlock = ec.getMatrixInput(input2.getName());
+			MatrixBlock wtBlock = ec.getMatrixInput(input2.getName(), getExtendedOpcode());
 			cmobj = matBlock.cmOperations(cm_op, wtBlock);
-			ec.releaseMatrixInput(input2.getName());
+			ec.releaseMatrixInput(input2.getName(), getExtendedOpcode());
 		}
 		
-		ec.releaseMatrixInput(input1.getName());
+		ec.releaseMatrixInput(input1.getName(), getExtendedOpcode());
 		
 		double val = cmobj.getRequiredResult(_optr);
 		DoubleObject ret = new DoubleObject(output_name, val);

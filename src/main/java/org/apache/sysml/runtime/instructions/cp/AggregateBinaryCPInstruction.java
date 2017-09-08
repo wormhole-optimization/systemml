@@ -32,10 +32,10 @@ import org.apache.sysml.runtime.matrix.operators.AggregateBinaryOperator;
 import org.apache.sysml.runtime.matrix.operators.AggregateOperator;
 import org.apache.sysml.runtime.matrix.operators.Operator;
 
-public class AggregateBinaryCPInstruction extends BinaryCPInstruction
-{
-	
-	public AggregateBinaryCPInstruction(Operator op, CPOperand in1, CPOperand in2, CPOperand out, String opcode, String istr ){
+public class AggregateBinaryCPInstruction extends BinaryCPInstruction {
+
+	private AggregateBinaryCPInstruction(Operator op, CPOperand in1, CPOperand in2, CPOperand out, String opcode,
+			String istr) {
 		super(op, in1, in2, out, opcode, istr);
 		_cptype = CPINSTRUCTION_TYPE.AggregateBinary;
 	}
@@ -70,8 +70,8 @@ public class AggregateBinaryCPInstruction extends BinaryCPInstruction
 		throws DMLRuntimeException
 	{	
 		//get inputs
-		MatrixBlock matBlock1 = ec.getMatrixInput(input1.getName());
-		MatrixBlock matBlock2 = ec.getMatrixInput(input2.getName());
+		MatrixBlock matBlock1 = ec.getMatrixInput(input1.getName(), getExtendedOpcode());
+		MatrixBlock matBlock2 = ec.getMatrixInput(input2.getName(), getExtendedOpcode());
 		
 		//compute matrix multiplication
 		AggregateBinaryOperator ab_op = (AggregateBinaryOperator) _optr;
@@ -79,8 +79,8 @@ public class AggregateBinaryCPInstruction extends BinaryCPInstruction
 		MatrixBlock ret = (MatrixBlock) main.aggregateBinaryOperations(matBlock1, matBlock2, new MatrixBlock(), ab_op);
 		
 		//release inputs/outputs
-		ec.releaseMatrixInput(input1.getName());
-		ec.releaseMatrixInput(input2.getName());
-		ec.setMatrixOutput(output.getName(), ret);
+		ec.releaseMatrixInput(input1.getName(), getExtendedOpcode());
+		ec.releaseMatrixInput(input2.getName(), getExtendedOpcode());
+		ec.setMatrixOutput(output.getName(), ret, getExtendedOpcode());
 	}
 }

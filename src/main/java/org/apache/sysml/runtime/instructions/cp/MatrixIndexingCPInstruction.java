@@ -20,6 +20,8 @@
 package org.apache.sysml.runtime.instructions.cp;
 
 import org.apache.sysml.api.DMLScript;
+import org.apache.sysml.lops.LeftIndex;
+import org.apache.sysml.lops.RightIndex;
 import org.apache.sysml.parser.Expression.DataType;
 import org.apache.sysml.parser.Expression.ValueType;
 import org.apache.sysml.runtime.DMLRuntimeException;
@@ -31,16 +33,18 @@ import org.apache.sysml.runtime.matrix.operators.Operator;
 import org.apache.sysml.runtime.util.IndexRange;
 import org.apache.sysml.utils.Statistics;
 
-public final class MatrixIndexingCPInstruction extends IndexingCPInstruction
-{	
-	public MatrixIndexingCPInstruction(Operator op, CPOperand in, CPOperand rl, CPOperand ru, CPOperand cl, CPOperand cu, CPOperand out, String opcode, String istr){
+public final class MatrixIndexingCPInstruction extends IndexingCPInstruction {
+
+	protected MatrixIndexingCPInstruction(Operator op, CPOperand in, CPOperand rl, CPOperand ru, CPOperand cl,
+			CPOperand cu, CPOperand out, String opcode, String istr) {
 		super(op, in, rl, ru, cl, cu, out, opcode, istr);
 	}
-	
-	public MatrixIndexingCPInstruction(Operator op, CPOperand lhsInput, CPOperand rhsInput, CPOperand rl, CPOperand ru, CPOperand cl, CPOperand cu, CPOperand out, String opcode, String istr){
+
+	protected MatrixIndexingCPInstruction(Operator op, CPOperand lhsInput, CPOperand rhsInput, CPOperand rl,
+			CPOperand ru, CPOperand cl, CPOperand cu, CPOperand out, String opcode, String istr) {
 		super(op, lhsInput, rhsInput, rl, ru, cl, cu, out, opcode, istr);
 	}
-	
+
 	@Override
 	public void processInstruction(ExecutionContext ec)
 			throws DMLRuntimeException 
@@ -52,7 +56,7 @@ public final class MatrixIndexingCPInstruction extends IndexingCPInstruction
 		MatrixObject mo = ec.getMatrixObject(input1.getName());
 		
 		//right indexing
-		if( opcode.equalsIgnoreCase("rangeReIndex") )
+		if( opcode.equalsIgnoreCase(RightIndex.OPCODE) )
 		{
 			MatrixBlock resultBlock = null;
 			
@@ -61,22 +65,22 @@ public final class MatrixIndexingCPInstruction extends IndexingCPInstruction
 			else //via slicing the in-memory matrix
 			{
 				//execute right indexing operation
-				MatrixBlock matBlock = ec.getMatrixInput(input1.getName());
+				MatrixBlock matBlock = ec.getMatrixInput(input1.getName(), getExtendedOpcode());
 				resultBlock = matBlock.sliceOperations(ixrange, new MatrixBlock());	
 				
 				//unpin rhs input
-				ec.releaseMatrixInput(input1.getName());
+				ec.releaseMatrixInput(input1.getName(), getExtendedOpcode());
 				
 				//ensure correct sparse/dense output representation
 				//(memory guarded by release of input)
-				resultBlock.examSparsity();
+				resultBlock.examSparsity(getExtendedOpcode());
 			}	
 			
 			//unpin output
-			ec.setMatrixOutput(output.getName(), resultBlock);
+			ec.setMatrixOutput(output.getName(), resultBlock, getExtendedOpcode());
 		}
 		//left indexing
-		else if ( opcode.equalsIgnoreCase("leftIndex"))
+		else if ( opcode.equalsIgnoreCase(LeftIndex.OPCODE))
 		{
 			UpdateType updateType = mo.getUpdateType();
 			if(DMLScript.STATISTICS)
@@ -86,14 +90,14 @@ public final class MatrixIndexingCPInstruction extends IndexingCPInstruction
 				Statistics.incrementTotalLix();
 			}
 			
-			MatrixBlock matBlock = ec.getMatrixInput(input1.getName());
+			MatrixBlock matBlock = ec.getMatrixInput(input1.getName(), getExtendedOpcode());
 			MatrixBlock resultBlock = null;
 			
 			if(input2.getDataType() == DataType.MATRIX) //MATRIX<-MATRIX
 			{
-				MatrixBlock rhsMatBlock = ec.getMatrixInput(input2.getName());
-				resultBlock = matBlock.leftIndexingOperations(rhsMatBlock, ixrange, new MatrixBlock(), updateType);
-				ec.releaseMatrixInput(input2.getName());
+				MatrixBlock rhsMatBlock = ec.getMatrixInput(input2.getName(), getExtendedOpcode());
+				resultBlock = matBlock.leftIndexingOperations(rhsMatBlock, ixrange, new MatrixBlock(), updateType, getExtendedOpcode());
+				ec.releaseMatrixInput(input2.getName(), getExtendedOpcode());
 			}
 			else //MATRIX<-SCALAR 
 			{
@@ -105,14 +109,14 @@ public final class MatrixIndexingCPInstruction extends IndexingCPInstruction
 			}
 
 			//unpin lhs input
-			ec.releaseMatrixInput(input1.getName());
+			ec.releaseMatrixInput(input1.getName(), getExtendedOpcode());
 			
 			//ensure correct sparse/dense output representation
 			//(memory guarded by release of input)
-			resultBlock.examSparsity();
+			resultBlock.examSparsity(getExtendedOpcode());
 			
 			//unpin output
-			ec.setMatrixOutput(output.getName(), resultBlock, updateType);
+			ec.setMatrixOutput(output.getName(), resultBlock, updateType, getExtendedOpcode());
 		}
 		else
 			throw new DMLRuntimeException("Invalid opcode (" + opcode +") encountered in MatrixIndexingCPInstruction.");		

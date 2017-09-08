@@ -32,47 +32,59 @@ import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.matrix.operators.Operator;
 import org.apache.sysml.runtime.matrix.operators.ReorgOperator;
 
+public class ReorgCPInstruction extends UnaryCPInstruction {
+	// sort-specific attributes (to enable variable attributes)
+	private CPOperand _col = null;
+	private CPOperand _desc = null;
+	private CPOperand _ixret = null;
 
-public class ReorgCPInstruction extends UnaryCPInstruction
-{
-	//sort-specific attributes (to enable variable attributes)
- 	private CPOperand _col = null;
- 	private CPOperand _desc = null;
- 	private CPOperand _ixret = null;
- 	
- 	/**
- 	 * for opcodes r' and rdiag
- 	 * 
- 	 * @param op operator
- 	 * @param in cp input operand
- 	 * @param out cp output operand
- 	 * @param opcode the opcode
- 	 * @param istr ?
- 	 */
-	public ReorgCPInstruction(Operator op, CPOperand in, CPOperand out, String opcode, String istr){
+	/**
+	 * for opcodes r' and rdiag
+	 * 
+	 * @param op
+	 *            operator
+	 * @param in
+	 *            cp input operand
+	 * @param out
+	 *            cp output operand
+	 * @param opcode
+	 *            the opcode
+	 * @param istr
+	 *            ?
+	 */
+	private ReorgCPInstruction(Operator op, CPOperand in, CPOperand out, String opcode, String istr) {
 		super(op, in, out, opcode, istr);
 		_cptype = CPINSTRUCTION_TYPE.Reorg;
 	}
-	
+
 	/**
 	 * for opcode rsort
 	 * 
-	 * @param op operator
-	 * @param in cp input operand
-	 * @param col ?
-	 * @param desc ?
-	 * @param ixret ?
-	 * @param out cp output operand
-	 * @param opcode the opcode
-	 * @param istr ?
+	 * @param op
+	 *            operator
+	 * @param in
+	 *            cp input operand
+	 * @param col
+	 *            ?
+	 * @param desc
+	 *            ?
+	 * @param ixret
+	 *            ?
+	 * @param out
+	 *            cp output operand
+	 * @param opcode
+	 *            the opcode
+	 * @param istr
+	 *            ?
 	 */
-	public ReorgCPInstruction(Operator op, CPOperand in, CPOperand col, CPOperand desc, CPOperand ixret, CPOperand out, String opcode, String istr){
+	private ReorgCPInstruction(Operator op, CPOperand in, CPOperand col, CPOperand desc, CPOperand ixret, CPOperand out,
+			String opcode, String istr) {
 		this(op, in, out, opcode, istr);
 		_col = col;
 		_desc = desc;
 		_ixret = ixret;
 	}
-	
+
 	public static ReorgCPInstruction parseInstruction ( String str ) 
 		throws DMLRuntimeException 
 	{
@@ -117,7 +129,7 @@ public class ReorgCPInstruction extends UnaryCPInstruction
 			throws DMLRuntimeException 
 	{
 		//acquire inputs
-		MatrixBlock matBlock = ec.getMatrixInput(input1.getName());		
+		MatrixBlock matBlock = ec.getMatrixInput(input1.getName(), getExtendedOpcode());		
 		ReorgOperator r_op = (ReorgOperator) _optr;
 		if( r_op.fn instanceof SortIndex ) {
 			//additional attributes for sort
@@ -131,8 +143,8 @@ public class ReorgCPInstruction extends UnaryCPInstruction
 		MatrixBlock soresBlock = (MatrixBlock) (matBlock.reorgOperations(r_op, new MatrixBlock(), 0, 0, 0));
         
 		//release inputs/outputs
-		ec.releaseMatrixInput(input1.getName());
-		ec.setMatrixOutput(output.getName(), soresBlock);
+		ec.releaseMatrixInput(input1.getName(), getExtendedOpcode());
+		ec.setMatrixOutput(output.getName(), soresBlock, getExtendedOpcode());
 	}
 	
 }

@@ -20,6 +20,7 @@
 package org.apache.sysml.runtime.instructions.spark;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 
@@ -82,16 +83,13 @@ import org.apache.sysml.runtime.transform.meta.TfOffsetMap;
 import org.apache.sysml.runtime.util.DataConverter;
 import org.apache.sysml.runtime.util.UtilFunctions;
 
-
-public class ParameterizedBuiltinSPInstruction  extends ComputationSPInstruction 
-{	
-	protected HashMap<String,String> params;
-	
-	//removeEmpty-specific attributes
+public class ParameterizedBuiltinSPInstruction extends ComputationSPInstruction {
+	protected HashMap<String, String> params;
+	// removeEmpty-specific attributes
 	private boolean _bRmEmptyBC = false;
-	
-	public ParameterizedBuiltinSPInstruction(Operator op, HashMap<String,String> paramsMap, CPOperand out, String opcode, String istr, boolean bRmEmptyBC )
-	{
+
+	private ParameterizedBuiltinSPInstruction(Operator op, HashMap<String, String> paramsMap, CPOperand out,
+			String opcode, String istr, boolean bRmEmptyBC) {
 		super(op, null, null, out, opcode, istr);
 		_sptype = SPINSTRUCTION_TYPE.ParameterizedBuiltin;
 		params = paramsMap;
@@ -213,7 +211,7 @@ public class ParameterizedBuiltinSPInstruction  extends ComputationSPInstruction
 				
 				//put output block into symbol table (no lineage because single block)
 				//this also includes implicit maintenance of matrix characteristics
-				sec.setMatrixOutput(output.getName(), out2);
+				sec.setMatrixOutput(output.getName(), out2, getExtendedOpcode());
 			}
 			//multi-block aggregation
 			else {
@@ -369,7 +367,7 @@ public class ParameterizedBuiltinSPInstruction  extends ComputationSPInstruction
 			else //special case: empty output (ensure valid dims)
 			{
 				MatrixBlock out = new MatrixBlock(rows?1:(int)mcIn.getRows(), rows?(int)mcIn.getCols():1, true); 
-				sec.setMatrixOutput(output.getName(), out);
+				sec.setMatrixOutput(output.getName(), out, getExtendedOpcode());
 			}
 		}
 		else if ( opcode.equalsIgnoreCase("replace") ) 
@@ -438,7 +436,7 @@ public class ParameterizedBuiltinSPInstruction  extends ComputationSPInstruction
 			FrameBlock meta = sec.getFrameInput(params.get("meta"));		
 			MatrixCharacteristics mcIn = sec.getMatrixCharacteristics(params.get("target"));
 			MatrixCharacteristics mcOut = sec.getMatrixCharacteristics(output.getName());
-			String[] colnames = !TfMetaUtils.isIDSpecification(params.get("spec")) ?
+			String[] colnames = !TfMetaUtils.isIDSpec(params.get("spec")) ?
 					in.lookup(1L).get(0).getColumnNames() : null; 
 			
 			//compute omit offset map for block shifts
@@ -844,8 +842,9 @@ public class ParameterizedBuiltinSPInstruction  extends ComputationSPInstruction
 			throws Exception 
 		{
 			long rix = UtilFunctions.computeCellIndex(in._1().getRowIndex(), _brlen, 0);
-			return new Tuple2<Long, FrameBlock>(rix, 
-					_decoder.decode(in._2(), new FrameBlock(_decoder.getSchema())));
+			FrameBlock fbout = _decoder.decode(in._2(), new FrameBlock(_decoder.getSchema()));
+			fbout.setColumnNames(Arrays.copyOfRange(_decoder.getColnames(), 0, fbout.getNumColumns()));
+			return new Tuple2<Long, FrameBlock>(rix, fbout);
 		}
 	}
 	

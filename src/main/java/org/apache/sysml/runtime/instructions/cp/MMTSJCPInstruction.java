@@ -26,14 +26,12 @@ import org.apache.sysml.runtime.instructions.InstructionUtils;
 import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.matrix.operators.Operator;
 
-public class MMTSJCPInstruction extends UnaryCPInstruction
-{	
-	
+public class MMTSJCPInstruction extends UnaryCPInstruction {
 	private MMTSJType _type = null;
 	private int _numThreads = 1;
-	
-	public MMTSJCPInstruction(Operator op, CPOperand in1, MMTSJType type, CPOperand out, int k, String opcode, String istr)
-	{
+
+	private MMTSJCPInstruction(Operator op, CPOperand in1, MMTSJType type, CPOperand out, int k, String opcode,
+			String istr) {
 		super(op, in1, out, opcode, istr);
 		_cptype = CPINSTRUCTION_TYPE.MMTSJ;
 		_type = type;
@@ -63,14 +61,14 @@ public class MMTSJCPInstruction extends UnaryCPInstruction
 		throws DMLRuntimeException 
 	{
 		//get inputs
-		MatrixBlock matBlock1 = ec.getMatrixInput(input1.getName());
+		MatrixBlock matBlock1 = ec.getMatrixInput(input1.getName(), getExtendedOpcode());
 
 		//execute operations 
 		MatrixBlock ret = (MatrixBlock) matBlock1.transposeSelfMatrixMultOperations(new MatrixBlock(), _type, _numThreads );
 		
 		//set output and release inputs
-		ec.setMatrixOutput(output.getName(), ret);
-		ec.releaseMatrixInput(input1.getName());
+		ec.setMatrixOutput(output.getName(), ret, getExtendedOpcode());
+		ec.releaseMatrixInput(input1.getName(), getExtendedOpcode());
 	}
 	
 	public MMTSJType getMMTSJType()

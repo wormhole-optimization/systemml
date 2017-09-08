@@ -42,11 +42,13 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.Function;
+import org.apache.spark.ml.linalg.DenseVector;
 import org.apache.spark.ml.linalg.Vector;
 import org.apache.spark.ml.linalg.VectorUDT;
 import org.apache.spark.ml.linalg.Vectors;
@@ -54,11 +56,10 @@ import org.apache.spark.rdd.RDD;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RowFactory;
-import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.DoubleType;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
-import org.apache.sysml.api.mlcontext.MLContext;
 import org.apache.sysml.api.mlcontext.MLContextConversionUtil;
 import org.apache.sysml.api.mlcontext.MLContextException;
 import org.apache.sysml.api.mlcontext.MLContextUtil;
@@ -73,39 +74,19 @@ import org.apache.sysml.runtime.instructions.spark.utils.RDDConverterUtils;
 import org.apache.sysml.runtime.matrix.MatrixCharacteristics;
 import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.matrix.data.MatrixIndexes;
-import org.apache.sysml.test.integration.AutomatedTestBase;
-import org.junit.After;
-import org.junit.AfterClass;
+import org.apache.sysml.runtime.util.DataConverter;
 import org.junit.Assert;
-import org.junit.BeforeClass;
 import org.junit.Test;
 
+import scala.Tuple1;
 import scala.Tuple2;
 import scala.Tuple3;
+import scala.Tuple4;
 import scala.collection.Iterator;
 import scala.collection.JavaConversions;
 import scala.collection.Seq;
 
-public class MLContextTest extends AutomatedTestBase {
-	protected final static String TEST_DIR = "org/apache/sysml/api/mlcontext";
-	protected final static String TEST_NAME = "MLContext";
-
-	private static SparkSession spark;
-	private static JavaSparkContext sc;
-	private static MLContext ml;
-
-	@BeforeClass
-	public static void setUpClass() {
-		spark = createSystemMLSparkSession("MLContextTest", "local");
-		ml = new MLContext(spark);
-		sc = MLContextUtil.getJavaSparkContext(ml);
-	}
-
-	@Override
-	public void setUp() {
-		addTestConfiguration(TEST_DIR, TEST_NAME);
-		getAndLoadTestConfiguration(TEST_NAME);
-	}
+public class MLContextTest extends MLContextTestBase {
 
 	@Test
 	public void testCreateDMLScriptBasedOnStringAndExecute() {
@@ -710,9 +691,12 @@ public class MLContextTest extends AutomatedTestBase {
 		System.out.println("MLContextTest - DataFrame sum DML, mllib vector with ID column");
 
 		List<Tuple2<Double, org.apache.spark.mllib.linalg.Vector>> list = new ArrayList<Tuple2<Double, org.apache.spark.mllib.linalg.Vector>>();
-		list.add(new Tuple2<Double, org.apache.spark.mllib.linalg.Vector>(1.0, org.apache.spark.mllib.linalg.Vectors.dense(1.0, 2.0, 3.0)));
-		list.add(new Tuple2<Double, org.apache.spark.mllib.linalg.Vector>(2.0, org.apache.spark.mllib.linalg.Vectors.dense(4.0, 5.0, 6.0)));
-		list.add(new Tuple2<Double, org.apache.spark.mllib.linalg.Vector>(3.0, org.apache.spark.mllib.linalg.Vectors.dense(7.0, 8.0, 9.0)));
+		list.add(new Tuple2<Double, org.apache.spark.mllib.linalg.Vector>(1.0,
+				org.apache.spark.mllib.linalg.Vectors.dense(1.0, 2.0, 3.0)));
+		list.add(new Tuple2<Double, org.apache.spark.mllib.linalg.Vector>(2.0,
+				org.apache.spark.mllib.linalg.Vectors.dense(4.0, 5.0, 6.0)));
+		list.add(new Tuple2<Double, org.apache.spark.mllib.linalg.Vector>(3.0,
+				org.apache.spark.mllib.linalg.Vectors.dense(7.0, 8.0, 9.0)));
 		JavaRDD<Tuple2<Double, org.apache.spark.mllib.linalg.Vector>> javaRddTuple = sc.parallelize(list);
 
 		JavaRDD<Row> javaRddRow = javaRddTuple.map(new DoubleMllibVectorRow());
@@ -734,9 +718,12 @@ public class MLContextTest extends AutomatedTestBase {
 		System.out.println("MLContextTest - DataFrame sum PYDML, mllib vector with ID column");
 
 		List<Tuple2<Double, org.apache.spark.mllib.linalg.Vector>> list = new ArrayList<Tuple2<Double, org.apache.spark.mllib.linalg.Vector>>();
-		list.add(new Tuple2<Double, org.apache.spark.mllib.linalg.Vector>(1.0, org.apache.spark.mllib.linalg.Vectors.dense(1.0, 2.0, 3.0)));
-		list.add(new Tuple2<Double, org.apache.spark.mllib.linalg.Vector>(2.0, org.apache.spark.mllib.linalg.Vectors.dense(4.0, 5.0, 6.0)));
-		list.add(new Tuple2<Double, org.apache.spark.mllib.linalg.Vector>(3.0, org.apache.spark.mllib.linalg.Vectors.dense(7.0, 8.0, 9.0)));
+		list.add(new Tuple2<Double, org.apache.spark.mllib.linalg.Vector>(1.0,
+				org.apache.spark.mllib.linalg.Vectors.dense(1.0, 2.0, 3.0)));
+		list.add(new Tuple2<Double, org.apache.spark.mllib.linalg.Vector>(2.0,
+				org.apache.spark.mllib.linalg.Vectors.dense(4.0, 5.0, 6.0)));
+		list.add(new Tuple2<Double, org.apache.spark.mllib.linalg.Vector>(3.0,
+				org.apache.spark.mllib.linalg.Vectors.dense(7.0, 8.0, 9.0)));
 		JavaRDD<Tuple2<Double, org.apache.spark.mllib.linalg.Vector>> javaRddTuple = sc.parallelize(list);
 
 		JavaRDD<Row> javaRddRow = javaRddTuple.map(new DoubleMllibVectorRow());
@@ -2576,7 +2563,8 @@ public class MLContextTest extends AutomatedTestBase {
 	@Test
 	public void testPrintFormattingMultipleExpressions() {
 		System.out.println("MLContextTest - print formatting multiple expressions");
-		Script script = dml("a='hello'; b='goodbye'; c=4; d=3; e=3.0; f=5.0; g=FALSE; print('%s %d %f %b', (a+b), (c-d), (e*f), !g);");
+		Script script = dml(
+				"a='hello'; b='goodbye'; c=4; d=3; e=3.0; f=5.0; g=FALSE; print('%s %d %f %b', (a+b), (c-d), (e*f), !g);");
 		setExpectedStdOut("hellogoodbye 1 15.000000 true");
 		ml.execute(script);
 	}
@@ -2672,7 +2660,7 @@ public class MLContextTest extends AutomatedTestBase {
 	public void testFunctionNoReturnValueForceFunctionCallDML() {
 		System.out.println("MLContextTest - function with no return value, force function call DML");
 
-		String s = "hello=function(){\nif(1==1){};\nprint('no return value, force function call');\n}\nhello();";
+		String s = "hello=function(){\nwhile(FALSE){};\nprint('no return value, force function call');\n}\nhello();";
 		Script script = dml(s);
 		setExpectedStdOut("no return value, force function call");
 		ml.execute(script);
@@ -2732,7 +2720,7 @@ public class MLContextTest extends AutomatedTestBase {
 	public void testOutputListDML() {
 		System.out.println("MLContextTest - output specified as List DML");
 
-		List<String> outputs = Arrays.asList("x","y");
+		List<String> outputs = Arrays.asList("x", "y");
 		Script script = dml("a=1;x=a+1;y=x+1").out(outputs);
 		MLResults results = ml.execute(script);
 		Assert.assertEquals(2, results.getLong("x"));
@@ -2743,7 +2731,7 @@ public class MLContextTest extends AutomatedTestBase {
 	public void testOutputListPYDML() {
 		System.out.println("MLContextTest - output specified as List PYDML");
 
-		List<String> outputs = Arrays.asList("x","y");
+		List<String> outputs = Arrays.asList("x", "y");
 		Script script = pydml("a=1\nx=a+1\ny=x+1").out(outputs);
 		MLResults results = ml.execute(script);
 		Assert.assertEquals(2, results.getLong("x"));
@@ -2755,7 +2743,7 @@ public class MLContextTest extends AutomatedTestBase {
 	public void testOutputScalaSeqDML() {
 		System.out.println("MLContextTest - output specified as Scala Seq DML");
 
-		List outputs = Arrays.asList("x","y");
+		List outputs = Arrays.asList("x", "y");
 		Seq seq = JavaConversions.asScalaBuffer(outputs).toSeq();
 		Script script = dml("a=1;x=a+1;y=x+1").out(seq);
 		MLResults results = ml.execute(script);
@@ -2768,7 +2756,7 @@ public class MLContextTest extends AutomatedTestBase {
 	public void testOutputScalaSeqPYDML() {
 		System.out.println("MLContextTest - output specified as Scala Seq PYDML");
 
-		List outputs = Arrays.asList("x","y");
+		List outputs = Arrays.asList("x", "y");
 		Seq seq = JavaConversions.asScalaBuffer(outputs).toSeq();
 		Script script = pydml("a=1\nx=a+1\ny=x+1").out(seq);
 		MLResults results = ml.execute(script);
@@ -2776,89 +2764,310 @@ public class MLContextTest extends AutomatedTestBase {
 		Assert.assertEquals(3, results.getLong("y"));
 	}
 
-	// NOTE: Uncomment these tests once they work
+	@Test
+	public void testOutputDataFrameOfVectorsDML() {
+		System.out.println("MLContextTest - output DataFrame of vectors DML");
 
-	// @SuppressWarnings({ "rawtypes", "unchecked" })
-	// @Test
-	// public void testInputTupleSeqWithAndWithoutMetadataDML() {
-	// System.out.println("MLContextTest - Tuple sequence with and without
-	// metadata DML");
-	//
-	// List<String> list1 = new ArrayList<String>();
-	// list1.add("1,2");
-	// list1.add("3,4");
-	// JavaRDD<String> javaRDD1 = sc.parallelize(list1);
-	// RDD<String> rdd1 = JavaRDD.toRDD(javaRDD1);
-	//
-	// List<String> list2 = new ArrayList<String>();
-	// list2.add("5,6");
-	// list2.add("7,8");
-	// JavaRDD<String> javaRDD2 = sc.parallelize(list2);
-	// RDD<String> rdd2 = JavaRDD.toRDD(javaRDD2);
-	//
-	// MatrixMetadata mm1 = new MatrixMetadata(2, 2);
-	//
-	// Tuple3 tuple1 = new Tuple3("m1", rdd1, mm1);
-	// Tuple2 tuple2 = new Tuple2("m2", rdd2);
-	// List tupleList = new ArrayList();
-	// tupleList.add(tuple1);
-	// tupleList.add(tuple2);
-	// Seq seq = JavaConversions.asScalaBuffer(tupleList).toSeq();
-	//
-	// Script script =
-	// dml("print('sums: ' + sum(m1) + ' ' + sum(m2));").in(seq);
-	// setExpectedStdOut("sums: 10.0 26.0");
-	// ml.execute(script);
-	// }
-	//
-	// @SuppressWarnings({ "rawtypes", "unchecked" })
-	// @Test
-	// public void testInputTupleSeqWithAndWithoutMetadataPYDML() {
-	// System.out.println("MLContextTest - Tuple sequence with and without
-	// metadata PYDML");
-	//
-	// List<String> list1 = new ArrayList<String>();
-	// list1.add("1,2");
-	// list1.add("3,4");
-	// JavaRDD<String> javaRDD1 = sc.parallelize(list1);
-	// RDD<String> rdd1 = JavaRDD.toRDD(javaRDD1);
-	//
-	// List<String> list2 = new ArrayList<String>();
-	// list2.add("5,6");
-	// list2.add("7,8");
-	// JavaRDD<String> javaRDD2 = sc.parallelize(list2);
-	// RDD<String> rdd2 = JavaRDD.toRDD(javaRDD2);
-	//
-	// MatrixMetadata mm1 = new MatrixMetadata(2, 2);
-	//
-	// Tuple3 tuple1 = new Tuple3("m1", rdd1, mm1);
-	// Tuple2 tuple2 = new Tuple2("m2", rdd2);
-	// List tupleList = new ArrayList();
-	// tupleList.add(tuple1);
-	// tupleList.add(tuple2);
-	// Seq seq = JavaConversions.asScalaBuffer(tupleList).toSeq();
-	//
-	// Script script =
-	// pydml("print('sums: ' + sum(m1) + ' ' + sum(m2))").in(seq);
-	// setExpectedStdOut("sums: 10.0 26.0");
-	// ml.execute(script);
-	// }
+		String s = "m=matrix('1 2 3 4',rows=2,cols=2);";
+		Script script = dml(s).out("m");
+		MLResults results = ml.execute(script);
+		Dataset<Row> df = results.getDataFrame("m", true);
+		Dataset<Row> sortedDF = df.sort(RDDConverterUtils.DF_ID_COLUMN);
 
-	@After
-	public void tearDown() {
-		super.tearDown();
+		// verify column types
+		StructType schema = sortedDF.schema();
+		StructField[] fields = schema.fields();
+		StructField idColumn = fields[0];
+		StructField vectorColumn = fields[1];
+		Assert.assertTrue(idColumn.dataType() instanceof DoubleType);
+		Assert.assertTrue(vectorColumn.dataType() instanceof VectorUDT);
+
+		List<Row> list = sortedDF.collectAsList();
+
+		Row row1 = list.get(0);
+		Assert.assertEquals(1.0, row1.getDouble(0), 0.0);
+		Vector v1 = (DenseVector) row1.get(1);
+		double[] arr1 = v1.toArray();
+		Assert.assertArrayEquals(new double[] { 1.0, 2.0 }, arr1, 0.0);
+
+		Row row2 = list.get(1);
+		Assert.assertEquals(2.0, row2.getDouble(0), 0.0);
+		Vector v2 = (DenseVector) row2.get(1);
+		double[] arr2 = v2.toArray();
+		Assert.assertArrayEquals(new double[] { 3.0, 4.0 }, arr2, 0.0);
 	}
 
-	@AfterClass
-	public static void tearDownClass() {
-		// stop underlying spark context to allow single jvm tests (otherwise the
-		// next test that tries to create a SparkContext would fail)
-		spark.stop();
-		sc = null;
-		spark = null;
+	@Test
+	public void testOutputDoubleArrayFromMatrixDML() {
+		System.out.println("MLContextTest - output double array from matrix DML");
 
-		// clear status mlcontext and spark exec context
-		ml.close();
-		ml = null;
+		String s = "M = matrix('1 2 3 4', rows=2, cols=2);";
+		double[][] matrix = ml.execute(dml(s).out("M")).getMatrix("M").to2DDoubleArray();
+		Assert.assertEquals(1.0, matrix[0][0], 0);
+		Assert.assertEquals(2.0, matrix[0][1], 0);
+		Assert.assertEquals(3.0, matrix[1][0], 0);
+		Assert.assertEquals(4.0, matrix[1][1], 0);
 	}
+
+	@Test
+	public void testOutputDataFrameFromMatrixDML() {
+		System.out.println("MLContextTest - output DataFrame from matrix DML");
+
+		String s = "M = matrix('1 2 3 4', rows=2, cols=2);";
+		Script script = dml(s).out("M");
+		Dataset<Row> df = ml.execute(script).getMatrix("M").toDF();
+		Dataset<Row> sortedDF = df.sort(RDDConverterUtils.DF_ID_COLUMN);
+		List<Row> list = sortedDF.collectAsList();
+		Row row1 = list.get(0);
+		Assert.assertEquals(1.0, row1.getDouble(0), 0.0);
+		Assert.assertEquals(1.0, row1.getDouble(1), 0.0);
+		Assert.assertEquals(2.0, row1.getDouble(2), 0.0);
+
+		Row row2 = list.get(1);
+		Assert.assertEquals(2.0, row2.getDouble(0), 0.0);
+		Assert.assertEquals(3.0, row2.getDouble(1), 0.0);
+		Assert.assertEquals(4.0, row2.getDouble(2), 0.0);
+	}
+
+	@Test
+	public void testOutputDataFrameDoublesNoIDColumnFromMatrixDML() {
+		System.out.println("MLContextTest - output DataFrame of doubles with no ID column from matrix DML");
+
+		String s = "M = matrix('1 2 3 4', rows=1, cols=4);";
+		Script script = dml(s).out("M");
+		Dataset<Row> df = ml.execute(script).getMatrix("M").toDFDoubleNoIDColumn();
+		List<Row> list = df.collectAsList();
+
+		Row row = list.get(0);
+		Assert.assertEquals(1.0, row.getDouble(0), 0.0);
+		Assert.assertEquals(2.0, row.getDouble(1), 0.0);
+		Assert.assertEquals(3.0, row.getDouble(2), 0.0);
+		Assert.assertEquals(4.0, row.getDouble(3), 0.0);
+	}
+
+	@Test
+	public void testOutputDataFrameDoublesWithIDColumnFromMatrixDML() {
+		System.out.println("MLContextTest - output DataFrame of doubles with ID column from matrix DML");
+
+		String s = "M = matrix('1 2 3 4', rows=2, cols=2);";
+		Script script = dml(s).out("M");
+		Dataset<Row> df = ml.execute(script).getMatrix("M").toDFDoubleWithIDColumn();
+		Dataset<Row> sortedDF = df.sort(RDDConverterUtils.DF_ID_COLUMN);
+		List<Row> list = sortedDF.collectAsList();
+
+		Row row1 = list.get(0);
+		Assert.assertEquals(1.0, row1.getDouble(0), 0.0);
+		Assert.assertEquals(1.0, row1.getDouble(1), 0.0);
+		Assert.assertEquals(2.0, row1.getDouble(2), 0.0);
+
+		Row row2 = list.get(1);
+		Assert.assertEquals(2.0, row2.getDouble(0), 0.0);
+		Assert.assertEquals(3.0, row2.getDouble(1), 0.0);
+		Assert.assertEquals(4.0, row2.getDouble(2), 0.0);
+	}
+
+	@Test
+	public void testOutputDataFrameVectorsNoIDColumnFromMatrixDML() {
+		System.out.println("MLContextTest - output DataFrame of vectors with no ID column from matrix DML");
+
+		String s = "M = matrix('1 2 3 4', rows=1, cols=4);";
+		Script script = dml(s).out("M");
+		Dataset<Row> df = ml.execute(script).getMatrix("M").toDFVectorNoIDColumn();
+		List<Row> list = df.collectAsList();
+
+		Row row = list.get(0);
+		Assert.assertArrayEquals(new double[] { 1.0, 2.0, 3.0, 4.0 }, ((Vector) row.get(0)).toArray(), 0.0);
+	}
+
+	@Test
+	public void testOutputDataFrameVectorsWithIDColumnFromMatrixDML() {
+		System.out.println("MLContextTest - output DataFrame of vectors with ID column from matrix DML");
+
+		String s = "M = matrix('1 2 3 4', rows=1, cols=4);";
+		Script script = dml(s).out("M");
+		Dataset<Row> df = ml.execute(script).getMatrix("M").toDFVectorWithIDColumn();
+		List<Row> list = df.collectAsList();
+
+		Row row = list.get(0);
+		Assert.assertEquals(1.0, row.getDouble(0), 0.0);
+		Assert.assertArrayEquals(new double[] { 1.0, 2.0, 3.0, 4.0 }, ((Vector) row.get(1)).toArray(), 0.0);
+	}
+
+	@Test
+	public void testOutputJavaRDDStringCSVFromMatrixDML() {
+		System.out.println("MLContextTest - output Java RDD String CSV from matrix DML");
+
+		String s = "M = matrix('1 2 3 4', rows=1, cols=4);";
+		Script script = dml(s).out("M");
+		JavaRDD<String> javaRDDStringCSV = ml.execute(script).getMatrix("M").toJavaRDDStringCSV();
+		List<String> lines = javaRDDStringCSV.collect();
+		Assert.assertEquals("1.0,2.0,3.0,4.0", lines.get(0));
+	}
+
+	@Test
+	public void testOutputJavaRDDStringIJVFromMatrixDML() {
+		System.out.println("MLContextTest - output Java RDD String IJV from matrix DML");
+
+		String s = "M = matrix('1 2 3 4', rows=2, cols=2);";
+		Script script = dml(s).out("M");
+		MLResults results = ml.execute(script);
+		JavaRDD<String> javaRDDStringIJV = results.getJavaRDDStringIJV("M");
+		List<String> lines = javaRDDStringIJV.sortBy(row -> row, true, 1).collect();
+		Assert.assertEquals("1 1 1.0", lines.get(0));
+		Assert.assertEquals("1 2 2.0", lines.get(1));
+		Assert.assertEquals("2 1 3.0", lines.get(2));
+		Assert.assertEquals("2 2 4.0", lines.get(3));
+	}
+
+	@Test
+	public void testOutputRDDStringCSVFromMatrixDML() {
+		System.out.println("MLContextTest - output RDD String CSV from matrix DML");
+
+		String s = "M = matrix('1 2 3 4', rows=1, cols=4);";
+		Script script = dml(s).out("M");
+		RDD<String> rddStringCSV = ml.execute(script).getMatrix("M").toRDDStringCSV();
+		Iterator<String> iterator = rddStringCSV.toLocalIterator();
+		Assert.assertEquals("1.0,2.0,3.0,4.0", iterator.next());
+	}
+
+	@Test
+	public void testOutputRDDStringIJVFromMatrixDML() {
+		System.out.println("MLContextTest - output RDD String IJV from matrix DML");
+
+		String s = "M = matrix('1 2 3 4', rows=2, cols=2);";
+		Script script = dml(s).out("M");
+		RDD<String> rddStringIJV = ml.execute(script).getMatrix("M").toRDDStringIJV();
+		String[] rows = (String[]) rddStringIJV.collect();
+		Arrays.sort(rows);
+		Assert.assertEquals("1 1 1.0", rows[0]);
+		Assert.assertEquals("1 2 2.0", rows[1]);
+		Assert.assertEquals("2 1 3.0", rows[2]);
+		Assert.assertEquals("2 2 4.0", rows[3]);
+	}
+
+	@Test
+	public void testMLContextVersionMessage() {
+		System.out.println("MLContextTest - version message");
+
+		String version = ml.version();
+		// not available until jar built
+		Assert.assertEquals(MLContextUtil.VERSION_NOT_AVAILABLE, version);
+	}
+
+	@Test
+	public void testMLContextBuildTimeMessage() {
+		System.out.println("MLContextTest - build time message");
+
+		String buildTime = ml.buildTime();
+		// not available until jar built
+		Assert.assertEquals(MLContextUtil.BUILD_TIME_NOT_AVAILABLE, buildTime);
+	}
+
+	@Test
+	public void testMLContextCreateAndClose() {
+		// MLContext created by the @BeforeClass method in MLContextTestBase
+		// MLContext closed by the @AfterClass method in MLContextTestBase
+		System.out.println("MLContextTest - create MLContext and close (without script execution)");
+	}
+
+	@Test
+	public void testDataFrameToBinaryBlocks() {
+		System.out.println("MLContextTest - DataFrame to binary blocks");
+
+		List<String> list = new ArrayList<String>();
+		list.add("1,2,3");
+		list.add("4,5,6");
+		list.add("7,8,9");
+		JavaRDD<String> javaRddString = sc.parallelize(list);
+
+		JavaRDD<Row> javaRddRow = javaRddString.map(new CommaSeparatedValueStringToDoubleArrayRow());
+		List<StructField> fields = new ArrayList<StructField>();
+		fields.add(DataTypes.createStructField("C1", DataTypes.DoubleType, true));
+		fields.add(DataTypes.createStructField("C2", DataTypes.DoubleType, true));
+		fields.add(DataTypes.createStructField("C3", DataTypes.DoubleType, true));
+		StructType schema = DataTypes.createStructType(fields);
+		Dataset<Row> dataFrame = spark.createDataFrame(javaRddRow, schema);
+
+		JavaPairRDD<MatrixIndexes, MatrixBlock> binaryBlocks = MLContextConversionUtil
+				.dataFrameToMatrixBinaryBlocks(dataFrame);
+		Tuple2<MatrixIndexes, MatrixBlock> first = binaryBlocks.first();
+		MatrixBlock mb = first._2();
+		double[][] matrix = DataConverter.convertToDoubleMatrix(mb);
+		Assert.assertArrayEquals(new double[] { 1.0, 2.0, 3.0 }, matrix[0], 0.0);
+		Assert.assertArrayEquals(new double[] { 4.0, 5.0, 6.0 }, matrix[1], 0.0);
+		Assert.assertArrayEquals(new double[] { 7.0, 8.0, 9.0 }, matrix[2], 0.0);
+	}
+
+	@Test
+	public void testGetTuple1DML() {
+		System.out.println("MLContextTest - Get Tuple1<Matrix> DML");
+		JavaRDD<String> javaRddString = sc
+				.parallelize(Stream.of("1,2,3", "4,5,6", "7,8,9").collect(Collectors.toList()));
+		JavaRDD<Row> javaRddRow = javaRddString.map(new CommaSeparatedValueStringToDoubleArrayRow());
+		List<StructField> fields = new ArrayList<StructField>();
+		fields.add(DataTypes.createStructField("C1", DataTypes.DoubleType, true));
+		fields.add(DataTypes.createStructField("C2", DataTypes.DoubleType, true));
+		fields.add(DataTypes.createStructField("C3", DataTypes.DoubleType, true));
+		StructType schema = DataTypes.createStructType(fields);
+		Dataset<Row> df = spark.createDataFrame(javaRddRow, schema);
+
+		Script script = dml("N=M*2").in("M", df).out("N");
+		Tuple1<Matrix> tuple = ml.execute(script).getTuple("N");
+		double[][] n = tuple._1().to2DDoubleArray();
+		Assert.assertEquals(2.0, n[0][0], 0);
+		Assert.assertEquals(4.0, n[0][1], 0);
+		Assert.assertEquals(6.0, n[0][2], 0);
+		Assert.assertEquals(8.0, n[1][0], 0);
+		Assert.assertEquals(10.0, n[1][1], 0);
+		Assert.assertEquals(12.0, n[1][2], 0);
+		Assert.assertEquals(14.0, n[2][0], 0);
+		Assert.assertEquals(16.0, n[2][1], 0);
+		Assert.assertEquals(18.0, n[2][2], 0);
+	}
+
+	@Test
+	public void testGetTuple2DML() {
+		System.out.println("MLContextTest - Get Tuple2<Matrix,Double> DML");
+
+		double[][] m = new double[][] { { 1, 2 }, { 3, 4 } };
+
+		Script script = dml("N=M*2;s=sum(N)").in("M", m).out("N", "s");
+		Tuple2<Matrix, Double> tuple = ml.execute(script).getTuple("N", "s");
+		double[][] n = tuple._1().to2DDoubleArray();
+		double s = tuple._2();
+		Assert.assertArrayEquals(new double[] { 2, 4 }, n[0], 0.0);
+		Assert.assertArrayEquals(new double[] { 6, 8 }, n[1], 0.0);
+		Assert.assertEquals(20.0, s, 0.0);
+	}
+
+	@Test
+	public void testGetTuple3DML() {
+		System.out.println("MLContextTest - Get Tuple3<Long,Double,Boolean> DML");
+
+		Script script = dml("a=1+2;b=a+0.5;c=TRUE;").out("a", "b", "c");
+		Tuple3<Long, Double, Boolean> tuple = ml.execute(script).getTuple("a", "b", "c");
+		long a = tuple._1();
+		double b = tuple._2();
+		boolean c = tuple._3();
+		Assert.assertEquals(3, a);
+		Assert.assertEquals(3.5, b, 0.0);
+		Assert.assertEquals(true, c);
+	}
+
+	@Test
+	public void testGetTuple4DML() {
+		System.out.println("MLContextTest - Get Tuple4<Long,Double,Boolean,String> DML");
+
+		Script script = dml("a=1+2;b=a+0.5;c=TRUE;d=\"yes it's \"+c").out("a", "b", "c", "d");
+		Tuple4<Long, Double, Boolean, String> tuple = ml.execute(script).getTuple("a", "b", "c", "d");
+		long a = tuple._1();
+		double b = tuple._2();
+		boolean c = tuple._3();
+		String d = tuple._4();
+		Assert.assertEquals(3, a);
+		Assert.assertEquals(3.5, b, 0.0);
+		Assert.assertEquals(true, c);
+		Assert.assertEquals("yes it's TRUE", d);
+	}
+
 }

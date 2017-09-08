@@ -39,6 +39,7 @@ import org.apache.sysml.runtime.controlprogram.caching.FrameObject;
 import org.apache.sysml.runtime.controlprogram.caching.MatrixObject;
 import org.apache.sysml.runtime.controlprogram.caching.MatrixObject.UpdateType;
 import org.apache.sysml.runtime.instructions.Instruction;
+import org.apache.sysml.runtime.instructions.cp.CPInstruction;
 import org.apache.sysml.runtime.instructions.cp.CPOperand;
 import org.apache.sysml.runtime.instructions.cp.Data;
 import org.apache.sysml.runtime.instructions.cp.FunctionCallCPInstruction;
@@ -54,6 +55,7 @@ import org.apache.sysml.runtime.matrix.data.FrameBlock;
 import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.matrix.data.Pair;
 import org.apache.sysml.runtime.util.MapReduceTool;
+import org.apache.sysml.utils.GPUStatistics;
 
 
 public class ExecutionContext {
@@ -231,13 +233,34 @@ public class ExecutionContext {
 	}
 	
 	/**
+	 * Pins a matrix variable into memory, update the finegrained statistics and returns the internal matrix block.
+	 * 
+	 * @param varName variable name
+	 * @param opcode  extended opcode
+	 * @return matrix block
+	 * @throws DMLRuntimeException if DMLRuntimeException occurs
+	 */
+	public MatrixBlock getMatrixInput(String varName, String opcode) throws DMLRuntimeException {
+		long t1 = opcode != null && DMLScript.STATISTICS && DMLScript.FINEGRAINED_STATISTICS ? System.nanoTime() : 0;
+		MatrixBlock mb = getMatrixInput(varName);
+		if(opcode != null && DMLScript.STATISTICS && DMLScript.FINEGRAINED_STATISTICS) {
+			long t2 = System.nanoTime();
+			if(mb.isInSparseFormat())
+				GPUStatistics.maintainCPMiscTimes(opcode, CPInstruction.MISC_TIMER_GET_SPARSE_MB, t2-t1);
+			else
+				GPUStatistics.maintainCPMiscTimes(opcode, CPInstruction.MISC_TIMER_GET_DENSE_MB, t2-t1);
+		}
+		return mb;
+	}
+	
+	/**
 	 * Pins a matrix variable into memory and returns the internal matrix block.
 	 * 
 	 * @param varName variable name
 	 * @return matrix block
 	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public MatrixBlock getMatrixInput(String varName) 
+	private MatrixBlock getMatrixInput(String varName) 
 		throws DMLRuntimeException 
 	{	
 		MatrixObject mo = getMatrixObject(varName);
@@ -261,55 +284,97 @@ public class ExecutionContext {
 				((MatrixFormatMetaData)oldMetaData).getOutputInfo(),
 				((MatrixFormatMetaData)oldMetaData).getInputInfo()));
 	}
+	
+	/**
+	 * Compares two potential dimensions d1 and d2 and return the one which is not -1.
+	 * This method is useful when the dimensions are not known at compile time, but are known at runtime.
+	 *  
+	 * @param d1 dimension1
+	 * @param d2 dimension1
+	 * @return valid d1 or d2
+	 * @throws DMLRuntimeException if error occurs
+	 */
+	private long validateDimensions(long d1, long d2) throws DMLRuntimeException {
+		if(d1 >= 0 && d2 >= 0 && d1 != d2) {
+			throw new DMLRuntimeException("Incorrect dimensions:" + d1 + " != " + d2);
+		}
+		return Math.max(d1, d2);
+	}
 
 	/**
 	 * Allocates a dense matrix on the GPU (for output)
 	 * @param varName	name of the output matrix (known by this {@link ExecutionContext})
+	 * @param numRows number of rows of matrix object
+	 * @param numCols number of columns of matrix object
 	 * @return a pair containing the wrapping {@link MatrixObject} and a boolean indicating whether a cuda memory allocation took place (as opposed to the space already being allocated)
 	 * @throws DMLRuntimeException
 	 */
-	public Pair<MatrixObject, Boolean> getDenseMatrixOutputForGPUInstruction(String varName)
+	public Pair<MatrixObject, Boolean> getDenseMatrixOutputForGPUInstruction(String varName, long numRows, long numCols)
 		throws DMLRuntimeException 
 	{	
-		MatrixObject mo = allocateGPUMatrixObject(varName);
+		MatrixObject mo = allocateGPUMatrixObject(varName, numRows, numCols);
 		boolean allocated = mo.getGPUObject(getGPUContext(0)).acquireDeviceModifyDense();
 		mo.getMatrixCharacteristics().setNonZeros(-1);
 		return new Pair<MatrixObject, Boolean>(mo, allocated);
 	}
 
-    /**
+	/**
      * Allocates a sparse matrix in CSR format on the GPU.
      * Assumes that mat.getNumRows() returns a valid number
      * 
      * @param varName variable name
+     * @param numRows number of rows of matrix object
+	 * @param numCols number of columns of matrix object
      * @param nnz number of non zeroes
      * @return matrix object
      * @throws DMLRuntimeException if DMLRuntimeException occurs
      */
-    public Pair<MatrixObject, Boolean> getSparseMatrixOutputForGPUInstruction(String varName, long nnz)
+    public Pair<MatrixObject, Boolean> getSparseMatrixOutputForGPUInstruction(String varName, long numRows, long numCols, long nnz)
         throws DMLRuntimeException
     {
-        MatrixObject mo = allocateGPUMatrixObject(varName);
+    	MatrixObject mo = allocateGPUMatrixObject(varName, numRows, numCols);
         mo.getMatrixCharacteristics().setNonZeros(nnz);
 				boolean allocated = mo.getGPUObject(getGPUContext(0)).acquireDeviceModifySparse();
         return new Pair<MatrixObject, Boolean>(mo, allocated);
     } 
 
-	/**
+    /**
 	 * Allocates the {@link GPUObject} for a given LOPS Variable (eg. _mVar3)
 	 * @param varName variable name
+	 * @param numRows number of rows of matrix object
+	 * @param numCols number of columns of matrix object
 	 * @return matrix object
 	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public MatrixObject allocateGPUMatrixObject(String varName) throws DMLRuntimeException {
+	public MatrixObject allocateGPUMatrixObject(String varName, long numRows, long numCols) throws DMLRuntimeException {
 		MatrixObject mo = getMatrixObject(varName);
+		long dim1 = -1; long dim2 = -1;
+		DMLRuntimeException e = null;
+		try {
+			dim1 = validateDimensions(mo.getNumRows(), numRows);
+		} catch(DMLRuntimeException e1) {
+			e = e1;
+		}
+		try {
+			dim2 = validateDimensions(mo.getNumColumns(), numCols);
+		} catch(DMLRuntimeException e1) {
+			e = e1;
+		}
+		if(e != null) {
+			throw new DMLRuntimeException("Incorrect dimensions given to allocateGPUMatrixObject: [" + numRows + "," + numCols + "], "
+					+ "[" + mo.getNumRows() + "," + mo.getNumColumns() + "]", e);
+		}
+		if(dim1 != mo.getNumRows() || dim2 != mo.getNumColumns()) {
+			// Set unknown dimensions
+			mo.getMatrixCharacteristics().setDimension(dim1, dim2);
+		}
 		if( mo.getGPUObject(getGPUContext(0)) == null ) {
 			GPUObject newGObj = getGPUContext(0).createGPUObject(mo);
-			// The lock is added here for an output block
-			// so that any block currently in use is not deallocated by eviction on the GPU
-			newGObj.addLock();
 			mo.setGPUObject(getGPUContext(0), newGObj);
 		}
+		// The lock is added here for an output block
+		// so that any block currently in use is not deallocated by eviction on the GPU
+		mo.getGPUObject(getGPUContext(0)).addLock();
 		return mo;
 	}
 
@@ -340,16 +405,19 @@ public class ExecutionContext {
 	}
 	
 	/**
-	 * Unpins a currently pinned matrix variable. 
+	 * Unpins a currently pinned matrix variable and update fine-grained statistics. 
 	 * 
 	 * @param varName variable name
 	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public void releaseMatrixInput(String varName) 
-		throws DMLRuntimeException 
-	{
+	public void releaseMatrixInput(String varName, String opcode) throws DMLRuntimeException {
+		long t1 = opcode != null && DMLScript.STATISTICS && DMLScript.FINEGRAINED_STATISTICS ? System.nanoTime() : 0;
 		MatrixObject mo = getMatrixObject(varName);
-		mo.release();
+		mo.release(opcode);
+		if(opcode != null && DMLScript.STATISTICS && DMLScript.FINEGRAINED_STATISTICS) {
+			long t2 = System.nanoTime();
+			GPUStatistics.maintainCPMiscTimes(opcode, CPInstruction.MISC_TIMER_RELEASE_INPUT_MB, t2-t1);
+		}
 	}
 	
 	public void releaseMatrixInputForGPUInstruction(String varName)
@@ -417,17 +485,18 @@ public class ExecutionContext {
 		}
 		mo.getGPUObject(getGPUContext(0)).releaseOutput();
 	}
+	
 
-	public void setMatrixOutput(String varName, MatrixBlock outputData) 
+	public void setMatrixOutput(String varName, MatrixBlock outputData, String opcode) 
 			throws DMLRuntimeException 
 	{
 		MatrixObject mo = getMatrixObject(varName);
-		mo.acquireModify(outputData);
-	    mo.release();
+		mo.acquireModify(outputData, opcode);
+	    mo.release(opcode);
 	    setVariable(varName, mo);
 	}
 
-	public void setMatrixOutput(String varName, MatrixBlock outputData, UpdateType flag) 
+	public void setMatrixOutput(String varName, MatrixBlock outputData, UpdateType flag, String opcode) 
 		throws DMLRuntimeException 
 	{
 		if( flag.isInPlace() ) {
@@ -437,7 +506,7 @@ public class ExecutionContext {
 		}
 		
 		//default case
-		setMatrixOutput(varName, outputData);
+		setMatrixOutput(varName, outputData, opcode);
 	}
 
 	public void setFrameOutput(String varName, FrameBlock outputData) 
@@ -475,23 +544,18 @@ public class ExecutionContext {
 		for( String var : varList )
 		{
 			Data dat = _variables.get(var);
-			if( dat instanceof MatrixObject )
-			{
+			if( dat instanceof MatrixObject ) {
 				MatrixObject mo = (MatrixObject)dat;
 				varsState.put( var, mo.isCleanupEnabled() );
-				//System.out.println("pre-pin "+var+" ("+mo.isCleanupEnabled()+")");
 			}
 		}
 		
 		//step 2) pin variables
-		for( String var : varList )
-		{
+		for( String var : varList ) {
 			Data dat = _variables.get(var);
-			if( dat instanceof MatrixObject )
-			{
+			if( dat instanceof MatrixObject ) {
 				MatrixObject mo = (MatrixObject)dat;
 				mo.enableCleanup(false); 
-				//System.out.println("pin "+var);
 			}
 		}
 		
@@ -514,11 +578,8 @@ public class ExecutionContext {
 	 * @param varList variable list
 	 * @param varsState variable state
 	 */
-	public void unpinVariables(ArrayList<String> varList, HashMap<String,Boolean> varsState)
-	{
-		for( String var : varList)
-		{
-			//System.out.println("unpin "+var+" ("+varsState.get(var)+")");
+	public void unpinVariables(ArrayList<String> varList, HashMap<String,Boolean> varsState) {
+		for( String var : varList) {
 			Data dat = _variables.get(var);
 			if( dat instanceof MatrixObject )
 				((MatrixObject)dat).enableCleanup(varsState.get(var));
@@ -528,15 +589,28 @@ public class ExecutionContext {
 	/**
 	 * NOTE: No order guaranteed, so keep same list for pin and unpin. 
 	 * 
-	 * @return variable list as strings
+	 * @return list of all variable names.
 	 */
-	public ArrayList<String> getVarList()
-	{
-		ArrayList<String> varlist = new ArrayList<String>();
-		varlist.addAll(_variables.keySet());	
-		return varlist;
+	public ArrayList<String> getVarList() {
+		return new ArrayList<>(_variables.keySet());
 	}
-
+	
+	/**
+	 * NOTE: No order guaranteed, so keep same list for pin and unpin. 
+	 * 
+	 * @return list of all variable names of partitioned matrices.
+	 */
+	public ArrayList<String> getVarListPartitioned() {
+		ArrayList<String> ret = new ArrayList<>();
+		for( String var : _variables.keySet() ) {
+			Data dat = _variables.get(var);
+			if( dat instanceof MatrixObject 
+				&& ((MatrixObject)dat).isPartitioned() )
+				ret.add(var);
+		}
+		return ret;
+	}
+	
 	public void cleanupMatrixObject(MatrixObject mo)
 		throws DMLRuntimeException 
 	{

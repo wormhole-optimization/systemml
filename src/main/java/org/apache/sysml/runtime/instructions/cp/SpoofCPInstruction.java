@@ -27,26 +27,23 @@ import org.apache.sysml.runtime.codegen.CodegenUtils;
 import org.apache.sysml.runtime.codegen.SpoofOperator;
 import org.apache.sysml.runtime.controlprogram.context.ExecutionContext;
 import org.apache.sysml.runtime.instructions.InstructionUtils;
-import org.apache.sysml.runtime.instructions.cp.CPOperand;
-import org.apache.sysml.runtime.instructions.cp.ComputationCPInstruction;
-import org.apache.sysml.runtime.instructions.cp.ScalarObject;
 import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 
-public class SpoofCPInstruction extends ComputationCPInstruction
-{
+public class SpoofCPInstruction extends ComputationCPInstruction {
 	private final Class<?> _class;
 	private final SpoofOperator _op;
 	private final int _numThreads;
 	private final CPOperand[] _in;
-	
-	public SpoofCPInstruction(SpoofOperator op, Class<?> cla, int k, CPOperand[] in, CPOperand out, String opcode, String str) {
+
+	private SpoofCPInstruction(SpoofOperator op, Class<?> cla, int k, CPOperand[] in, CPOperand out, String opcode,
+			String str) {
 		super(null, null, null, out, opcode, str);
 		_class = cla;
 		_op = op;
 		_numThreads = k;
 		_in = in;
 	}
-	
+
 	public Class<?> getOperatorClass() {
 		return _class;
 	}
@@ -78,7 +75,7 @@ public class SpoofCPInstruction extends ComputationCPInstruction
 		ArrayList<ScalarObject> scalars = new ArrayList<ScalarObject>();
 		for (CPOperand input : _in) {
 			if(input.getDataType()==DataType.MATRIX)
-				inputs.add(ec.getMatrixInput(input.getName()));
+				inputs.add(ec.getMatrixInput(input.getName(), getExtendedOpcode()));
 			else if(input.getDataType()==DataType.SCALAR) {
 				//note: even if literal, it might be compiled as scalar placeholder
 				scalars.add(ec.getScalarInput(input.getName(), input.getValueType(), input.isLiteral()));
@@ -87,9 +84,8 @@ public class SpoofCPInstruction extends ComputationCPInstruction
 		
 		// set the output dimensions to the hop node matrix dimensions
 		if( output.getDataType() == DataType.MATRIX) {
-			MatrixBlock out = new MatrixBlock();
-			_op.execute(inputs, scalars, out, _numThreads);
-			ec.setMatrixOutput(output.getName(), out);
+			MatrixBlock out = _op.execute(inputs, scalars, new MatrixBlock(), _numThreads);
+			ec.setMatrixOutput(output.getName(), out, getExtendedOpcode());
 		}
 		else if (output.getDataType() == DataType.SCALAR) {
 			ScalarObject out = _op.execute(inputs, scalars, _numThreads);
@@ -99,6 +95,6 @@ public class SpoofCPInstruction extends ComputationCPInstruction
 		// release input matrices
 		for (CPOperand input : _in)
 			if(input.getDataType()==DataType.MATRIX)
-				ec.releaseMatrixInput(input.getName());
+				ec.releaseMatrixInput(input.getName(), getExtendedOpcode());
 	}
 }

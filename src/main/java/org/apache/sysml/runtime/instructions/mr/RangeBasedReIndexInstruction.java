@@ -21,6 +21,7 @@ package org.apache.sysml.runtime.instructions.mr;
 
 import java.util.ArrayList;
 
+import org.apache.sysml.lops.RightIndex;
 import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.instructions.InstructionUtils;
 import org.apache.sysml.runtime.matrix.MatrixCharacteristics;
@@ -33,17 +34,16 @@ import org.apache.sysml.runtime.matrix.operators.ReIndexOperator;
 import org.apache.sysml.runtime.util.IndexRange;
 import org.apache.sysml.runtime.util.UtilFunctions;
 
-
-public class RangeBasedReIndexInstruction extends UnaryMRInstructionBase
-{
+public class RangeBasedReIndexInstruction extends UnaryMRInstructionBase {
 	private IndexRange _ixrange = null;
-	private boolean _forLeft = false;	
+	private boolean _forLeft = false;
 	private long _rlenLhs = -1;
 	private long _clenLhs = -1;
-	
-	public RangeBasedReIndexInstruction(Operator op, byte in, byte out, IndexRange rng, boolean forleft, long rlen, long clen, String istr) {
+
+	private RangeBasedReIndexInstruction(Operator op, byte in, byte out, IndexRange rng, boolean forleft, long rlen,
+			long clen, String istr) {
 		super(op, in, out);
-		mrtype = MRINSTRUCTION_TYPE.RangeReIndex;
+		mrtype = MRINSTRUCTION_TYPE.RightIndex;
 		instString = istr;
 		_ixrange = rng;
 		_forLeft = forleft;
@@ -67,9 +67,9 @@ public class RangeBasedReIndexInstruction extends UnaryMRInstructionBase
 		
 		String opcode = parts[0];
 		boolean forLeft = false;
-		if(opcode.equalsIgnoreCase("rangeReIndexForLeft"))
+		if(opcode.equalsIgnoreCase(RightIndex.OPCODE+"ForLeft"))
 			forLeft=true;
-		else if(!opcode.equalsIgnoreCase("rangeReIndex"))
+		else if(!opcode.equalsIgnoreCase(RightIndex.OPCODE))
 			throw new DMLRuntimeException("Unknown opcode while parsing a Select: " + str);
 		byte in = Byte.parseByte(parts[1]); 
 		IndexRange rng=new IndexRange(UtilFunctions.parseToLong(parts[2]), 

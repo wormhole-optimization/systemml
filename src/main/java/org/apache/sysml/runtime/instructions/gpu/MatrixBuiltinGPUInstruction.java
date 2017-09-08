@@ -24,12 +24,13 @@ import org.apache.sysml.runtime.controlprogram.caching.MatrixObject;
 import org.apache.sysml.runtime.controlprogram.context.ExecutionContext;
 import org.apache.sysml.runtime.instructions.cp.CPOperand;
 import org.apache.sysml.runtime.matrix.data.LibMatrixCUDA;
+import org.apache.sysml.runtime.matrix.data.LibMatrixCuDNN;
 import org.apache.sysml.runtime.matrix.operators.Operator;
 import org.apache.sysml.utils.GPUStatistics;
 
 public class MatrixBuiltinGPUInstruction extends BuiltinUnaryGPUInstruction {
-	
-	public MatrixBuiltinGPUInstruction(Operator op, CPOperand in, CPOperand out, String opcode, String instr){
+
+	protected MatrixBuiltinGPUInstruction(Operator op, CPOperand in, CPOperand out, String opcode, String instr) {
 		super(op, in, out, 1, opcode, instr);
 		_gputype = GPUINSTRUCTION_TYPE.BuiltinUnary;
 	}
@@ -44,7 +45,7 @@ public class MatrixBuiltinGPUInstruction extends BuiltinUnaryGPUInstruction {
 
 		switch(opcode) {
 			case "sel+":
-				LibMatrixCUDA.relu(ec, ec.getGPUContext(0), getExtendedOpcode(), mat, _output.getName()); break;
+				LibMatrixCuDNN.relu(ec, ec.getGPUContext(0), getExtendedOpcode(), mat, _output.getName()); break;
 			case "exp":
 				LibMatrixCUDA.exp(ec, ec.getGPUContext(0), getExtendedOpcode(), mat, _output.getName()); break;
 			case "sqrt":

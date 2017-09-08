@@ -33,18 +33,14 @@ import org.apache.sysml.runtime.matrix.mapred.IndexedMatrixValue;
 import org.apache.sysml.runtime.matrix.operators.AggregateUnaryOperator;
 import org.apache.sysml.runtime.matrix.operators.Operator;
 
-
-public class AggregateUnaryInstruction extends UnaryMRInstructionBase 
-{
-	
+public class AggregateUnaryInstruction extends UnaryMRInstructionBase {
 	private boolean _dropCorr = false;
-	
-	public AggregateUnaryInstruction(Operator op, byte in, byte out, boolean dropCorr, String istr)
-	{
+
+	protected AggregateUnaryInstruction(Operator op, byte in, byte out, boolean dropCorr, String istr) {
 		super(op, in, out);
 		mrtype = MRINSTRUCTION_TYPE.AggregateUnary;
 		instString = istr;
-		
+
 		_dropCorr = dropCorr;
 	}
 
@@ -98,7 +94,7 @@ public class AggregateUnaryInstruction extends UnaryMRInstructionBase
 					OperationsOnMatrixValues.performAggregateUnary( inix, in.getValue(), out.getIndexes(), out.getValue(), 
 							                            auop, blockRowFactor, blockColFactor);
 					if( _dropCorr )
-						((MatrixBlock)out.getValue()).dropLastRowsOrColums(auop.aggOp.correctionLocation);
+						((MatrixBlock)out.getValue()).dropLastRowsOrColumns(auop.aggOp.correctionLocation);
 				}
 				
 				//put the output value in the cache

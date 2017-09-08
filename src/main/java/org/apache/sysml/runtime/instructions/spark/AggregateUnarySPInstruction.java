@@ -43,13 +43,12 @@ import org.apache.sysml.runtime.matrix.data.OperationsOnMatrixValues;
 import org.apache.sysml.runtime.matrix.operators.AggregateOperator;
 import org.apache.sysml.runtime.matrix.operators.AggregateUnaryOperator;
 
-public class AggregateUnarySPInstruction extends UnarySPInstruction
-{
-	
+public class AggregateUnarySPInstruction extends UnarySPInstruction {
 	private SparkAggType _aggtype = null;
 	private AggregateOperator _aop = null;
-	
-	public AggregateUnarySPInstruction(AggregateUnaryOperator auop, AggregateOperator aop, CPOperand in, CPOperand out, SparkAggType aggtype, String opcode, String istr){
+
+	protected AggregateUnarySPInstruction(AggregateUnaryOperator auop, AggregateOperator aop, CPOperand in,
+			CPOperand out, SparkAggType aggtype, String opcode, String istr) {
 		super(auop, in, out, opcode, istr);
 		_aggtype = aggtype;
 		_aop = aop;
@@ -102,11 +101,11 @@ public class AggregateUnarySPInstruction extends UnarySPInstruction
 			MatrixBlock out3 = RDDAggregateUtils.aggStable(out2, aggop);
 			
 			//drop correction after aggregation
-			out3.dropLastRowsOrColums(aggop.correctionLocation);
+			out3.dropLastRowsOrColumns(aggop.correctionLocation);
 			
 			//put output block into symbol table (no lineage because single block)
 			//this also includes implicit maintenance of matrix characteristics
-			sec.setMatrixOutput(output.getName(), out3);
+			sec.setMatrixOutput(output.getName(), out3, getExtendedOpcode());
 		}
 		else //MULTI_BLOCK or NONE
 		{
@@ -222,7 +221,7 @@ public class AggregateUnarySPInstruction extends UnarySPInstruction
 			arg0.aggregateUnaryOperations(_op, blkOut, _brlen, _bclen, _ix);
 			
 			//always drop correction since no aggregation
-			blkOut.dropLastRowsOrColums(_op.aggOp.correctionLocation);
+			blkOut.dropLastRowsOrColumns(_op.aggOp.correctionLocation);
 			
 			//output new tuple
 			return blkOut;

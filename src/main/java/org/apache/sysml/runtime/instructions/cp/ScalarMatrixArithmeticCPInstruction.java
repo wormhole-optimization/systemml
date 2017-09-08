@@ -27,18 +27,13 @@ import org.apache.sysml.runtime.matrix.operators.Operator;
 import org.apache.sysml.runtime.matrix.operators.ScalarOperator;
 
 // TODO rename to MatrixScalar...
-public class ScalarMatrixArithmeticCPInstruction extends ArithmeticBinaryCPInstruction
-{
-	
-	public ScalarMatrixArithmeticCPInstruction(Operator op, 
-											   CPOperand in1, 
-											   CPOperand in2, 
-											   CPOperand out, 
-											   String opcode,
-											   String istr){
+public class ScalarMatrixArithmeticCPInstruction extends ArithmeticBinaryCPInstruction {
+
+	protected ScalarMatrixArithmeticCPInstruction(Operator op, CPOperand in1, CPOperand in2, CPOperand out,
+			String opcode, String istr) {
 		super(op, in1, in2, out, opcode, istr);
 	}
-	
+
 	@Override
 	public void processInstruction(ExecutionContext ec) 
 		throws DMLRuntimeException
@@ -46,7 +41,7 @@ public class ScalarMatrixArithmeticCPInstruction extends ArithmeticBinaryCPInstr
 		CPOperand mat = ( input1.getDataType() == DataType.MATRIX ) ? input1 : input2;
 		CPOperand scalar = ( input1.getDataType() == DataType.MATRIX ) ? input2 : input1;
 		
-		MatrixBlock inBlock = ec.getMatrixInput(mat.getName());
+		MatrixBlock inBlock = ec.getMatrixInput(mat.getName(), getExtendedOpcode());
 		ScalarObject constant = (ScalarObject) ec.getScalarInput(scalar.getName(), scalar.getValueType(), scalar.isLiteral());
 
 		ScalarOperator sc_op = (ScalarOperator) _optr;
@@ -54,13 +49,13 @@ public class ScalarMatrixArithmeticCPInstruction extends ArithmeticBinaryCPInstr
 		
 		MatrixBlock retBlock = (MatrixBlock) inBlock.scalarOperations(sc_op, new MatrixBlock());
 		
-		ec.releaseMatrixInput(mat.getName());
+		ec.releaseMatrixInput(mat.getName(), getExtendedOpcode());
 		
 		// Ensure right dense/sparse output representation (guarded by released input memory)
 		if( checkGuardedRepresentationChange(inBlock, retBlock) ) {
  			retBlock.examSparsity();
  		}
 		
-		ec.setMatrixOutput(output.getName(), retBlock);
+		ec.setMatrixOutput(output.getName(), retBlock, getExtendedOpcode());
 	}
 }

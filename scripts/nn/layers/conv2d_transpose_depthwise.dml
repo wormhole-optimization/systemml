@@ -41,6 +41,20 @@ forward = function(matrix[double] X, matrix[double] W, matrix[double] b,
    * The resulting C/M separate output channels are then concatenated
    * together channel-wise into a single volume of C/M output channels.
    *
+   * For clarity, if we were to use the same terminology as a regular
+   * depthwise convolution, a depthwise transpose convolution has the
+   * ability to contract each group of M input channels (from a total of
+   * C*M input channels) back to a single output channel, thus leading
+   * to C output channels.  Thus, this is the "transpose" of the regular
+   * depthwise convolution.  To keep the convention of always referring
+   * to the number of input channels as C, in this depthwise transpose
+   * layer we can reformulate the above by dividing by M.  With this
+   * reformulation, we can now state that there are C input channels,
+   * and for each group of M inputs we output a single output channel,
+   * for a total of C/M output channels.  For this, we use 1 filter of
+   * depth M for each group of M input channels, and we store W as
+   * `(C/M, M*Hf*Wf)`.
+   *
    * Inputs:
    *  - X: Inputs, of shape (N, C*Hin*Win).
    *  - W: Weights, of shape (C/M, M*Hf*Wf).
@@ -71,7 +85,9 @@ forward = function(matrix[double] X, matrix[double] W, matrix[double] b,
   Wout = stridew*(Win-1) - 2*padw + Wf + out_padw
 
   # create output volume
-  out = matrix(0, rows=N, cols=C/M*Hout*Wout)
+  # NOTE: We initialize to 1s vs. 0s to avoid conversions between sparse and dense formats. 
+  # This is a complete hack until the engine is improved.
+  out = matrix(1, rows=N, cols=C/M*Hout*Wout)
 
   # depthwise transpose convolution
   # TODO: Explore usage of parfor loops more to determine if they can provide a performance
@@ -132,9 +148,11 @@ backward = function(matrix[double] dout, int Hout, int Wout,
   F = nrow(W)
 
   # create gradient volumes
-  dX = matrix(0, rows=N, cols=C*Hin*Win)
-  dW = matrix(0, rows=C/M, cols=M*Hf*Wf)
-  db = matrix(0, rows=C/M, cols=1)
+  # NOTE: We initialize to 1s vs. 0s to avoid conversions between sparse and dense formats. 
+  # This is a complete hack until the engine is improved.
+  dX = matrix(1, rows=N, cols=C*Hin*Win)
+  dW = matrix(1, rows=C/M, cols=M*Hf*Wf)
+  db = matrix(1, rows=C/M, cols=1)
 
   # depthwise transpose convolution
   for (f in 1:F) {

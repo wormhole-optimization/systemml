@@ -33,17 +33,13 @@ import org.apache.sysml.runtime.matrix.mapred.IndexedMatrixValue;
 import org.apache.sysml.runtime.matrix.operators.AggregateUnaryOperator;
 import org.apache.sysml.runtime.matrix.operators.Operator;
 
-
-public class CumulativeAggregateInstruction extends AggregateUnaryInstruction 
-{
-	
+public class CumulativeAggregateInstruction extends AggregateUnaryInstruction {
 	private MatrixCharacteristics _mcIn = null;
-	
-	public CumulativeAggregateInstruction(Operator op, byte in, byte out, String istr)
-	{
+
+	private CumulativeAggregateInstruction(Operator op, byte in, byte out, String istr) {
 		super(op, in, out, true, istr);
 	}
-	
+
 	public void setMatrixCharacteristics( MatrixCharacteristics mcIn )
 	{
 		_mcIn = mcIn;
@@ -87,7 +83,7 @@ public class CumulativeAggregateInstruction extends AggregateUnaryInstruction
 			OperationsOnMatrixValues.performAggregateUnary( inix, in1.getValue(), out.getIndexes(), out.getValue(), 
 					                            ((AggregateUnaryOperator)optr), blockRowFactor, blockColFactor);
 			if( ((AggregateUnaryOperator)optr).aggOp.correctionExists )
-				((MatrixBlock)out.getValue()).dropLastRowsOrColums(((AggregateUnaryOperator)optr).aggOp.correctionLocation);
+				((MatrixBlock)out.getValue()).dropLastRowsOrColumns(((AggregateUnaryOperator)optr).aggOp.correctionLocation);
 			
 			//cumsum expand partial aggregates
 			long rlenOut = (long)Math.ceil((double)_mcIn.getRows()/blockRowFactor);

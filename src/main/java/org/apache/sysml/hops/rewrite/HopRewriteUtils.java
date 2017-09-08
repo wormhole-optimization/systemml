@@ -47,6 +47,7 @@ import org.apache.sysml.hops.IndexingOp;
 import org.apache.sysml.hops.LeftIndexingOp;
 import org.apache.sysml.hops.LiteralOp;
 import org.apache.sysml.hops.MemoTable;
+import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.hops.ParameterizedBuiltinOp;
 import org.apache.sysml.hops.ReorgOp;
 import org.apache.sysml.hops.TernaryOp;
@@ -456,6 +457,17 @@ public class HopRewriteUtils
 		return datagen;
 	}
 	
+	public static boolean isDataGenOp(Hop hop, DataGenMethod... ops) {
+		return (hop instanceof DataGenOp
+			&& ArrayUtils.contains(ops, ((DataGenOp)hop).getOp()));
+	}
+
+	public static boolean isDataGenOpWithConstantValue(Hop hop, double value) {
+		return hop instanceof DataGenOp
+			&& ((DataGenOp)hop).getOp()==DataGenMethod.RAND
+			&& ((DataGenOp)hop).hasConstantValue(value);
+	}
+
 	public static ReorgOp createTranspose(Hop input) {
 		return createReorg(input, ReOrgOp.TRANSPOSE);
 	}
@@ -493,7 +505,12 @@ public class HopRewriteUtils
 		return createBinary(new LiteralOp(0), input, OpOp2.MINUS);
 	}
 	
-	public static BinaryOp createBinary(Hop input1, Hop input2, OpOp2 op) {
+	public static BinaryOp createBinary(Hop input1, Hop input2, OpOp2 op)
+	{
+		return createBinary(input1, input2, op, false);
+	}
+
+	public static BinaryOp createBinary(Hop input1, Hop input2, OpOp2 op, boolean outer){
 		Hop mainInput = input1.getDataType().isMatrix() ? input1 : 
 			input2.getDataType().isMatrix() ? input2 : input1;
 		BinaryOp bop = new BinaryOp(mainInput.getName(), mainInput.getDataType(), 
@@ -502,26 +519,28 @@ public class HopRewriteUtils
 		if( bop.isPPredOperation() && bop.getDataType().isScalar() )
 			bop.setValueType(ValueType.BOOLEAN);
 		// cleanup cbind, rbind
-		if( bop.getDataType() == DataType.SCALAR && bop.getValueType() != ValueType.STRING
-				&& input2.getValueType() == ValueType.STRING )
-			bop.setValueType(ValueType.STRING);
-		bop.setOutputBlocksizes(mainInput.getRowsInBlock(), mainInput.getColsInBlock());
+        if( bop.getDataType() == DataType.SCALAR && bop.getValueType() != ValueType.STRING
+				&& input2.getValueType() == ValueType.STRING ) {
+            bop.setValueType(ValueType.STRING);
+        }
+        bop.setOuterVectorOperation(outer);
+        bop.setOutputBlocksizes(mainInput.getRowsInBlock(), mainInput.getColsInBlock());
 		copyLineNumbers(mainInput, bop);
 		bop.refreshSizeInformation();	
 		return bop;
 	}
 	
 	public static TernaryOp createTernary(Hop input1, Hop input2, Hop input3, OpOp3 op) {
-		Hop mainInput = input1.getDataType().isMatrix() ? input1 : 
+		Hop mainInput = input1.getDataType().isMatrix() ? input1 :
 			input2.getDataType().isMatrix() ? input3 : input1;
-		TernaryOp top = new TernaryOp(mainInput.getName(), mainInput.getDataType(), 
+		TernaryOp top = new TernaryOp(mainInput.getName(), mainInput.getDataType(),
 			mainInput.getValueType(), op, input1, input2, input3);
 		top.setOutputBlocksizes(mainInput.getRowsInBlock(), mainInput.getColsInBlock());
 		copyLineNumbers(mainInput, top);
-		top.refreshSizeInformation();	
+		top.refreshSizeInformation();
 		return top;
 	}
-	
+
 	public static AggUnaryOp createSum( Hop input ) {
 		return createAggUnaryOp(input, AggOp.SUM, Direction.RowCol);
 	}
@@ -626,6 +645,14 @@ public class HopRewriteUtils
 		return ternOp;
 	}
 	
+	public static DataOp createDataOp(String name, Hop input, DataOpTypes type) {
+		DataOp dop = new DataOp(name, input.getDataType(), input.getValueType(), input, type, null);
+		dop.setOutputBlocksizes(input.getRowsInBlock(), input.getColsInBlock());
+		copyLineNumbers(input, dop);
+		dop.refreshSizeInformation();
+		return dop;
+	}
+
 	public static void setOutputParameters( Hop hop, long rlen, long clen, long brlen, long bclen, long nnz ) {
 		hop.setDim1( rlen );
 		hop.setDim2( clen );
@@ -647,11 +674,11 @@ public class HopRewriteUtils
 		hnew.setOutputBlocksizes(hold.getRowsInBlock(), hold.getColsInBlock());
 		hnew.refreshSizeInformation();
 	}
-	
-	public static void copyLineNumbers( Hop src, Hop dest ) {
-		dest.setAllPositions(src.getBeginLine(), src.getBeginColumn(), src.getEndLine(), src.getEndColumn());
+
+	public static void copyLineNumbers(Hop src, Hop dest) {
+		dest.setParseInfo(src);
 	}
-	
+
 	public static void updateHopCharacteristics( Hop hop, long brlen, long bclen, Hop src )
 	{
 		updateHopCharacteristics(hop, brlen, bclen, new MemoTable(), src);
@@ -730,6 +757,11 @@ public class HopRewriteUtils
 			&& hop.getInput().get(1).getDim1() < hop.getInput().get(1).getDim2();
 	}
 	
+	public static boolean isValidOuterBinaryOp( OpOp2 op ) {
+		String opcode = Hop.getBinaryOpCode(op);
+		return (Hop.getOpOp2ForOuterVectorOperation(opcode) == op);
+	}
+
 	public static boolean isSparse( Hop hop ) {
 		return hop.dimsKnown(true) //dims and nnz known
 			&& MatrixBlock.evalSparseFormatInMemory(hop.getDim1(), hop.getDim2(), hop.getNnz());
@@ -810,6 +842,18 @@ public class HopRewriteUtils
 		return isBinary(hop, type) && hop.getParent().size() <= maxParents;
 	}
 	
+	public static boolean isBinarySparseSafe(Hop hop) {
+		if( !(hop instanceof BinaryOp) )
+			return false;
+		if( isBinary(hop, OpOp2.MULT) )
+			return true;
+		BinaryOp bop = (BinaryOp) hop;
+		Hop lit = bop.getInput().get(0) instanceof LiteralOp ? bop.getInput().get(0) :
+			bop.getInput().get(1) instanceof LiteralOp ? bop.getInput().get(1) : null;
+		return lit != null && OptimizerUtils
+			.isBinaryOpSparsityConditionalSparseSafe(bop.getOp(), (LiteralOp)lit);
+	}
+
 	public static boolean isBinaryMatrixScalarOperation(Hop hop) {
 		return hop instanceof BinaryOp && 
 			((hop.getInput().get(0).getDataType().isMatrix() && hop.getInput().get(1).getDataType().isScalar())
@@ -830,6 +874,10 @@ public class HopRewriteUtils
 		return ret;
 	}
 	
+	public static boolean containsInput(Hop current, Hop probe) {
+		return rContainsInput(current, probe, new HashSet<Long>());
+	}
+
 	private static boolean rContainsInput(Hop current, Hop probe, HashSet<Long> memo) {
 		if( memo.contains(current.getHopID()) )
 			return false;
@@ -841,6 +889,11 @@ public class HopRewriteUtils
 		return ret;
 	}
 	
+	public static boolean isData(Hop hop, DataOpTypes type) {
+		return hop instanceof DataOp
+			&& ((DataOp)hop).getDataOpType()==type;
+	}
+
 	public static boolean isBinaryMatrixColVectorOperation(Hop hop) {
 		return hop instanceof BinaryOp 
 			&& hop.getInput().get(0).getDataType().isMatrix() && hop.getInput().get(1).getDataType().isMatrix()
@@ -899,26 +952,27 @@ public class HopRewriteUtils
 		return true;
 	}
 	
-	public static boolean isFullColumnIndexing(LeftIndexingOp hop)
-	{
-		boolean colPred = hop.getColLowerEqualsUpper();  //single col
-		
-		Hop rl = hop.getInput().get(2);
-		Hop ru = hop.getInput().get(3);
-		
-		return colPred && rl instanceof LiteralOp && getDoubleValueSafe((LiteralOp)rl)==1
-				&& ru instanceof LiteralOp && getDoubleValueSafe((LiteralOp)ru)==hop.getDim1();
+	public static boolean isFullColumnIndexing(LeftIndexingOp hop) {
+		return hop.isColLowerEqualsUpper()
+			&& isLiteralOfValue(hop.getInput().get(2), 1)
+			&& isLiteralOfValue(hop.getInput().get(3), hop.getDim1());
+		//TODO extend by input/output size conditions, which are currently
+		//invalid due to temporarily incorrect size information
+	}
+
+	public static boolean isFullRowIndexing(LeftIndexingOp hop) {
+		return hop.isRowLowerEqualsUpper()
+			&& isLiteralOfValue(hop.getInput().get(4), 1)
+			&& isLiteralOfValue(hop.getInput().get(5), hop.getDim2());
+		//TODO extend by input/output size conditions (see above)
 	}
 	
-	public static boolean isFullRowIndexing(LeftIndexingOp hop)
-	{
-		boolean rowPred = hop.getRowLowerEqualsUpper();  //single row
-		
-		Hop cl = hop.getInput().get(4);
-		Hop cu = hop.getInput().get(5);
-		
-		return rowPred && cl instanceof LiteralOp && getDoubleValueSafe((LiteralOp)cl)==1
-				&& cu instanceof LiteralOp && getDoubleValueSafe((LiteralOp)cu)==hop.getDim2();
+	public static boolean isColumnRangeIndexing(IndexingOp hop) {
+		return ((isLiteralOfValue(hop.getInput().get(1), 1)
+			&& isLiteralOfValue(hop.getInput().get(2), hop.getDim1()))
+			|| hop.getDim1() == hop.getInput().get(0).getDim1())
+			&& isLiteralOfValue(hop.getInput().get(3), 1)
+			&& hop.getInput().get(4) instanceof LiteralOp;
 	}
 	
 	public static boolean isScalarMatrixBinaryMult( Hop hop ) {
@@ -970,17 +1024,13 @@ public class HopRewriteUtils
 		return ret;
 	}
 
-	public static LiteralOp getBasic1NSequenceMaxLiteral(Hop hop) 
+	public static Hop getBasic1NSequenceMax(Hop hop)
 		throws HopsException
 	{
-		if( hop instanceof DataGenOp )
-		{
+		if( isDataGenOp(hop, DataGenMethod.SEQ) ) {
 			DataGenOp dgop = (DataGenOp) hop;
-			if( dgop.getOp() == DataGenMethod.SEQ ){
-				Hop to = dgop.getInput().get(dgop.getParamIndex(Statement.SEQ_TO));
-				if( to instanceof LiteralOp )
-					return (LiteralOp)to;
-			}
+			return dgop.getInput()
+				.get(dgop.getParamIndex(Statement.SEQ_TO));
 		}
 		
 		throw new HopsException("Failed to retrieve 'to' argument from basic 1-N sequence.");
@@ -1007,13 +1057,20 @@ public class HopRewriteUtils
 		return ret;
 	}
 	
-	public static boolean alwaysRequiresReblock(Hop hop)
-	{
-		return (    hop instanceof DataOp 
-				 && ((DataOp)hop).getDataOpType()==DataOpTypes.PERSISTENTREAD
-				 && ((DataOp)hop).getInputFormatType()!=FileFormatTypes.BINARY);
+	public static boolean alwaysRequiresReblock(Hop hop) {
+		return (hop instanceof DataOp
+			&& ((DataOp)hop).getDataOpType()==DataOpTypes.PERSISTENTREAD
+			 && ((DataOp)hop).getInputFormatType()!=FileFormatTypes.BINARY);
 	}
 	
+	public static boolean containsOp(ArrayList<Hop> candidates, Class<? extends Hop> clazz) {
+		if( candidates != null )
+			for( Hop cand : candidates )
+				if( cand.getClass().equals(clazz) )
+					return true;
+		return false;
+	}
+
 	public static boolean rHasSimpleReadChain(Hop root, String var)
 	{
 		if( root.isVisited() )

@@ -23,17 +23,19 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 
+import org.antlr.v4.runtime.ParserRuleContext;
 import org.apache.sysml.parser.LanguageException.LanguageErrorCodes;
 import org.apache.sysml.runtime.util.ConvolutionUtils;
+import org.apache.sysml.runtime.util.UtilFunctions;
 
 public class BuiltinFunctionExpression extends DataIdentifier 
 {
 	protected Expression[] 	  _args = null;
 	private BuiltinFunctionOp _opcode;
 
-	public BuiltinFunctionExpression(BuiltinFunctionOp bifop, ArrayList<ParameterExpression> args, String fname, int blp, int bcp, int elp, int ecp) {
+	public BuiltinFunctionExpression(ParserRuleContext ctx, BuiltinFunctionOp bifop, ArrayList<ParameterExpression> args, String fname) {
 		_opcode = bifop;
-		setAllPositions(fname, blp, bcp, elp, ecp);
+		setCtxValuesAndFilename(ctx, fname);
 		args = expandConvolutionArguments(args);
 		_args = new Expression[args.size()];
 		for(int i=0; i < args.size(); i++) {
@@ -41,25 +43,31 @@ public class BuiltinFunctionExpression extends DataIdentifier
 		}
 	}
 
-	public BuiltinFunctionExpression(BuiltinFunctionOp bifop, Expression[] args, String fname, int blp, int bcp, int elp, int ecp) {
+	public BuiltinFunctionExpression(BuiltinFunctionOp bifop, Expression[] args, ParseInfo parseInfo) {
+		_opcode = bifop;
+		_args = new Expression[args.length];
+		for (int i = 0; i < args.length; i++) {
+			_args[i] = args[i];
+		}
+		setParseInfo(parseInfo);
+	}
+
+	public BuiltinFunctionExpression(ParserRuleContext ctx, BuiltinFunctionOp bifop, Expression[] args, String fname) {
 		_opcode = bifop;
 		_args = new Expression[args.length];
 		for(int i=0; i < args.length; i++) {
 			_args[i] = args[i];
 		}
-		this.setAllPositions(fname, blp, bcp, elp, ecp);
+		setCtxValuesAndFilename(ctx, fname);
 	}
 
 	public Expression rewriteExpression(String prefix) throws LanguageException {
-
 		Expression[] newArgs = new Expression[_args.length];
-		for(int i=0; i < _args.length; i++) {
+		for (int i = 0; i < _args.length; i++) {
 			newArgs[i] = _args[i].rewriteExpression(prefix);
 		}
-		BuiltinFunctionExpression retVal = new BuiltinFunctionExpression(this._opcode, newArgs, 
-				this.getFilename(), this.getBeginLine(), this.getBeginColumn(), this.getEndLine(), this.getEndColumn());
+		BuiltinFunctionExpression retVal = new BuiltinFunctionExpression(this._opcode, newArgs, this);
 		return retVal;
-	
 	}
 
 	public BuiltinFunctionOp getOpCode() {
@@ -107,7 +115,7 @@ public class BuiltinFunctionExpression extends DataIdentifier
 		int count = 0;
 		for (DataIdentifier outParam: stmt.getTargetList()){
 			DataIdentifier tmp = new DataIdentifier(outParam);
-			tmp.setAllPositions(this.getFilename(), this.getBeginLine(), this.getBeginColumn(), this.getEndLine(), this.getEndColumn());
+			tmp.setParseInfo(this);
 			_outputs[count++] = tmp;
 		}
 		
@@ -148,11 +156,12 @@ public class BuiltinFunctionExpression extends DataIdentifier
 			
 			long inrows = getFirstExpr().getOutput().getDim1();
 			long incols = getFirstExpr().getOutput().getDim2();
-			
-			if ( inrows != incols ) {
-				raiseValidateError("LU Decomposition can only be done on a square matrix. Input matrix is rectangular (rows=" + inrows + ", cols="+incols+")", conditional);
+
+			if (inrows != incols) {
+				raiseValidateError("LU Decomposition requires a square matrix. Matrix " + getFirstExpr() + " is "
+						+ inrows + "x" + incols + ".", conditional);
 			}
-			
+
 			// Output1 - P
 			luOut1.setDataType(DataType.MATRIX);
 			luOut1.setValueType(ValueType.DOUBLE);
@@ -197,6 +206,37 @@ public class BuiltinFunctionExpression extends DataIdentifier
 			eigenOut2.setDimensions(getFirstExpr().getOutput().getDim1(), getFirstExpr().getOutput().getDim2());
 			eigenOut2.setBlockDimensions(getFirstExpr().getOutput().getRowsInBlock(), getFirstExpr().getOutput().getColumnsInBlock());
 			
+			break;
+
+		case SVD:
+			checkNumParameters(1);
+			checkMatrixParam(getFirstExpr());
+			
+			long minMN = Math.min(getFirstExpr().getOutput().getDim1(), getFirstExpr().getOutput().getDim2());
+
+			// setup output properties
+			DataIdentifier svdOut1 = (DataIdentifier) getOutputs()[0];
+			DataIdentifier svdOut2 = (DataIdentifier) getOutputs()[1];
+			DataIdentifier svdOut3 = (DataIdentifier) getOutputs()[2];
+
+			// Output 1
+			svdOut1.setDataType(DataType.MATRIX);
+			svdOut1.setValueType(ValueType.DOUBLE);
+			svdOut1.setDimensions(getFirstExpr().getOutput().getDim1(), minMN);
+			svdOut1.setBlockDimensions(getFirstExpr().getOutput().getRowsInBlock(), getFirstExpr().getOutput().getColumnsInBlock());
+
+			// Output 2
+			svdOut2.setDataType(DataType.MATRIX);
+			svdOut2.setValueType(ValueType.DOUBLE);
+			svdOut2.setDimensions(minMN, minMN);
+			svdOut2.setBlockDimensions(getFirstExpr().getOutput().getRowsInBlock(), getFirstExpr().getOutput().getColumnsInBlock());
+
+			// Output 3
+			svdOut3.setDataType(DataType.MATRIX);
+			svdOut3.setValueType(ValueType.DOUBLE);
+			svdOut3.setDimensions(getFirstExpr().getOutput().getDim2(), minMN);
+			svdOut3.setBlockDimensions(getFirstExpr().getOutput().getRowsInBlock(), getFirstExpr().getOutput().getColumnsInBlock());
+
 			break;
 		
 		default: //always unconditional
@@ -286,10 +326,8 @@ public class BuiltinFunctionExpression extends DataIdentifier
 				HashSet<String> expand = new HashSet<String>();
 				expand.add("input_shape"); expand.add("pool_size"); expand.add("stride"); expand.add("padding");
 				paramExpression = expandListParams(paramExpression, expand);
-				paramExpression.add(new ParameterExpression("filter_shape1", 
-						new IntIdentifier(1, getFilename(), getBeginLine(), getBeginColumn(), getEndLine(), getEndColumn())));
-				paramExpression.add(new ParameterExpression("filter_shape2", 
-						new IntIdentifier(1, getFilename(), getBeginLine(), getBeginColumn(), getEndLine(), getEndColumn())));
+				paramExpression.add(new ParameterExpression("filter_shape1", new IntIdentifier(1, this)));
+				paramExpression.add(new ParameterExpression("filter_shape2", new IntIdentifier(1, this)));
 				paramExpression = replaceListParams(paramExpression, "pool_size", "filter_shape", 3);
 				if(_opcode == BuiltinFunctionOp.MAX_POOL_BACKWARD)
 					paramExpression = orderConvolutionParams(paramExpression, 2);
@@ -325,8 +363,11 @@ public class BuiltinFunctionExpression extends DataIdentifier
 		// checkIdentifierParams();
 		String outputName = getTempName();
 		DataIdentifier output = new DataIdentifier(outputName);
-		output.setAllPositions(this.getFilename(), this.getBeginLine(), this.getBeginColumn(), this.getEndLine(), this.getEndColumn());
+		output.setParseInfo(this);
 		
+		if (this.getFirstExpr() == null) {
+			raiseValidateError("Function " + this + " has no arguments.", false);
+		}
 		Identifier id = this.getFirstExpr().getOutput();
 		output.setProperties(this.getFirstExpr().getOutput());
 		output.setNnz(-1); //conservatively, cannot use input nnz!
@@ -645,11 +686,12 @@ public class BuiltinFunctionExpression extends DataIdentifier
 			
 			// First input: is always of type MATRIX
 			checkMatrixParam(getFirstExpr());
-			
-			if ( getSecondExpr() == null )
-				raiseValidateError("Invalid number of arguments to table(): " 
-						+ this.toString(), conditional, LanguageErrorCodes.INVALID_PARAMETERS);
-			
+
+			if (getSecondExpr() == null)
+				raiseValidateError(
+						"Invalid number of arguments to table(). The table() function requires 2, 3, 4, or 5 arguments.",
+						conditional);
+
 			// Second input: can be MATRIX or SCALAR
 			// cases: table(A,B) or table(A,1)
 			if ( getSecondExpr().getOutput().getDataType() == DataType.MATRIX)
@@ -986,9 +1028,7 @@ public class BuiltinFunctionExpression extends DataIdentifier
 					// default value: 1 if from <= to; -1 if from > to
 					if(getThirdExpr() == null) {
 						expandArguments();
-						_args[2] = new DoubleIdentifier(((from > to) ? -1.0 : 1.0),
-								this.getFilename(), this.getBeginLine(), this.getBeginColumn(), 
-								this.getEndLine(), this.getEndColumn());
+						_args[2] = new DoubleIdentifier(((from > to) ? -1.0 : 1.0), this);
 					}
 					incr = getDoubleValue(getThirdExpr()); 
 					
@@ -1002,8 +1042,8 @@ public class BuiltinFunctionExpression extends DataIdentifier
 				
 				// Both end points of the range must included i.e., [from,to] both inclusive.
 				// Note that, "to" is included only if (to-from) is perfectly divisible by incr
-				// For example, seq(0,1,0.5) produces (0.0 0.5 1.0) whereas seq(0,1,0.6) produces only (0.0 0.6) but not (0.0 0.6 1.0) 
-				dim1 = 1 + (long)Math.floor((to-from)/incr); 
+				// For example, seq(0,1,0.5) produces (0.0 0.5 1.0) whereas seq(0,1,0.6) produces only (0.0 0.6) but not (0.0 0.6 1.0)
+				dim1 = UtilFunctions.getSeqLength(from, to, incr);
 			}
 			output.setDataType(DataType.MATRIX);
 			output.setValueType(ValueType.DOUBLE);
@@ -1060,8 +1100,8 @@ public class BuiltinFunctionExpression extends DataIdentifier
 			output.setDimensions(inA.getDim1(), inA.getDim2());
 			output.setBlockDimensions(inA.getRowsInBlock(), inA.getColumnsInBlock());
 			break;
-		}	
-			
+		}
+
 		case OUTER:
 			Identifier id2 = this.getSecondExpr().getOutput();
 			
@@ -1079,7 +1119,7 @@ public class BuiltinFunctionExpression extends DataIdentifier
 			//set output characteristics
 			output.setDataType(id.getDataType());
 			output.setDimensions(id.getDim1(), id2.getDim2());
-			output.setBlockDimensions(id.getRowsInBlock(), id.getColumnsInBlock()); 
+			output.setBlockDimensions(id.getRowsInBlock(), id.getColumnsInBlock());
 			break;
 		
 		case BIAS_ADD:
@@ -1115,61 +1155,77 @@ public class BuiltinFunctionExpression extends DataIdentifier
 			// conv2d_backward_filter and conv2d_backward_data
 			Expression input = _args[0]; // For conv2d_backward_filter, this is input and for conv2d_backward_data, this is filter
 			
-			Expression filter = null;
+			Expression input2 = null;
 			if(!(this.getOpCode() == BuiltinFunctionOp.MAX_POOL || this.getOpCode() == BuiltinFunctionOp.AVG_POOL)) {
-				filter = _args[1];			// For conv2d_backward functions, this is dout
-				checkMatrixParam(filter);
+				input2 = _args[1];			// For conv2d_backward functions, this is dout
+				checkMatrixParam(input2);
 			}
 			output.setDataType(DataType.MATRIX);
 			output.setValueType(ValueType.DOUBLE);
 			output.setBlockDimensions(input.getOutput().getRowsInBlock(), input.getOutput().getColumnsInBlock());
-			// stride1, stride2, padding1, padding2, numImg, numChannels, imgSize, imgSize, 
- 			// filter_shape1=1, filter_shape2=1, filterSize/poolSize1, filterSize/poolSize1
- 			if( getOpCode() == BuiltinFunctionOp.MAX_POOL_BACKWARD ) {
- 				output.setDimensions(input.getOutput().getDim1(), input.getOutput().getDim2());
- 			}
-			else if( getOpCode() == BuiltinFunctionOp.CONV2D_BACKWARD_DATA ) {
-				//args[0] .. filter, args[1] .. input
-				output.setDimensions(_args[1].getOutput().getDim1(), -1);
+			
+			if(this.getOpCode() == BuiltinFunctionOp.MAX_POOL_BACKWARD) {
+				output.setDimensions(input.getOutput().getDim1(), input.getOutput().getDim2());
 			}
- 			else if(this.getOpCode() == BuiltinFunctionOp.CONV2D_BACKWARD_FILTER) {
- 				output.setDimensions(filter.getOutput().getDim1(), filter.getOutput().getDim2());
- 			}
- 			else if(this.getOpCode() == BuiltinFunctionOp.CONV2D || this.getOpCode() == BuiltinFunctionOp.MAX_POOL) {
- 				try {
- 					int start = 1;
- 					if(this.getOpCode() == BuiltinFunctionOp.CONV2D) {
- 						start = 2;
- 					}
- 					long stride_h = (long) getDoubleValue(_args[start++]);
- 					long stride_w = (long) getDoubleValue(_args[start++]);
- 					long pad_h = (long) getDoubleValue(_args[start++]);
- 					long pad_w = (long) getDoubleValue(_args[start++]); 
- 					start++;
- 					long C = (long) getDoubleValue(_args[start++]);
- 					long H = (long) getDoubleValue(_args[start++]);
- 					long W = (long) getDoubleValue(_args[start++]);
- 					long K = -1;
- 					if(this.getOpCode() == BuiltinFunctionOp.CONV2D) {
- 						K = (long) getDoubleValue(_args[start]);
- 					}
- 					start++; start++;
- 					long R = (long) getDoubleValue(_args[start++]);
- 					long S = (long) getDoubleValue(_args[start++]);
- 					long P = ConvolutionUtils.getP(H, R, stride_h, pad_h);
- 					long Q = ConvolutionUtils.getP(W, S, stride_w, pad_w);
- 					if(this.getOpCode() == BuiltinFunctionOp.CONV2D)
- 						output.setDimensions(input.getOutput().getDim1(), K*P*Q);
- 					else
- 						output.setDimensions(input.getOutput().getDim1(), C*P*Q);
- 				}
- 				catch(Exception e) {
- 					output.setDimensions(input.getOutput().getDim1(), -1); // To make sure that output dimensions are not incorrect
- 				}
- 			}
- 			else
- 				throw new LanguageException("Unsupported op: " + this.getOpCode());
+			else {
+				// stride1, stride2, padding1, padding2, numImg, numChannels, imgSize, imgSize, 
+	 			// filter_shape1=1, filter_shape2=1, filterSize/poolSize1, filterSize/poolSize1
+				try {
+					int start = 2;
+					if(!(this.getOpCode() == BuiltinFunctionOp.MAX_POOL || this.getOpCode() == BuiltinFunctionOp.AVG_POOL)) {
+						start = 1;
+					}
+					long stride_h = (long) getDoubleValue(_args[start++]);
+					long stride_w = (long) getDoubleValue(_args[start++]);
+					long pad_h = (long) getDoubleValue(_args[start++]);
+					long pad_w = (long) getDoubleValue(_args[start++]); 
+					long N = (long) getDoubleValue(_args[start++]);
+					long C = (long) getDoubleValue(_args[start++]);
+					long H = (long) getDoubleValue(_args[start++]);
+					long W = (long) getDoubleValue(_args[start++]);
+					long K = -1;
+					if(!(this.getOpCode() == BuiltinFunctionOp.MAX_POOL || this.getOpCode() == BuiltinFunctionOp.AVG_POOL)) {
+						K = (long) getDoubleValue(_args[start]);
+					}
+					start++; start++; // Increment index for K and C
+					long R = (long) getDoubleValue(_args[start++]);
+					long S = (long) getDoubleValue(_args[start++]);
+					
+					if(this.getOpCode() == BuiltinFunctionOp.CONV2D_BACKWARD_FILTER) {
+						output.setDimensions(K, C*R*S);
+					}
+					else if(this.getOpCode() == BuiltinFunctionOp.CONV2D_BACKWARD_DATA) {
+						output.setDimensions(N, C*H*W);
+					}
+					else if(H > 0 && W > 0 && stride_h > 0 && stride_w > 0 && pad_h >= 0 && pad_w >= 0 && R > 0 && S > 0) {
+						long P = ConvolutionUtils.getP(H, R, stride_h, pad_h);
+						long Q = ConvolutionUtils.getQ(W, S, stride_w, pad_w);
+						
+						// Try to set both rows and columns
+						if(this.getOpCode() == BuiltinFunctionOp.CONV2D) 
+							output.setDimensions(N, K*P*Q);
+						else if(this.getOpCode() == BuiltinFunctionOp.MAX_POOL || this.getOpCode() == BuiltinFunctionOp.AVG_POOL)
+							output.setDimensions(N, C*P*Q);
+						else
+							throw new LanguageException("");
+					}
+					else {
+						// Since columns cannot be computed, set only rows
+						if(this.getOpCode() == BuiltinFunctionOp.CONV2D) 
+							output.setDimensions(input.getOutput().getDim1(), -1);
+						else if(this.getOpCode() == BuiltinFunctionOp.MAX_POOL || this.getOpCode() == BuiltinFunctionOp.AVG_POOL)
+							output.setDimensions(input.getOutput().getDim1(), -1);
+						else
+							throw new LanguageException("");
+					}
+				}
+				catch(Exception e) {
+					output.setDimensions(-1, -1); // To make sure that output dimensions are not incorrect even if getDoubleValue doesnot return value
+				}
+			}
 			checkMatrixParam(input);
+			if(input2 != null)
+				checkMatrixParam(input2);
 			break;
 		}
 		default:
@@ -1194,13 +1250,12 @@ public class BuiltinFunctionExpression extends DataIdentifier
 			else {
 				// always unconditional (because unsupported operation)
 				BuiltinFunctionOp op = getOpCode();
-				if( op==BuiltinFunctionOp.EIGEN || op==BuiltinFunctionOp.LU || op==BuiltinFunctionOp.QR )
+				if( op==BuiltinFunctionOp.EIGEN || op==BuiltinFunctionOp.LU || op==BuiltinFunctionOp.QR || op==BuiltinFunctionOp.SVD)
 					raiseValidateError("Function "+op+" needs to be called with multi-return assignment.", false, LanguageErrorCodes.INVALID_PARAMETERS);
 				else
 					raiseValidateError("Unsupported function "+op, false, LanguageErrorCodes.INVALID_PARAMETERS);
 			}
 		}
-		return;
 	}
 	
 	private void setBinaryOutputProperties(DataIdentifier output) 
@@ -1237,6 +1292,7 @@ public class BuiltinFunctionExpression extends DataIdentifier
 		case QR:
 		case LU:
 		case EIGEN:
+		case SVD:
 			return true;
 		default:
 			return false;
@@ -1314,10 +1370,14 @@ public class BuiltinFunctionExpression extends DataIdentifier
 	}
 
 	public String toString() {
-		StringBuilder sb = new StringBuilder(_opcode.toString() + "(" + _args[0].toString());
-		for(int i=1; i < _args.length; i++) {
-			sb.append(",");
-			sb.append(_args[i].toString());
+		StringBuilder sb = new StringBuilder(_opcode.toString() + "(");
+		if (_args != null) {
+			for (int i = 0; i < _args.length; i++) {
+				if (i > 0) {
+					sb.append(",");
+				}
+				sb.append(_args[i].toString());
+			}
 		}
 		sb.append(")");
 		return sb.toString();
@@ -1345,28 +1405,30 @@ public class BuiltinFunctionExpression extends DataIdentifier
 	protected void checkNumParameters(int count) //always unconditional
 		throws LanguageException 
 	{
-		if (getFirstExpr() == null){
-			raiseValidateError("Missing parameter for function "+ this.getOpCode(), false, LanguageErrorCodes.INVALID_PARAMETERS);
+		if (getFirstExpr() == null) {
+			raiseValidateError("Missing argument for function " + this.getOpCode(), false,
+					LanguageErrorCodes.INVALID_PARAMETERS);
 		}
-		
-       	if (((count == 1) && (getSecondExpr()!= null || getThirdExpr() != null)) || 
-        		((count == 2) && (getThirdExpr() != null))){ 
-       		raiseValidateError("Invalid number of parameters for function "+ this.getOpCode(), false, LanguageErrorCodes.INVALID_PARAMETERS);
-       	}
-       	else if (((count == 2) && (getSecondExpr() == null)) || 
-		             ((count == 3) && (getSecondExpr() == null || getThirdExpr() == null))){
-       		raiseValidateError( "Missing parameter for function "+this.getOpCode(), false, LanguageErrorCodes.INVALID_PARAMETERS);
-       	}
+
+		if (((count == 1) && (getSecondExpr() != null || getThirdExpr() != null))
+				|| ((count == 2) && (getThirdExpr() != null))) {
+			raiseValidateError("Invalid number of arguments for function " + this.getOpCode().toString().toLowerCase()
+					+ "(). This function only takes 1 or 2 arguments.", false);
+		} else if (((count == 2) && (getSecondExpr() == null))
+				|| ((count == 3) && (getSecondExpr() == null || getThirdExpr() == null))) {
+			raiseValidateError("Missing argument for function " + this.getOpCode(), false,
+					LanguageErrorCodes.INVALID_PARAMETERS);
+		}
 	}
 
-	protected void checkMatrixParam(Expression e) //always unconditional
-		throws LanguageException 
-	{
+	protected void checkMatrixParam(Expression e) throws LanguageException {
 		if (e.getOutput().getDataType() != DataType.MATRIX) {
-			raiseValidateError("Expecting matrix parameter for function "+ this.getOpCode(), false, LanguageErrorCodes.UNSUPPORTED_PARAMETERS);
+			raiseValidateError(
+					"Expecting matrix argument for function " + this.getOpCode().toString().toLowerCase() + "().",
+					false);
 		}
 	}
-	
+
 	protected void checkMatrixFrameParam(Expression e) //always unconditional
 		throws LanguageException 
 	{
@@ -1465,9 +1527,9 @@ public class BuiltinFunctionExpression extends DataIdentifier
 		}
 	}
 
-	public static BuiltinFunctionExpression getBuiltinFunctionExpression(
+	public static BuiltinFunctionExpression getBuiltinFunctionExpression(ParserRuleContext ctx, 
 			String functionName, ArrayList<ParameterExpression> paramExprsPassed,
-			String filename, int blp, int bcp, int elp, int ecp) {
+			String filename) {
 		
 		if (functionName == null || paramExprsPassed == null)
 			return null;
@@ -1644,6 +1706,8 @@ public class BuiltinFunctionExpression extends DataIdentifier
 			bifop = Expression.BuiltinFunctionOp.INVERSE;
 		else if (functionName.equals("cholesky"))
 			bifop = Expression.BuiltinFunctionOp.CHOLESKY;
+		else if (functionName.equals("svd"))
+			bifop = Expression.BuiltinFunctionOp.SVD;
 		else if (functionName.equals("sample"))
 			bifop = Expression.BuiltinFunctionOp.SAMPLE;
 		else if ( functionName.equals("outer") )
@@ -1651,8 +1715,7 @@ public class BuiltinFunctionExpression extends DataIdentifier
 		else
 			return null;
 		
-		BuiltinFunctionExpression retVal = new BuiltinFunctionExpression(bifop, paramExprsPassed,
-				filename, blp, bcp, elp, ecp);
+		BuiltinFunctionExpression retVal = new BuiltinFunctionExpression(ctx, bifop, paramExprsPassed, filename);
 	
 		return retVal;
 	} // end method getBuiltinFunctionExpression

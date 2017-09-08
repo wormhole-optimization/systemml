@@ -26,7 +26,7 @@ import org.apache.sysml.lops.LeftIndex;
 import org.apache.sysml.lops.LeftIndex.LixCacheType;
 import org.apache.sysml.lops.Lop;
 import org.apache.sysml.lops.LopsException;
-import org.apache.sysml.lops.RangeBasedReIndex;
+import org.apache.sysml.lops.RightIndex;
 import org.apache.sysml.lops.UnaryCP;
 import org.apache.sysml.lops.ZeroOut;
 import org.apache.sysml.lops.LopProperties.ExecType;
@@ -82,11 +82,11 @@ public class LeftIndexingOp  extends Hop
 		HopsException.check(_input.size() == 6, this, "should have 6 inputs but has %d inputs", 6);
 	}
 
-	public boolean getRowLowerEqualsUpper(){
+	public boolean isRowLowerEqualsUpper(){
 		return _rowLowerEqualsUpper;
 	}
 	
-	public boolean getColLowerEqualsUpper() {
+	public boolean isColLowerEqualsUpper() {
 		return _colLowerEqualsUpper;
 	}
 	
@@ -96,6 +96,11 @@ public class LeftIndexingOp  extends Hop
 	
 	public void setColLowerEqualsUpper(boolean passed) {
 		_colLowerEqualsUpper = passed;
+	}
+	
+	@Override
+	public boolean isGPUEnabled() {
+		return false;
 	}
 	
 	@Override
@@ -139,7 +144,7 @@ public class LeftIndexingOp  extends Hop
 					rightInput = getInput().get(1).constructLops();
 
 				
-				RangeBasedReIndex reindex = new RangeBasedReIndex(
+				RightIndex reindex = new RightIndex(
 						rightInput, top, bottom, 
 						left, right, nrow, ncol,
 						getDataType(), getValueType(), et, true);
@@ -389,9 +394,8 @@ public class LeftIndexingOp  extends Hop
 		}
 		
 		//mark for recompile (forever)
-		if( ConfigurationManager.isDynamicRecompilation() && !dimsKnown(true) && _etype==REMOTE )
-			setRequiresRecompile();
-	
+		setRequiresRecompileIfNecessary();
+		
 		return _etype;
 	}
 

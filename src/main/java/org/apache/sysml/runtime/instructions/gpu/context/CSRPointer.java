@@ -49,12 +49,24 @@ import jcuda.jcusparse.cusparsePointerMode;
 /**
  * Compressed Sparse Row (CSR) format for CUDA
  * Generalized matrix multiply is implemented for CSR format in the cuSparse library among other operations
+ * 
+ * Since we assume that the matrix is stored with zero-based indexing (i.e. CUSPARSE_INDEX_BASE_ZERO),
+ * the matrix
+ * 1.0 4.0 0.0 0.0 0.0 
+ * 0.0 2.0 3.0 0.0 0.0 
+ * 5.0 0.0 0.0 7.0 8.0 
+ * 0.0 0.0 9.0 0.0 6.0
+ * 
+ * is stored as
+ * val = 1.0 4.0 2.0 3.0 5.0 7.0 8.0 9.0 6.0 
+ * rowPtr = 0.0 2.0 4.0 7.0 9.0 
+ * colInd = 0.0 1.0 1.0 2.0 0.0 3.0 4.0 2.0 4.0
  */
 public class CSRPointer {
 
 	private static final Log LOG = LogFactory.getLog(CSRPointer.class.getName());
 
-	private static final double ULTRA_SPARSITY_TURN_POINT = 0.0004;
+	private static final double ULTRA_SPARSITY_TURN_POINT = 0.00004;
 	public static cusparseMatDescr matrixDescriptor;
 	/**
 	 * {@link GPUContext} instance to track the GPU to do work on
@@ -173,20 +185,26 @@ public class CSRPointer {
 	 * @param rowPtr integer array of row pointers
 	 * @param colInd integer array of column indices
 	 * @param values double array of non zero values
+	 * @throws DMLRuntimeException if error occurs
 	 */
-	public static void copyToDevice(CSRPointer dest, int rows, long nnz, int[] rowPtr, int[] colInd, double[] values) {
+	public static void copyToDevice(CSRPointer dest, int rows, long nnz, int[] rowPtr, int[] colInd, double[] values) throws DMLRuntimeException {
 		CSRPointer r = dest;
 		long t0 = 0;
 		if (DMLScript.STATISTICS)
 			t0 = System.nanoTime();
 		r.nnz = nnz;
+		if(rows < 0) throw new DMLRuntimeException("Incorrect input parameter: rows=" + rows);
+		if(nnz < 0) throw new DMLRuntimeException("Incorrect input parameter: nnz=" + nnz);
+		if(rowPtr.length < rows + 1) throw new DMLRuntimeException("The length of rowPtr needs to be greater than or equal to " + (rows + 1));
+		if(colInd.length < nnz) throw new DMLRuntimeException("The length of colInd needs to be greater than or equal to " + nnz);
+		if(values.length < nnz) throw new DMLRuntimeException("The length of values needs to be greater than or equal to " + nnz);
 		cudaMemcpy(r.rowPtr, Pointer.to(rowPtr), getIntSizeOf(rows + 1), cudaMemcpyHostToDevice);
 		cudaMemcpy(r.colInd, Pointer.to(colInd), getIntSizeOf(nnz), cudaMemcpyHostToDevice);
 		cudaMemcpy(r.val, Pointer.to(values), getDoubleSizeOf(nnz), cudaMemcpyHostToDevice);
 		if (DMLScript.STATISTICS)
-			GPUStatistics.cudaToDevTime.addAndGet(System.nanoTime() - t0);
+			GPUStatistics.cudaToDevTime.add(System.nanoTime() - t0);
 		if (DMLScript.STATISTICS)
-			GPUStatistics.cudaToDevCount.addAndGet(3);
+			GPUStatistics.cudaToDevCount.add(3);
 	}
 
 	/**
@@ -208,9 +226,9 @@ public class CSRPointer {
 		cudaMemcpy(Pointer.to(colInd), r.colInd, getIntSizeOf(nnz), cudaMemcpyDeviceToHost);
 		cudaMemcpy(Pointer.to(values), r.val, getDoubleSizeOf(nnz), cudaMemcpyDeviceToHost);
 		if (DMLScript.STATISTICS)
-			GPUStatistics.cudaFromDevTime.addAndGet(System.nanoTime() - t0);
+			GPUStatistics.cudaFromDevTime.add(System.nanoTime() - t0);
 		if (DMLScript.STATISTICS)
-			GPUStatistics.cudaFromDevCount.addAndGet(3);
+			GPUStatistics.cudaFromDevCount.add(3);
 	}
 
 	/**
@@ -242,7 +260,7 @@ public class CSRPointer {
 	 * Estimates the number of non-zero elements from the result of a sparse matrix multiplication C = A * B
 	 * and returns the {@link CSRPointer} to C with the appropriate GPU memory.
 	 *
-	 * @param gCtx   ?
+	 * @param gCtx   a valid {@link GPUContext}
 	 * @param handle a valid {@link cusparseHandle}
 	 * @param A      Sparse Matrix A on GPU
 	 * @param transA 'T' if A is to be transposed, 'N' otherwise
@@ -268,17 +286,15 @@ public class CSRPointer {
 	/**
 	 * Factory method to allocate an empty CSR Sparse matrix on the GPU
 	 *
-	 * @param gCtx ?
+	 * @param gCtx a valid {@link GPUContext}
 	 * @param nnz2 number of non-zeroes
 	 * @param rows number of rows
 	 * @return a {@link CSRPointer} instance that encapsulates the CSR matrix on GPU
 	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
 	public static CSRPointer allocateEmpty(GPUContext gCtx, long nnz2, long rows) throws DMLRuntimeException {
-		LOG.trace(
-				"GPU : allocateEmpty from CSRPointer with nnz=" + nnz2 + " and rows=" + rows + ", GPUContext=" + gCtx);
-		assert nnz2
-				> -1 : "Incorrect usage of internal API, number of non zeroes is less than 0 when trying to allocate sparse data on GPU";
+		LOG.trace("GPU : allocateEmpty from CSRPointer with nnz=" + nnz2 + " and rows=" + rows + ", GPUContext=" + gCtx);
+		assert nnz2 > -1 : "Incorrect usage of internal API, number of non zeroes is less than 0 when trying to allocate sparse data on GPU";
 		CSRPointer r = new CSRPointer(gCtx);
 		r.nnz = nnz2;
 		if (nnz2 == 0) {
@@ -518,6 +534,9 @@ public class CSRPointer {
 			cudaFreeHelper(val, eager);
 			cudaFreeHelper(rowPtr, eager);
 			cudaFreeHelper(colInd, eager);
+			val = null;
+			rowPtr = null;
+			colInd = null;
 		}
 	}
 

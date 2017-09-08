@@ -42,20 +42,36 @@ public abstract class CPInstruction extends Instruction
 	
 	protected boolean _requiresLabelUpdate = false;
 	
-	public CPInstruction(String opcode, String istr) {
+	// Generic miscellaneous timers that are applicable to all CP (and few SP) instructions 
+	public final static String MISC_TIMER_GET_SPARSE_MB =          		"aqrs";	// time spent in bringing input sparse matrix block
+	public final static String MISC_TIMER_GET_DENSE_MB =          		"aqrd";	// time spent in bringing input dense matrix block
+	public final static String MISC_TIMER_ACQ_MODIFY_SPARSE_MB =        "aqms";	// time spent in bringing output sparse matrix block
+	public final static String MISC_TIMER_ACQ_MODIFY_DENSE_MB =         "aqmd";	// time spent in bringing output dense matrix block
+	public final static String MISC_TIMER_RELEASE_INPUT_MB =      		"rlsi";	// time spent in release input matrix block
+	public final static String MISC_TIMER_RELEASE_EVICTION =			"rlsev";// time spent in buffer eviction of release operation
+	public final static String MISC_TIMER_RELEASE_BUFF_WRITE =			"rlswr";// time spent in buffer write in release operation
+	public final static String MISC_TIMER_SPARSE_TO_DENSE =				"s2d";  // time spent in sparse to dense conversion
+	public final static String MISC_TIMER_DENSE_TO_SPARSE =				"d2s";  // time spent in sparse to dense conversion
+	
+	// Instruction specific miscellaneous timers that were found as potential bottlenecks in one of performance analysis.
+	// SystemML committers have to be judicious about adding them by weighing the tradeoffs between reuse in future analysis and unnecessary overheads.
+	public final static String MISC_TIMER_CSR_LIX_COPY =				"csrlix";// time spent in CSR-specific method to address performance issues due to repeated re-shifting on update-in-place.
+	public final static String MISC_TIMER_LIX_COPY =					"lixcp";// time spent in range copy
+
+	protected CPInstruction(String opcode, String istr) {
 		type = INSTRUCTION_TYPE.CONTROL_PROGRAM;
 		instString = istr;
-		
-		//prepare opcode and update requirement for repeated usage
+
+		// prepare opcode and update requirement for repeated usage
 		instOpcode = opcode;
 		_requiresLabelUpdate = super.requiresLabelUpdate();
 	}
-	
-	public CPInstruction(Operator op, String opcode, String istr) {
+
+	protected CPInstruction(Operator op, String opcode, String istr) {
 		this(opcode, istr);
 		_optr = op;
 	}
-	
+
 	public CPINSTRUCTION_TYPE getCPInstructionType() {
 		return _cptype;
 	}

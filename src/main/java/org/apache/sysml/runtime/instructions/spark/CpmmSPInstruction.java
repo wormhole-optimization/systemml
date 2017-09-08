@@ -49,13 +49,11 @@ import org.apache.sysml.runtime.matrix.operators.Operator;
  * this would result in a degree of parallelism of 1.	
  * 
  */
-public class CpmmSPInstruction extends BinarySPInstruction 
-{
-	
+public class CpmmSPInstruction extends BinarySPInstruction {
 	private SparkAggType _aggtype;
-	
-	public CpmmSPInstruction(Operator op, CPOperand in1, CPOperand in2, CPOperand out, SparkAggType aggtype, String opcode, String istr )
-	{
+
+	private CpmmSPInstruction(Operator op, CPOperand in1, CPOperand in2, CPOperand out, SparkAggType aggtype,
+			String opcode, String istr) {
 		super(op, in1, in2, out, opcode, istr);
 		_sptype = SPINSTRUCTION_TYPE.CPMM;
 		_aggtype = aggtype;
@@ -107,7 +105,7 @@ public class CpmmSPInstruction extends BinarySPInstruction
 			
 			//put output block into symbol table (no lineage because single block)
 			//this also includes implicit maintenance of matrix characteristics
-			sec.setMatrixOutput(output.getName(), out2);	
+			sec.setMatrixOutput(output.getName(), out2, getExtendedOpcode());	
 		}
 		else //DEFAULT: MULTI_BLOCK
 		{

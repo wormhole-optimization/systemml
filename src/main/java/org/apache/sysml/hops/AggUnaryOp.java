@@ -20,7 +20,6 @@
 package org.apache.sysml.hops;
 
 import org.apache.sysml.api.DMLScript;
-import org.apache.sysml.conf.ConfigurationManager;
 import org.apache.sysml.hops.AggBinaryOp.SparkAggType;
 import org.apache.sysml.hops.Hop.MultiThreadedHop;
 import org.apache.sysml.hops.rewrite.HopRewriteUtils;
@@ -39,7 +38,6 @@ import org.apache.sysml.lops.LopProperties.ExecType;
 import org.apache.sysml.parser.Expression.DataType;
 import org.apache.sysml.parser.Expression.ValueType;
 import org.apache.sysml.runtime.controlprogram.context.SparkExecutionContext;
-import org.apache.sysml.runtime.instructions.gpu.context.GPUContextPool;
 import org.apache.sysml.runtime.matrix.MatrixCharacteristics;
 
 
@@ -110,6 +108,30 @@ public class AggUnaryOp extends Hop implements MultiThreadedHop
 	}
 	
 	@Override
+	public boolean isGPUEnabled() {
+		if(!DMLScript.USE_ACCELERATOR)
+			return false;
+		
+		try {
+			if( isTernaryAggregateRewriteApplicable() || isUnaryAggregateOuterCPRewriteApplicable() ) {
+				return false;
+			}
+			else if ((_op == AggOp.SUM    && (_direction == Direction.RowCol || _direction == Direction.Row || _direction == Direction.Col))
+					 || (_op == AggOp.SUM_SQ && (_direction == Direction.RowCol || _direction == Direction.Row || _direction == Direction.Col))
+					 || (_op == AggOp.MAX    && (_direction == Direction.RowCol || _direction == Direction.Row || _direction == Direction.Col))
+					 || (_op == AggOp.MIN    && (_direction == Direction.RowCol || _direction == Direction.Row || _direction == Direction.Col))
+					 || (_op == AggOp.MEAN   && (_direction == Direction.RowCol || _direction == Direction.Row || _direction == Direction.Col))
+					 || (_op == AggOp.VAR    && (_direction == Direction.RowCol || _direction == Direction.Row || _direction == Direction.Col))
+					 || (_op == AggOp.PROD   && (_direction == Direction.RowCol))){
+				return true;
+			}
+		} catch (HopsException e) {
+			throw new RuntimeException(e);
+		}
+		return false;
+	}
+	
+	@Override
 	public Lop constructLops()
 		throws HopsException, LopsException 
 	{	
@@ -122,10 +144,10 @@ public class AggUnaryOp extends Hop implements MultiThreadedHop
 			ExecType et = optFindExecType();
 			Hop input = getInput().get(0);
 			
-			if ( et == ExecType.CP ) 
+			if ( et == ExecType.CP || et == ExecType.GPU ) 
 			{
 				Lop agg1 = null;
-				if( isTernaryAggregateRewriteApplicable(et) ) {
+				if( isTernaryAggregateRewriteApplicable() ) {
 					agg1 = constructLopsTernaryAggregateRewrite(et);
 				}
 				else if( isUnaryAggregateOuterCPRewriteApplicable() )
@@ -150,20 +172,6 @@ public class AggUnaryOp extends Hop implements MultiThreadedHop
 				}				
 				else { //general case		
 					int k = OptimizerUtils.getConstrainedNumThreads(_maxNumThreads);
-					if(DMLScript.USE_ACCELERATOR && (DMLScript.FORCE_ACCELERATOR || getMemEstimate() < GPUContextPool
-							.initialGPUMemBudget())) {
-						// Only implemented methods for GPU
-						if ((_op == AggOp.SUM    && (_direction == Direction.RowCol || _direction == Direction.Row || _direction == Direction.Col))
-						 || (_op == AggOp.SUM_SQ && (_direction == Direction.RowCol || _direction == Direction.Row || _direction == Direction.Col))
-						 || (_op == AggOp.MAX    && (_direction == Direction.RowCol || _direction == Direction.Row || _direction == Direction.Col))
-						 || (_op == AggOp.MIN    && (_direction == Direction.RowCol || _direction == Direction.Row || _direction == Direction.Col))
-						 || (_op == AggOp.MEAN   && (_direction == Direction.RowCol || _direction == Direction.Row || _direction == Direction.Col))
-						 || (_op == AggOp.VAR    && (_direction == Direction.RowCol || _direction == Direction.Row || _direction == Direction.Col))
-						 || (_op == AggOp.PROD   && (_direction == Direction.RowCol))){
-							et = ExecType.GPU;
-							k = 1;
-						}
-					}
 					agg1 = new PartialAggregate(input.constructLops(), 
 							HopsAgg2Lops.get(_op), HopsDirection2Lops.get(_direction), getDataType(),getValueType(), et, k);
 				}
@@ -252,7 +260,7 @@ public class AggUnaryOp extends Hop implements MultiThreadedHop
 				DirectionTypes dir = HopsDirection2Lops.get(_direction);
 
 				//unary aggregate
-				if( isTernaryAggregateRewriteApplicable(et) ) 
+				if( isTernaryAggregateRewriteApplicable() ) 
 				{
 					Lop aggregate = constructLopsTernaryAggregateRewrite(et);
 					setOutputDimensions(aggregate); //0x0 (scalar)
@@ -329,8 +337,15 @@ public class AggUnaryOp extends Hop implements MultiThreadedHop
 
 	@Override
 	protected double computeOutputMemEstimate( long dim1, long dim2, long nnz )
-	{		
-		double sparsity = OptimizerUtils.getSparsity(dim1, dim2, nnz);
+	{
+		double sparsity = -1;
+		if (isGPUEnabled()) {
+			// The GPU version (for the time being) only does dense outputs
+			sparsity = 1.0;
+		} else {
+			sparsity = OptimizerUtils.getSparsity(dim1, dim2, nnz);
+		}
+
 		return OptimizerUtils.estimateSizeExactSparsity(dim1, dim2, sparsity);
 	}
 	
@@ -352,25 +367,46 @@ public class AggUnaryOp extends Hop implements MultiThreadedHop
 				break;
 			case SUM:
 			case SUM_SQ:
-				//worst-case correction LASTROW / LASTCOLUMN 
-				if( _direction == Direction.Col ) //(potentially sparse)
-					val = OptimizerUtils.estimateSizeExactSparsity(1, dim2, sparsity);
-				else if( _direction == Direction.Row ) //(always dense)
-					val = OptimizerUtils.estimateSizeExactSparsity(dim1, 1, 1.0);
-				break;
-			case MEAN:
-				//worst-case correction LASTTWOROWS / LASTTWOCOLUMNS 
+				//worst-case correction LASTROW / LASTCOLUMN
 				if( _direction == Direction.Col ) //(potentially sparse)
 					val = OptimizerUtils.estimateSizeExactSparsity(2, dim2, sparsity);
 				else if( _direction == Direction.Row ) //(always dense)
 					val = OptimizerUtils.estimateSizeExactSparsity(dim1, 2, 1.0);
 				break;
+			case MEAN:
+				//worst-case correction LASTTWOROWS / LASTTWOCOLUMNS
+				if( _direction == Direction.Col ) //(potentially sparse)
+					val = OptimizerUtils.estimateSizeExactSparsity(3, dim2, sparsity);
+				else if( _direction == Direction.Row ) //(always dense)
+					val = OptimizerUtils.estimateSizeExactSparsity(dim1, 3, 1.0);
+				break;
 			case VAR:
 				//worst-case correction LASTFOURROWS / LASTFOURCOLUMNS
-				if( _direction == Direction.Col ) //(potentially sparse)
-					val = OptimizerUtils.estimateSizeExactSparsity(4, dim2, sparsity);
-				else if( _direction == Direction.Row ) //(always dense)
-					val = OptimizerUtils.estimateSizeExactSparsity(dim1, 4, 1.0);
+				if (isGPUEnabled()) {
+					// The GPU implementation only operates on dense data
+					// It allocates 2 dense blocks to help with these ops:
+					// Assume Y = var(X) Or colVars(X), Or rowVars(X)
+					// 1. Y = mean/rowMeans/colMeans(X)               <-- Y is a scalar or row-vector or col-vector
+					// 2. temp1 = X - Y                               <-- temp1 is a matrix of size(X)
+					// 3. temp2 = temp1 ^ 2                           <-- temp2 is a matrix of size(X)
+					// 4. temp3 = sum/rowSums/colSums(temp2)          <-- temp3 is a scalar or a row-vector or col-vector
+					// 5. Y = temp3 / (size(X) or nrow(X) or ncol(X)) <-- Y is a scalar or a row-vector or col-vector
+
+					long in1dim1 = getInput().get(0).getDim1();
+					long in1dim2 = getInput().get(0).getDim2();
+
+					val = 2 * OptimizerUtils.estimateSize(in1dim1, in1dim2);    // For temp1 & temp2
+					if (_direction == Direction.Col){
+						val += OptimizerUtils.estimateSize(in1dim1, 1);   // For temp3
+					} else if (_direction == Direction.Row){
+						val += OptimizerUtils.estimateSize(1, in1dim2);  // For temp3
+					}
+
+				} else if( _direction == Direction.Col ) { //(potentially sparse)
+					val = OptimizerUtils.estimateSizeExactSparsity(5, dim2, sparsity);
+				} else if( _direction == Direction.Row ) { //(always dense)
+					val = OptimizerUtils.estimateSizeExactSparsity(dim1, 5, 1.0);
+				}
 				break;
 			case MAXINDEX:
 			case MININDEX:
@@ -379,7 +415,7 @@ public class AggUnaryOp extends Hop implements MultiThreadedHop
 					val = 3 * OptimizerUtils.estimateSizeExactSparsity(1, hop._dim2, 1.0);
 				else
 					//worst-case correction LASTCOLUMN 
-					val = OptimizerUtils.estimateSizeExactSparsity(dim1, 1, 1.0);
+					val = OptimizerUtils.estimateSizeExactSparsity(dim1, 2, 1.0);
 				break;
 			default:
 				//no intermediate memory consumption
@@ -450,9 +486,7 @@ public class AggUnaryOp extends Hop implements MultiThreadedHop
 		}
 		
 		//mark for recompile (forever)
-		if( ConfigurationManager.isDynamicRecompilation() && !dimsKnown(true) && _etype==REMOTE ) {
-			setRequiresRecompile();
-		}
+		setRequiresRecompileIfNecessary();
 		
 		return _etype;
 	}
@@ -481,7 +515,7 @@ public class AggUnaryOp extends Hop implements MultiThreadedHop
 			return SparkAggType.MULTI_BLOCK;
 	}
 
-	private boolean isTernaryAggregateRewriteApplicable(ExecType et) 
+	private boolean isTernaryAggregateRewriteApplicable() 
 		throws HopsException 
 	{
 		boolean ret = false;
@@ -701,6 +735,8 @@ public class AggUnaryOp extends Hop implements MultiThreadedHop
 		// The execution type of a unary aggregate instruction should depend on the execution type of inputs to avoid OOM
 		// Since we only support matrix-vector and not vector-matrix, checking the execution type of input1 should suffice.
 		ExecType et_input = input1.optFindExecType();
+		// Because ternary aggregate are not supported on GPU
+		et_input = et_input == ExecType.GPU ? ExecType.CP :  et_input;
 		DirectionTypes dir = HopsDirection2Lops.get(_direction);
 		
 		return new TernaryAggregate(in1, in2, in3, Aggregate.OperationTypes.KahanSum, 

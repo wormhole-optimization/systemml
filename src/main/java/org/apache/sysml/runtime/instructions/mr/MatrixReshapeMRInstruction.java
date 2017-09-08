@@ -31,29 +31,23 @@ import org.apache.sysml.runtime.matrix.mapred.IndexedMatrixValue;
 import org.apache.sysml.runtime.matrix.operators.Operator;
 import org.apache.sysml.runtime.util.UtilFunctions;
 
-public class MatrixReshapeMRInstruction extends UnaryInstruction
-{	
-	
-	private long _rows = -1;
-	private long _cols = -1;
+public class MatrixReshapeMRInstruction extends UnaryInstruction {
 	private boolean _byrow = false;
-	
 	private MatrixCharacteristics _mcIn = null;
-	
-	//MB: cache should be integrated with tempValues, but for n blocks
+	private MatrixCharacteristics _mcOut = null;
+
+	// MB: cache should be integrated with tempValues, but for n blocks
 	private ArrayList<IndexedMatrixValue> _cache = null;
-	
-	public MatrixReshapeMRInstruction(Operator op, byte in, long rows, long cols, boolean byrow, byte out, String istr)
-	{
+
+	private MatrixReshapeMRInstruction(Operator op, byte in, long rows, long cols, boolean byrow, byte out,
+			String istr) {
 		super(op, in, out, istr);
 		mrtype = MRINSTRUCTION_TYPE.MMTSJ;
 		instString = istr;
-		
-		_rows = rows;
-		_cols = cols;
+		_mcOut = new MatrixCharacteristics(rows, cols, -1, -1);
 		_byrow = byrow;
 	}
-	
+
 	public void setMatrixCharacteristics( MatrixCharacteristics mcIn, MatrixCharacteristics mcOut )
 	{
 		_mcIn = mcIn;
@@ -95,8 +89,8 @@ public class MatrixReshapeMRInstruction extends UnaryInstruction
 				ArrayList<IndexedMatrixValue> out = _cache;
 	
 				//process instruction
-				out = LibMatrixReorg.reshape(imv, _mcIn.getRows(), _mcIn.getCols(), brlen, bclen,
-						                     out, _rows, _cols, brlen, bclen, _byrow);
+				_mcOut.setBlockSize(brlen, bclen);
+				out = LibMatrixReorg.reshape(imv, _mcIn, out, _mcOut, _byrow);
 				
 				//put the output values in the output cache
 				for( IndexedMatrixValue outBlk : out )
@@ -108,13 +102,11 @@ public class MatrixReshapeMRInstruction extends UnaryInstruction
 			}
 	}
 	
-	public long getNumRows()
-	{
-		return _rows;
+	public long getNumRows() {
+		return _mcOut.getRows();
 	}
 	
-	public long getNumColunms()
-	{
-		return _cols;
+	public long getNumColunms() {
+		return _mcOut.getCols();
 	}
 }

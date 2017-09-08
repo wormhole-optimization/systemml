@@ -66,13 +66,12 @@ import org.apache.sysml.runtime.matrix.operators.Operator;
 import org.apache.sysml.runtime.util.UtilFunctions;
 import org.apache.sysml.utils.Statistics;
 
-public class RandSPInstruction extends UnarySPInstruction
-{
-	//internal configuration
+public class RandSPInstruction extends UnarySPInstruction {
+	// internal configuration
 	private static final long INMEMORY_NUMBLOCKS_THRESHOLD = 1024 * 1024;
-	
+
 	private DataGenMethod method = DataGenMethod.INVALID;
-	
+
 	private long rows;
 	private long cols;
 	private int rowsInBlock;
@@ -82,21 +81,20 @@ public class RandSPInstruction extends UnarySPInstruction
 	private double sparsity;
 	private String pdf;
 	private String pdfParams;
-	private long seed=0;
+	private long seed = 0;
 	private String dir;
 	private double seq_from;
-	private double seq_to; 
+	private double seq_to;
 	private double seq_incr;
-	
-	//sample specific attributes
+
+	// sample specific attributes
 	private boolean replace;
 
-	public RandSPInstruction (Operator op, DataGenMethod mthd, CPOperand in, CPOperand out, long rows, long cols, 
+	private RandSPInstruction(Operator op, DataGenMethod mthd, CPOperand in, CPOperand out, long rows, long cols,
 			int rpb, int cpb, double minValue, double maxValue, double sparsity, long seed, String dir,
-			String probabilityDensityFunction, String pdfParams, String opcode, String istr) 
-	{
+			String probabilityDensityFunction, String pdfParams, String opcode, String istr) {
 		super(op, in, out, opcode, istr);
-		
+
 		this.method = mthd;
 		this.rows = rows;
 		this.cols = cols;
@@ -112,10 +110,8 @@ public class RandSPInstruction extends UnarySPInstruction
 
 	}
 
-	public RandSPInstruction(Operator op, DataGenMethod mthd, CPOperand in, CPOperand out,
-			long rows, long cols, int rpb, int cpb, double seqFrom,
-			double seqTo, double seqIncr, String opcode, String istr) 
-	{
+	private RandSPInstruction(Operator op, DataGenMethod mthd, CPOperand in, CPOperand out, long rows, long cols,
+			int rpb, int cpb, double seqFrom, double seqTo, double seqIncr, String opcode, String istr) {
 		super(op, in, out, opcode, istr);
 		this.method = mthd;
 		this.rows = rows;
@@ -127,10 +123,8 @@ public class RandSPInstruction extends UnarySPInstruction
 		this.seq_incr = seqIncr;
 	}
 
-	public RandSPInstruction(Operator op, DataGenMethod mthd, CPOperand in,
-			CPOperand out, long rows, long cols, int rpb, int cpb,
-			double maxValue, boolean replace, long seed, String opcode,
-			String istr) {
+	private RandSPInstruction(Operator op, DataGenMethod mthd, CPOperand in, CPOperand out, long rows, long cols,
+			int rpb, int cpb, double maxValue, boolean replace, long seed, String opcode, String istr) {
 		super(op, in, out, opcode, istr);
 
 		this.method = mthd;
@@ -345,7 +339,7 @@ public class RandSPInstruction extends UnarySPInstruction
 					sparsity, minValue, maxValue, pdfParams);
 			MatrixBlock mb = MatrixBlock.randOperations(rgen, lSeed);
 			
-			sec.setMatrixOutput(output.getName(), mb);
+			sec.setMatrixOutput(output.getName(), mb, getExtendedOpcode());
 			Statistics.decrementNoOfExecutedSPInst();
 			return;
 		}
@@ -451,7 +445,7 @@ public class RandSPInstruction extends UnarySPInstruction
 		
 		//step 1: offset generation 
 		JavaRDD<Double> offsetsRDD = null;
-		long nnz = (long) Math.abs(Math.round((seq_to - seq_from)/seq_incr)) + 1;
+		long nnz = UtilFunctions.getSeqLength(seq_from, seq_to, seq_incr);
 		double totalSize = OptimizerUtils.estimatePartitionedSizeExactSparsity( nnz, 1, rowsInBlock, 
 				colsInBlock, nnz); //overestimate for on disk, ensures hdfs block per partition
 		double hdfsBlkSize = InfrastructureAnalyzer.getHDFSBlockSize();
@@ -806,32 +800,27 @@ public class RandSPInstruction extends UnarySPInstruction
 	{
 		private static final long serialVersionUID = 5779681055705756965L;
 		
-		private int _brlen; 
-		private double _global_seq_start;
-		private double _global_seq_end; 
-		private double _seq_incr;
-		
+		private final double _global_seq_start;
+		private final double _global_seq_end;
+		private final double _seq_incr;
+		private final int _brlen;
 		
 		public GenerateSequenceBlock(int brlen, double global_seq_start, double global_seq_end, double seq_incr) {
-			_brlen = brlen;
 			_global_seq_start = global_seq_start;
 			_global_seq_end = global_seq_end;
 			_seq_incr = seq_incr;
+			_brlen = brlen;
 		}
 
 		@Override
 		public Tuple2<MatrixIndexes, MatrixBlock> call(Double seq_from) 
 			throws Exception 
 		{
-			double seq_to;
-			if(_seq_incr > 0) {
-				seq_to = Math.min(_global_seq_end, seq_from + _seq_incr*(_brlen-1));
-			}
-			else {
-				seq_to = Math.max(_global_seq_end, seq_from + _seq_incr*(_brlen+1));
-			}
-			long globalRow = (long) ((seq_from-_global_seq_start)/_seq_incr + 1);
-			long rowIndex = (long) Math.ceil((double)globalRow/(double)_brlen);
+			double seq_to = (_seq_incr > 0) ?
+				Math.min(_global_seq_end, seq_from + _seq_incr*(_brlen-1)) :
+				Math.max(_global_seq_end, seq_from + _seq_incr*(_brlen+1));
+			long globalRow = (long)Math.round((seq_from-_global_seq_start)/_seq_incr)+1;			
+			long rowIndex = UtilFunctions.computeBlockIndex(globalRow, _brlen);
 			
 			MatrixIndexes indx = new MatrixIndexes(rowIndex, 1);
 			MatrixBlock blk = MatrixBlock.seqOperations(seq_from, seq_to, _seq_incr);

@@ -60,11 +60,7 @@ public class FunctionCallIdentifier extends DataIdentifier
 		
 		// rewrite each output expression
 		FunctionCallIdentifier fci = new FunctionCallIdentifier(newParameterExpressions);
-		
-		fci.setBeginLine(this.getBeginLine());
-		fci.setBeginColumn(this.getBeginColumn());
-		fci.setEndLine(this.getEndLine());
-		fci.setEndColumn(this.getEndColumn());
+		fci.setParseInfo(this);
 			
 		fci._name = this._name;
 		fci._namespace = this._namespace;
@@ -163,15 +159,13 @@ public class FunctionCallIdentifier extends DataIdentifier
 		for(int i=0; i < fstmt.getOutputParams().size(); i++) {
 			_outputs[i] = new DataIdentifier(fstmt.getOutputParams().get(i));
 		}
-		
-		return;
 	}
 	
 	@Override
 	public String toString() {
 		StringBuilder sb = new StringBuilder();
-		if (_namespace != null && _namespace.length() > 0 && !_namespace.equals(".defaultNS")) 
-			sb.append(_namespace + "::"); 
+		if (_namespace != null && _namespace.length() > 0 && !_namespace.equals(DMLProgram.DEFAULT_NAMESPACE))
+			sb.append(_namespace + "::");
 		sb.append(_name);
 		sb.append(" ( ");		
 				

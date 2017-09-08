@@ -35,18 +35,18 @@ import org.apache.sysml.runtime.matrix.operators.AggregateUnaryOperator;
 import org.apache.sysml.runtime.matrix.operators.Operator;
 import org.apache.sysml.runtime.matrix.operators.SimpleOperator;
 
-public class AggregateUnaryCPInstruction extends UnaryCPInstruction
-{
-	
-	public AggregateUnaryCPInstruction(Operator op, CPOperand in, CPOperand out, String opcode, String istr){
+public class AggregateUnaryCPInstruction extends UnaryCPInstruction {
+
+	private AggregateUnaryCPInstruction(Operator op, CPOperand in, CPOperand out, String opcode, String istr) {
 		this(op, in, null, null, out, opcode, istr);
 	}
-	
-	public AggregateUnaryCPInstruction(Operator op, CPOperand in1, CPOperand in2, CPOperand in3, CPOperand out, String opcode, String istr){
+
+	protected AggregateUnaryCPInstruction(Operator op, CPOperand in1, CPOperand in2, CPOperand in3, CPOperand out,
+			String opcode, String istr) {
 		super(op, in1, in2, in3, out, opcode, istr);
-		_cptype = CPINSTRUCTION_TYPE.AggregateUnary;		
+		_cptype = CPINSTRUCTION_TYPE.AggregateUnary;
 	}
-	
+
 	public static AggregateUnaryCPInstruction parseInstruction(String str)
 		throws DMLRuntimeException 
 	{
@@ -141,19 +141,19 @@ public class AggregateUnaryCPInstruction extends UnaryCPInstruction
 		else 
 		{
 			/* Default behavior for AggregateUnary Instruction */
-			MatrixBlock matBlock = ec.getMatrixInput(input1.getName());		
+			MatrixBlock matBlock = ec.getMatrixInput(input1.getName(), getExtendedOpcode());		
 			AggregateUnaryOperator au_op = (AggregateUnaryOperator) _optr;
 			
 			MatrixBlock resultBlock = (MatrixBlock) matBlock.aggregateUnaryOperations(au_op, new MatrixBlock(), matBlock.getNumRows(), matBlock.getNumColumns(), new MatrixIndexes(1, 1), true);
 			
-			ec.releaseMatrixInput(input1.getName());
+			ec.releaseMatrixInput(input1.getName(), getExtendedOpcode());
 			
 			if(output.getDataType() == DataType.SCALAR){
 				DoubleObject ret = new DoubleObject(output_name, resultBlock.getValue(0, 0));
 				ec.setScalarOutput(output_name, ret);
 			} else{
 				// since the computed value is a scalar, allocate a "temp" output matrix
-				ec.setMatrixOutput(output_name, resultBlock);
+				ec.setMatrixOutput(output_name, resultBlock, getExtendedOpcode());
 			}
 		}
 	}

@@ -32,19 +32,15 @@ import org.apache.sysml.runtime.matrix.data.MatrixIndexes;
 import org.apache.sysml.runtime.matrix.operators.AggregateUnaryOperator;
 import org.apache.sysml.runtime.matrix.operators.BinaryOperator;
 
-
-public class BinUaggChainSPInstruction extends UnarySPInstruction 
-{
-	
-	//operators
+public class BinUaggChainSPInstruction extends UnarySPInstruction {
+	// operators
 	private BinaryOperator _bOp = null;
 	private AggregateUnaryOperator _uaggOp = null;
-	
-	public BinUaggChainSPInstruction(CPOperand in, CPOperand out, BinaryOperator bop, AggregateUnaryOperator uaggop, String opcode, String istr )
-	{
+
+	private BinUaggChainSPInstruction(CPOperand in, CPOperand out, BinaryOperator bop, AggregateUnaryOperator uaggop,
+			String opcode, String istr) {
 		super(null, in, out, opcode, istr);
 		_sptype = SPINSTRUCTION_TYPE.BinUaggChain;
-		
 		_bOp = bop;
 		_uaggOp = uaggop;
 
@@ -109,7 +105,7 @@ public class BinUaggChainSPInstruction extends UnarySPInstruction
 			arg0.aggregateUnaryOperations(_uaggOp, out1, brlen, bclen, null);
 			
 			//strip-off correction
-			out1.dropLastRowsOrColums(_uaggOp.aggOp.correctionLocation);
+			out1.dropLastRowsOrColumns(_uaggOp.aggOp.correctionLocation);
 		
 			//perform binary operation
 			MatrixBlock out2 = new MatrixBlock();

@@ -65,9 +65,6 @@ import org.apache.sysml.debug.DMLDebuggerProgramInfo;
 import org.apache.sysml.hops.HopsException;
 import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.hops.OptimizerUtils.OptimizationLevel;
-import org.apache.sysml.hops.codegen.SpoofCompiler;
-import org.apache.sysml.hops.codegen.SpoofCompiler.IntegrationType;
-import org.apache.sysml.hops.codegen.SpoofCompiler.PlanCachePolicy;
 import org.apache.sysml.hops.globalopt.GlobalOptimizerWrapper;
 import org.apache.sysml.lops.Lop;
 import org.apache.sysml.lops.LopsException;
@@ -88,6 +85,7 @@ import org.apache.sysml.runtime.controlprogram.context.SparkExecutionContext;
 import org.apache.sysml.runtime.controlprogram.parfor.ProgramConverter;
 import org.apache.sysml.runtime.controlprogram.parfor.stat.InfrastructureAnalyzer;
 import org.apache.sysml.runtime.controlprogram.parfor.util.IDHandler;
+import org.apache.sysml.runtime.instructions.gpu.context.GPUContextPool;
 import org.apache.sysml.runtime.io.IOUtilFunctions;
 import org.apache.sysml.runtime.matrix.CleanupMR;
 import org.apache.sysml.runtime.matrix.mapred.MRConfigurationNames;
@@ -162,7 +160,9 @@ public class DMLScript
 
 	public static RUNTIME_PLATFORM  rtplatform          = DMLOptions.defaultOptions.execMode;    // the execution mode
 	public static boolean           STATISTICS          = DMLOptions.defaultOptions.stats;       // whether to print statistics
+	public static boolean           FINEGRAINED_STATISTICS  = false;   						     // whether to print fine-grained statistics
 	public static int               STATISTICS_COUNT    = DMLOptions.defaultOptions.statsCount;  // statistics maximum heavy hitter count
+	public static int               STATISTICS_MAX_WRAP_LEN = 30;                                // statistics maximum wrap length
 	public static boolean           ENABLE_DEBUG_MODE   = DMLOptions.defaultOptions.debug;       // debug mode
 	public static ExplainType       EXPLAIN             = DMLOptions.defaultOptions.explainType; // explain type
 	public static String            DML_FILE_PATH_ANTLR_PARSER = DMLOptions.defaultOptions.filePath; // filename of dml/pydml script
@@ -569,8 +569,8 @@ public class DMLScript
 			try 
 			{
 				//read from hdfs or gpfs file system
-				if(    fileName.startsWith("hdfs:")
-					|| fileName.startsWith("gpfs:") )
+				if(    fileName.startsWith("hdfs:") || fileName.startsWith("gpfs:")
+					|| IOUtilFunctions.isObjectStoreFileScheme(new Path(fileName)) )
 				{ 
 					Path scriptPath = new Path(fileName);
 					FileSystem fs = IOUtilFunctions.getFileSystem(scriptPath);
@@ -590,8 +590,7 @@ public class DMLScript
 					sb.append( "\n" );
 				}
 			}
-			catch (IOException ex)
-			{
+			catch (IOException ex) {
 				LOG.error("Failed to read the script from the file system", ex);
 				throw ex;
 			}
@@ -664,14 +663,17 @@ public class DMLScript
 		//print basic time and environment info
 		printStartExecInfo( dmlScriptStr );
 		
-		//Step 1: parse configuration files
+		//Step 1: parse configuration files & write any configuration specific global variables
 		DMLConfig dmlconf = DMLConfig.readConfigurationFile(fnameOptConfig);
 		ConfigurationManager.setGlobalConfig(dmlconf);		
 		CompilerConfig cconf = OptimizerUtils.constructCompilerConfig(dmlconf);
 		ConfigurationManager.setGlobalConfig(cconf);
 		LOG.debug("\nDML config: \n" + dmlconf.getConfigInfo());
 
-		//Step 2: set local/remote memory if requested (for compile in AM context) 
+		// Sets the GPUs to use for this process (a range, all GPUs, comma separated list or a specific GPU)
+		GPUContextPool.AVAILABLE_GPUS = dmlconf.getTextValue(DMLConfig.AVAILABLE_GPUS);
+
+		//Step 2: set local/remote memory if requested (for compile in AM context)
 		if( dmlconf.getBooleanValue(DMLConfig.YARN_APPMASTER) ){
 			DMLAppMasterUtils.setupConfigRemoteMaxMemory(dmlconf); 
 		}
@@ -697,14 +699,6 @@ public class DMLScript
 		if( dmlconf.getBooleanValue(DMLConfig.SPOOF) ) {
 			dmlt.rewriteSpoofHopsDAG(prog);
 		}
-		else if( dmlconf.getBooleanValue(DMLConfig.CODEGEN) ){
-			SpoofCompiler.PLAN_CACHE_POLICY = PlanCachePolicy.get(
-					dmlconf.getBooleanValue(DMLConfig.CODEGEN_PLANCACHE),
-					dmlconf.getIntValue(DMLConfig.CODEGEN_LITERALS)==2);
-			SpoofCompiler.setExecTypeSpecificJavaCompiler();
-			if( SpoofCompiler.INTEGRATION==IntegrationType.HOPS )
-				dmlt.codgenHopsDAG(prog);
-		}
 		
 		//Step 6: construct lops (incl exec type and op selection)
 		dmlt.constructLops(prog);
@@ -715,14 +709,8 @@ public class DMLScript
 			dmlt.resetLopsDAGVisitStatus(prog);
 		}
 		
-		//Step 7: generate runtime program
-		Program rtprog = prog.getRuntimeProgram(dmlconf);
-
-		//Step 7.1: Generate code for the rewritten Hop dags w/o modify
-		if( dmlconf.getBooleanValue(DMLConfig.CODEGEN) 
-			&& SpoofCompiler.INTEGRATION==IntegrationType.RUNTIME ){
-			dmlt.codgenHopsDAG(rtprog);
-		}
+		//Step 7: generate runtime program, incl codegen
+		Program rtprog = dmlt.getRuntimeProgram(prog, dmlconf);
 		
 		//Step 8: [optional global data flow optimization]
 		if(OptimizerUtils.isOptLevel(OptimizationLevel.O4_GLOBAL_TIME_MEMORY) ) 
@@ -746,12 +734,8 @@ public class DMLScript
 		Statistics.resetNoOfCompiledJobs( counts.numJobs );				
 		
 		//explain plan of program (hops or runtime)
-		if( EXPLAIN != ExplainType.NONE ) {
-			LOG.info("EXPLAIN ("+EXPLAIN.toString()+"):\n" 
-					 + Explain.explainMemoryBudget(counts)+"\n"
-					 + Explain.explainDegreeOfParallelism(counts)
-					 + Explain.explain(prog, rtprog, EXPLAIN));
-		}
+		if( EXPLAIN != ExplainType.NONE )
+			LOG.info(Explain.display(prog, rtprog, EXPLAIN, counts));
 		
 		Statistics.stopCompileTimer();
 		
@@ -829,7 +813,7 @@ public class DMLScript
 		dmlt.constructLops(prog);
 	
 		//Step 6: generate runtime program
-		dbprog.rtprog = prog.getRuntimeProgram(conf);
+		dbprog.rtprog = dmlt.getRuntimeProgram(prog, conf);
 		
 		try {
 			//set execution environment

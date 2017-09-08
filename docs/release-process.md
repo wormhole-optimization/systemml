@@ -27,6 +27,116 @@ limitations under the License.
 {:toc}
 
 
+# Snapshot Deployment
+
+The following instructions describe how to deploy artifacts to the Apache Snapshot Repository during development.
+
+## Snapshot Deployment Setup
+
+**Maven Password Encryption**
+
+Follow the instructions at [https://maven.apache.org/guides/mini/guide-encryption.html](https://maven.apache.org/guides/mini/guide-encryption.html).
+
+**Create an Encrypted Master Password**
+
+```
+mvn --encrypt-master-password
+```
+
+This will generate an encrypted password. Create a `settings-security.xml` file at `~/.m2/settings-security.xml` if it doesn't exist.
+Add the encrypted master password to this file.
+
+```
+<settingsSecurity>
+  <master>{ENCRYPTED_PASSWORD_GOES_HERE}</master>
+</settingsSecurity>
+```
+
+**Create an Encrypted Version of your Apache Password**
+
+```
+mvn --encrypt-password
+```
+
+Add a server entry to your `~/.m2/settings.xml` file (create this file if it doesn't already exist). This server entry will have the
+Apache Snapshot ID, your Apache ID, and your encrypted password.
+
+```
+<settings>
+  <servers>
+    <server>
+      <id>apache.snapshots.https</id>
+      <username>YOUR_APACHE_ID</username>
+      <password>{ENCRYPTED_PASSWORD_GOES_HERE}</password>
+    </server>
+  </servers>
+</settings>
+```
+
+**Install and Configure GPG**
+
+On OS X, download GPG from [https://gpgtools.org/](https://gpgtools.org/). One such release is
+[https://releases.gpgtools.org/GPG_Suite-2016.08_v2.dmg](https://releases.gpgtools.org/GPG_Suite-2016.08_v2.dmg).
+
+Install GPG.
+
+Generate a public/private key pair. For example, you can use your name and Apache email.
+
+```
+gpg --gen-key
+```
+
+Your public and private keys can be verified using:
+
+```
+gpg --list-keys
+gpg --list-secret-keys
+```
+
+**Clone SystemML Repository**
+
+Since the artifacts will be deployed publicly, you should ensure that the project is completely clean.
+The deploy command should not be run on a copy of the project that you develop on. It should be a completely
+clean project used only for building and deploying.
+
+Therefore, create a directory such as:
+
+```
+mkdir ~/clean-systemml
+```
+
+In that directory, clone a copy of the project.
+
+```
+git clone https://github.com/apache/systemml.git
+```
+
+
+## Deploy Artifacts to Snapshot Repository
+
+Before deploying the latest snapshot artifacts, ensure you have the latest code on the master branch.
+
+```
+git pull
+```
+
+In the `pom.xml` file, the `maven-gpg-plugin`'s `sign` goal is bound to the `verify` stage of the Maven lifecycle.
+Therefore, you can check that signing works by installing the snapshot to your local Maven repository.
+
+```
+mvn clean install -DskipTests -Pdistribution
+```
+
+If this succeeds, you can deploy the snapshot artifacts to the Apache Snapshot Repository using the following:
+
+```
+mvn clean deploy -DskipTests -Pdistribution
+```
+
+Verify that the snapshot is now available at
+[https://repository.apache.org/content/repositories/snapshots/org/apache/systemml/systemml](https://repository.apache.org/content/repositories/snapshots/org/apache/systemml/systemml).
+
+
 # Release Candidate Build and Deployment
 
 To be written. (Describe how the release candidate is built, including checksums. Describe how
@@ -94,7 +204,7 @@ this OS X example.
 	./runStandaloneSystemML.sh hello.dml
 	cd ..
 
-	# verify standalon zip works
+	# verify standalone zip works
 	rm -rf systemml-1.0.0-bin
 	unzip systemml-1.0.0-bin.zip
 	cd systemml-1.0.0-bin
@@ -256,8 +366,22 @@ For examples, see the [Spark MLContext Programming Guide](http://apache.github.i
 
 <a href="#release-candidate-checklist">Up to Checklist</a>
 
-Verify that the performance suite located at scripts/perftest/ executes on Spark and Hadoop. Testing should
+Verify that the performance suite executes on Spark and Hadoop. Testing should
 include 80MB, 800MB, 8GB, and 80GB data sizes.
+
+For more information, please see [SystemML Performance Testing](python-performance-test.html).
+
+
+# Run NN Unit Tests for GPU
+
+<a href="#release-candidate-checklist">Up to Checklist</a>
+
+The unit tests for NN operators for GPU take a long time to run and are therefore not run as part of the Jenkins build.
+They must be run before a release. To run them, edit the 
+[NeuralNetworkOpTests.java](https://github.com/apache/systemml/blob/master/src/test/java/org/apache/sysml/test/gpu/NeuralNetworkOpTests.java)
+file and remove all the `@Ignore` annotations from all the tests. Then run the NN unit tests using mvn verify:
+
+	mvn -Dit.test=org.apache.sysml.test.gpu.NeuralNetworkOpTests verify -PgpuTests
 
 
 # Voting
@@ -304,6 +428,7 @@ Copy contents of `systemml/docs/_site` to `systemml-website-site/docs/1.0.0`.
 Delete any unnecessary files (`Gemfile`, `Gemfile.lock`).
 
 Create `systemml-website-site/docs/1.0.0/api/java` folder for javadocs.
+Create `systemml-website-site/docs/1.0.0/api/python` folder for pythondocs.
 
 Update `systemml/pom.xml` project version to what should be displayed in javadocs (such as `1.0.0`).
 
@@ -313,7 +438,20 @@ Build project (which generates javadocs).
 
 Copy contents of `systemml/target/apidocs` to `systemml-website-site/docs/1.0.0/api/java`.
 
-Open up `file:///.../systemml-website-site/docs/1.0.0/index.html` and verify `API Docs` &rarr; `Javadoc` link works and that the correct Javadoc version is displayed. Verify feedback links under `Issues` menu are not present.
+Define environment variables to match version and release number used in updated `systemml/pom.xml`.  Both environment variables are referenced when building pythondocs with Sphinx.
+
+	$ export SYSTEMML_VERSION=1.0
+	$ export SYSTEMML_RELEASE=1.0.0
+
+Generate pythondocs with Sphinx.
+
+	$ cd systemml/src/main/pythondoc
+	$ make html
+
+Copy contents of `systemml/target/pydocs/html` to `systemml-website-site/docs/1.0.0/api/python`.
+
+Open up `file:///.../systemml-website-site/docs/1.0.0/index.html` and verify `API Docs` &rarr; `Java` link works and that the correct Javadoc version is displayed. 
+Verify `API Docs` &rarr; `Python` link works and that the same Pythondoc version is displayed. Verify feedback links under `Issues` menu are not present.
 
 Clean up any unnecessary files (such as deleting `.DS_Store` files on OS X).
 

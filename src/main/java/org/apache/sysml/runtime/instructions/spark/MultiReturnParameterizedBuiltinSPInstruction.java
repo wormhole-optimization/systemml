@@ -67,12 +67,11 @@ import org.apache.sysml.runtime.transform.meta.TfOffsetMap;
 
 import scala.Tuple2;
 
-
-public class MultiReturnParameterizedBuiltinSPInstruction extends ComputationSPInstruction 
-{
+public class MultiReturnParameterizedBuiltinSPInstruction extends ComputationSPInstruction {
 	protected ArrayList<CPOperand> _outputs;
-	
-	public MultiReturnParameterizedBuiltinSPInstruction(Operator op, CPOperand input1, CPOperand input2, ArrayList<CPOperand> outputs, String opcode, String istr ) {
+
+	private MultiReturnParameterizedBuiltinSPInstruction(Operator op, CPOperand input1, CPOperand input2,
+			ArrayList<CPOperand> outputs, String opcode, String istr) {
 		super(op, input1, input2, outputs.get(0), opcode, istr);
 		_sptype = SPINSTRUCTION_TYPE.MultiReturnBuiltin;
 		_outputs = outputs;
@@ -116,7 +115,7 @@ public class MultiReturnParameterizedBuiltinSPInstruction extends ComputationSPI
 			String spec = ec.getScalarInput(input2.getName(), input2.getValueType(), input2.isLiteral()).getStringValue();
 			MatrixCharacteristics mcIn = sec.getMatrixCharacteristics(input1.getName());
 			MatrixCharacteristics mcOut = sec.getMatrixCharacteristics(output.getName());
-			String[] colnames = !TfMetaUtils.isIDSpecification(spec) ?
+			String[] colnames = !TfMetaUtils.isIDSpec(spec) ?
 					in.lookup(1L).get(0).getColumnNames() : null; 
 					
 			//step 1: build transform meta data

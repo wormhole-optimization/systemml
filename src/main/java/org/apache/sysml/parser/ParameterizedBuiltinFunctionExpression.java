@@ -24,8 +24,10 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 
+import org.antlr.v4.runtime.ParserRuleContext;
 import org.apache.sysml.hops.Hop.ParamBuiltinOp;
 import org.apache.sysml.parser.LanguageException.LanguageErrorCodes;
+import org.apache.wink.json4j.JSONObject;
 
 
 public class ParameterizedBuiltinFunctionExpression extends DataIdentifier 
@@ -103,8 +105,8 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		pbHopMap.put(Expression.ParameterizedBuiltinFunctionOp.TOSTRING, ParamBuiltinOp.TOSTRING);
 	}
 	
-	public static ParameterizedBuiltinFunctionExpression getParamBuiltinFunctionExpression(String functionName, 
-			ArrayList<ParameterExpression> paramExprsPassed, String fileName, int blp, int bcp, int elp, int ecp){
+	public static ParameterizedBuiltinFunctionExpression getParamBuiltinFunctionExpression(ParserRuleContext ctx,
+			String functionName, ArrayList<ParameterExpression> paramExprsPassed, String fileName) {
 		if (functionName == null || paramExprsPassed == null)
 			return null;
 		
@@ -117,17 +119,24 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		for (ParameterExpression pexpr : paramExprsPassed)
 			varParams.put(pexpr.getName(), pexpr.getExpr());
 		
-		ParameterizedBuiltinFunctionExpression retVal = new ParameterizedBuiltinFunctionExpression(pbifop,varParams,
-				fileName, blp, bcp, elp, ecp);
+		ParameterizedBuiltinFunctionExpression retVal = new ParameterizedBuiltinFunctionExpression(ctx, pbifop,
+				varParams, fileName);
 		return retVal;
 	}
 	
 			
-	public ParameterizedBuiltinFunctionExpression(ParameterizedBuiltinFunctionOp op, HashMap<String,Expression> varParams,
-			String filename, int blp, int bcp, int elp, int ecp) {
+	public ParameterizedBuiltinFunctionExpression(ParserRuleContext ctx, ParameterizedBuiltinFunctionOp op, HashMap<String,Expression> varParams,
+			String filename) {
 		_opcode = op;
 		_varParams = varParams;
-		setAllPositions(filename, blp, bcp, elp, ecp);
+		setCtxValuesAndFilename(ctx, filename);
+	}
+
+	public ParameterizedBuiltinFunctionExpression(ParameterizedBuiltinFunctionOp op,
+			HashMap<String, Expression> varParams, ParseInfo parseInfo) {
+		_opcode = op;
+		_varParams = varParams;
+		setParseInfo(parseInfo);
 	}
 
 	public Expression rewriteExpression(String prefix) throws LanguageException {
@@ -137,9 +146,9 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 			Expression newExpr = _varParams.get(key).rewriteExpression(prefix);
 			newVarParams.put(key, newExpr);
 		}	
-		ParameterizedBuiltinFunctionExpression retVal = new ParameterizedBuiltinFunctionExpression(_opcode, newVarParams,
-				this.getFilename(), this.getBeginLine(), this.getBeginColumn(), this.getEndLine(), this.getEndColumn());
-	
+		ParameterizedBuiltinFunctionExpression retVal = new ParameterizedBuiltinFunctionExpression(_opcode,
+				newVarParams, this);
+
 		return retVal;
 	}
 
@@ -244,7 +253,6 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 				raiseValidateError("Unsupported parameterized function "+ getOpCode(), 
 						false, LanguageErrorCodes.UNSUPPORTED_EXPRESSION);
 		}
-		return;
 	}
 
 	@Override
@@ -263,7 +271,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		int count = 0;
 		for (DataIdentifier outParam: stmt.getTargetList()){
 			DataIdentifier tmp = new DataIdentifier(outParam);
-			tmp.setAllPositions(this.getFilename(), this.getBeginLine(), this.getBeginColumn(), this.getEndLine(), this.getEndColumn());
+			tmp.setParseInfo(this);
 			_outputs[count++] = tmp;
 		}
 		
@@ -277,8 +285,6 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 			default: //always unconditional (because unsupported operation)
 				raiseValidateError("Unsupported parameterized function "+ getOpCode(), false, LanguageErrorCodes.INVALID_PARAMETERS);
 		}
-		
-		return;
 	}
 	
 	// example: A = transformapply(target=X, meta=M, spec=s)
@@ -291,6 +297,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		
 		//validate specification
 		checkDataValueType("transformapply", TF_FN_PARAM_SPEC, DataType.SCALAR, ValueType.STRING, conditional);
+		validateTransformSpec(TF_FN_PARAM_SPEC, conditional);
 		
 		//set output dimensions
 		output.setDataType(DataType.MATRIX);
@@ -307,6 +314,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		
 		//validate specification
 		checkDataValueType("transformdecode", TF_FN_PARAM_SPEC, DataType.SCALAR, ValueType.STRING, conditional);
+		validateTransformSpec(TF_FN_PARAM_SPEC, conditional);
 		
 		//set output dimensions
 		output.setDataType(DataType.FRAME);
@@ -319,6 +327,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 	{
 		//validate specification
 		checkDataValueType("transformmeta", TF_FN_PARAM_SPEC, DataType.SCALAR, ValueType.STRING, conditional);
+		validateTransformSpec(TF_FN_PARAM_SPEC, conditional);
 		
 		//validate meta data path 
 		checkDataValueType("transformmeta", TF_FN_PARAM_MTD, DataType.SCALAR, ValueType.STRING, conditional);
@@ -337,6 +346,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		
 		//validate specification
 		checkDataValueType("transformencode", TF_FN_PARAM_SPEC, DataType.SCALAR, ValueType.STRING, conditional);
+		validateTransformSpec(TF_FN_PARAM_SPEC, conditional);
 		
 		//set output dimensions 
 		output1.setDataType(DataType.MATRIX);
@@ -345,6 +355,20 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		output2.setDataType(DataType.FRAME);
 		output2.setValueType(ValueType.STRING);
 		output2.setDimensions(-1, -1);
+	}
+	
+	private void validateTransformSpec(String pname, boolean conditional) throws LanguageException {
+		Expression data = getVarParam(pname);
+		if( data instanceof StringIdentifier ) {
+			try {
+				StringIdentifier spec = (StringIdentifier)data;
+				new JSONObject(spec.getValue());
+			}
+			catch(Exception ex) {
+				raiseValidateError("Transform specification parsing issue: ", 
+					conditional, ex.getMessage());
+			}
+		}
 	}
 	
 	private void validateReplace(DataIdentifier output, boolean conditional) throws LanguageException {
@@ -396,7 +420,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		
 		Expression orderby = getVarParam("by"); //[OPTIONAL] BY
 		if( orderby == null ) { //default first column, good fit for vectors
-			orderby = new IntIdentifier(1, "1", -1, -1, -1, -1);
+			orderby = new IntIdentifier(1);
 			addVarParam("by", orderby);
 		}
 		else if( orderby !=null && orderby.getOutput().getDataType() != DataType.SCALAR ){				
@@ -405,7 +429,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		
 		Expression decreasing = getVarParam("decreasing"); //[OPTIONAL] DECREASING
 		if( decreasing == null ) { //default: ascending
-			addVarParam("decreasing", new BooleanIdentifier(false, "false", -1, -1, -1, -1));
+			addVarParam("decreasing", new BooleanIdentifier(false));
 		}
 		else if( decreasing!=null && decreasing.getOutput().getDataType() != DataType.SCALAR ){				
 			raiseValidateError("Ordering 'decreasing' is of type '"+decreasing.getOutput().getDataType()+"', '"+decreasing.getOutput().getValueType()+"'. Please, specify 'decreasing' as a scalar boolean.", conditional, LanguageErrorCodes.INVALID_PARAMETERS);
@@ -413,7 +437,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		
 		Expression indexreturn = getVarParam("index.return"); //[OPTIONAL] DECREASING
 		if( indexreturn == null ) { //default: sorted data
-			indexreturn = new BooleanIdentifier(false, "false", -1, -1, -1, -1);
+			indexreturn = new BooleanIdentifier(false);
 			addVarParam("index.return", indexreturn);
 		}
 		else if( indexreturn!=null && indexreturn.getOutput().getDataType() != DataType.SCALAR ){				
@@ -645,7 +669,6 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		output.setDataType(DataType.SCALAR);
 		output.setValueType(ValueType.DOUBLE);
 		output.setDimensions(0, 0);
-		return;
 	}
 	
 	private void validateCastAsString(DataIdentifier output, boolean conditional) 
@@ -725,11 +748,6 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 
 	@Override
 	public boolean multipleReturns() {
-		switch(_opcode) {
-			case TRANSFORMENCODE:
-				return true;
-			default:
-				return false;
-		}
+		return (_opcode == ParameterizedBuiltinFunctionOp.TRANSFORMENCODE);
 	}
 }

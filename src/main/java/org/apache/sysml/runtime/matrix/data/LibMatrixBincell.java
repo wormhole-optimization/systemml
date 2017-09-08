@@ -321,8 +321,6 @@ public class LibMatrixBincell
 				
 				if( m1.sparse ) //SPARSE left
 				{
-					Arrays.fill(ret.denseBlock, 0, ret.denseBlock.length, 0); 
-					
 					if( m1.sparseBlock != null )
 					{
 						SparseBlock a = m1.sparseBlock;
@@ -349,6 +347,7 @@ public class LibMatrixBincell
 				}
 				
 				//2) process right input: op.fn (+,-,*), * only if dense
+				long lnnz = 0;
 				if( m2.sparse ) //SPARSE right
 				{				
 					if(m2.sparseBlock!=null)
@@ -364,20 +363,26 @@ public class LibMatrixBincell
 								for(int k = apos; k < apos+alen; k++) 
 									c[ix+aix[k]] = op.fn.execute(c[ix+aix[k]], avals[k]);
 							}
-						}	
+							//exploit temporal locality of rows
+							lnnz += ret.recomputeNonZeros(i, i, 0, clen-1);
+						}
 					}
 				}
 				else //DENSE right
 				{
-					if( !m2.isEmptyBlock(false) )
-						for( int i=0; i<m*n; i++ )
-							c[i] = op.fn.execute(c[i], m2.denseBlock[i]);
+					if( !m2.isEmptyBlock(false) ) {
+						double[] a = m2.denseBlock;
+						for( int i=0; i<m*n; i++ ) {
+							c[i] = op.fn.execute(c[i], a[i]);
+							lnnz += (c[i]!=0) ? 1 : 0;
+						}
+					}
 					else if(op.fn instanceof Multiply)
 						Arrays.fill(ret.denseBlock, 0, m*n, 0); 
 				}
-	
+				
 				//3) recompute nnz
-				ret.recomputeNonZeros();
+				ret.setNonZeros(lnnz);
 			}
 			else if( !ret.sparse && !m1.sparse && !m2.sparse 
 					&& m1.denseBlock!=null && m2.denseBlock!=null )
@@ -391,12 +396,12 @@ public class LibMatrixBincell
 				ValueFunction fn = op.fn;
 				
 				//compute dense-dense binary, maintain nnz on-the-fly
-				int nnz = 0;
+				int lnnz = 0;
 				for( int i=0; i<m*n; i++ ) {
 					c[i] = fn.execute(a[i], b[i]);
-					nnz += (c[i]!=0)? 1 : 0;
+					lnnz += (c[i]!=0)? 1 : 0;
 				}
-				ret.nonZeros = nnz;
+				ret.setNonZeros(lnnz);
 			}
 			else if( skipEmpty && (m1.sparse || m2.sparse) ) 
 			{
@@ -720,9 +725,11 @@ public class LibMatrixBincell
 		if( ret.sparse )
 			ret.allocateSparseRowsBlock();
 		
-		if(LibMatrixOuterAgg.isCompareOperator(op) && SortUtils.isSorted(0, m2.getNumColumns(), DataConverter.convertToDoubleVector(m2))) {
+		if(LibMatrixOuterAgg.isCompareOperator(op) 
+			&& m2.getNumColumns()>16 && SortUtils.isSorted(m2) ) {
 			performBinOuterOperation(m1, m2, ret, op);
-		} else {
+		}
+		else {
 			for(int r=0; r<rlen; r++) {
 				double v1 = m1.quickGetValue(r, 0);		
 				for(int c=0; c<clen; c++)
@@ -751,58 +758,51 @@ public class LibMatrixBincell
 			throws DMLRuntimeException
 	{
 		int rlen = mbLeft.rlen;
-		double bv[] = DataConverter.convertToDoubleVector(mbRight); 
-		
+		int clen = mbOut.clen;
+		double b[] = DataConverter.convertToDoubleVector(mbRight);
 		if(!mbOut.isAllocated())
 			mbOut.allocateDenseBlock();
+		double c[] = mbOut.getDenseBlock();
 		
-		long lNNZ = 0;
-		for(int r=0; r<rlen; r++) {
+		long lnnz = 0;
+		for(int r=0, off=0; r<rlen; r++, off+=clen) {
 			double value = mbLeft.quickGetValue(r, 0);		
-			int ixPos1 = Arrays.binarySearch(bv, value);
+			int ixPos1 = Arrays.binarySearch(b, value);
 			int ixPos2 = ixPos1;
 
 			if( ixPos1 >= 0 ){ //match, scan to next val
 				if(bOp.fn instanceof LessThan || bOp.fn instanceof GreaterThanEquals 
 						|| bOp.fn instanceof Equals || bOp.fn instanceof NotEquals)
-					while( ixPos1<bv.length && value==bv[ixPos1]  ) ixPos1++;
+					while( ixPos1<b.length && value==b[ixPos1]  ) ixPos1++;
 				if(bOp.fn instanceof GreaterThan || bOp.fn instanceof LessThanEquals 
 						|| bOp.fn instanceof Equals || bOp.fn instanceof NotEquals)
-					while(  ixPos2 > 0 && value==bv[ixPos2-1]) --ixPos2;
+					while(  ixPos2 > 0 && value==b[ixPos2-1]) --ixPos2;
 			} else {
 				ixPos2 = ixPos1 = Math.abs(ixPos1) - 1;
 			}
 
-			int iStartPos = 0, iEndPos = bv.length;
-
-			if(bOp.fn instanceof LessThan)
-				iStartPos = ixPos1;
-			else  if(bOp.fn instanceof LessThanEquals)
-				iStartPos = ixPos2;  
-			else if(bOp.fn instanceof GreaterThan)
-				iEndPos = ixPos2;
-			else if(bOp.fn instanceof GreaterThanEquals)
-				iEndPos = ixPos1;
+			int start = 0, end = clen;
+			if(bOp.fn instanceof LessThan || bOp.fn instanceof LessThanEquals)
+				start = (bOp.fn instanceof LessThan) ? ixPos1 : ixPos2;
+			else if(bOp.fn instanceof GreaterThan || bOp.fn instanceof GreaterThanEquals)
+				end = (bOp.fn instanceof GreaterThan) ? ixPos2 : ixPos1;
 			else if(bOp.fn instanceof Equals || bOp.fn instanceof NotEquals) {
-				iStartPos = ixPos2;
-				iEndPos = ixPos1;
+				start = ixPos2;
+				end = ixPos1;
 			}
-			if(iStartPos < iEndPos || bOp.fn instanceof NotEquals) {
-				int iOffSet = r*mbRight.getNumColumns();
-				if(bOp.fn instanceof LessThan || bOp.fn instanceof GreaterThanEquals 
-						|| bOp.fn instanceof GreaterThan || bOp.fn instanceof LessThanEquals 
-						|| bOp.fn instanceof Equals)	{
-					Arrays.fill(mbOut.getDenseBlock(), iOffSet+iStartPos, iOffSet+iEndPos, 1.0);
-					lNNZ += (iEndPos-iStartPos);
+			if(start < end || bOp.fn instanceof NotEquals) {
+				if (bOp.fn instanceof NotEquals) {
+					Arrays.fill(c, off, off+start, 1.0);
+					Arrays.fill(c, off+end, off+clen, 1.0);
+					lnnz += (start+(clen-end));
 				}
-				else if (bOp.fn instanceof NotEquals) {
-					Arrays.fill(mbOut.getDenseBlock(), iOffSet, iOffSet+iStartPos, 1.0);
-					Arrays.fill(mbOut.getDenseBlock(), iOffSet+iEndPos, iOffSet+bv.length, 1.0);
-					lNNZ += (iStartPos+(bv.length-iEndPos));
+				else {
+					Arrays.fill(c, off+start, off+end, 1.0);
+					lnnz += (end-start);
 				}
 			}
 		}
-		mbOut.setNonZeros(lNNZ);		
+		mbOut.setNonZeros(lnnz);
 		mbOut.examSparsity();
 	}
 
@@ -843,12 +843,11 @@ public class LibMatrixBincell
 		{
 			int clen2 = m2.clen; 
 			
-			//TODO performance improvement for relational operations like ">"
-			//sort rhs by val, compute cutoff and memset 1/0 for halfs
-	
-			if(LibMatrixOuterAgg.isCompareOperator(op) && SortUtils.isSorted(0, m2.getNumColumns(), DataConverter.convertToDoubleVector(m2))) {
+			if(LibMatrixOuterAgg.isCompareOperator(op) 
+				&& m2.getNumColumns()>16 && SortUtils.isSorted(m2)) {
 				performBinOuterOperation(m1, m2, ret, op);
-			} else {
+			} 
+			else {
 				for(int r=0; r<rlen; r++) {
 					double v1 = m1.quickGetValue(r, 0);		
 					for(int c=0; c<clen2; c++)
@@ -1190,52 +1189,51 @@ public class LibMatrixBincell
 		}
 	}
 	
-	/**
-	 * like a merge sort
-	 * 
-	 * @param op binary operator
-	 * @param values1 array of double values
-	 * @param cols1 ?
-	 * @param pos1 ?
-	 * @param size1 ?
-	 * @param values2 array of double values
-	 * @param cols2 ?
-	 * @param pos2 ?
-	 * @param size2 ?
-	 * @param resultRow ?
-	 * @param result matrix block
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
-	 */
 	private static void mergeForSparseBinary(BinaryOperator op, double[] values1, int[] cols1, int pos1, int size1, 
-				double[] values2, int[] cols2, int pos2, int size2, int resultRow, MatrixBlock result) 
+			double[] values2, int[] cols2, int pos2, int size2, int resultRow, MatrixBlock result) 
 		throws DMLRuntimeException
 	{
-		int p1=0, p2=0, column;
-		while( p1<size1 && p2< size2 )
-		{
-			double value = 0;
-			if(cols1[pos1+p1]<cols2[pos2+p2]) {
-				value = op.fn.execute(values1[pos1+p1], 0);
-				column = cols1[pos1+p1];
-				p1++;
+		int p1 = 0, p2 = 0;
+		if( op.fn instanceof Multiply ) { //skip empty
+			//skip empty: merge-join (with inner join semantics)
+			//similar to sorted list intersection
+			SparseBlock sblock = result.getSparseBlock();
+			sblock.allocate(resultRow, Math.min(size1, size2), result.clen);
+			while( p1 < size1 && p2 < size2 ) {
+				int colPos1 = cols1[pos1+p1];
+				int colPos2 = cols2[pos2+p2];
+				if( colPos1 == colPos2 )
+					sblock.append(resultRow, colPos1,
+						op.fn.execute(values1[pos1+p1], values2[pos2+p2]));
+				p1 += (colPos1 <= colPos2) ? 1 : 0;
+				p2 += (colPos1 >= colPos2) ? 1 : 0;
 			}
-			else if(cols1[pos1+p1]==cols2[pos2+p2]) {
-				value = op.fn.execute(values1[pos1+p1], values2[pos2+p2]);
-				column = cols1[pos1+p1];
-				p1++;
-				p2++;
-			}
-			else {
-				value = op.fn.execute(0, values2[pos2+p2]);
-				column = cols2[pos2+p2];
-				p2++;
-			}
-			result.appendValue(resultRow, column, value);	
+			result.nonZeros += sblock.size(resultRow);
 		}
-		
-		//add left over
-		appendLeftForSparseBinary(op, values1, cols1, pos1, size1, p1, resultRow, result);
-		appendRightForSparseBinary(op, values2, cols2, pos2, size2, p2, resultRow, result);
+		else {
+			//general case: merge-join (with outer join semantics) 
+			while( p1 < size1 && p2 < size2 ) {
+				if(cols1[pos1+p1]<cols2[pos2+p2]) {
+					result.appendValue(resultRow, cols1[pos1+p1], 
+						op.fn.execute(values1[pos1+p1], 0));
+					p1++;
+				}
+				else if(cols1[pos1+p1]==cols2[pos2+p2]) {
+					result.appendValue(resultRow, cols1[pos1+p1], 
+						op.fn.execute(values1[pos1+p1], values2[pos2+p2]));
+					p1++;
+					p2++;
+				}
+				else {
+					result.appendValue(resultRow, cols2[pos2+p2], 
+						op.fn.execute(0, values2[pos2+p2]));
+					p2++;
+				}
+			}
+			//add left over
+			appendLeftForSparseBinary(op, values1, cols1, pos1, size1, p1, resultRow, result);
+			appendRightForSparseBinary(op, values2, cols2, pos2, size2, p2, resultRow, result);
+		}
 	}
 
 	private static void appendLeftForSparseBinary(BinaryOperator op, double[] values1, int[] cols1, int pos1, int size1, 

@@ -36,15 +36,12 @@ import org.apache.sysml.runtime.matrix.operators.Operator;
 
 import scala.Tuple2;
 
-public class TsmmSPInstruction extends UnarySPInstruction 
-{
-	
+public class TsmmSPInstruction extends UnarySPInstruction {
 	private MMTSJType _type = null;
-	
-	public TsmmSPInstruction(Operator op, CPOperand in1, CPOperand out, MMTSJType type, String opcode, String istr )
-	{
+
+	private TsmmSPInstruction(Operator op, CPOperand in1, CPOperand out, MMTSJType type, String opcode, String istr) {
 		super(op, in1, out, opcode, istr);
-		_sptype = SPINSTRUCTION_TYPE.TSMM;		
+		_sptype = SPINSTRUCTION_TYPE.TSMM;
 		_type = type;
 	}
 
@@ -82,7 +79,7 @@ public class TsmmSPInstruction extends UnarySPInstruction
 		      
 		//put output block into symbol table (no lineage because single block)
 		//this also includes implicit maintenance of matrix characteristics
-		sec.setMatrixOutput(output.getName(), out);
+		sec.setMatrixOutput(output.getName(), out, getExtendedOpcode());
 	}
 
 	private static class RDDTSMMFunction implements Function<Tuple2<MatrixIndexes,MatrixBlock>, MatrixBlock> 

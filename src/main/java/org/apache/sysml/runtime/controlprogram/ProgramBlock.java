@@ -24,12 +24,14 @@ import java.util.ArrayList;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.sysml.api.DMLScript;
+import org.apache.sysml.api.jmlc.JMLCUtils;
 import org.apache.sysml.conf.ConfigurationManager;
 import org.apache.sysml.hops.Hop;
 import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.hops.recompile.Recompiler;
 import org.apache.sysml.lops.Lop;
 import org.apache.sysml.parser.Expression.ValueType;
+import org.apache.sysml.parser.ParseInfo;
 import org.apache.sysml.parser.StatementBlock;
 import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.DMLScriptException;
@@ -38,21 +40,20 @@ import org.apache.sysml.runtime.controlprogram.caching.MatrixObject.UpdateType;
 import org.apache.sysml.runtime.controlprogram.context.ExecutionContext;
 import org.apache.sysml.runtime.instructions.Instruction;
 import org.apache.sysml.runtime.instructions.cp.BooleanObject;
-import org.apache.sysml.runtime.instructions.cp.ComputationCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.Data;
 import org.apache.sysml.runtime.instructions.cp.DoubleObject;
 import org.apache.sysml.runtime.instructions.cp.IntObject;
 import org.apache.sysml.runtime.instructions.cp.ScalarObject;
 import org.apache.sysml.runtime.instructions.cp.StringObject;
-import org.apache.sysml.runtime.instructions.cp.VariableCPInstruction;
 import org.apache.sysml.runtime.matrix.data.MatrixBlock;
-import org.apache.sysml.utils.MLContextProxy;
 import org.apache.sysml.utils.Statistics;
 import org.apache.sysml.yarn.DMLAppMasterUtils;
 
 
-public class ProgramBlock
+public class ProgramBlock implements ParseInfo
 {
+	public static final String PRED_VAR = "__pred";
+	
 	protected static final Log LOG = LogFactory.getLog(ProgramBlock.class.getName());
 	private static final boolean CHECK_MATRIX_SPARSITY = false;
 
@@ -147,9 +148,6 @@ public class ProgramBlock
 			{
 				tmp = Recompiler.recompileHopsDag(
 					_sb, _sb.get_hops(), ec.getVariables(), null, false, true, _tid);
-
-				if( MLContextProxy.isActive() )
-					tmp = MLContextProxy.performCleanupAfterRecompilation(tmp);
 			}
 			if( DMLScript.STATISTICS ){
 				long t1 = System.nanoTime();
@@ -191,6 +189,7 @@ public class ProgramBlock
 			{
 				tmp = Recompiler.recompileHopsDag(
 					hops, ec.getVariables(), null, false, true, _tid);
+				tmp = JMLCUtils.cleanupRuntimeInstructions(tmp, PRED_VAR);
 			}
 			if( DMLScript.STATISTICS ){
 				long t1 = System.nanoTime();
@@ -225,40 +224,15 @@ public class ProgramBlock
 	protected ScalarObject executePredicateInstructions(ArrayList<Instruction> inst, ValueType retType, ExecutionContext ec)
 		throws DMLRuntimeException
 	{
-		ScalarObject ret = null;
-		String retName = null;
-
- 		//execute all instructions
- 		for (int i = 0; i < inst.size(); i++)
-		{
-			//indexed access required due to debug mode
-			Instruction currInst = inst.get(i);
-			if( !isRemoveVariableInstruction(currInst) )
-			{
-				//execute instruction
-				ec.updateDebugState(i);
-				executeSingleInstruction(currInst, ec);
-
-				//get last return name
-				if(currInst instanceof ComputationCPInstruction )
-					retName = ((ComputationCPInstruction) currInst).getOutputVariableName();
-				else if(currInst instanceof VariableCPInstruction && ((VariableCPInstruction)currInst).getOutputVariableName()!=null)
-					retName = ((VariableCPInstruction)currInst).getOutputVariableName();
-			}
+		//execute all instructions (indexed access required due to debug mode)
+		int pos = 0;
+		for( Instruction currInst : inst ) {
+			ec.updateDebugState(pos++);
+			executeSingleInstruction(currInst, ec);
 		}
-
-		//get return value TODO: how do we differentiate literals and variables?
-		ret = (ScalarObject) ec.getScalarInput(retName, retType, false);
-
-		//execute rmvar instructions
-		for (int i = 0; i < inst.size(); i++) {
-			//indexed access required due to debug mode
-			Instruction currInst = inst.get(i);
-			if( isRemoveVariableInstruction(currInst) ) {
-				ec.updateDebugState(i);
-				executeSingleInstruction(currInst, ec);
-			}
-		}
+		
+		//get scalar return
+		ScalarObject ret = (ScalarObject) ec.getScalarInput(PRED_VAR, retType, false);
 
 		//check and correct scalar ret type (incl save double to int)
 		if( ret.getValueType() != retType )
@@ -271,6 +245,8 @@ public class ProgramBlock
 					//do nothing
 			}
 
+		//remove predicate variable
+		ec.removeVariable(PRED_VAR);
 		return ret;
 	}
 
@@ -370,12 +346,7 @@ public class ProgramBlock
 				mo.setUpdateType(flags[i]);
 			}
 	}
-
-	private boolean isRemoveVariableInstruction(Instruction inst) {
-		return ( inst instanceof VariableCPInstruction 
-			&& ((VariableCPInstruction)inst).isRemoveVariable() );
-	}
-
+	
 	private void checkSparsity( Instruction lastInst, LocalVariableMap vars )
 		throws DMLRuntimeException
 	{
@@ -413,27 +384,46 @@ public class ProgramBlock
 	// store position information for program blocks
 	///////////////////////////////////////////////////////////////////////////
 
+	public String _filename;
 	public int _beginLine, _beginColumn;
 	public int _endLine, _endColumn;
+	public String _text;
 
+	public void setFilename(String passed)    { _filename = passed;   }
 	public void setBeginLine(int passed)    { _beginLine = passed;   }
 	public void setBeginColumn(int passed) 	{ _beginColumn = passed; }
 	public void setEndLine(int passed) 		{ _endLine = passed;   }
 	public void setEndColumn(int passed)	{ _endColumn = passed; }
+	public void setText(String text) { _text = text; }
 
-	public void setAllPositions(int blp, int bcp, int elp, int ecp){
-		_beginLine	 = blp;
-		_beginColumn = bcp;
-		_endLine 	 = elp;
-		_endColumn 	 = ecp;
-	}
-
+	public String getFilename()	{ return _filename;   }
 	public int getBeginLine()	{ return _beginLine;   }
 	public int getBeginColumn() { return _beginColumn; }
 	public int getEndLine() 	{ return _endLine;   }
 	public int getEndColumn()	{ return _endColumn; }
+	public String getText() { return _text; }
 
 	public String printBlockErrorLocation(){
 		return "ERROR: Runtime error in program block generated from statement block between lines " + _beginLine + " and " + _endLine + " -- ";
 	}
+
+	/**
+	 * Set parse information.
+	 *
+	 * @param parseInfo
+	 *            parse information, such as beginning line position, beginning
+	 *            column position, ending line position, ending column position,
+	 *            text, and filename
+	 * @param filename
+	 *            the DML/PYDML filename (if it exists)
+	 */
+	public void setParseInfo(ParseInfo parseInfo) {
+		_beginLine = parseInfo.getBeginLine();
+		_beginColumn = parseInfo.getBeginColumn();
+		_endLine = parseInfo.getEndLine();
+		_endColumn = parseInfo.getEndColumn();
+		_text = parseInfo.getText();
+		_filename = parseInfo.getFilename();
+	}
+
 }

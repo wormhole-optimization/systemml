@@ -24,23 +24,19 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.sysml.api.DMLScript;
 import org.apache.sysml.conf.ConfigurationManager;
 import org.apache.sysml.conf.DMLConfig;
 import org.apache.sysml.hops.AggBinaryOp;
-import org.apache.sysml.hops.DataGenOp;
 import org.apache.sysml.hops.DataOp;
 import org.apache.sysml.hops.FunctionOp;
 import org.apache.sysml.hops.Hop;
 import org.apache.sysml.hops.AggBinaryOp.MMultMethod;
-import org.apache.sysml.hops.Hop.DataOpTypes;
 import org.apache.sysml.hops.Hop.MultiThreadedHop;
 import org.apache.sysml.hops.Hop.ParamBuiltinOp;
 import org.apache.sysml.hops.Hop.ReOrgOp;
@@ -48,6 +44,7 @@ import org.apache.sysml.hops.HopsException;
 import org.apache.sysml.hops.IndexingOp;
 import org.apache.sysml.hops.LeftIndexingOp;
 import org.apache.sysml.hops.LiteralOp;
+import org.apache.sysml.hops.MemoTable;
 import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.hops.ParameterizedBuiltinOp;
 import org.apache.sysml.hops.ReorgOp;
@@ -60,18 +57,15 @@ import org.apache.sysml.hops.recompile.Recompiler;
 import org.apache.sysml.lops.LopProperties;
 import org.apache.sysml.lops.LopsException;
 import org.apache.sysml.parser.DMLProgram;
-import org.apache.sysml.parser.Expression;
 import org.apache.sysml.parser.Expression.DataType;
 import org.apache.sysml.parser.FunctionStatementBlock;
 import org.apache.sysml.parser.LanguageException;
 import org.apache.sysml.parser.ParForStatement;
 import org.apache.sysml.parser.ParForStatementBlock;
 import org.apache.sysml.parser.StatementBlock;
-import org.apache.sysml.parser.VariableSet;
 import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.controlprogram.ForProgramBlock;
 import org.apache.sysml.runtime.controlprogram.FunctionProgramBlock;
-import org.apache.sysml.runtime.controlprogram.IfProgramBlock;
 import org.apache.sysml.runtime.controlprogram.LocalVariableMap;
 import org.apache.sysml.runtime.controlprogram.ParForProgramBlock;
 import org.apache.sysml.runtime.controlprogram.Program;
@@ -83,7 +77,6 @@ import org.apache.sysml.runtime.controlprogram.ParForProgramBlock.POptMode;
 import org.apache.sysml.runtime.controlprogram.ParForProgramBlock.PResultMerge;
 import org.apache.sysml.runtime.controlprogram.ParForProgramBlock.PTaskPartitioner;
 import org.apache.sysml.runtime.controlprogram.ParForProgramBlock.PartitionFormat;
-import org.apache.sysml.runtime.controlprogram.WhileProgramBlock;
 import org.apache.sysml.runtime.controlprogram.caching.MatrixObject;
 import org.apache.sysml.runtime.controlprogram.caching.MatrixObject.UpdateType;
 import org.apache.sysml.runtime.controlprogram.context.ExecutionContext;
@@ -98,13 +91,13 @@ import org.apache.sysml.runtime.controlprogram.parfor.stat.InfrastructureAnalyze
 import org.apache.sysml.runtime.instructions.Instruction;
 import org.apache.sysml.runtime.instructions.cp.Data;
 import org.apache.sysml.runtime.instructions.cp.FunctionCallCPInstruction;
+import org.apache.sysml.runtime.instructions.gpu.context.GPUContextPool;
 import org.apache.sysml.runtime.instructions.spark.data.RDDObject;
 import org.apache.sysml.runtime.matrix.MatrixCharacteristics;
 import org.apache.sysml.runtime.matrix.MatrixFormatMetaData;
 import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.matrix.data.OutputInfo;
 import org.apache.sysml.runtime.matrix.data.SparseRowVector;
-import org.apache.sysml.utils.Explain;
 import org.apache.sysml.yarn.ropt.YarnClusterAnalyzer;
 
 /**
@@ -155,10 +148,7 @@ public class OptimizerRuleBased extends Optimizer
 	public static final int MAX_REPLICATION_FACTOR_PARTITIONING = 5;
 	public static final int MAX_REPLICATION_FACTOR_EXPORT = 7;    
 	public static final boolean ALLOW_REMOTE_NESTED_PARALLELISM = false;
-	public static final boolean APPLY_REWRITE_NESTED_PARALLELISM = false;
 	public static final String FUNCTION_UNFOLD_NAMEPREFIX = "__unfold_";
-	
-	public static final boolean APPLY_REWRITE_UPDATE_INPLACE_INTERMEDIATE = true;
 	
 	public static final double PAR_K_FACTOR        = OptimizationWrapper.PAR_FACTOR_INFRASTRUCTURE; 
 	public static final double PAR_K_MR_FACTOR     = 1.0 * OptimizationWrapper.PAR_FACTOR_INFRASTRUCTURE; 
@@ -177,13 +167,8 @@ public class OptimizerRuleBased extends Optimizer
 	protected double _lm = -1; //local memory constraint
 	protected double _rm = -1; //remote memory constraint (mappers)
 	protected double _rm2 = -1; //remote memory constraint (reducers)
-	
-	
+		
 	protected CostEstimator _cost = null;
-	
-	protected static ThreadLocal<ArrayList<String>> listUIPRes = new ThreadLocal<ArrayList<String>>() {
-		@Override protected ArrayList<String> initialValue() { return new ArrayList<String>(); }
-	};
 
 	@Override
 	public CostModelType getCostModelType() 
@@ -228,9 +213,13 @@ public class OptimizerRuleBased extends Optimizer
 		_cost = est;
 		
 		//debug and warnings output
-		LOG.debug(getOptMode()+" OPT: Optimize w/ max_mem="+toMB(_lm)+"/"+toMB(_rm)+"/"+toMB(_rm2)+", max_k="+_lk+"/"+_rk+"/"+_rk2+")." );
-		if( _rnk<=0 || _rk<=0 )
-			LOG.warn(getOptMode()+" OPT: Optimize for inactive cluster (num_nodes="+_rnk+", num_map_slots="+_rk+")." );
+		if( LOG.isDebugEnabled() ) {
+			LOG.debug(getOptMode()+" OPT: Optimize w/ max_mem="+toMB(_lm)+"/"+toMB(_rm)+"/"+toMB(_rm2)+", max_k="+_lk+"/"+_rk+"/"+_rk2+")." );
+			if( OptimizerUtils.isSparkExecutionMode() )
+				LOG.debug(getOptMode()+" OPT: Optimize w/ "+SparkExecutionContext.getSparkClusterConfig().toString());
+			if( _rnk <= 0 || _rk <= 0 )
+				LOG.warn(getOptMode()+" OPT: Optimize for inactive cluster (num_nodes="+_rnk+", num_map_slots="+_rk+")." );
+		}
 		
 		//ESTIMATE memory consumption 
 		pn.setSerialParFor(); //for basic mem consumption 
@@ -253,7 +242,8 @@ public class OptimizerRuleBased extends Optimizer
 		LOG.debug(getOptMode()+" OPT: estimated new mem (serial exec) M="+toMB(M1) );
 		
 		//determine memory consumption for what-if: all-cp or partitioned 
-		double M2 = _cost.getEstimate(TestMeasure.MEMORY_USAGE, pn, LopProperties.ExecType.CP);
+		double M2 = pn.isCPOnly() ? M1 :
+			_cost.getEstimate(TestMeasure.MEMORY_USAGE, pn, LopProperties.ExecType.CP);
 		LOG.debug(getOptMode()+" OPT: estimated new mem (serial exec, all CP) M="+toMB(M2) );
 		double M3 = _cost.getEstimate(TestMeasure.MEMORY_USAGE, pn, true);
 		LOG.debug(getOptMode()+" OPT: estimated new mem (cond partitioning) M="+toMB(M3) );
@@ -285,14 +275,11 @@ public class OptimizerRuleBased extends Optimizer
 			// rewrite 8: rewrite set partition replication factor
 			rewriteSetExportReplicationFactor( pn, ec.getVariables() );
 			
-			// rewrite 9: nested parallelism (incl exec types)	
-			boolean flagNested = rewriteNestedParallelism( pn, M1, flagLIX );
-			
 			// rewrite 10: determine parallelism
-			rewriteSetDegreeOfParallelism( pn, M1, flagNested );
+			rewriteSetDegreeOfParallelism( pn, M1, false );
 			
 			// rewrite 11: task partitioning 
-			rewriteSetTaskPartitioner( pn, flagNested, flagLIX );
+			rewriteSetTaskPartitioner( pn, false, flagLIX );
 			
 			// rewrite 12: fused data partitioning and execution
 			rewriteSetFusedDataPartitioningExecution(pn, M1, flagLIX, partitionedMatrices, ec.getVariables());
@@ -357,7 +344,7 @@ public class OptimizerRuleBased extends Optimizer
 
 	protected void analyzeProblemAndInfrastructure( OptNode pn )
 	{
-		_N       = Long.parseLong(pn.getParam(ParamType.NUM_ITERATIONS)); 
+		_N       = Long.parseLong(pn.getParam(ParamType.NUM_ITERATIONS));
 		_Nmax    = pn.getMaxProblemSize(); 
 		_lk      = InfrastructureAnalyzer.getLocalParallelism();
 		_lkmaxCP = (int) Math.ceil( PAR_K_FACTOR * _lk ); 
@@ -373,7 +360,7 @@ public class OptimizerRuleBased extends Optimizer
 			_rk2 = _rk; //equal map/reduce unless we find counter-examples 
 			int cores = SparkExecutionContext.getDefaultParallelism(true)
 					/ SparkExecutionContext.getNumExecutors();
-			int ccores = (int) Math.min(cores, _N);
+			int ccores = Math.max((int) Math.min(cores, _N), 1);
 			_rm  = SparkExecutionContext.getBroadcastMemoryBudget() / ccores;
 			_rm2 = SparkExecutionContext.getBroadcastMemoryBudget() / ccores;
 		}
@@ -617,9 +604,9 @@ public class OptimizerRuleBased extends Optimizer
 		//determine if applicable
 		boolean apply = M < _rm   //ops fit in remote memory budget
 			&& !cand.isEmpty()    //at least one MR
-		    && isResultPartitionableAll(cand,pfpb.getResultVariables(), 
-		    		vars, pfpb.getIterablePredicateVars()[0]); // check candidates
-			
+			&& isResultPartitionableAll(cand,pfpb.getResultVariables(), 
+				vars, pfpb.getIterVar()); // check candidates
+		
 		//recompile LIX
 		if( apply )
 		{
@@ -899,17 +886,21 @@ public class OptimizerRuleBased extends Optimizer
 		return requiresRecompile;
 	}
 
-	protected boolean isLargeProblem(OptNode pn, double M0)
+	protected boolean isLargeProblem(OptNode pn, double M)
 	{
-		return ((_N >= PROB_SIZE_THRESHOLD_REMOTE || _Nmax >= 10 * PROB_SIZE_THRESHOLD_REMOTE )
-				&& M0 > PROB_SIZE_THRESHOLD_MB ); //original operations at least larger than 256MB
+		//TODO get a proper time estimate based to capture compute-intensive scenarios
+		
+		//rule-based decision based on number of outer iterations or maximum number of
+		//inner iterations (w/ appropriately scaled minimum data size threshold); 
+		return (_N >= PROB_SIZE_THRESHOLD_REMOTE && M > PROB_SIZE_THRESHOLD_MB)
+			|| (_Nmax >= 10 * PROB_SIZE_THRESHOLD_REMOTE && M > PROB_SIZE_THRESHOLD_MB/10);
 	}
 
 	protected boolean isCPOnlyPossible( OptNode n, double memBudget ) 
 		throws DMLRuntimeException
 	{
 		ExecType et = n.getExecType();
-		boolean ret = ( et == ExecType.CP);		
+		boolean ret = ( et == ExecType.CP);
 		
 		if( n.isLeaf() && et == getRemoteExecType() )
 		{
@@ -1002,7 +993,7 @@ public class OptimizerRuleBased extends Optimizer
 		{
 			//find all candidates matrices (at least one partitioned access via iterVar)
 			HashSet<String> cand = new HashSet<String>();
-			rFindDataColocationCandidates(n, cand, pfpb.getIterablePredicateVars()[0]);
+			rFindDataColocationCandidates(n, cand, pfpb.getIterVar());
 			
 			//select largest matrix for colocation (based on nnz to account for sparsity)
 			long nnzMax = Long.MIN_VALUE;
@@ -1016,7 +1007,7 @@ public class OptimizerRuleBased extends Optimizer
 						apply = true;
 					}
 				}
-			}		
+			}
 		}
 		
 		//modify the runtime plan (apply true if at least one candidate)
@@ -1093,7 +1084,7 @@ public class OptimizerRuleBased extends Optimizer
 		if(((n.getExecType()==ExecType.MR && n.getParam(ParamType.DATA_PARTITIONER).equals(PDataPartitioner.REMOTE_MR.name()))
 		    || (n.getExecType()==ExecType.SPARK && n.getParam(ParamType.DATA_PARTITIONER).equals(PDataPartitioner.REMOTE_SPARK.name())))
 		    && n.hasNestedParallelism(false) 
-		    && n.hasNestedPartitionReads(false) )		
+		    && n.hasNestedPartitionReads(false) )
 		{
 			apply = true;
 			
@@ -1180,73 +1171,41 @@ public class OptimizerRuleBased extends Optimizer
 		LOG.debug(getOptMode()+" OPT: rewrite 'set export replication factor' - result="+apply+((apply)?" ("+replication+")":"") );
 	}
 
-	
-	///////
-	//REWRITE enable nested parallelism
-	///
+	/**
+	 * Calculates the maximum memory needed in a CP only Parfor
+	 * based on the {@link Hop#computeMemEstimate(MemoTable)}  } function
+	 * called recursively for the "children" of the parfor {@link OptNode}.
+	 *
+	 * @param n the parfor {@link OptNode}
+	 * @return the maximum memory needed for any operation inside a parfor in CP execution mode
+	 * @throws DMLRuntimeException if error
+	 */
+	protected double getMaxCPOnlyBudget(OptNode n) throws DMLRuntimeException {
+		ExecType et = n.getExecType();
+		double ret = 0;
 
-	@SuppressWarnings("all")
-	protected boolean rewriteNestedParallelism(OptNode n, double M, boolean flagLIX ) 
-		throws DMLRuntimeException
-	{
-		boolean nested = false;
-	
-		if( APPLY_REWRITE_NESTED_PARALLELISM
-			&& !flagLIX                      // if not applied left indexing rewrite	
-			&& _N >= _rnk 					 // at least exploit all nodes
-			&& !n.hasNestedParallelism(false)// only for 1D problems, otherwise potentially bad load balance
-			&& M * _lkmaxCP <= _rm  )        // only if we can exploit full local parallelism in the map task JVM memory
-		{
-			//modify tree
-			ArrayList<OptNode> tmpOld = n.getChilds();
-			OptNode nest = new OptNode(NodeType.PARFOR, ExecType.CP);
-			ArrayList<OptNode> tmpNew = new ArrayList<OptNode>();
-			tmpNew.add(nest);
-			n.setChilds(tmpNew);
-			nest.setChilds(tmpOld);
-			
-			//modify rtprog
-			long id = n.getID();
-			ParForProgramBlock pfpb = (ParForProgramBlock) OptTreeConverter
-	                                    .getAbstractPlanMapping().getMappedProg(id)[1];
-			ArrayList<ProgramBlock> tmpPBOld = pfpb.getChildBlocks();
-			
-			//create new program block structure and modify parameters (from, to, incr, types,)
-			String[] iterVars = pfpb.getIterablePredicateVars(); //from, to stay original
-			String[] iterVars2 = iterVars.clone();  //itervar, incr stay original
-			int outIncr = (int)Math.ceil(((double)_N)/_rnk);
-			iterVars[ 0 ] = ParForStatementBlock.INTERAL_FN_INDEX_ROW; // already checked for uniqueness in ParForStatementBlock
-			iterVars[ 3 ] = String.valueOf(outIncr); 		
-			iterVars2[ 1 ] = ParForStatementBlock.INTERAL_FN_INDEX_ROW; //sub start
-			iterVars2[ 2 ] = null;
-			HashMap<String,String> params = pfpb.getParForParams();
-			HashMap<String,String> params2 = (HashMap<String,String>)params.clone();	
-			ParForProgramBlock pfpb2 = new ParForProgramBlock(pfpb.getProgram(),iterVars2, params2);
-			OptTreeConverter.getAbstractPlanMapping().putProgMapping(null, pfpb2, nest);
-			
-			ArrayList<ProgramBlock> tmpPBNew = new ArrayList<ProgramBlock>();
-			tmpPBNew.add(pfpb2);
-			pfpb.setChildBlocks(tmpPBNew);
-			pfpb.setIterablePredicateVars(iterVars);
-			pfpb.setIncrementInstructions(new ArrayList<Instruction>());
-			pfpb.setExecMode(PExecMode.REMOTE_MR);
-			pfpb2.setChildBlocks(tmpPBOld);
-			pfpb2.setResultVariables(pfpb.getResultVariables());
-			pfpb2.setFromInstructions(new ArrayList<Instruction>());
-			pfpb2.setToInstructions(ProgramRecompiler.createNestedParallelismToInstructionSet( ParForStatementBlock.INTERAL_FN_INDEX_ROW, String.valueOf(outIncr-1) ));
-			pfpb2.setIncrementInstructions(new ArrayList<Instruction>());
-			pfpb2.setExecMode(PExecMode.LOCAL);
-		
-			nested = true;
+		if (n.isLeaf() && et != getRemoteExecType()) {
+			Hop h = OptTreeConverter.getAbstractPlanMapping().getMappedHop(n.getID());
+			if (h.getForcedExecType() != LopProperties.ExecType.MR  //e.g., -exec=hadoop
+					&& h.getForcedExecType() != LopProperties.ExecType.SPARK) {
+				double mem = _cost.getLeafNodeEstimate(TestMeasure.MEMORY_USAGE, n, LopProperties.ExecType.CP);
+				if (mem >= OptimizerUtils.DEFAULT_SIZE) {
+					// memory estimate for worst case scenario.
+					// optimistically ignoring this
+				} else {
+					ret = Math.max(ret, mem);
+				}
+			}
 		}
 
-		_numEvaluatedPlans++;
-		LOG.debug(getOptMode()+" OPT: rewrite 'enable nested parallelism' - result="+nested );
-		
-		return nested;
+		if (!n.isLeaf()) {
+			for (OptNode c : n.getChilds()) {
+				ret = Math.max(ret, getMaxCPOnlyBudget(c));
+			}
+		}
+		return ret;
 	}
 
-	
 	///////
 	//REWRITE set degree of parallelism
 	///
@@ -1276,13 +1235,30 @@ public class OptimizerRuleBased extends Optimizer
 			//constrain max parfor parallelism by problem size
 			int parforK = (int)((_N<kMax)? _N : kMax);
 			
+			// if gpu mode is enabled, the amount of parallelism is set to
+			// the smaller of the number of iterations and the number of GPUs
+			// otherwise it default to the number of CPU cores and the
+			// operations are run in CP mode
+			//FIXME rework for nested parfor parallelism and body w/o gpu ops
+			if (DMLScript.USE_ACCELERATOR) {
+				long perGPUBudget = GPUContextPool.initialGPUMemBudget();
+				double maxMemUsage = getMaxCPOnlyBudget(n);
+				if (maxMemUsage < perGPUBudget){
+					parforK = GPUContextPool.getDeviceCount();
+					parforK = Math.min(parforK, (int)_N);
+					LOG.debug("Setting degree of parallelism + [" + parforK + "] for GPU; per GPU budget :[" +
+							perGPUBudget + "], parfor budget :[" + maxMemUsage + "],  max parallelism per GPU : [" +
+							parforK + "]");
+				}
+			}
+			
 			//set parfor degree of parallelism
 			pfpb.setDegreeOfParallelism(parforK);
-			n.setK(parforK);	
+			n.setK(parforK);
 			
 			//distribute remaining parallelism 
-			int remainParforK = (int)Math.ceil(((double)(kMax-parforK+1))/parforK);
-			int remainOpsK = Math.max(_lkmaxCP / parforK, 1);
+			int remainParforK = getRemainingParallelismParFor(kMax, parforK);
+			int remainOpsK = getRemainingParallelismOps(_lkmaxCP, parforK);
 			rAssignRemainingParallelism( n, remainParforK, remainOpsK ); 
 		}
 		else // ExecType.MR/ExecType.SPARK
@@ -1344,13 +1320,13 @@ public class OptimizerRuleBased extends Optimizer
 					//set parfor degree of parallelism
 					long id = c.getID();
 					c.setK(tmpK);
-					ParForProgramBlock pfpb = (ParForProgramBlock) OptTreeConverter
-                                                  .getAbstractPlanMapping().getMappedProg(id)[1];
+					ParForProgramBlock pfpb = (ParForProgramBlock) 
+						OptTreeConverter.getAbstractPlanMapping().getMappedProg(id)[1];
 					pfpb.setDegreeOfParallelism(tmpK);
 					
-					//distribute remaining parallelism 
-					int remainParforK = (int)Math.ceil(((double)(parforK-tmpK+1))/tmpK);
-					int remainOpsK = Math.max(opsK / tmpK, 1);
+					//distribute remaining parallelism
+					int remainParforK = getRemainingParallelismParFor(parforK, tmpK);
+					int remainOpsK = getRemainingParallelismOps(opsK, tmpK);
 					rAssignRemainingParallelism(c, remainParforK, remainOpsK);
 				}
 				else if( c.getNodeType() == NodeType.HOP )
@@ -1397,7 +1373,18 @@ public class OptimizerRuleBased extends Optimizer
 			}
 		}
 	}
-
+	
+	private static int getRemainingParallelismParFor(int parforK, int tmpK) {
+		//compute max remaining parfor parallelism k such that k * tmpK <= parforK
+		return (int)Math.ceil((double)(parforK-tmpK+1) / tmpK);
+	}
+	
+	private static int getRemainingParallelismOps(int opsK, int tmpK) {
+		//compute max remaining operations parallelism k with slight over-provisioning 
+		//such that k * tmpK <= 1.5 * opsK; note that if parfor already exploits the
+		//maximum parallelism, this will not introduce any over-provisioning.
+		return (int)Math.max(Math.round((double)opsK / tmpK), 1);
+	}
 	
 	///////
 	//REWRITE set task partitioner
@@ -1519,17 +1506,14 @@ public class OptimizerRuleBased extends Optimizer
 			&& partitionedMatrices.size()==1 ) //only one partitioned matrix
 		{
 			ParForProgramBlock pfpb = (ParForProgramBlock) OptTreeConverter
-	                  .getAbstractPlanMapping().getMappedProg(pn.getID())[1];
+				.getAbstractPlanMapping().getMappedProg(pn.getID())[1];
 			
 			//partitioned matrix
 			String moVarname = partitionedMatrices.keySet().iterator().next();
 			PartitionFormat moDpf = partitionedMatrices.get(moVarname);
 			MatrixObject mo = (MatrixObject)vars.get(moVarname);
 			
-			//check if access via iteration variable and sizes match
-			String iterVarname = pfpb.getIterablePredicateVars()[0];
-			
-			if( rIsAccessByIterationVariable(pn, moVarname, iterVarname) &&
+			if( rIsAccessByIterationVariable(pn, moVarname, pfpb.getIterVar()) &&
 			   ((moDpf==PartitionFormat.ROW_WISE && mo.getNumRows()==_N ) ||
 				(moDpf==PartitionFormat.COLUMN_WISE && mo.getNumColumns()==_N) ||
 				(moDpf._dpf==PDataPartitionFormat.ROW_BLOCK_WISE_N && mo.getNumRows()<=_N*moDpf._N)||
@@ -1540,7 +1524,7 @@ public class OptimizerRuleBased extends Optimizer
 				pn.addParam(ParamType.DATA_PARTITIONER, REMOTE_DPE.toString()+"(fused)");
 				pn.setK( k );
 				
-				pfpb.setExecMode(REMOTE_DPE); //set fused exec type	
+				pfpb.setExecMode(REMOTE_DPE); //set fused exec type
 				pfpb.setDataPartitioner(PDataPartitioner.NONE);
 				pfpb.enableColocatedPartitionedMatrix( moVarname ); 
 				pfpb.setDegreeOfParallelism(k);
@@ -1689,13 +1673,12 @@ public class OptimizerRuleBased extends Optimizer
 			LOG.warn(getOptMode()+" OPT: Set in-place result update is only applicable for a ParFor node.");
 		
 		boolean apply = false;
-
+		
 		ParForProgramBlock pfpb = (ParForProgramBlock) OptTreeConverter
-              .getAbstractPlanMapping().getMappedProg(pn.getID())[1];
+			.getAbstractPlanMapping().getMappedProg(pn.getID())[1];
 		
 		//note currently we decide for all result vars jointly, i.e.,
 		//only if all fit pinned in remaining budget, we apply this rewrite.
-		
 		ArrayList<String> retVars = pfpb.getResultVariables();
 		
 		//compute total sum of pinned result variable memory
@@ -1703,8 +1686,7 @@ public class OptimizerRuleBased extends Optimizer
 		
 		//NOTE: currently this rule is too conservative (the result variable is assumed to be dense and
 		//most importantly counted twice if this is part of the maximum operation)
-		HashMap <String, ArrayList <UIPCandidateHop>> uipCandHopHM = new HashMap <String, ArrayList<UIPCandidateHop>>();   
-		double totalMem = Math.max((M+sum), rComputeSumMemoryIntermediates(pn, new HashSet<String>(), uipCandHopHM));
+		double totalMem = Math.max((M+sum), rComputeSumMemoryIntermediates(pn, new HashSet<String>()));
 		
 		//optimization decision
 		if( rHasOnlyInPlaceSafeLeftIndexing(pn, retVars) ) //basic correctness constraint
@@ -1725,9 +1707,6 @@ public class OptimizerRuleBased extends Optimizer
 			}
 		}
 		
-		if(APPLY_REWRITE_UPDATE_INPLACE_INTERMEDIATE && LOG.isDebugEnabled())
-			listUIPRes.remove();
-
 		//modify result variable meta data, if rewrite applied
 		if( apply ) 
 		{
@@ -1739,733 +1718,45 @@ public class OptimizerRuleBased extends Optimizer
 					((MatrixObject)dat).setUpdateType(UpdateType.INPLACE_PINNED);
 			}
 			inPlaceResultVars.addAll(retVars);
-
-			if(APPLY_REWRITE_UPDATE_INPLACE_INTERMEDIATE)
-			{
-				isUpdateInPlaceApplicable(pn, uipCandHopHM);
-	
-				boolean bAnyUIPApplicable = false;
-				for(Entry<String, ArrayList <UIPCandidateHop>> entry: uipCandHopHM.entrySet())
-				{
-					ArrayList <UIPCandidateHop> uipCandHopList = entry.getValue();
-					
-					if (uipCandHopList != null) {
-						for (UIPCandidateHop uipCandHop: uipCandHopList)
-							if(uipCandHop.isIntermediate() && uipCandHop.isLoopApplicable() && uipCandHop.isUpdateInPlace())
-							{
-								uipCandHop.getHop().setUpdateType(UpdateType.INPLACE_PINNED);
-								bAnyUIPApplicable = true;
-
-								if(LOG.isDebugEnabled())
-									listUIPRes.get().add(uipCandHop.getHop().getName());
-							}
-					}
-				}
-				if(bAnyUIPApplicable)
-					try {
-						//Recompile this block recursively if there is any update in place applicable.
-						LocalVariableMap localVaraibleMap = (LocalVariableMap) ec.getVariables().clone();
-						Recompiler.recompileProgramBlockHierarchy(pfpb.getChildBlocks(), localVaraibleMap, 0L, true);
-					}
-					catch(Exception ex){
-						throw new DMLRuntimeException(ex);
-					}
-			}
 		}
-
-		if(APPLY_REWRITE_UPDATE_INPLACE_INTERMEDIATE && LOG.isTraceEnabled())
-		{
-			LOG.trace("UpdateInPlace = " + apply + " for lines between " + pn.getBeginLine() + " and " + pn.getEndLine()
-					+ " for " + uipCandHopHM.size() + " intermediate matrix objects:" + uipCandHopHM.keySet().toString());
-				
-			for(Entry<String, ArrayList <UIPCandidateHop>> entry: uipCandHopHM.entrySet())
-			{
-				ArrayList <UIPCandidateHop> uipCandHopList = entry.getValue();
-				
-				if (uipCandHopList != null) {
-					for (UIPCandidateHop uipCandHop: uipCandHopList)
-					{
-						if(uipCandHop.getHop() != null)
-						{
-							LOG.trace("Matrix Object: Name: " + uipCandHop.getHop().getName() + "<" + uipCandHop.getHop().getBeginLine() + "," + uipCandHop.getHop().getEndLine()+ ">, InLoop:"
-								+ uipCandHop.isLoopApplicable() + ", UIPApplicable:" + uipCandHop.isUpdateInPlace() + ", HopUIPApplicable:" + uipCandHop.getHop().getUpdateType());
-							LOG.trace("Explain Candidate HOP after recompile");
-							LOG.trace(Explain.explain(uipCandHop.getHop()));
-						}
-						else
-						{
-							LOG.trace("Matrix Object: Name: " + uipCandHop.getLixHop().getName() + "<" + uipCandHop.getLixHop().getBeginLine() + "," + uipCandHop.getLixHop().getEndLine()+ ">, InLoop:"
-									+ uipCandHop.isLoopApplicable() + ", Not an Intermediate matrix object");
-						}
-					}
-				}
-			}
-		}
-							
+		
 		LOG.debug(getOptMode()+" OPT: rewrite 'set in-place result indexing' - result="+
-		          apply+" ("+ProgramConverter.serializeStringCollection(inPlaceResultVars)+", M="+toMB(totalMem)+")" );	
+			apply+" ("+ProgramConverter.serializeStringCollection(inPlaceResultVars)+", M="+toMB(totalMem)+")" );
 	}
 	
-	/* 
-	 * Algorithm: isUpdateInPlaceApplicable()
-	 *
-	 * Purpose of this algorithm to identify intermediate hops containing matrix objects to be marked as "UpdateInPlace" from ParforProgramBlock. 
-	 * First, list of candidates are identified. Then list is pruned based on conditions descibed below.
-	 * 
-	 * A.Identification of candidates:
-	 *  1. Candidate's identity defined with name, beginline, endline, and hop.
-	 * 	2. Operation of type LeftIndexingOp
-	 *  3. Number of consumers for Hop's first input should be one.
-	 *  4. Matrix Object on which leftindexing operation done has defined outside "Loop" A. 
-	 *  5. LeftIndexingOp operation is within a "Loop" A.
-	 *
-	 * 	Notes: 1. Loop is of type while, for, or parfor with parallelism of one.
-	 * 		   2. Some conidtions ignored at this point listed below
-	 * 			2.1 Unsure of general instructions. It will be hard to identify and iterate.
-	 * 			2.2 LeftIndexing outside "loop"
-	 * 
-	 * 
-	 * B.Pruning the list:
-	 *  Candidates are pruned based on any condition met from conditions from 1 to 3 below.
-	 *  0. Identify of candidate is defined with name, begineline, endline, and hop.
-	 * 	1. Based on the scope of candidate. If Variable (name) is defined in liveout of loop's statementblock.
-	 *  2. Based on operation type and order  
-	 *  	2.1 If hop's input variable name is same as candidate's name 
-	 *  	2.2 Location of hop is before candidate.
-	 *  	2.3 Hop's operator type is any of following 
-	 *  		2.3.1 DataOp (with operation type TransientWrite or TransientRead)
-	 *  		2.3.2 ReorgOp (with operation type Reshape or Transpose)
-	 *  		2.3.3 FunctionOp
-	 *  3. Location of consumer being affected.
-	 *  	3.1 Consumer defined before leftindexing through operation process defined in 2.3 above.
-	 *  	3.2 Consumer is being utilized after leftindexing on candidate.
-	 *  
-	 *  Notes:
-	 *  	1. No interleave operations.
-	 *  	2. Function with actual operation to be scanned for candiate exclusion list.
-	 *  	3. Operattion that does not include updated data through updateinplace. 
-	 * 	
-	 * 
-	 * @param pn:				OpNode of parfor loop
-	 * @param uipCandHopHM:		Hashmap of UIPCandidateHop with name as a key.		
-	 * @throws DMLRuntimeException
-	 */
-	private void isUpdateInPlaceApplicable(OptNode pn, HashMap <String, ArrayList <UIPCandidateHop>> uipCandHopHM)
-			throws DMLRuntimeException 
-	{
-		rIsInLoop(pn, uipCandHopHM, false);
-		
-		// Prune candidate list based on non-existance of intermediate candidate in the loop
-		Iterator<Map.Entry<String, ArrayList <UIPCandidateHop>>> uipCandHopHMIter = uipCandHopHM.entrySet().iterator();
-		while(uipCandHopHMIter.hasNext())
-		{
-			Map.Entry<String, ArrayList <UIPCandidateHop>> uipCandHopHMentry = uipCandHopHMIter.next();
-			ArrayList <UIPCandidateHop> uipCandHopList = uipCandHopHMentry.getValue();
-			
-			if (uipCandHopList != null) {
-				for (Iterator<UIPCandidateHop> uipCandHopListIter = uipCandHopList.iterator(); uipCandHopListIter.hasNext();) 
-				{
-					UIPCandidateHop uipCandHop = uipCandHopListIter.next();
-					if (!uipCandHop.isIntermediate() || !uipCandHop.isLoopApplicable())	//If Loop is not applicable then remove it from the list. 
-					{
-						uipCandHopListIter.remove();
-						if(LOG.isTraceEnabled())
-						{
-							if (!uipCandHop.isIntermediate())
-								LOG.trace("Matrix Object: Name: " + uipCandHop.getLixHop().getName() + "<" + uipCandHop.getLixHop().getBeginLine() + "," + uipCandHop.getLixHop().getEndLine()+ 
-										">, removed from the candidate list as it is not an intermediate matrix object.");
-							else
-								LOG.trace("Matrix Object: Name: " + uipCandHop.getLixHop().getName() + "<" + uipCandHop.getLixHop().getBeginLine() + "," + uipCandHop.getLixHop().getEndLine()+ 
-										">, removed from the candidate list as it does not have loop criteria applicable.");
-						}
-					}
-				}
-				if(uipCandHopList.isEmpty())
-					uipCandHopHMIter.remove();
-			}
-		}
-
-		if(!uipCandHopHM.isEmpty())
-		{
-			// Get consumer list
-			rResetVisitStatus(pn);
-			rGetUIPConsumerList(pn, uipCandHopHM);
-
-			// Prune candidate list if consumer is in function call.
-			uipCandHopHMIter = uipCandHopHM.entrySet().iterator();
-			while(uipCandHopHMIter.hasNext())
-			{
-				Map.Entry<String, ArrayList <UIPCandidateHop>> uipCandHopHMentry = uipCandHopHMIter.next();
-				ArrayList <UIPCandidateHop> uipCandHopList = uipCandHopHMentry.getValue();
-				
-				if (uipCandHopList != null) {
-					for (Iterator<UIPCandidateHop> uipCandHopListIter = uipCandHopList.iterator(); uipCandHopListIter.hasNext();) 
-					{
-						UIPCandidateHop uipCandHop = uipCandHopListIter.next();
-						// if one of the consumer is FunctionOp then remove it.
-						ArrayList<Hop> consHops = uipCandHop.getConsumerHops();
-						if(consHops != null)
-							for (Hop hop: consHops)
-							{
-								if(hop instanceof FunctionOp)
-								{
-									uipCandHopListIter.remove();
-									if(LOG.isTraceEnabled())
-										LOG.trace("Matrix Object: Name: " + uipCandHop.getLixHop().getName() + "<" + uipCandHop.getLixHop().getBeginLine() + "," + uipCandHop.getLixHop().getEndLine()+ 
-												">, removed from the candidate list as one of the consumer is FunctionOp.");
-									break;
-								}
-							}
-					}
-					if(uipCandHopList.isEmpty())
-						uipCandHopHMIter.remove();
-				}
-			}
-
-			//Validate the consumer list
-			rResetVisitStatus(pn);
-			rValidateUIPConsumerList(pn, uipCandHopHM);
-		}
-	}
-	
-	
-	
-	/* 	
-	 * This will check if candidate LeftIndexingOp are in loop (while, for or parfor).
-	 * 
-	 * @param pn:				OpNode of parfor loop
-	 * @param uipCandHopHM:		Hashmap of UIPCandidateHop with name as a key.		
-	 * @throws DMLRuntimeException
-	 */
-	private void rIsInLoop(OptNode pn, HashMap <String, ArrayList<UIPCandidateHop>> uipCandHopHM, boolean bInLoop)
-			throws DMLRuntimeException 
-	{
-		if(!pn.isLeaf())  
-		{
-			ProgramBlock pb = (ProgramBlock) OptTreeConverter.getAbstractPlanMapping().getMappedProg(pn.getID())[1];
-
-			VariableSet varUpdated = pb.getStatementBlock().variablesUpdated();
-			boolean bUIPCandHopUpdated = false;
-			for(Entry<String, ArrayList <UIPCandidateHop>> entry: uipCandHopHM.entrySet())
-			{
-				String uipCandHopID = entry.getKey();
-				
-				if (varUpdated.containsVariable(uipCandHopID))
-				{	
-					bUIPCandHopUpdated = true;
-					break;
-				}
-			}
-
-			// As none of the UIP candidates updated in this DAG, no need for further processing within this DAG
-			if(!bUIPCandHopUpdated)
-				return;
-
-			boolean bLoop = false;
-			if(	bInLoop || pb instanceof WhileProgramBlock || 
-				(pb instanceof ParForProgramBlock && ((ParForProgramBlock)pb).getDegreeOfParallelism() == 1) ||
-				(pb instanceof ForProgramBlock && !(pb instanceof ParForProgramBlock)))
-				bLoop = true;
-
-			for (OptNode optNode: pn.getChilds())
-			{
-				rIsInLoop(optNode, uipCandHopHM, bLoop);
-			}
-		}
-		else 
-		{
-			Hop hop = (Hop) OptTreeConverter.getAbstractPlanMapping().getMappedHop(pn.getID());
-
-			for(Entry<String, ArrayList <UIPCandidateHop>> entry: uipCandHopHM.entrySet())
-			{
-				ArrayList <UIPCandidateHop> uipCandHopList = entry.getValue();
-				
-				if (uipCandHopList != null) 
-				{
-					for (UIPCandidateHop uipCandHop: uipCandHopList)
-					{
-						//Identify where intermediate object has been defined.
-						if (hop instanceof DataGenOp && hop.getName().equals(uipCandHop.getLixHop().getName()))
-						{
-							uipCandHop.setHop(hop);
-							uipCandHop.setLocation(hop.getBeginLine());
-							uipCandHop.setIntermediate(true);
-						}
-							
-						//Update if candiate hop defined outside this loop, and leftindexing is within this loop.
-						if ((bInLoop) && (uipCandHop.getLocation() <= hop.getBeginLine() && uipCandHop.getLixHop().getBeginLine() <= hop.getEndLine()))
-							uipCandHop.setIsLoopApplicable(true);
-					}
-				}
-			}
-		}
-		
-	}
-	
-	
-	
-	/* 	
-	 * This will get consumer list for candidate LeftIndexingOp.
-	 * 
-	 * @param pn:				OpNode of parfor loop
-	 * @param uipCandHopHM:		Hashmap of UIPCandidateHop with name as a key.		
-	 * @throws DMLRuntimeException
-	 */
-	private void rGetUIPConsumerList(OptNode pn, HashMap <String, ArrayList<UIPCandidateHop>> uipCandHopHM)
-			throws DMLRuntimeException 
-	{
-		if(!pn.isLeaf())
-		{
-			if(pn.getNodeType() == OptNode.NodeType.FUNCCALL)
-				return;
-
-			ProgramBlock pb = (ProgramBlock) OptTreeConverter.getAbstractPlanMapping().getMappedProg(pn.getID())[1];
-			
-			VariableSet varRead = pb.getStatementBlock().variablesRead();
-			boolean bUIPCandHopRead = false;
-			for(Entry<String, ArrayList <UIPCandidateHop>> entry: uipCandHopHM.entrySet())
-			{
-				String uipCandHopID = entry.getKey();
-				
-				if (varRead.containsVariable(uipCandHopID))
-				{	
-					bUIPCandHopRead = true;
-					break;
-				}
-			}
-			
-			// As none of the UIP candidates updated in this DAG, no need for further processing within this DAG
-			if(!bUIPCandHopRead)
-				return;
-			
-			for (OptNode optNode: pn.getChilds())
-				rGetUIPConsumerList(optNode, uipCandHopHM);
-		}
-		else
-		{
-			OptTreePlanMappingAbstract map = OptTreeConverter.getAbstractPlanMapping();
-			long ppid = map.getMappedParentID(map.getMappedParentID(pn.getID()));
-			Object[] o = map.getMappedProg(ppid);
-			ProgramBlock pb = (ProgramBlock) o[1];
-			
-			Hop hop = (Hop) OptTreeConverter.getAbstractPlanMapping().getMappedHop(pn.getID());
-			rGetUIPConsumerList(hop, uipCandHopHM);
-
-			if(pb instanceof IfProgramBlock || pb instanceof WhileProgramBlock || 
-				(pb instanceof ForProgramBlock && !(pb instanceof ParForProgramBlock)))  //TODO
-				rGetUIPConsumerList(pb, uipCandHopHM);
-		} 
-	}
-	
-	
-	private void rGetUIPConsumerList(ProgramBlock pb, HashMap <String, ArrayList<UIPCandidateHop>> uipCandHopHM)
-			throws DMLRuntimeException
-	{
-		ArrayList<ProgramBlock> childBlocks = null;
-		ArrayList<ProgramBlock> elseBlocks = null;
-		if (pb instanceof WhileProgramBlock)
-			childBlocks = ((WhileProgramBlock)pb).getChildBlocks();
-		else if (pb instanceof ForProgramBlock)
-			childBlocks = ((ForProgramBlock)pb).getChildBlocks();
-		else if (pb instanceof IfProgramBlock) 
-		{
-			childBlocks = ((IfProgramBlock)pb).getChildBlocksIfBody();
-			elseBlocks = ((IfProgramBlock)pb).getChildBlocksElseBody();
-		}
-
-		if(childBlocks != null)
-			for (ProgramBlock childBlock: childBlocks)
-			{
-				rGetUIPConsumerList(childBlock, uipCandHopHM);
-				try 
-				{
-					rGetUIPConsumerList(childBlock.getStatementBlock().get_hops(), uipCandHopHM);
-				}
-				catch (Exception e) {
-					throw new DMLRuntimeException(e);
-				}
-			}
-		if(elseBlocks != null)
-			for (ProgramBlock childBlock: elseBlocks)
-			{
-				rGetUIPConsumerList(childBlock, uipCandHopHM);
-				try 
-				{
-					rGetUIPConsumerList(childBlock.getStatementBlock().get_hops(), uipCandHopHM);
-				}
-				catch (Exception e) {
-					throw new DMLRuntimeException(e);
-				}
-			}
-	}	
-		
-	private void rGetUIPConsumerList(ArrayList<Hop> hops, HashMap <String, ArrayList<UIPCandidateHop>> uipCandHopHM)
-			throws DMLRuntimeException
-	{
-		if(hops != null)
-			for (Hop hop: hops)
-				rGetUIPConsumerList(hop, uipCandHopHM);
-	}
-
-		
-	private void rGetUIPConsumerList(Hop hop, HashMap <String, ArrayList<UIPCandidateHop>> uipCandHopHM)
-		throws DMLRuntimeException
-	{
-		if(hop.isVisited())
-			return;
-		
-		if ((!(!hop.getParent().isEmpty() && hop.getParent().get(0) instanceof LeftIndexingOp)) &&
-			   ((hop instanceof DataOp && ((DataOp)hop).getDataOpType() == DataOpTypes.TRANSIENTREAD ) ||
-				(hop instanceof ReorgOp && (((ReorgOp)hop).getOp() == ReOrgOp.RESHAPE || ((ReorgOp)hop).getOp() == ReOrgOp.TRANSPOSE)) ||
-				(hop instanceof FunctionOp)))
-		{	
-			// If candidate's name is same as input hop.
-			String uipCandiateID = hop.getName();
-			ArrayList <UIPCandidateHop> uipCandHopList = uipCandHopHM.get(uipCandiateID);
-			
-			if (uipCandHopList != null) 
-			{
-				for (UIPCandidateHop uipCandHop: uipCandHopList)
-				{
-					// Add consumers for candidate hop.
-					ArrayList<Hop> consumerHops = uipCandHop.getConsumerHops();
-					if(uipCandHop.getConsumerHops() == null)
-						consumerHops = new ArrayList<Hop>();
-					consumerHops.add(getRootHop(hop));
-					uipCandHop.setConsumerHops(consumerHops);
-				}
-			}
-		}
-		
-		for(Hop hopIn: hop.getInput())
-			rGetUIPConsumerList(hopIn, uipCandHopHM);
-		
-		hop.setVisited();
-	}
-	
-
-	private Hop getRootHop(Hop hop)
-	{
-		return (!hop.getParent().isEmpty())?getRootHop(hop.getParent().get(0)):hop;
-	}
-	
-	
-	private void rResetVisitStatus(OptNode pn)
-		throws DMLRuntimeException
-	{
-		
-		if(!pn.isLeaf())
-		{
-			if(pn.getNodeType() == OptNode.NodeType.FUNCCALL)
-			{
-				Hop hopFunc = (Hop) OptTreeConverter.getAbstractPlanMapping().getMappedHop(pn.getID());
-				hopFunc.resetVisitStatus();
-				return;
-			}
-			ProgramBlock pb = (ProgramBlock) OptTreeConverter.getAbstractPlanMapping().getMappedProg(pn.getID())[1];
-			ArrayList<ProgramBlock> childBlocks = null;
-			ArrayList<ProgramBlock> elseBlocks = null;
-			if (pb instanceof WhileProgramBlock)
-				childBlocks = ((WhileProgramBlock)pb).getChildBlocks();
-			else if (pb instanceof ForProgramBlock)
-				childBlocks = ((ForProgramBlock)pb).getChildBlocks();
-			else if (pb instanceof IfProgramBlock) {
-				childBlocks = ((IfProgramBlock)pb).getChildBlocksIfBody();
-				elseBlocks = ((IfProgramBlock)pb).getChildBlocksElseBody();
-			}
-				
-			if(childBlocks != null)
-			{
-				for (ProgramBlock childBlock: childBlocks)
-				{
-					try 
-					{
-						Hop.resetVisitStatus(childBlock.getStatementBlock().get_hops());
-					}
-					catch (Exception e)
-					{
-						throw new DMLRuntimeException(e);
-					}
-				}
-			}
-			if(elseBlocks != null)
-			{
-				for (ProgramBlock childBlock: elseBlocks)
-				{
-					try 
-					{
-						Hop.resetVisitStatus(childBlock.getStatementBlock().get_hops());
-					}
-					catch (Exception e)
-					{
-						throw new DMLRuntimeException(e);
-					}
-				}
-			}
-			
-			for (OptNode optNode: pn.getChilds())
-			{
-				rResetVisitStatus(optNode);
-			}
-		}
-		else
-		{
-			Hop hop = (Hop) OptTreeConverter.getAbstractPlanMapping().getMappedHop(pn.getID());
-			if(hop != null)
-			{
-				hop.resetVisitStatus();
-			}
-		}
-	}
-	
-
-	
-	/* 	
-	 * This will validate candidate's consumer list.
-	 * 
-	 * @param pn:				OpNode of parfor loop
-	 * @param uipCandHopHM:		Hashmap of UIPCandidateHop with name as a key.		
-	 * @throws DMLRuntimeException
-	 */
-	
-	private void rValidateUIPConsumerList(OptNode pn, HashMap <String, ArrayList<UIPCandidateHop>> uipCandHopHM)
-			throws DMLRuntimeException 
-	{
-		if(!pn.isLeaf())
-		{
-			if(pn.getNodeType() == OptNode.NodeType.FUNCCALL)
-			{
-				Hop hop = (Hop) OptTreeConverter.getAbstractPlanMapping().getMappedHop(pn.getID());
-				rValidateUIPConsumerList(hop.getInput(), uipCandHopHM);
-				return;
-			}
-
-			ProgramBlock pb = (ProgramBlock) OptTreeConverter.getAbstractPlanMapping().getMappedProg(pn.getID())[1];
-			
-			VariableSet varRead = pb.getStatementBlock().variablesRead();
-			boolean bUIPCandHopRead = false;
-			for(Entry<String, ArrayList <UIPCandidateHop>> entry: uipCandHopHM.entrySet())
-			{
-				ArrayList <UIPCandidateHop> uipCandHopList = entry.getValue();
-				if (uipCandHopList != null) 
-				{
-					for (UIPCandidateHop uipCandHop: uipCandHopList)
-					{
-						ArrayList<Hop> consumerHops = uipCandHop.getConsumerHops();
-						if(consumerHops != null)
-						{
-							// If any of consumer's input (or any parent in hierachy of input) matches candiate's name, then 
-							// remove candidate from the list.
-							for (Hop consumerHop: consumerHops)
-							{
-								if (varRead.containsVariable(consumerHop.getName()))
-								{	
-									bUIPCandHopRead = true;
-									break;
-								}
-							}
-						}
-					}
-				}
-			}
-			// As none of the UIP candidates updated in this DAG, no need for further processing within this DAG
-			if(!bUIPCandHopRead)
-				return;
-
-			for (OptNode optNode: pn.getChilds())
-					rValidateUIPConsumerList(optNode, uipCandHopHM);
-		}
-		else
-		{
-			OptTreePlanMappingAbstract map = OptTreeConverter.getAbstractPlanMapping();
-			long ppid = map.getMappedParentID(map.getMappedParentID(pn.getID()));
-			Object[] o = map.getMappedProg(ppid);
-			ProgramBlock pb = (ProgramBlock) o[1];
-
-			if(pb instanceof IfProgramBlock || pb instanceof WhileProgramBlock || 
-				(pb instanceof ForProgramBlock && !(pb instanceof ParForProgramBlock)))	//TODO
-				rValidateUIPConsumerList(pb, uipCandHopHM);
-
-			long pid = map.getMappedParentID(pn.getID());
-			o = map.getMappedProg(pid);
-			pb = (ProgramBlock) o[1];
-			Hop hop = map.getMappedHop(pn.getID());
-			rValidateUIPConsumerList(hop, uipCandHopHM, pb.getStatementBlock().variablesRead());
-		}
-	}
-	
-	private void rValidateUIPConsumerList(ProgramBlock pb, HashMap <String, ArrayList<UIPCandidateHop>> uipCandHopHM)
-			throws DMLRuntimeException
-	{
-		ArrayList<ProgramBlock> childBlocks = null;
-		if (pb instanceof WhileProgramBlock)
-			childBlocks = ((WhileProgramBlock)pb).getChildBlocks();
-		else if (pb instanceof ForProgramBlock)
-			childBlocks = ((ForProgramBlock)pb).getChildBlocks();
-		else if (pb instanceof IfProgramBlock) 
-		{
-			childBlocks = ((IfProgramBlock)pb).getChildBlocksIfBody();
-			ArrayList<ProgramBlock> elseBlocks = ((IfProgramBlock)pb).getChildBlocksElseBody();
-			if(childBlocks != null && elseBlocks != null)
-				childBlocks.addAll(elseBlocks);
-			else if (childBlocks == null)
-				childBlocks = elseBlocks;
-		}
-
-		if(childBlocks != null)
-			for (ProgramBlock childBlock: childBlocks)
-			{
-				rValidateUIPConsumerList(childBlock, uipCandHopHM);
-				try 
-				{
-					rValidateUIPConsumerList(childBlock.getStatementBlock(), uipCandHopHM);
-				}
-				catch (Exception e) {
-					throw new DMLRuntimeException(e);
-				}
-			}
-	}	
-		
-
-	private void rValidateUIPConsumerList(StatementBlock sb, HashMap <String, ArrayList<UIPCandidateHop>> uipCandHopHM)
-			throws DMLRuntimeException 
-	{
-		VariableSet readVariables = sb.variablesRead();
-		
-		for(Entry<String, ArrayList <UIPCandidateHop>> entry: uipCandHopHM.entrySet())
-		{
-			ArrayList <UIPCandidateHop> uipCandHopList = entry.getValue();
-			if (uipCandHopList != null) 
-			{
-				for (UIPCandidateHop uipCandHop: uipCandHopList)
-				{
-					ArrayList<Hop> consumerHops = uipCandHop.getConsumerHops();
-					if(consumerHops != null)
-					{
-						// If consumer has read then remove candidate from the list (set flag to false).
-						for (Hop consumerHop: consumerHops)
-							if(readVariables.containsVariable(consumerHop.getName()))
-							{
-								uipCandHop.setUpdateInPlace(false);
-								break;
-							}
-					}
-				}
-			}
-		}
-	}
-	
-
-	private void rValidateUIPConsumerList(ArrayList<Hop> hops, HashMap <String, ArrayList<UIPCandidateHop>> uipCandHopHM)
-			throws DMLRuntimeException
-	{
-		if(hops != null)
-			for (Hop hop: hops)
-				rValidateUIPConsumerList(hop, uipCandHopHM);
-	}
-
-
-	private void rValidateUIPConsumerList(Hop hop, HashMap <String, ArrayList<UIPCandidateHop>> uipCandHopHM)
-			throws DMLRuntimeException 
-	{
-		if(hop.isVisited())
-			return;
-		
-		for(Entry<String, ArrayList <UIPCandidateHop>> entry: uipCandHopHM.entrySet())
-		{
-			if (entry.getValue() == null)
-				continue;
-			for (UIPCandidateHop uipCandHop: entry.getValue()) {
-				ArrayList<Hop> consumerHops = uipCandHop.getConsumerHops();
-				if(consumerHops != null) {
-					// If consumer has read then remove candidate from the list (set flag to false).
-					for (Hop consumerHop: consumerHops)
-						if(hop.getName().equals(consumerHop.getName())) {
-							uipCandHop.setUpdateInPlace(false);
-							break;
-						}
-				}
-			}
-		}
-		hop.setVisited();
-	}
-
-	private void rValidateUIPConsumerList(Hop hop, HashMap <String, ArrayList<UIPCandidateHop>> uipCandHopHM, VariableSet readVariables)
-			throws DMLRuntimeException 
-	{
-		if(hop.isVisited())
-			return;
-		
-		for(Entry<String, ArrayList <UIPCandidateHop>> entry: uipCandHopHM.entrySet())
-		{
-			if (entry.getValue() == null)
-				continue;
-			for (UIPCandidateHop uipCandHop: entry.getValue()) {
-				ArrayList<Hop> consumerHops = uipCandHop.getConsumerHops();
-				if(consumerHops != null) {
-					// If consumer has read then remove candidate from the list (set flag to false).
-					for (Hop consumerHop: consumerHops)
-						if(readVariables.containsVariable(consumerHop.getName())) {
-							uipCandHop.setUpdateInPlace(false);
-							break;
-						}
-				}
-			}
-		}
-		hop.setVisited();
-	}
-	
-	
-	public static List<String> getUIPList()
-	{
-		return listUIPRes.get();
-	}
-
 	protected boolean rHasOnlyInPlaceSafeLeftIndexing( OptNode n, ArrayList<String> retVars ) 
 		throws DMLRuntimeException
 	{
 		boolean ret = true;
-		
-		if( !n.isLeaf() )
-		{
+		if( !n.isLeaf() ) {
 			for( OptNode cn : n.getChilds() )
 				ret &= rHasOnlyInPlaceSafeLeftIndexing( cn, retVars );
 		}
-		else if(    n.getNodeType()== NodeType.HOP
-			     && n.getParam(ParamType.OPSTRING).equals(LeftIndexingOp.OPSTRING) )
-		{
+		else if( n.getNodeType()== NodeType.HOP) {
 			Hop h = OptTreeConverter.getAbstractPlanMapping().getMappedHop(n.getID());
-			if( retVars.contains( h.getInput().get(0).getName() ) )
-			{
+			if( h instanceof LeftIndexingOp && retVars.contains( h.getInput().get(0).getName() ) )
 				ret &= (h.getParent().size()==1 
-						&& h.getParent().get(0).getName().equals(h.getInput().get(0).getName()));
-			}
+					&& h.getParent().get(0).getName().equals(h.getInput().get(0).getName()));
 		}
-		
 		return ret;
 	}
 
-	private double computeTotalSizeResultVariables(ArrayList<String> retVars, LocalVariableMap vars, int k)
-	{
+	private double computeTotalSizeResultVariables(ArrayList<String> retVars, LocalVariableMap vars, int k) {
 		double sum = 1;
-		for( String var : retVars ){
+		for( String var : retVars ) {
 			Data dat = vars.get(var);
-			if( dat instanceof MatrixObject )
-			{
-				MatrixObject mo = (MatrixObject)dat;
-				double nnz = mo.getNnz();
-
-				if(nnz == 0.0) 
-					sum += OptimizerUtils.estimateSizeExactSparsity(mo.getNumRows(), mo.getNumColumns(), 1.0);
-				else {
-					double sp = mo.getSparsity();
-					sum += (k+1) * (OptimizerUtils.estimateSizeExactSparsity(mo.getNumRows(), mo.getNumColumns(),
-							Math.min((1.0/k)+sp, 1.0)));	// Every worker will consume memory for (MatrixSize/k + nnz) data.
-														// This is applicable only when there is non-zero nnz. 
-				}
+			if( !(dat instanceof MatrixObject) )
+				continue;
+			MatrixObject mo = (MatrixObject)dat;
+			if( mo.getNnz() == 0 ) 
+				sum += OptimizerUtils.estimateSizeExactSparsity(mo.getNumRows(), mo.getNumColumns(), 1.0);
+			else {
+				// Every worker will consume memory for (MatrixSize/k + nnz) data.
+				// This is applicable only when there is non-zero nnz. 
+				sum += (k+1) * (OptimizerUtils.estimateSizeExactSparsity(mo.getNumRows(), 
+					mo.getNumColumns(), Math.min((1.0/k)+mo.getSparsity(), 1.0)));
 			} 
 		}
-		
 		return sum;
 	}
 	
@@ -2480,86 +1771,48 @@ public class OptimizerRuleBased extends Optimizer
 		if( pn.getNodeType() != NodeType.PARFOR )
 			LOG.warn(getOptMode()+" OPT: Disable caching is only applicable for a ParFor node.");
 		
-		
 		ParForProgramBlock pfpb = (ParForProgramBlock) OptTreeConverter
-              .getAbstractPlanMapping().getMappedProg(pn.getID())[1];
-		
-		double M_sumInterm = rComputeSumMemoryIntermediates(pn, inplaceResultVars, null);
+			.getAbstractPlanMapping().getMappedProg(pn.getID())[1];
+		double M_sumInterm = rComputeSumMemoryIntermediates(pn, inplaceResultVars);
 		boolean apply = false;
 		
 		if( (pfpb.getExecMode() == PExecMode.REMOTE_MR_DP || pfpb.getExecMode() == PExecMode.REMOTE_MR)
 			&& M_sumInterm < _rm ) //all intermediates and operations fit into memory budget
 		{
-			pfpb.setCPCaching(false); //default is true			
+			pfpb.setCPCaching(false); //default is true
 			apply = true;
 		}
 		
-		LOG.debug(getOptMode()+" OPT: rewrite 'disable CP caching' - result="+apply+" (M="+toMB(M_sumInterm)+")" );			
+		LOG.debug(getOptMode()+" OPT: rewrite 'disable CP caching' - result="+apply+" (M="+toMB(M_sumInterm)+")" );
 	}
 
-	protected double rComputeSumMemoryIntermediates( OptNode n, HashSet<String> inplaceResultVars, 
-													HashMap <String, ArrayList <UIPCandidateHop>> uipCands )	
+	protected double rComputeSumMemoryIntermediates( OptNode n, HashSet<String> inplaceResultVars )
 		throws DMLRuntimeException
 	{
 		double sum = 0;
 		
-		if( !n.isLeaf() )
-		{
+		if( !n.isLeaf() ) {
 			for( OptNode cn : n.getChilds() )
-				sum += rComputeSumMemoryIntermediates( cn, inplaceResultVars, uipCands );
+				sum += rComputeSumMemoryIntermediates( cn, inplaceResultVars );
 		}
 		else if( n.getNodeType()== NodeType.HOP )
 		{
 			Hop h = OptTreeConverter.getAbstractPlanMapping().getMappedHop(n.getID());
-			if( uipCands != null && APPLY_REWRITE_UPDATE_INPLACE_INTERMEDIATE
-				&& h.getDataType() == Expression.DataType.MATRIX && h instanceof LeftIndexingOp 
-				&& h.getInput().get(0).getParent().size() == 1)
-			{ 
-				//get associated program block of parent node
-				long pid = OptTreeConverter.getAbstractPlanMapping().getMappedParentID(n.getID());
-				ProgramBlock pb = (ProgramBlock) OptTreeConverter.getAbstractPlanMapping().getMappedProg(pid)[1];
-				while(!(pb instanceof WhileProgramBlock || pb instanceof ForProgramBlock)) {
-					pid = OptTreeConverter.getAbstractPlanMapping().getMappedParentID(pid);
-					OptNode parent2 = OptTreeConverter.getAbstractPlanMapping().getOptNode(pid);
-					if( parent2.getNodeType() != NodeType.FUNCCALL )
-						pb = (ProgramBlock) OptTreeConverter.getAbstractPlanMapping().getMappedProg(pid)[1];
-				}
-
-				//add candidate to update-in-place candidate list
-				if( !uipCands.containsKey(h.getName()) )
-					uipCands.put(h.getName(), new ArrayList<UIPCandidateHop>());
-				uipCands.get(h.getName()).add(new UIPCandidateHop(h, pb));
-
-				//debug info update-in-place candidates
-				if(LOG.isTraceEnabled()) {
-					StatementBlock sb = (StatementBlock) OptTreeConverter.getAbstractPlanMapping().getMappedProg(OptTreeConverter.getAbstractPlanMapping().getMappedParentID(n.getID()))[0];
-					LOG.trace("Candidate Hop:" + h.getName() + "<" + h.getBeginLine() + "," + h.getEndLine() + ">,<" + 
-						h.getBeginColumn() + "," + h.getEndColumn() + "> PB:" + "<" + pb.getBeginLine() + "," + pb.getEndLine() + ">,<" + 
-						pb.getBeginColumn() + "," + pb.getEndColumn() + "> SB:" + "<" + sb.getBeginLine() + "," + sb.getEndLine() + ">,<" + 
-						sb.getBeginColumn() + "," + sb.getEndColumn() + ">");
-				}
-			}
-			
-			if(    n.getParam(ParamType.OPSTRING).equals(IndexingOp.OPSTRING)
-				&& n.getParam(ParamType.DATA_PARTITION_FORMAT) != null )
-			{
+			if( n.getParam(ParamType.OPSTRING).equals(IndexingOp.OPSTRING)
+				&& n.getParam(ParamType.DATA_PARTITION_FORMAT) != null ) {
 				//set during partitioning rewrite
 				sum += h.getMemEstimate();
 			}
-			else
-			{
+			else {
 				//base intermediate (worst-case w/ materialized intermediates)
 				sum +=   h.getOutputMemEstimate()
 					   + h.getIntermediateMemEstimate(); 
-
 				//inputs not represented in the planopttree (worst-case no CSE)
 				if( h.getInput() != null )
 					for( Hop cn : h.getInput() )
 						if( cn instanceof DataOp && ((DataOp)cn).isRead()  //read data
 							&& !inplaceResultVars.contains(cn.getName())) //except in-place result vars
-						{
-							sum += cn.getMemEstimate();	
-						}
+							sum += cn.getMemEstimate();
 			}
 		}
 		
@@ -2815,7 +2068,7 @@ public class OptimizerRuleBased extends Optimizer
 
 		ArrayList<String> cleanedVars = new ArrayList<String>();
 		ArrayList<String> resultVars = pfpb.getResultVariables();
-		String itervar = pfpb.getIterablePredicateVars()[0]; 
+		String itervar = pfpb.getIterVar();
 		
 		for( String rvar : resultVars ) {
 			Data dat = ec.getVariable(rvar);
@@ -2830,7 +2083,7 @@ public class OptimizerRuleBased extends Optimizer
 				//replace existing matrix object with empty matrix
 				MatrixObject mo = (MatrixObject)dat;
 				ec.cleanupMatrixObject(mo);
-				ec.setMatrixOutput(rvar, new MatrixBlock((int)mo.getNumRows(), (int)mo.getNumColumns(),false));
+				ec.setMatrixOutput(rvar, new MatrixBlock((int)mo.getNumRows(), (int)mo.getNumColumns(),false), null);
 				
 				//keep track of cleaned result variables
 				cleanedVars.add(rvar);
@@ -3504,94 +2757,7 @@ public class OptimizerRuleBased extends Optimizer
 	//   Helper methods   //
 	////////////////////////
 	
-	public static String toMB( double inB )
-	{
+	public static String toMB( double inB ) {
 		return OptimizerUtils.toMB(inB) + "MB";
-	}
-
-	/*
-	 * This class stores information for the candidate hop, such as hop itself, program block.
-	 * When it gets evaluated if Matrix can be marked for "UpdateInPlace", additional properties such
-	 * as location, flag to indicate if its in loop (for, parfor, while), flag to indicate if hop can be marked as "UpdateInPlace".
-	 */
-	class UIPCandidateHop {
-		Hop hopCandidate, hopLix;
-		int iLocation = -1;
-		ProgramBlock pb;
-		Boolean bIntermediate = false, bIsLoopApplicable = false, bUpdateInPlace = true;
-		ArrayList<Hop> consumerHops = null;
-		
-		
-		UIPCandidateHop(Hop hopLix, ProgramBlock pb)
-		{
-			this.hopLix = hopLix;
-			this.pb = pb;
-		}
-		
-		Hop getLixHop()
-		{
-			return hopLix;
-		}
-		
-		Hop getHop()
-		{
-			return hopCandidate;
-		}
-		
-		void setHop(Hop hopCandidate)
-		{
-			this.hopCandidate = hopCandidate;
-		}
-
-		int getLocation()
-		{
-			return this.iLocation;
-		}
-		
-		void setLocation(int iLocation)
-		{
-			this.iLocation = iLocation;
-		}
-		
-		boolean isIntermediate()
-		{
-			return(bIntermediate);
-		}
-		
-		void setIntermediate(boolean bIntermediate)
-		{
-			this.bIntermediate = bIntermediate;
-		}
-		
-		boolean isLoopApplicable()
-		{
-			return(bIsLoopApplicable);
-		}
-
-		void setIsLoopApplicable(boolean bInWhileLoop)
-		{
-			this.bIsLoopApplicable = bInWhileLoop;
-		}
-
-		boolean isUpdateInPlace()
-		{
-			return(bUpdateInPlace);
-		}
-
-		void setUpdateInPlace(boolean bUpdateInPlace)
-		{
-			this.bUpdateInPlace = bUpdateInPlace;
-		}
-		
-		ArrayList<Hop> getConsumerHops()
-		{
-			return this.consumerHops;
-		}
-		
-		void setConsumerHops(ArrayList<Hop> consumerHops)
-		{
-			this.consumerHops = consumerHops;
-		}
-		
 	}
 }

@@ -25,13 +25,12 @@ import org.apache.sysml.runtime.instructions.InstructionUtils;
 import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.matrix.operators.Operator;
 
-public class PMMJCPInstruction extends ComputationCPInstruction
-{	
-	
+public class PMMJCPInstruction extends ComputationCPInstruction {
+
 	private int _numThreads = -1;
-	
-	public PMMJCPInstruction(Operator op, CPOperand in1, CPOperand in2, CPOperand in3, CPOperand out, int k, String opcode, String istr)
-	{
+
+	private PMMJCPInstruction(Operator op, CPOperand in1, CPOperand in2, CPOperand in3, CPOperand out, int k,
+			String opcode, String istr) {
 		super(op, in1, in2, in3, out, opcode, istr);
 		_numThreads = k;
 	}
@@ -60,8 +59,8 @@ public class PMMJCPInstruction extends ComputationCPInstruction
 		throws DMLRuntimeException 
 	{
 		//get inputs
-		MatrixBlock matBlock1 = ec.getMatrixInput(input1.getName());
-		MatrixBlock matBlock2 = ec.getMatrixInput(input2.getName());
+		MatrixBlock matBlock1 = ec.getMatrixInput(input1.getName(), getExtendedOpcode());
+		MatrixBlock matBlock2 = ec.getMatrixInput(input2.getName(), getExtendedOpcode());
 		int rlen = (int)ec.getScalarInput(input3.getName(), input3.getValueType(), input3.isLiteral()).getLongValue();
 		
 		//execute operations
@@ -69,8 +68,8 @@ public class PMMJCPInstruction extends ComputationCPInstruction
 		matBlock1.permutationMatrixMultOperations(matBlock2, ret, null, _numThreads);
 		
 		//set output and release inputs
-		ec.setMatrixOutput(output.getName(), ret);
-		ec.releaseMatrixInput(input1.getName());
-		ec.releaseMatrixInput(input2.getName());
+		ec.setMatrixOutput(output.getName(), ret, getExtendedOpcode());
+		ec.releaseMatrixInput(input1.getName(), getExtendedOpcode());
+		ec.releaseMatrixInput(input2.getName(), getExtendedOpcode());
 	}
 }

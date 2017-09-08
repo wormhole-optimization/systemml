@@ -31,6 +31,8 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.sysml.api.DMLScript;
+import org.apache.sysml.api.jmlc.JMLCProxy;
+import org.apache.sysml.conf.ConfigurationManager;
 import org.apache.sysml.conf.CompilerConfig.ConfigType;
 import org.apache.sysml.conf.ConfigurationManager;
 import org.apache.sysml.hops.DataGenOp;
@@ -99,9 +101,11 @@ import org.apache.sysml.runtime.matrix.data.FrameBlock;
 import org.apache.sysml.runtime.matrix.data.InputInfo;
 import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.util.MapReduceTool;
+import org.apache.sysml.runtime.util.UtilFunctions;
 import org.apache.sysml.utils.Explain;
 import org.apache.sysml.utils.Explain.ExplainType;
 import org.apache.sysml.utils.JSONHelper;
+import org.apache.sysml.utils.MLContextProxy;
 import org.apache.wink.json4j.JSONObject;
 
 /**
@@ -216,17 +220,13 @@ public class Recompiler
 			for( Hop hopRoot : hops )
 				hopRoot.refreshMemEstimates(memo); 
 			memo.extract(hops, status);
-
-
-			// Todo call Spoof2Compiler
+// Todo call Spoof2Compiler
 			Hop.resetVisitStatus(hops);
 			Spoof2Compiler.generateCodeFromHopDAGs(hops, true, !inplace);
 			Hop.resetVisitStatus(hops);
-
-			
-//			// codegen if enabled
-//			if( ConfigurationManager.getDMLConfig().getBooleanValue(DMLConfig.CODEGEN)
-//					&& SpoofCompiler.RECOMPILE_CODEGEN ) {
+			//// codegen if enabled
+//			if( ConfigurationManager.isCodegenEnabled()
+	//				&& SpoofCompiler.RECOMPILE_CODEGEN ) {
 //				Hop.resetVisitStatus(hops);
 //				hops = SpoofCompiler.optimize(hops,
 //					(status==null || !status.isInitialCodegen()));
@@ -240,13 +240,19 @@ public class Recompiler
 			}		
 			
 			// generate runtime instructions (incl piggybacking)
-			newInst = dag.getJobs(sb, ConfigurationManager.getDMLConfig());	
+			newInst = dag.getJobs(sb, ConfigurationManager.getDMLConfig());
 		}
 		
 		// replace thread ids in new instructions
 		if( tid != 0 ) //only in parfor context
 			newInst = ProgramConverter.createDeepCopyInstructionSet(newInst, tid, -1, null, null, null, false, false);
 		
+		// remove writes if called through mlcontext or jmlc
+		if( MLContextProxy.isActive() )
+			newInst = MLContextProxy.performCleanupAfterRecompilation(newInst);
+		else if( JMLCProxy.isActive() )
+			newInst = JMLCProxy.performCleanupAfterRecompilation(newInst);
+
 		// explain recompiled hops / instructions
 		if( DMLScript.EXPLAIN == ExplainType.RECOMPILE_HOPS ){
 			LOG.info("EXPLAIN RECOMPILE \nGENERIC (lines "+sb.getBeginLine()+"-"+sb.getEndLine()+"):\n" + 
@@ -331,8 +337,8 @@ public class Recompiler
 			hops.resetVisitStatus();
 			memo.init(hops, status);
 			hops.resetVisitStatus();
-			hops.refreshMemEstimates(memo);
-
+			hops.refreshMemEstimates(memo); 		
+			
 			// Todo call Spoof2Compiler
 			hops.resetVisitStatus();
 			hops = Spoof2Compiler.optimize(hops, true, !inplace);
@@ -340,9 +346,9 @@ public class Recompiler
 
 
 
-			//			// codegen if enabled
-//			if( ConfigurationManager.getDMLConfig().getBooleanValue(DMLConfig.CODEGEN)
-//					&& SpoofCompiler.RECOMPILE_CODEGEN ) {
+			//			//codegen if enabled
+//			if( ConfigurationManager.isCodegenEnabled()
+	//				&& SpoofCompiler.RECOMPILE_CODEGEN ) {
 //				hops.resetVisitStatus();
 //				hops = SpoofCompiler.optimize(hops,
 //					(status==null || !status.isInitialCodegen()));
@@ -1131,23 +1137,18 @@ public class Recompiler
 	private static void recompileIfPredicate( IfProgramBlock ipb, IfStatementBlock isb, LocalVariableMap vars, RecompileStatus status, long tid, boolean resetRecompile ) 
 		throws DMLRuntimeException, HopsException, LopsException, IOException
 	{
-		if( isb != null )
-		{
-			Hop hops = isb.getPredicateHops();
-			if( hops != null ) {
-				ArrayList<Instruction> tmp = recompileHopsDag(
-						hops, vars, status, true, false, tid);
-				ipb.setPredicate( tmp );
-				if( ParForProgramBlock.RESET_RECOMPILATION_FLAGs
-					&& resetRecompile ) 
-				{
-					Hop.resetRecompilationFlag(hops, ExecType.CP);
-					isb.updatePredicateRecompilationFlag();
-				}
+		if( isb == null )
+			return;
 
-				//update predicate vars (potentially after constant folding, e.g., in parfor)
-				if( hops instanceof LiteralOp )
-					ipb.setPredicateResultVar(((LiteralOp)hops).getName().toLowerCase());
+		Hop hops = isb.getPredicateHops();
+		if( hops != null ) {
+			ArrayList<Instruction> tmp = recompileHopsDag(
+				hops, vars, status, true, false, tid);
+			ipb.setPredicate( tmp );
+			if( ParForProgramBlock.RESET_RECOMPILATION_FLAGs
+				&& resetRecompile ) {
+				Hop.resetRecompilationFlag(hops, ExecType.CP);
+				isb.updatePredicateRecompilationFlag();
 			}
 		}
 	}
@@ -1155,23 +1156,18 @@ public class Recompiler
 	private static void recompileWhilePredicate( WhileProgramBlock wpb, WhileStatementBlock wsb, LocalVariableMap vars, RecompileStatus status, long tid, boolean resetRecompile ) 
 		throws DMLRuntimeException, HopsException, LopsException, IOException
 	{
-		if( wsb != null )
-		{
-			Hop hops = wsb.getPredicateHops();
-			if( hops != null ) {
-				ArrayList<Instruction> tmp = recompileHopsDag(
-					hops, vars, status, true, false, tid);
-				wpb.setPredicate( tmp );
-				if( ParForProgramBlock.RESET_RECOMPILATION_FLAGs 
-					&& resetRecompile ) 
-				{
-					Hop.resetRecompilationFlag(hops, ExecType.CP);
-					wsb.updatePredicateRecompilationFlag();
-				}
-				
-				//update predicate vars (potentially after constant folding, e.g., in parfor)
-				if( hops instanceof LiteralOp )
-					wpb.setPredicateResultVar(((LiteralOp)hops).getName().toLowerCase());
+		if( wsb == null )
+			return;
+
+		Hop hops = wsb.getPredicateHops();
+		if( hops != null ) {
+			ArrayList<Instruction> tmp = recompileHopsDag(
+				hops, vars, status, true, false, tid);
+			wpb.setPredicate( tmp );
+			if( ParForProgramBlock.RESET_RECOMPILATION_FLAGs
+				&& resetRecompile ) {
+				Hop.resetRecompilationFlag(hops, ExecType.CP);
+				wsb.updatePredicateRecompilationFlag();
 			}
 		}
 	}
@@ -1227,15 +1223,6 @@ public class Recompiler
 					fpb.setIncrementInstructions(tmp);
 				}
 			}
-			
-			//update predicate vars (potentially after constant folding, e.g., in parfor)
-			String[] itervars = fpb.getIterablePredicateVars();
-			if( fromHops != null && fromHops instanceof LiteralOp )
-				itervars[1] = ((LiteralOp)fromHops).getName();
-			if( toHops != null && toHops instanceof LiteralOp )
-				itervars[2] = ((LiteralOp)toHops).getName();
-			if( incrHops != null && incrHops instanceof LiteralOp )
-				itervars[3] = ((LiteralOp)incrHops).getName();	
 		}
 	}
 	
@@ -1582,11 +1569,11 @@ public class Recompiler
 				
 				//special case increment 
 				if ( from!=Double.MAX_VALUE && to!=Double.MAX_VALUE ) {
-					incr = ( from >= to && incr==1 ) ? -1.0 : 1.0;
+					incr *= ((from > to && incr > 0) || (from < to && incr < 0)) ? -1.0 : 1.0;
 				}
 				
 				if ( from!=Double.MAX_VALUE && to!=Double.MAX_VALUE && incr!=Double.MAX_VALUE ) {
-					d.setDim1( 1 + (long)Math.floor((to-from)/incr) );
+					d.setDim1( UtilFunctions.getSeqLength(from, to, incr) );
 					d.setDim2( 1 );
 					d.setIncrementValue( incr );
 				}

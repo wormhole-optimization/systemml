@@ -24,8 +24,10 @@ import java.util.HashSet;
 
 import org.apache.sysml.conf.ConfigurationManager;
 import org.apache.sysml.lops.DataGen;
+import org.apache.sysml.lops.LeftIndex;
 import org.apache.sysml.lops.Lop;
 import org.apache.sysml.lops.MapMult;
+import org.apache.sysml.lops.RightIndex;
 import org.apache.sysml.lops.LopProperties.ExecType;
 import org.apache.sysml.lops.MMTSJ.MMTSJType;
 import org.apache.sysml.lops.compile.JobType;
@@ -994,13 +996,15 @@ public class CostEstimatorStaticRuntime extends CostEstimator
 					//note: should be invoked independently for multiple outputs
 					return d1m * d1n * d1s * DEFAULT_NFLOP_UNKNOWN;
 				
-				case MultiReturnBuiltin: //opcodes: qr, lu, eigen
+				case MultiReturnBuiltin: //opcodes: qr, lu, eigen, svd
 					//note: they all have cubic complexity, the scaling factor refers to commons.math
 					double xf = 2; //default e.g, qr
 					if( optype.equals("eigen") ) 
 						xf = 32;
 					else if ( optype.equals("lu") )
 						xf = 16;
+					else if ( optype.equals("svd"))
+						xf = 32;	// TODO - assuming worst case for now
 					return xf * d1m * d1n * d1n; //for 1kx1k ~ 2GFLOP -> 1s
 					
 				case ParameterizedBuiltin: //opcodes: cdf, invcdf, groupedagg, rmempty
@@ -1045,12 +1049,12 @@ public class CostEstimatorStaticRuntime extends CostEstimator
 					}
 					return 0;
 					
-				case MatrixIndexing: //opcodes: rangeReIndex, leftIndex
-					if( optype.equals("leftIndex") ){
+				case MatrixIndexing: //opcodes: rightIndex, leftIndex
+					if( optype.equals(LeftIndex.OPCODE) ){
 						return DEFAULT_NFLOP_CP * ((leftSparse)? d1m*d1n*d1s : d1m*d1n)
 						       + 2 * DEFAULT_NFLOP_CP * ((rightSparse)? d2m*d2n*d2s : d2m*d2n );
 					}
-					else if( optype.equals("rangeReIndex") ){
+					else if( optype.equals(RightIndex.OPCODE) ){
 						return DEFAULT_NFLOP_CP * ((leftSparse)? d2m*d2n*d2s : d2m*d2n );
 					}
 					return 0;
@@ -1146,7 +1150,7 @@ public class CostEstimatorStaticRuntime extends CostEstimator
 					return   d1m * d1n * d1s
 					       + d2m * d2n * d2s;
 					
-				case CombineTernary: //opcodes: combinetertiary
+				case CombineTernary: //opcodes: combineternary
 					return   d1m * d1n * d1s
 				           + d2m * d2n * d2s
 				           + d3m * d3n * d3s;
@@ -1198,11 +1202,11 @@ public class CostEstimatorStaticRuntime extends CostEstimator
 					//String2MRInstructionType.put( "valuepick"  , MRINSTRUCTION_TYPE.PickByCount);  // for quantile()
 					//String2MRInstructionType.put( "rangepick"  , MRINSTRUCTION_TYPE.PickByCount);  // for interQuantile()
 					
-				case RangeReIndex: //opcodes: rangeReIndex, rangeReIndexForLeft
+				case RightIndex: //opcodes: rightIndex, rightIndexForLeft
 					//TODO: requires category consolidation
-					if( optype.equals("rangeReIndex") )
+					if( optype.equals(RightIndex.OPCODE) )
 						return DEFAULT_NFLOP_CP * ((leftSparse)? d2m*d2n*d2s : d2m*d2n );
-					else //rangeReIndexForLeft
+					else //rightIndexForLeft
 						return   DEFAULT_NFLOP_CP * ((leftSparse)? d1m*d1n*d1s : d1m*d1n)
 					           + DEFAULT_NFLOP_CP * ((rightSparse)? d2m*d2n*d2s : d2m*d2n );
 	

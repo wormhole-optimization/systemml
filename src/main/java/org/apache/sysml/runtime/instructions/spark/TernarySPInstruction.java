@@ -53,20 +53,17 @@ import org.apache.sysml.runtime.matrix.operators.SimpleOperator;
 import org.apache.sysml.runtime.util.LongLongDoubleHashMap.LLDoubleEntry;
 import org.apache.sysml.runtime.util.UtilFunctions;
 
-public class TernarySPInstruction extends ComputationSPInstruction
-{
-	
+public class TernarySPInstruction extends ComputationSPInstruction {
 	private String _outDim1;
 	private String _outDim2;
-	private boolean _dim1Literal; 
+	private boolean _dim1Literal;
 	private boolean _dim2Literal;
 	private boolean _isExpand;
 	private boolean _ignoreZeros;
-	
-	public TernarySPInstruction(Operator op, CPOperand in1, CPOperand in2, CPOperand in3, CPOperand out, 
-							 String outputDim1, boolean dim1Literal,String outputDim2, boolean dim2Literal, 
-							 boolean isExpand, boolean ignoreZeros, String opcode, String istr )
-	{
+
+	private TernarySPInstruction(Operator op, CPOperand in1, CPOperand in2, CPOperand in3, CPOperand out,
+			String outputDim1, boolean dim1Literal, String outputDim2, boolean dim2Literal, boolean isExpand,
+			boolean ignoreZeros, String opcode, String istr) {
 		super(op, in1, in2, in3, out, opcode, istr);
 		_outDim1 = outputDim1;
 		_dim1Literal = dim1Literal;
@@ -459,18 +456,16 @@ public class TernarySPInstruction extends ComputationSPInstruction
 
 		private static final long serialVersionUID = -5933677686766674444L;
 		
-		@SuppressWarnings("deprecation")
 		@Override
 		public Iterator<Tuple2<MatrixIndexes, Double>> call(CTableMap ctableMap)
 				throws Exception {
 			ArrayList<Tuple2<MatrixIndexes, Double>> retVal = new ArrayList<Tuple2<MatrixIndexes, Double>>();
-			
-			for(LLDoubleEntry ijv : ctableMap.entrySet()) {
+			Iterator<LLDoubleEntry> iter = ctableMap.getIterator();
+			while( iter.hasNext() ) {
+				LLDoubleEntry ijv = iter.next();
 				long i = ijv.key1;
 				long j =  ijv.key2;
 				double v =  ijv.value;
-				
-				// retVal.add(new Tuple2<MatrixIndexes, MatrixCell>(blockIndexes, cell));
 				retVal.add(new Tuple2<MatrixIndexes, Double>(new MatrixIndexes(i, j), v));
 			}
 			return retVal.iterator();

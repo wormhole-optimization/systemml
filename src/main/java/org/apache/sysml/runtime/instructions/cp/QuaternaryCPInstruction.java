@@ -33,17 +33,15 @@ import org.apache.sysml.runtime.matrix.data.MatrixValue;
 import org.apache.sysml.runtime.matrix.operators.Operator;
 import org.apache.sysml.runtime.matrix.operators.QuaternaryOperator;
 
-public class QuaternaryCPInstruction extends ComputationCPInstruction
-{
-	
+public class QuaternaryCPInstruction extends ComputationCPInstruction {
+
 	private CPOperand input4 = null;
- 	private int _numThreads = -1;
-	
-	public QuaternaryCPInstruction(Operator op, CPOperand in1, CPOperand in2, CPOperand in3, CPOperand in4, CPOperand out, 
-							       int k, String opcode, String istr )
-	{
+	private int _numThreads = -1;
+
+	private QuaternaryCPInstruction(Operator op, CPOperand in1, CPOperand in2, CPOperand in3, CPOperand in4,
+			CPOperand out, int k, String opcode, String istr) {
 		super(op, in1, in2, in3, out, opcode, istr);
-		
+
 		input4 = in4;
 		_numThreads = k;
 	}
@@ -109,9 +107,9 @@ public class QuaternaryCPInstruction extends ComputationCPInstruction
 	{
 		QuaternaryOperator qop = (QuaternaryOperator) _optr;
 		
-		MatrixBlock matBlock1 = ec.getMatrixInput(input1.getName());
-		MatrixBlock matBlock2 = ec.getMatrixInput(input2.getName());
-		MatrixBlock matBlock3 = ec.getMatrixInput(input3.getName());
+		MatrixBlock matBlock1 = ec.getMatrixInput(input1.getName(), getExtendedOpcode());
+		MatrixBlock matBlock2 = ec.getMatrixInput(input2.getName(), getExtendedOpcode());
+		MatrixBlock matBlock3 = ec.getMatrixInput(input3.getName(), getExtendedOpcode());
 		MatrixBlock matBlock4 = null;
 		if( qop.hasFourInputs() ) {
 			if (input4.getDataType() == DataType.SCALAR) {
@@ -120,7 +118,7 @@ public class QuaternaryCPInstruction extends ComputationCPInstruction
 				matBlock4.quickSetValue(0, 0, eps);
 			}
 			else {
-				matBlock4 = ec.getMatrixInput(input4.getName());
+				matBlock4 = ec.getMatrixInput(input4.getName(), getExtendedOpcode());
 			}
 		}
 		
@@ -128,23 +126,23 @@ public class QuaternaryCPInstruction extends ComputationCPInstruction
 		MatrixValue out = matBlock1.quaternaryOperations(qop, matBlock2, matBlock3, matBlock4, new MatrixBlock(), _numThreads);
 		
 		//release inputs and output
-		ec.releaseMatrixInput(input1.getName());
-		ec.releaseMatrixInput(input2.getName());
-		ec.releaseMatrixInput(input3.getName());
+		ec.releaseMatrixInput(input1.getName(), getExtendedOpcode());
+		ec.releaseMatrixInput(input2.getName(), getExtendedOpcode());
+		ec.releaseMatrixInput(input3.getName(), getExtendedOpcode());
 		if( qop.wtype1 != null || qop.wtype4 != null ) { //wsloss/wcemm
 			if( (qop.wtype1 != null && qop.wtype1.hasFourInputs()) ||
 				(qop.wtype4 != null && qop.wtype4.hasFourInputs()) )
 				if (input4.getDataType() == DataType.MATRIX) {
-					ec.releaseMatrixInput(input4.getName());
+					ec.releaseMatrixInput(input4.getName(), getExtendedOpcode());
 				}
 			ec.setVariable(output.getName(), new DoubleObject(out.getValue(0, 0)));
 		}
 		else { //wsigmoid / wdivmm / wumm
 			if( qop.wtype3 != null && qop.wtype3.hasFourInputs() )
 				if (input4.getDataType() == DataType.MATRIX) {
-					ec.releaseMatrixInput(input4.getName());
+					ec.releaseMatrixInput(input4.getName(), getExtendedOpcode());
 				}
-			ec.setMatrixOutput(output.getName(), (MatrixBlock)out);
+			ec.setMatrixOutput(output.getName(), (MatrixBlock)out, getExtendedOpcode());
 		}
 	}	
 }

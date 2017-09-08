@@ -24,6 +24,37 @@ nvcc -ptx -arch=sm_30 SystemML.cu
 ***********************************/
 
 #include <cfloat>
+#include <cmath>
+
+
+/**
+ * Performs a slice operation where the input matrix is sparse and the output matrix is dense.
+ * This function avoids unnecessary sparse to dense conversion of the input matrix.
+ * 
+ * @params inVal input val pointer
+ * @params inRowPtr input row pointer
+ * @params colInd input col index pointer
+ * @params ret dense output pointer
+ * @param rl row lower
+ * @param ru row upper
+ * @param cl column lower
+ * @param cu column upper
+ */
+extern "C"
+__global__ void slice_sparse_dense(double* inVal, int* inRowPtr, int* colInd, double* ret, int rl, int ru, int cl, int cu) {
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
+	int rowIndex = index + rl;
+    if (rowIndex <= ru){
+    	int retClen = cu - cl + 1;
+    	// Iterate over elements of the row 'rowIndex'.
+    	for(int i = inRowPtr[rowIndex]; i < inRowPtr[rowIndex+1]; i++) {
+    		// Only slice if the index falls into the given range
+    		if(cl <= colInd[i] && colInd[i] <= cu) {
+    			ret[ index*retClen + (colInd[i] - cl) ] = inVal[i];
+    		}
+    	}
+    }
+}
 
 
 /**
@@ -34,12 +65,13 @@ nvcc -ptx -arch=sm_30 SystemML.cu
  */
 extern "C"
 __global__ void copy_u2l_dense(double* ret, int dim, int N) {
-	int ix = blockIdx.x * blockDim.x + threadIdx.x;
-	int iy = blockIdx.y * blockDim.y + threadIdx.y;
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+	int ix = tid / dim;
+	int iy = tid % dim;
 	int id_dest = iy * dim + ix;
 	if(iy > ix && id_dest < N) {
 		// TODO: Potential to reduce the number of threads by half
-		int id_src = ix * dim + iy;
+		int id_src = tid;
 		ret[id_dest] = ret[id_src];
 	}
 }
@@ -54,7 +86,8 @@ __forceinline__ __device__ double getBoolean(int val) {
 
 // op = {0=plus, 1=minus, 2=multiply, 3=divide, 4=power,
 // 5=less, 6=lessequal, 7=greater, 8=greaterequal, 9=equal, 10=notequal,
-// 11=min, 12=max, 13=and, 14=or, 15=log}
+// 11=min, 12=max, 13=and, 14=or, 15=minus1multiply, 16=minusnz,
+// 17=modulus, 18=integer division}
 extern "C"
 __forceinline__ __device__ double binaryOp(double x, double y, int op) {
 	switch(op) {
@@ -71,14 +104,40 @@ __forceinline__ __device__ double binaryOp(double x, double y, int op) {
         case 10 : return getBoolean(x != y);
         case 11 : return min(x, y);
         case 12 : return max(x, y);
+        case 13 : return getBoolean((int)llrint(x) & (int)llrint(y));
+        case 14 : return getBoolean((int)llrint(x) | (int)llrint(y));
+        case 15 : return 1 - x * y;
+        case 16 : return (x != 0.0 ? x - y : 0.0);
+        case 17 : {
+            if (y == 0.0 || y == -0.0){
+                return nan("");
+            }
+            double v = x / y;
+            // Check for v being NaN (v != v) or if it is infinity
+            if (isnan(v) || isinf(v)){
+                return v;
+            } else {
+                v = floor(v);
+            }
+            return x - v * y;
+        }
+        case 18:{
+            double v = x / y;
+            if (isnan(v) || isinf(v)){
+                return v;
+            } else {
+                return floor(v);
+            }
+        }
         default : return DBL_MAX;
     }
 }
 
 extern "C"
 __global__ void relu(double* A,  double* ret, int rlen, int clen) {
-	int ix = blockIdx.x * blockDim.x + threadIdx.x;
-	int iy = blockIdx.y * blockDim.y + threadIdx.y;
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+	int ix = tid / clen;
+	int iy = tid % clen;
 	if(ix < rlen && iy < clen) {
 		int index = ix * clen + iy;
 		ret[index] = max(0.0, A[index]);
@@ -88,11 +147,31 @@ __global__ void relu(double* A,  double* ret, int rlen, int clen) {
 // This method computes the backpropagation errors for previous layer of relu operation
 extern "C"
 __global__ void relu_backward(double* X,  double* dout, double* ret, int rlen, int clen) {
-	int ix = blockIdx.x * blockDim.x + threadIdx.x;
-	int iy = blockIdx.y * blockDim.y + threadIdx.y;
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+	int ix = tid / clen;
+	int iy = tid % clen;
 	if(ix < rlen && iy < clen) {
 		int index = ix * clen + iy;
 		ret[index] = X[index] > 0 ?  dout[index] : 0;
+	}
+}
+
+/**
+ * Performs inplace addition: ret += input
+ *
+ * @param input rhs input array allocated on the GPU
+ * @param ret the input and output array allocated on the GPU
+ * @param rlen the number of rows
+ * @param clen the number of columns
+ */
+extern "C"
+__global__ void inplace_add(double* input,  double* ret, int rlen, int clen) {
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+	int ix = tid / clen;
+	int iy = tid % clen;
+	if(ix < rlen && iy < clen) {
+		int index = ix * clen + iy;
+		ret[index] += input[index];
 	}
 }
 
@@ -102,8 +181,9 @@ __global__ void relu_backward(double* X,  double* dout, double* ret, int rlen, i
 // This operation is often followed by conv2d and hence we have introduced bias_add(input, bias) built-in function
 extern "C"
 __global__ void bias_add(double* input,  double* bias, double* ret, int rlen, int clen, int PQ) {
-	int ix = blockIdx.x * blockDim.x + threadIdx.x;
-	int iy = blockIdx.y * blockDim.y + threadIdx.y;
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+	int ix = tid / clen;
+	int iy = tid % clen;
 	if(ix < rlen && iy < clen) {
 		int index = ix * clen + iy;
 		int biasIndex = iy / PQ;
@@ -114,8 +194,9 @@ __global__ void bias_add(double* input,  double* bias, double* ret, int rlen, in
 // Performs the operation "ret <- A + alpha*B", where B is a vector
 extern "C"
 __global__ void daxpy_matrix_vector(double* A,  double* B, double alpha, double* ret, int rlenA, int clenA, int rlenB, int clenB) {
-	int ix = blockIdx.x * blockDim.x + threadIdx.x;
-	int iy = blockIdx.y * blockDim.y + threadIdx.y;
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+	int ix = tid / clenA;
+	int iy = tid % clenA;
 	if(ix < rlenA && iy < clenA) {
 		int index = ix * clenA + iy;
 		if(rlenB == 1) {
@@ -130,8 +211,9 @@ __global__ void daxpy_matrix_vector(double* A,  double* B, double alpha, double*
 // Performs similar operation as bias_add except elementwise multiplication instead of add
 extern "C"
 __global__ void bias_multiply(double* input,  double* bias, double* ret, int rlen, int clen, int PQ) {
-	int ix = blockIdx.x * blockDim.x + threadIdx.x;
-	int iy = blockIdx.y * blockDim.y + threadIdx.y;
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+	int ix = tid / clen;
+	int iy = tid % clen;
 	if(ix < rlen && iy < clen) {
 		int index = ix * clen + iy;
 		int biasIndex = iy / PQ;
@@ -142,8 +224,9 @@ __global__ void bias_multiply(double* input,  double* bias, double* ret, int rle
 // Compares the value and set
 extern "C"
 __global__ void compare_and_set(double* A,  double* ret, int rlen, int clen, double compareVal, double tol, double ifEqualsVal, double ifLessThanVal, double ifGreaterThanVal) {
-	int ix = blockIdx.x * blockDim.x + threadIdx.x;
-	int iy = blockIdx.y * blockDim.y + threadIdx.y;
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+	int ix = tid / clen;
+	int iy = tid % clen;
 	int index = ix * clen + iy;
 	if(ix < rlen && iy < clen) {
 		if(abs(A[index]-compareVal) < tol)
@@ -172,8 +255,9 @@ __global__ void compare_and_set(double* A,  double* ret, int rlen, int clen, dou
 extern "C"
 __global__ void matrix_matrix_cellwise_op(double* A, double* B, double* C,
 	int maxRlen, int maxClen, int vectorAStatus, int vectorBStatus, int op) {
-	int ix = blockIdx.x * blockDim.x + threadIdx.x;
-	int iy = blockIdx.y * blockDim.y + threadIdx.y;
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+	int ix = tid / maxClen;
+	int iy = tid % maxClen;
 
 	if(ix < maxRlen && iy < maxClen) {
 		int outIndex = ix * maxClen + iy;
@@ -189,7 +273,7 @@ __global__ void matrix_matrix_cellwise_op(double* A, double* B, double* C,
 			bIndex = iy; // rlen == 1
 		C[outIndex] = binaryOp(A[aIndex], B[bIndex], op);
 		//printf("C[%d] = A[%d](%f) B[%d](%f) (%d %d)\n", outIndex, aIndex, A[aIndex], bIndex,  B[bIndex], (ix+1), (iy+1));
-    __syncthreads();
+	__syncthreads();
 	}
 }
 
@@ -211,9 +295,9 @@ __global__ void matrix_scalar_op(double* A, double scalar, double* C, int size, 
 			C[index] = binaryOp(scalar, A[index], op);
 		} else {
 			C[index] = binaryOp(A[index], scalar, op);
-    }
+		}
 	}
-  __syncthreads();
+	__syncthreads();
 }
 
 
@@ -230,6 +314,82 @@ __global__ void fill(double* A, double scalar, int lenA) {
 	    A[index] = scalar;
 	}
 }
+
+/**
+ * Appends Matrix B to the right side of Matrix A into a new matrix C
+ *         | 1 2 3 4 |   | 8 8 8 |     | 1 2 3 4 8 8 8 |
+ * cbind ( | 9 8 7 6 | , | 7 7 7 | ) = | 9 8 7 6 7 7 7 |
+ *         | 4 3 2 1 |   | 9 9 9 |     | 4 3 2 1 9 9 9 |
+ * @param A      input matrix A allocated on the GPU
+ * @param B      input matrix B allocated on the GPU
+ * @param C      input matrix C allocated on the GPU
+ * @param rowsA  rows in A
+ * @param colsA  columns in A
+ * @param rowsB  rows in B
+ * @param colsB  columns in B
+ */
+extern "C"
+__global__ void cbind(double *A, double *B, double *C, int rowsA, int colsA, int rowsB, int colsB) {
+	int maxClen = max(colsA, colsB);
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+	int ix = tid / maxClen;
+	int iy = tid % maxClen;
+
+	int colsC = colsA + colsB;
+	int rowsC = rowsA;
+
+	// Copy an element of A into C into the appropriate location
+	if (ix < rowsA && iy < colsA) {
+		double elemA = A[ix * colsA + iy];
+		C[ix * colsC + iy] = elemA;
+	}
+
+	// Copy an element of B into C into the appropriate location
+	if (ix < rowsB && iy < colsB) {
+		double elemB = B[ix * colsB + iy];
+		C[ix * colsC + (iy + colsA)] = elemB;
+	}
+}
+
+
+/**
+ * Appends Matrix B to the bottom of Matrix A into a new matrix C
+ *         | 2 3 4 |   | 8 8 8 |     | 2 3 4 |
+ * rbind ( | 8 7 6 | , | 7 7 7 | ) = | 8 7 6 |
+ *         | 3 2 1 |                 | 3 2 1 |
+                                     | 8 8 8 |
+                                     | 7 7 7 |
+ * @param A      input matrix A allocated on the GPU
+ * @param B      input matrix B allocated on the GPU
+ * @param C      input matrix C allocated on the GPU
+ * @param rowsA  rows in A
+ * @param colsA  columns in A
+ * @param rowsB  rows in B
+ * @param colsB  columns in B
+ */
+extern "C"
+__global__ void rbind(double *A, double *B, double *C, int rowsA, int colsA, int rowsB, int colsB) {
+	int maxClen = max(colsA, colsB);
+	int tid = blockIdx.x * blockDim.x + threadIdx.x;
+	int ix = tid / maxClen;
+	int iy = tid % maxClen;
+
+	int rowsC = rowsA + rowsB;
+	int colsC = colsA;
+
+	// Copy an element of A into C into the appropriate location
+	if (ix < rowsA && iy < colsA) {
+		double elemA = A[ix * colsA + iy];
+		C[ix * colsC + iy] = elemA;
+	}
+
+	// Copy an element of B into C into the appropriate location
+	if (ix < rowsB && iy < colsB) {
+		double elemB = B[ix * colsB + iy];
+		C[(ix + rowsA) * colsC + iy] = elemB;
+	}
+}
+
 
 /**
  * Does a reduce operation over all elements of the array.

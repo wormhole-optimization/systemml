@@ -26,10 +26,8 @@ import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.matrix.operators.Operator;
 import org.apache.sysml.runtime.matrix.operators.UnaryOperator;
 
-
-public class MatrixBuiltinCPInstruction extends BuiltinUnaryCPInstruction
-{
-	public MatrixBuiltinCPInstruction(Operator op, CPOperand in, CPOperand out, String opcode, String instr){
+public class MatrixBuiltinCPInstruction extends BuiltinUnaryCPInstruction {
+	protected MatrixBuiltinCPInstruction(Operator op, CPOperand in, CPOperand out, String opcode, String instr) {
 		super(op, in, out, 1, opcode, instr);
 	}
 
@@ -43,20 +41,20 @@ public class MatrixBuiltinCPInstruction extends BuiltinUnaryCPInstruction
 		String opcode = getOpcode();
 		if(LibCommonsMath.isSupportedUnaryOperation(opcode)) {
 			MatrixBlock retBlock = LibCommonsMath.unaryOperations(ec.getMatrixObject(input1.getName()),getOpcode());
-			ec.setMatrixOutput(output_name, retBlock);
+			ec.setMatrixOutput(output_name, retBlock, getExtendedOpcode());
 		}
 		else {
-			MatrixBlock inBlock = ec.getMatrixInput(input1.getName());
+			MatrixBlock inBlock = ec.getMatrixInput(input1.getName(), getExtendedOpcode());
 			MatrixBlock retBlock = (MatrixBlock) (inBlock.unaryOperations(u_op, new MatrixBlock()));
 		
-			ec.releaseMatrixInput(input1.getName());
+			ec.releaseMatrixInput(input1.getName(), getExtendedOpcode());
 			
 			// Ensure right dense/sparse output representation (guarded by released input memory)
 			if( checkGuardedRepresentationChange(inBlock, retBlock) ) {
 	 			retBlock.examSparsity();
 	 		}
 			
-			ec.setMatrixOutput(output_name, retBlock);
+			ec.setMatrixOutput(output_name, retBlock, getExtendedOpcode());
 		}		
 	}
 }

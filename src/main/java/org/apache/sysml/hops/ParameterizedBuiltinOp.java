@@ -22,7 +22,6 @@ package org.apache.sysml.hops;
 import java.util.HashMap;
 import java.util.Map.Entry;
 
-import org.apache.sysml.conf.ConfigurationManager;
 import org.apache.sysml.hops.Hop.MultiThreadedHop;
 import org.apache.sysml.hops.rewrite.HopRewriteUtils;
 import org.apache.sysml.lops.Aggregate;
@@ -93,17 +92,15 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 	public ParameterizedBuiltinOp(String l, DataType dt, ValueType vt,
 			ParamBuiltinOp op, HashMap<String, Hop> inputParameters) {
 		super(l, dt, vt);
-
+		
 		_op = op;
-
+		
 		int index = 0;
-		for( Entry<String,Hop> e : inputParameters.entrySet() ) 
-		{
+		for( Entry<String,Hop> e : inputParameters.entrySet() ) {
 			String s = e.getKey();
 			Hop input = e.getValue();
 			getInput().add(input);
 			input.getParent().add(this);
-
 			_paramIndexMap.put(s, index);
 			index++;
 		}
@@ -123,19 +120,6 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 		return _paramIndexMap;
 	}
 	
-	/**
-	 * Returns a parameters by its name. Returns null if not present  
-	 * @param val name
-	 * @return high-level operator
-	 */
-	public Hop getInputParameter(String val){
-		Integer index = getParamIndexMap().get(val);
-		if (index == null)
-			return null;
-		else
-			return getInput().get(index);
-	}
-		
 	@Override
 	public String getOpString() {
 		return "" + _op;
@@ -145,24 +129,21 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 		return _op;
 	}
 
-	public void setOutputEmptyBlocks(boolean flag)
-	{
+	public void setOutputEmptyBlocks(boolean flag) {
 		_outputEmptyBlocks = flag;
 	}
 	
-	public void setOutputPermutationMatrix(boolean flag)
-	{
+	public void setOutputPermutationMatrix(boolean flag) {
 		_outputPermutationMatrix = flag;
 	}
 	
 	public Hop getTargetHop() {
-		return _paramIndexMap.containsKey("target") ?   
-			getInput().get(_paramIndexMap.get("target")) : null;
+		return getParameterHop("target");
 	}
 	
 	public Hop getParameterHop(String name) {
-		return _paramIndexMap.containsKey(name) ?   
-			getInput().get(_paramIndexMap.get(name)) : null;	
+		return _paramIndexMap.containsKey(name) ?
+			getInput().get(_paramIndexMap.get(name)) : null;
 	}
 	
 	@Override
@@ -176,6 +157,11 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 	}
 	
 	@Override
+	public boolean isGPUEnabled() {
+		return false;
+	}
+	
+	@Override
 	public Lop constructLops() 
 		throws HopsException, LopsException 
 	{		
@@ -185,12 +171,10 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 		
 		// construct lops for all input parameters
 		HashMap<String, Lop> inputlops = new HashMap<String, Lop>();
-		for (Entry<String, Integer> cur : _paramIndexMap.entrySet()) {
-			inputlops.put(cur.getKey(), getInput().get(cur.getValue())
-					.constructLops());
-		}
+		for (Entry<String, Integer> cur : _paramIndexMap.entrySet())
+			inputlops.put(cur.getKey(), getInput().get(cur.getValue()).constructLops());
 
-		switch( _op ) {		
+		switch( _op ) {
 			case GROUPEDAGG: { 
 				ExecType et = optFindExecType();
 				constructLopsGroupedAggregate(inputlops, et);
@@ -214,7 +198,7 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 			case TRANSFORMDECODE: 
 			case TRANSFORMMETA: 
 			case TOSTRING: {
-				ExecType et = optFindExecType();			
+				ExecType et = optFindExecType();
 				ParameterizedBuiltin pbilop = new ParameterizedBuiltin(inputlops,
 						HopsParameterizedBuiltinLops.get(_op), getDataType(), getValueType(), et);
 				setOutputDimensions(pbilop);
@@ -228,7 +212,7 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 		
 		//add reblock/checkpoint lops if necessary
 		constructAndSetLopsDataFlowProperties();
-				
+		
 		return getLops();
 	}
 	
@@ -256,7 +240,7 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 			else { //vector or matrix
 				outputDim1 = inDim2;
 				outputDim2 = ngroups;
-			}			
+			}
 		}
 		
 		//construct lops
@@ -296,8 +280,8 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 				double groupsSizeP = OptimizerUtils.estimatePartitionedSizeExactSparsity(groups.getDim1(), groups.getDim2(), groups.getRowsInBlock(), groups.getColsInBlock(), groups.getNnz());
 			
 				if( groupsSizeP < OptimizerUtils.getRemoteMemBudgetMap(true) //mapgroupedagg
-					&& getInput().get(_paramIndexMap.get(Statement.GAGG_FN)) instanceof LiteralOp
-					&& ((LiteralOp)getInput().get(_paramIndexMap.get(Statement.GAGG_FN))).getStringValue().equals("sum")
+					&& getParameterHop(Statement.GAGG_FN) instanceof LiteralOp
+					&& ((LiteralOp)getParameterHop(Statement.GAGG_FN)).getStringValue().equals("sum")
 					&& inputlops.get(Statement.GAGG_NUM_GROUPS) != null ) 
 				{
 					//pre partitioning
@@ -322,7 +306,7 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 					setLineNumbers(grp);
 					
 					Aggregate agg1 = new Aggregate(grp, HopsAgg2Lops.get(AggOp.SUM), getDataType(), getValueType(), ExecType.MR);
-					agg1.setupCorrectionLocation(CorrectionLocationType.NONE);  
+					agg1.setupCorrectionLocation(CorrectionLocationType.NONE);
 					agg1.getOutputParameters().setDimensions(outputDim1, outputDim2, target.getRowsInBlock(), target.getColsInBlock(), -1);			
 					grp_agg = agg1;
 					
@@ -334,7 +318,7 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 						|| target.getDim2()<=0  )                   // unkown
 					{
 						long m1_dim1 = target.getDim1();
-						long m1_dim2 = target.getDim2();		
+						long m1_dim2 = target.getDim2();
 						long m2_dim1 = groups.getDim1();
 						long m2_dim2 = groups.getDim2();
 						long m3_dim1 = m1_dim1; 
@@ -346,7 +330,7 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 						Lop offset = createOffsetLop(target, true); 
 						Lop rep = new RepMat(groups.constructLops(), offset, true, groups.getDataType(), groups.getValueType());
 						setOutputDimensions(rep);
-						setLineNumbers(rep);	
+						setLineNumbers(rep);
 						
 						Group group1 = new Group(target.constructLops(), Group.OperationTypes.Sort, DataType.MATRIX, target.getValueType());
 						group1.getOutputParameters().setDimensions(m1_dim1, m1_dim2, brlen, bclen, target.getNnz());
@@ -370,7 +354,7 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 					inputlops.put(GroupedAggregate.COMBINEDINPUT, append);
 					inputlops.remove(Statement.GAGG_TARGET);
 					inputlops.remove(Statement.GAGG_GROUPS);
-
+					
 					grp_agg = new GroupedAggregate(inputlops, isWeighted, getDataType(), getValueType());
 					grp_agg.getOutputParameters().setDimensions(outputDim1, outputDim2, getRowsInBlock(), getColsInBlock(), -1);
 
@@ -388,31 +372,30 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 			if( et == ExecType.CP) 
 			{
 				int k = OptimizerUtils.getConstrainedNumThreads( _maxNumThreads );
-				grp_agg = new GroupedAggregate(inputlops, getDataType(), getValueType(), et, k);						
+				grp_agg = new GroupedAggregate(inputlops, getDataType(), getValueType(), et, k);
 				grp_agg.getOutputParameters().setDimensions(outputDim1, outputDim2, getRowsInBlock(), getColsInBlock(), -1);
 			}
 			else if(et == ExecType.SPARK) 
 			{
 				//physical operator selection
-				Hop groups = getInput().get(_paramIndexMap.get(Statement.GAGG_GROUPS));
+				Hop groups = getParameterHop(Statement.GAGG_GROUPS);
 				boolean broadcastGroups = (_paramIndexMap.get(Statement.GAGG_WEIGHTS) == null &&
 						OptimizerUtils.checkSparkBroadcastMemoryBudget( groups.getDim1(), groups.getDim2(), 
 								groups.getRowsInBlock(), groups.getColsInBlock(), groups.getNnz()) );
 				
 				if( broadcastGroups //mapgroupedagg
-					&& getInput().get(_paramIndexMap.get(Statement.GAGG_FN)) instanceof LiteralOp
-					&& ((LiteralOp)getInput().get(_paramIndexMap.get(Statement.GAGG_FN))).getStringValue().equals("sum")
+					&& getParameterHop(Statement.GAGG_FN) instanceof LiteralOp
+					&& ((LiteralOp)getParameterHop(Statement.GAGG_FN)).getStringValue().equals("sum")
 					&& inputlops.get(Statement.GAGG_NUM_GROUPS) != null ) 
 				{
-					Hop target = getInput().get(_paramIndexMap.get(Statement.GAGG_TARGET));
-					
-					grp_agg = new GroupedAggregateM(inputlops, getDataType(), getValueType(), true, ExecType.SPARK);						
+					Hop target = getTargetHop();
+					grp_agg = new GroupedAggregateM(inputlops, getDataType(), getValueType(), true, ExecType.SPARK);
 					grp_agg.getOutputParameters().setDimensions(outputDim1, outputDim2, target.getRowsInBlock(), target.getColsInBlock(), -1);
 					//no reblock required (directly output binary block)
 				}
 				else //groupedagg (w/ or w/o broadcast)
 				{
-					grp_agg = new GroupedAggregate(inputlops, getDataType(), getValueType(), et, broadcastGroups);						
+					grp_agg = new GroupedAggregate(inputlops, getDataType(), getValueType(), et, broadcastGroups);
 					grp_agg.getOutputParameters().setDimensions(outputDim1, outputDim2, -1, -1, -1);
 					setRequiresReblock( true );	
 				}
@@ -426,9 +409,9 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 	private void constructLopsRemoveEmpty(HashMap<String, Lop> inputlops, ExecType et) 
 		throws HopsException, LopsException 
 	{
-		Hop targetHop = getInput().get(_paramIndexMap.get("target"));
-		Hop marginHop = getInput().get(_paramIndexMap.get("margin"));		
-		Hop selectHop = (_paramIndexMap.get("select") != null) ? getInput().get(_paramIndexMap.get("select")):null;
+		Hop targetHop = getTargetHop();
+		Hop marginHop = getParameterHop("margin");
+		Hop selectHop = getParameterHop("select");
 		
 		if( et == ExecType.CP || et == ExecType.CP_FILE )
 		{
@@ -587,12 +570,9 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 						emptyInd.setForcedExecType(ExecType.MR); //always MR
 						HopRewriteUtils.copyLineNumbers(this, emptyInd);
 					}
-				} else {
+				} 
+				else {
 					emptyInd = selectHop;
-					emptyInd.setOutputBlocksizes(brlen, bclen);
-					emptyInd.refreshSizeInformation();
-					emptyInd.setForcedExecType(ExecType.MR); //always MR
-					HopRewriteUtils.copyLineNumbers(this, emptyInd);
 				}
 				
 				//Step 2: compute row offsets for non-empty rows
@@ -608,7 +588,7 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 				Hop cumsumOutput = cumsum;
 				if( !rmRows ){
 					cumsumOutput = HopRewriteUtils.createTranspose(cumsum);
-					HopRewriteUtils.updateHopCharacteristics(cumsumOutput, brlen, bclen, this);	
+					HopRewriteUtils.updateHopCharacteristics(cumsumOutput, brlen, bclen, this);
 				}
 				
 				Hop maxDim = HopRewriteUtils.createAggUnaryOp(cumsumOutput, AggOp.MAX, Direction.RowCol); //alternative: right indexing
@@ -684,13 +664,13 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 					HopRewriteUtils.removeChildReference(ppred0, input);
 				
 				setLops(finalagg);
-			}	
+			}
 		}
 		else if( et == ExecType.SPARK )
 		{
 			if( !(marginHop instanceof LiteralOp) )
 				throw new HopsException("Parameter 'margin' must be a literal argument.");
-				
+			
 			Hop input = targetHop;
 			long rlen = input.getDim1();
 			long clen = input.getDim2();
@@ -713,12 +693,9 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 					emptyInd = HopRewriteUtils.createAggUnaryOp(ppred0, AggOp.MAX, rmRows?Direction.Row:Direction.Col);
 					emptyInd.setForcedExecType(ExecType.SPARK); //always Spark
 				}
-			} else {
+			} 
+			else {
 				emptyInd = selectHop;
-				emptyInd.setOutputBlocksizes(brlen, bclen);
-				emptyInd.refreshSizeInformation();
-				emptyInd.setForcedExecType(ExecType.SPARK); //always Spark
-				HopRewriteUtils.copyLineNumbers(this, emptyInd);
 			}
 			
 			//Step 2: compute row offsets for non-empty rows
@@ -760,12 +737,12 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 			ParameterizedBuiltin pbilop = new ParameterizedBuiltin( inMap, HopsParameterizedBuiltinLops.get(_op), getDataType(), getValueType(), et, _bRmEmptyBC);			
 			setOutputDimensions(pbilop);
 			setLineNumbers(pbilop);
-		
+			
 			//Step 4: cleanup hops (allow for garbage collection)
 			if(selectHop == null)
 				HopRewriteUtils.removeChildReference(ppred0, input);
 			
-			setLops(pbilop);	
+			setLops(pbilop);
 			
 			//NOTE: in contrast to mr, replication and aggregation handled instruction-local
 		}
@@ -816,11 +793,11 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 			String sep = " ";
 			String linesep = "\n";
 			
-			Hop rowsHop = getInputParameter("rows");
-			Hop colsHop = getInputParameter("cols");
-			Hop sparsePrintHOP = getInputParameter("sparse");
-			Hop sepHop = getInputParameter("sep");
-			Hop linesepHop = getInputParameter("linesep");
+			Hop rowsHop = getParameterHop("rows");
+			Hop colsHop = getParameterHop("cols");
+			Hop sparsePrintHOP = getParameterHop("sparse");
+			Hop sepHop = getParameterHop("sep");
+			Hop linesepHop = getParameterHop("linesep");
 			
 			long numNonZeroes = getInput().get(0).getNnz();
 			if (numNonZeroes < 0)
@@ -831,7 +808,6 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 			long numCols = getInput().get(0).getDim2();
 			if (numCols < 0)	// If number of columns is not known, set to default
 				numCols = specifiedCols;
-			
 			
 			// Assume Defaults : 100 * 100, sep = " ", linesep = "\n", sparse = false
 			// String size in bytes is 36 + number_of_chars * 2
@@ -907,7 +883,7 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 		
 		if( _op == ParamBuiltinOp.RMEMPTY )
 		{ 
-			Hop marginHop = getInput().get(_paramIndexMap.get("margin"));
+			Hop marginHop = getParameterHop("margin");
 			boolean cols =  marginHop instanceof LiteralOp 
 					&& "cols".equals(((LiteralOp)marginHop).getStringValue());
 			
@@ -920,7 +896,7 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 				
 				//removeEmpty-cols has additional memory requirements for intermediate 
 				//data structures in order to make this a cache-friendly operation.
-				ret += OptimizerUtils.INT_SIZE * dim2;				
+				ret += OptimizerUtils.INT_SIZE * dim2;
 			}
 			else //rows
 			{
@@ -930,7 +906,7 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 		}
 		else if( _op == ParamBuiltinOp.REXPAND )
 		{
-			Hop dir = getInput().get(_paramIndexMap.get("dir"));
+			Hop dir = getParameterHop("dir");
 			String dirVal = ((LiteralOp)dir).getStringValue();
 			if( "rows".equals(dirVal) )
 			{
@@ -960,7 +936,7 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 		{
 			// Get the number of groups provided as part of aggregate() invocation, whenever available.
 			if ( _paramIndexMap.get(Statement.GAGG_NUM_GROUPS) != null ) {
-				Hop ngroups = getInput().get(_paramIndexMap.get(Statement.GAGG_NUM_GROUPS));
+				Hop ngroups = getParameterHop(Statement.GAGG_NUM_GROUPS);
 				if(ngroups != null && ngroups instanceof LiteralOp) {
 					long m = HopRewriteUtils.getIntValueSafe((LiteralOp)ngroups);
 					long n = (mc.getRows()==1)?1:mc.getCols();
@@ -985,14 +961,14 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 			// change (denser output).
 			if ( mc.dimsKnown() ) {
 				String margin = "rows";
-				Hop marginHop = getInput().get(_paramIndexMap.get("margin"));
+				Hop marginHop = getParameterHop("margin");
 				if(    marginHop instanceof LiteralOp 
 						&& "cols".equals(((LiteralOp)marginHop).getStringValue()) )
 					margin = new String("cols");
 				
 				MatrixCharacteristics mcSelect = null;
 				if (_paramIndexMap.get("select") != null) {
-					Hop select = getInput().get(_paramIndexMap.get("select"));	
+					Hop select = getParameterHop("select");
 					mcSelect = memo.getAllInputStats(select);
 				}
 
@@ -1024,17 +1000,17 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 			//dimensions are exactly known from input, sparsity unknown but upper bounded by nrow(v)
 			//note: cannot infer exact sparsity due to missing cast for outer and potential cutoff for table
 			//but very good sparsity estimate possible (number of non-zeros in input)
-			Hop max = getInput().get(_paramIndexMap.get("max"));
-			Hop dir = getInput().get(_paramIndexMap.get("dir"));
-			double maxVal = HopRewriteUtils.getDoubleValueSafe((LiteralOp)max);
+			Hop max = getParameterHop("max");
+			Hop dir = getParameterHop("dir");
+			long maxVal = computeDimParameterInformation(max, memo);
 			String dirVal = ((LiteralOp)dir).getStringValue();
 			if( mc.dimsKnown() ) {
 				long lnnz = mc.nnzKnown() ? mc.getNonZeros() : mc.getRows();
 				if( "cols".equals(dirVal) ) { //expand horizontally
-					ret = new long[]{mc.getRows(), UtilFunctions.toLong(maxVal), lnnz};
+					ret = new long[]{mc.getRows(), maxVal, lnnz};
 				}
 				else if( "rows".equals(dirVal) ){ //expand vertically
-					ret = new long[]{UtilFunctions.toLong(maxVal), mc.getRows(), lnnz};
+					ret = new long[]{maxVal, mc.getRows(), lnnz};
 				}	
 			}
 		}
@@ -1070,22 +1046,20 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 
 		ExecType REMOTE = OptimizerUtils.isSparkExecutionMode() ? ExecType.SPARK : ExecType.MR;
 		
-		if( _etypeForced != null ) 			
+		if( _etypeForced != null )
 		{
-			_etype = _etypeForced;	
+			_etype = _etypeForced;
 		}
 		else 
 		{
 			if ( OptimizerUtils.isMemoryBasedOptLevel() ) {
 				_etype = findExecTypeByMemEstimate();
 			}
-			else if (   _op == ParamBuiltinOp.GROUPEDAGG 
-					 && this.getInput().get(0).areDimsBelowThreshold() ) 
-			{
+			else if (   _op == ParamBuiltinOp.GROUPEDAGG
+				&& getTargetHop().areDimsBelowThreshold() ) {
 				_etype = ExecType.CP;
 			}
-			else
-			{
+			else {
 				_etype = REMOTE;
 			}
 			
@@ -1098,13 +1072,13 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 			|| _op == ParamBuiltinOp.TRANSFORMDECODE && REMOTE==ExecType.MR
 			|| _op == ParamBuiltinOp.TRANSFORMMETA 
 			|| _op == ParamBuiltinOp.TOSTRING 
-			|| _op == ParamBuiltinOp.CDF || _op == ParamBuiltinOp.INVCDF) {
+			|| _op == ParamBuiltinOp.CDF 
+			|| _op == ParamBuiltinOp.INVCDF) {
 			_etype = ExecType.CP;
 		}
 		
 		//mark for recompile (forever)
-		if( ConfigurationManager.isDynamicRecompilation() && !dimsKnown(true) && _etype==REMOTE )
-			setRequiresRecompile();
+		setRequiresRecompileIfNecessary();
 		
 		return _etype;
 	}
@@ -1123,13 +1097,13 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 				// output dimension dim1 is completely data dependent 
 				long ldim1 = -1;
 				if ( _paramIndexMap.get(Statement.GAGG_NUM_GROUPS) != null ) {
-					Hop ngroups = getInput().get(_paramIndexMap.get(Statement.GAGG_NUM_GROUPS));
+					Hop ngroups = getParameterHop(Statement.GAGG_NUM_GROUPS);
 					if(ngroups != null && ngroups instanceof LiteralOp) {
 						ldim1 = HopRewriteUtils.getIntValueSafe((LiteralOp)ngroups);
 					}
 				}
 				
-				Hop target = getInput().get(_paramIndexMap.get(Statement.GAGG_TARGET));
+				Hop target = getTargetHop();
 				long ldim2 = (target.getDim1()==1)?1:target.getDim2(); 
 				
 				setDim1( ldim1 );
@@ -1138,8 +1112,8 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 			}
 			case RMEMPTY: {
 				//one output dimension dim1 or dim2 is completely data dependent 
-				Hop target = getInput().get(_paramIndexMap.get("target"));
-				Hop margin = getInput().get(_paramIndexMap.get("margin"));
+				Hop target = getTargetHop();
+				Hop margin = getParameterHop("margin");
 				if( margin instanceof LiteralOp ) {
 					LiteralOp lmargin = (LiteralOp)margin;
 					if( "rows".equals(lmargin.getStringValue()) )
@@ -1152,21 +1126,21 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 			}
 			case REPLACE: {
 				//dimensions are exactly known from input, sparsity might increase/decrease if pattern/replacement 0 
-				Hop target = getInput().get(_paramIndexMap.get("target"));
+				Hop target = getTargetHop();
 				setDim1( target.getDim1() );
 				setDim2( target.getDim2() );
 				if( isNonZeroReplaceArguments() )
 					setNnz( target.getNnz() );
 				
-				break;	
+				break;
 			}
 			case REXPAND: {
 				//dimensions are exactly known from input, sparsity unknown but upper bounded by nrow(v)
 				//note: cannot infer exact sparsity due to missing cast for outer and potential cutoff for table
-				Hop target = getInput().get(_paramIndexMap.get("target"));
-				Hop max = getInput().get(_paramIndexMap.get("max"));
-				Hop dir = getInput().get(_paramIndexMap.get("dir"));
-				double maxVal = HopRewriteUtils.getDoubleValueSafe((LiteralOp)max);
+				Hop target = getTargetHop();
+				Hop max = getParameterHop("max");
+				Hop dir = getParameterHop("dir");
+				double maxVal = computeSizeInformation(max);
 				String dirVal = ((LiteralOp)dir).getStringValue();
 				
 				if( "cols".equals(dirVal) ) { //expand horizontally
@@ -1178,10 +1152,10 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 					setDim2(target.getDim1());
 				}
 				
-				break;	
+				break;
 			}
 			case TRANSFORMDECODE: {
-				Hop target = getInput().get(_paramIndexMap.get("target"));
+				Hop target = getTargetHop();
 				//rows remain unchanged for recoding and dummy coding
 				setDim1( target.getDim1() );
 				//cols remain unchanged only if no dummy coding
@@ -1273,17 +1247,13 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 	{
 		boolean ret = false;
 		
-		try
-		{
-			if( _op == ParamBuiltinOp.GROUPEDAGG )
-			{
-				int ix = _paramIndexMap.get(Statement.GAGG_FN);
-				Hop fnHop = getInput().get(ix);
+		try {
+			if( _op == ParamBuiltinOp.GROUPEDAGG ) {
+				Hop fnHop = getParameterHop(Statement.GAGG_FN);
 				ret = (fnHop instanceof LiteralOp && Statement.GAGG_FN_COUNT.equals(((LiteralOp)fnHop).getStringValue()) );
 			}
 		}
 		catch(Exception ex){
-			//silent false
 			LOG.warn("Check for count function failed, continue assuming false.", ex);
 		}
 		
@@ -1299,17 +1269,16 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 		boolean ret = false;
 		try 
 		{
-			Hop pattern = getInput().get(_paramIndexMap.get("pattern"));
-			Hop replace = getInput().get(_paramIndexMap.get("replacement"));
+			Hop pattern = getParameterHop("pattern");
+			Hop replace = getParameterHop("replacement");
 			if( pattern instanceof LiteralOp && ((LiteralOp)pattern).getDoubleValue()!=0d &&
 			    replace instanceof LiteralOp && ((LiteralOp)replace).getDoubleValue()!=0d )
 			{
 				ret = true;
 			}
 		}
-		catch(Exception ex) 
-		{
-			LOG.warn(ex.getMessage());	
+		catch(Exception ex) {
+			LOG.warn(ex.getMessage());
 		}
 		
 		return ret;
@@ -1348,6 +1317,6 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 		}
 		
 		return ret;
-	}	
+	}
 	
 }

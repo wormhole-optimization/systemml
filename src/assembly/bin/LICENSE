@@ -204,6 +204,10 @@
 
 The following components come under the Apache Software License 2.0.
 
+avro-1.7.4.jar
+avro-ipc-1.7.7-tests.jar
+avro-ipc-1.7.7.jar
+avro-mapred-1.7.7-hadoop2.jar
 commons-cli-1.2.jar
 commons-collections-3.2.1.jar
 commons-configuration-1.6.jar
@@ -326,7 +330,7 @@ The following SLF4J dependencies are distributed under the MIT license.
 SLF4J API Module (http://www.slf4j.org) org.slf4j:slf4j-api:1.7.5 (slf4j-api-1.7.5.jar)
 SLF4J LOG4J-12 Binding (http://www.slf4j.org) org.slf4j:slf4j-log4j12:1.7.5 (slf4j-log4j12-1.7.5.jar)
 
-Copyright (c) 2004-2008 QOS.ch
+Copyright (c) 2004-2007 QOS.ch
 All rights reserved.
 
 MIT license:

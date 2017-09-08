@@ -19,10 +19,13 @@
 
 package org.apache.sysml.hops;
 
+import java.util.Arrays;
 import java.util.HashMap;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
 import org.apache.sysml.api.DMLScript;
 import org.apache.sysml.api.DMLScript.RUNTIME_PLATFORM;
 import org.apache.sysml.conf.CompilerConfig;
@@ -37,8 +40,10 @@ import org.apache.sysml.lops.Checkpoint;
 import org.apache.sysml.lops.Lop;
 import org.apache.sysml.lops.LopProperties.ExecType;
 import org.apache.sysml.lops.compile.Dag;
+import org.apache.sysml.parser.ForStatementBlock;
 import org.apache.sysml.parser.Expression.ValueType;
 import org.apache.sysml.runtime.DMLRuntimeException;
+import org.apache.sysml.runtime.controlprogram.ForProgramBlock;
 import org.apache.sysml.runtime.controlprogram.LocalVariableMap;
 import org.apache.sysml.runtime.controlprogram.context.SparkExecutionContext;
 import org.apache.sysml.runtime.controlprogram.parfor.ProgramConverter;
@@ -356,7 +361,7 @@ public class OptimizerUtils
 		}
 		
 		//handle parallel text io (incl awareness of thread contention in <jdk8)
-		if (!dmlconf.getBooleanValue(DMLConfig.CP_PARALLEL_TEXTIO)) {
+		if (!dmlconf.getBooleanValue(DMLConfig.CP_PARALLEL_IO)) {
 			cconf.set(ConfigType.PARALLEL_CP_READ_TEXTFORMATS, false);
 			cconf.set(ConfigType.PARALLEL_CP_WRITE_TEXTFORMATS, false);
 			cconf.set(ConfigType.PARALLEL_CP_READ_BINARYFORMATS, false);
@@ -371,7 +376,7 @@ public class OptimizerUtils
 		}
 
 		//handle parallel matrix mult / rand configuration
-		if (!dmlconf.getBooleanValue(DMLConfig.CP_PARALLEL_MATRIXMULT)) {
+		if (!dmlconf.getBooleanValue(DMLConfig.CP_PARALLEL_OPS)) {
 			cconf.set(ConfigType.PARALLEL_CP_MATRIX_OPERATIONS, false);
 		}	
 		
@@ -769,6 +774,12 @@ public class OptimizerUtils
 		return bsize;
 	}
 	
+	public static double getTotalMemEstimate(Hop[] in, Hop out) {
+		return Arrays.stream(in)
+			.mapToDouble(h -> h.getOutputMemEstimate()).sum()
+			+ out.getOutputMemEstimate();
+	}
+	
 	/**
 	 * Indicates if the given indexing range is block aligned, i.e., it does not require
 	 * global aggregation of blocks.
@@ -926,6 +937,11 @@ public class OptimizerUtils
 		return ret;
 	}
 	
+	public static Level getDefaultLogLevel() {
+		Level log = Logger.getRootLogger().getLevel();
+		return (log != null) ? log : Level.INFO;
+	}
+	
 	////////////////////////
 	// Sparsity Estimates //
 	////////////////////////
@@ -999,15 +1015,17 @@ public class OptimizerUtils
 		return ( op==OpOp2.NOTEQUAL && val==0);
 	}
 
-	public static double getBinaryOpSparsityConditionalSparseSafe( double sp1, OpOp2 op, LiteralOp lit )
-	{
+	public static boolean isBinaryOpSparsityConditionalSparseSafe( OpOp2 op, LiteralOp lit ) {
 		double val = HopRewriteUtils.getDoubleValueSafe(lit);
-		
 		return (  (op==OpOp2.GREATER  && val==0) 
 				||(op==OpOp2.LESS     && val==0)
 				||(op==OpOp2.NOTEQUAL && val==0)
 				||(op==OpOp2.EQUAL    && val!=0)
-				||(op==OpOp2.MINUS    && val==0)) ? sp1 : 1.0;
+				||(op==OpOp2.MINUS    && val==0));
+	}
+	
+	public static double getBinaryOpSparsityConditionalSparseSafe( double sp1, OpOp2 op, LiteralOp lit ) {
+		return isBinaryOpSparsityConditionalSparseSafe(op, lit) ? sp1 : 1.0;
 	}
 	
 	/**
@@ -1112,7 +1130,39 @@ public class OptimizerUtils
 		return String.format("%.0f", inB/(1024*1024) );
 	}
 	
-
+	public static long getNumIterations(ForProgramBlock fpb, long defaultValue) {
+		if( fpb.getStatementBlock()==null )
+			return defaultValue;
+		ForStatementBlock fsb = (ForStatementBlock) fpb.getStatementBlock();
+		try {
+			HashMap<Long,Long> memo = new HashMap<Long,Long>();
+			long from = rEvalSimpleLongExpression(fsb.getFromHops().getInput().get(0), memo);
+			long to = rEvalSimpleLongExpression(fsb.getToHops().getInput().get(0), memo);
+			long increment = (fsb.getIncrementHops()==null) ? (from < to) ? 1 : -1 : 
+				rEvalSimpleLongExpression(fsb.getIncrementHops().getInput().get(0), memo);
+			if( from != Long.MAX_VALUE && to != Long.MAX_VALUE && increment != Long.MAX_VALUE )
+				return (int)Math.ceil(((double)(to-from+1))/increment);
+		}
+		catch(Exception ex){}
+		return defaultValue;
+	}
+	
+	public static long getNumIterations(ForProgramBlock fpb, LocalVariableMap vars, long defaultValue) {
+		if( fpb.getStatementBlock()==null )
+			return defaultValue;
+		ForStatementBlock fsb = (ForStatementBlock) fpb.getStatementBlock();
+		try {
+			HashMap<Long,Long> memo = new HashMap<Long,Long>();
+			long from = rEvalSimpleLongExpression(fsb.getFromHops().getInput().get(0), memo, vars);
+			long to = rEvalSimpleLongExpression(fsb.getToHops().getInput().get(0), memo, vars);
+			long increment = (fsb.getIncrementHops()==null) ? (from < to) ? 1 : -1 : 
+				rEvalSimpleLongExpression(fsb.getIncrementHops().getInput().get(0), memo);
+			if( from != Long.MAX_VALUE && to != Long.MAX_VALUE && increment != Long.MAX_VALUE )
+				return (int)Math.ceil(((double)(to-from+1))/increment);
+		}
+		catch(Exception ex){}
+		return defaultValue;
+	}
 	
 	/**
 	 * Function to evaluate simple size expressions over literals and now/ncol.

@@ -28,6 +28,8 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.sysml.api.DMLScript;
 import org.apache.sysml.api.DMLScript.RUNTIME_PLATFORM;
 import org.apache.sysml.conf.ConfigurationManager;
+import org.apache.sysml.lops.Binary;
+import org.apache.sysml.lops.BinaryScalar;
 import org.apache.sysml.lops.CSVReBlock;
 import org.apache.sysml.lops.Checkpoint;
 import org.apache.sysml.lops.Compression;
@@ -40,6 +42,7 @@ import org.apache.sysml.lops.ReBlock;
 import org.apache.sysml.lops.UnaryCP;
 import org.apache.sysml.parser.Expression.DataType;
 import org.apache.sysml.parser.Expression.ValueType;
+import org.apache.sysml.parser.ParseInfo;
 import org.apache.sysml.runtime.controlprogram.LocalVariableMap;
 import org.apache.sysml.runtime.controlprogram.caching.MatrixObject.UpdateType;
 import org.apache.sysml.runtime.controlprogram.context.SparkExecutionContext;
@@ -50,7 +53,7 @@ import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.util.UtilFunctions;
 
 
-public abstract class Hop 
+public abstract class Hop implements ParseInfo
 {
 	protected static final Log LOG =  LogFactory.getLog(Hop.class.getName());
 	
@@ -190,7 +193,9 @@ public abstract class Hop
 	
 	public void checkAndSetForcedPlatform()
 	{
-		if ( DMLScript.rtplatform == RUNTIME_PLATFORM.SINGLE_NODE )
+		if(DMLScript.USE_ACCELERATOR && DMLScript.FORCE_ACCELERATOR && isGPUEnabled())
+			_etypeForced = ExecType.GPU;
+		else if ( DMLScript.rtplatform == RUNTIME_PLATFORM.SINGLE_NODE )
 			_etypeForced = ExecType.CP;
 		else if ( DMLScript.rtplatform == RUNTIME_PLATFORM.HADOOP )
 			_etypeForced = ExecType.MR;
@@ -442,7 +447,7 @@ public abstract class Hop
 		}
 		
 		offset.getOutputParameters().setDimensions(0, 0, 0, 0, -1);
-		offset.setAllPositions(hop.getBeginLine(), hop.getBeginColumn(), hop.getEndLine(), hop.getEndColumn());
+		offset.setAllPositions(hop.getFilename(), hop.getBeginLine(), hop.getBeginColumn(), hop.getEndLine(), hop.getEndColumn());
 		
 		return offset;
 	}
@@ -703,30 +708,7 @@ public abstract class Hop
 		_validCPSizeEstimate = (wstats!=null) ? OptimizerUtils.isValidCPMatrixSize(
 			wstats[0], wstats[1], OptimizerUtils.getSparsity(wstats[0], wstats[1], wstats[2])) : false;
 	}
-
 	
-	/**
-	 * Computes the hop-specific output memory estimate in bytes. Should be 0 if not
-	 * applicable. 
-	 * 
-	 * @param dim1 dimension 1
-	 * @param dim2 dimension 2
-	 * @param nnz number of non-zeros
-	 * @return memory estimate
-	 */
-	protected abstract double computeOutputMemEstimate( long dim1, long dim2, long nnz );
-
-	/**
-	 * Computes the hop-specific intermediate memory estimate in bytes. Should be 0 if not
-	 * applicable.
-	 * 
-	 * @param dim1 dimension 1
-	 * @param dim2 dimension 2
-	 * @param nnz number of non-zeros
-	 * @return memory estimate
-	 */
-	protected abstract double computeIntermediateMemEstimate( long dim1, long dim2, long nnz );
-
 	/**
 	 * Computes the output matrix characteristics (rows, cols, nnz) based on worst-case output
 	 * and/or input estimates. Should return null if dimensions are unknown.
@@ -766,8 +748,12 @@ public abstract class Hop
 	protected ExecType findExecTypeByMemEstimate() {
 		ExecType et = null;
 		char c = ' ';
-		if ( getMemEstimate() < OptimizerUtils.getLocalMemBudget() ) {
-			et = ExecType.CP;
+		double memEst = getMemEstimate();
+		if ( memEst < OptimizerUtils.getLocalMemBudget() ) {
+			if (DMLScript.USE_ACCELERATOR && isGPUEnabled() && memEst < GPUContextPool.initialGPUMemBudget())
+				et = ExecType.GPU;
+			else
+				et = ExecType.CP;
 		}
 		else {
 			if( DMLScript.rtplatform == DMLScript.RUNTIME_PLATFORM.HYBRID )
@@ -784,14 +770,6 @@ public abstract class Hop
 			LOG.debug(s);
 		}
 		
-		return et;
-	}
-	
-	protected ExecType findGPUExecTypeByMemEstimate(ExecType et) {
-		if(DMLScript.USE_ACCELERATOR && (DMLScript.FORCE_ACCELERATOR || getMemEstimate() < GPUContextPool
-				.initialGPUMemBudget())) {
-			return ExecType.GPU;
-		}
 		return et;
 	}
 
@@ -848,6 +826,58 @@ public abstract class Hop
 	
 	public abstract String getOpString();
 
+	// ========================================================================================
+	// Design doc: Memory estimation of GPU
+	// 1. Since not all operator are supported on GPU, isGPUEnabled indicates whether an operation 
+	// is enabled for GPU. This method doesnot take into account any memory estimates.
+	// 2. To simplify memory estimation logic, the methods computeOutputMemEstimate and computeIntermediateMemEstimate
+	// should return maximum of memory required for GPU and CP operators. 
+	// 3. Additionally, these methods are guarded so that when -gpu flag is not provided, additional memory overhead due to GPU
+	// are ignored. For example: sparse-to-dense conversion on GPU. 
+	// 4. (WIP) Every GPU operators should respect the memory returned by computeIntermediateMemEstimate (and computeOutputMemEstimate - see below point).
+	// 5. (WIP) Every GPU operator should create output in the same format as the corresponding CP operator. That is,  computeOutputMemEstimate
+	// are consistent across both CP and GPU in terms of worst-case.
+	// 6. The drawback of using maximum memory (mem = Math.max(mem_gpu, mem_gpu)) are:
+	// - GPU operator is not selected when mem_gpu < total memory available on GPU < mem
+	// - CP operator is not selected (i.e. distributed operator compiled) when mem_cpu < driver memory budget < mem
+	
+	/**
+	 * In memory-based optimizer mode (see OptimizerUtils.isMemoryBasedOptLevel()), 
+	 * the exectype is determined by checking this method as well as memory budget of this Hop. 
+	 * Please see findExecTypeByMemEstimate for more detail. 
+	 * 
+	 * This method is necessary because not all operator are supported efficiently
+	 * on GPU (for example: operations on frames and scalar as well as operations such as table). 
+	 * 
+	 * @return true if the Hop is eligible for GPU Exectype.
+	 */
+	public abstract boolean isGPUEnabled();
+	
+	/**
+	 * Computes the hop-specific output memory estimate in bytes. Should be 0 if not
+	 * applicable. 
+	 * 
+	 * @param dim1 dimension 1
+	 * @param dim2 dimension 2
+	 * @param nnz number of non-zeros
+	 * @return memory estimate
+	 */
+	protected abstract double computeOutputMemEstimate( long dim1, long dim2, long nnz );
+
+	/**
+	 * Computes the hop-specific intermediate memory estimate in bytes. Should be 0 if not
+	 * applicable.
+	 * 
+	 * @param dim1 dimension 1
+	 * @param dim2 dimension 2
+	 * @param nnz number of non-zeros
+	 * @return memory estimate
+	 */
+	protected abstract double computeIntermediateMemEstimate( long dim1, long dim2, long nnz );
+	
+	// ========================================================================================
+
+	
 	protected boolean isVector() {
 		return (dimsKnown() && (_dim1 == 1 || _dim2 == 1) );
 	}
@@ -953,6 +983,10 @@ public abstract class Hop
 		_dim2 = dim2;
 	}
 	
+	public double getSparsity() {
+		return OptimizerUtils.getSparsity(_dim1, _dim2, _nnz);
+	}
+	
 	protected void setOutputDimensions(Lop lop) 
 		throws HopsException
 	{
@@ -1008,6 +1042,7 @@ public abstract class Hop
 		NOT, ABS, SIN, COS, TAN, ASIN, ACOS, ATAN, SIGN, SQRT, LOG, EXP, 
 		CAST_AS_SCALAR, CAST_AS_MATRIX, CAST_AS_FRAME, CAST_AS_DOUBLE, CAST_AS_INT, CAST_AS_BOOLEAN,
 		PRINT, EIGEN, NROW, NCOL, LENGTH, ROUND, IQM, STOP, CEIL, FLOOR, MEDIAN, INVERSE, CHOLESKY,
+		SVD,
 		//cumulative sums, products, extreme values
 		CUMSUM, CUMPROD, CUMMIN, CUMMAX,
 		//fused ML-specific operators for performance 
@@ -1143,53 +1178,53 @@ public abstract class Hop
 
 	}
 
-	protected static final HashMap<Hop.OpOp2, org.apache.sysml.lops.Binary.OperationTypes> HopsOpOp2LopsB;
+	protected static final HashMap<Hop.OpOp2, Binary.OperationTypes> HopsOpOp2LopsB;
 	static {
-		HopsOpOp2LopsB = new HashMap<Hop.OpOp2, org.apache.sysml.lops.Binary.OperationTypes>();
-		HopsOpOp2LopsB.put(OpOp2.PLUS, org.apache.sysml.lops.Binary.OperationTypes.ADD);
-		HopsOpOp2LopsB.put(OpOp2.MINUS, org.apache.sysml.lops.Binary.OperationTypes.SUBTRACT);
-		HopsOpOp2LopsB.put(OpOp2.MULT, org.apache.sysml.lops.Binary.OperationTypes.MULTIPLY);
-		HopsOpOp2LopsB.put(OpOp2.DIV, org.apache.sysml.lops.Binary.OperationTypes.DIVIDE);
-		HopsOpOp2LopsB.put(OpOp2.MODULUS, org.apache.sysml.lops.Binary.OperationTypes.MODULUS);
-		HopsOpOp2LopsB.put(OpOp2.INTDIV, org.apache.sysml.lops.Binary.OperationTypes.INTDIV);
-		HopsOpOp2LopsB.put(OpOp2.MINUS1_MULT, org.apache.sysml.lops.Binary.OperationTypes.MINUS1_MULTIPLY);
-		HopsOpOp2LopsB.put(OpOp2.LESS, org.apache.sysml.lops.Binary.OperationTypes.LESS_THAN);
-		HopsOpOp2LopsB.put(OpOp2.LESSEQUAL, org.apache.sysml.lops.Binary.OperationTypes.LESS_THAN_OR_EQUALS);
-		HopsOpOp2LopsB.put(OpOp2.GREATER, org.apache.sysml.lops.Binary.OperationTypes.GREATER_THAN);
-		HopsOpOp2LopsB.put(OpOp2.GREATEREQUAL, org.apache.sysml.lops.Binary.OperationTypes.GREATER_THAN_OR_EQUALS);
-		HopsOpOp2LopsB.put(OpOp2.EQUAL, org.apache.sysml.lops.Binary.OperationTypes.EQUALS);
-		HopsOpOp2LopsB.put(OpOp2.NOTEQUAL, org.apache.sysml.lops.Binary.OperationTypes.NOT_EQUALS);
-		HopsOpOp2LopsB.put(OpOp2.MIN, org.apache.sysml.lops.Binary.OperationTypes.MIN);
-		HopsOpOp2LopsB.put(OpOp2.MAX, org.apache.sysml.lops.Binary.OperationTypes.MAX);
-		HopsOpOp2LopsB.put(OpOp2.AND, org.apache.sysml.lops.Binary.OperationTypes.OR);
-		HopsOpOp2LopsB.put(OpOp2.OR, org.apache.sysml.lops.Binary.OperationTypes.AND);
-		HopsOpOp2LopsB.put(OpOp2.SOLVE, org.apache.sysml.lops.Binary.OperationTypes.SOLVE);
-		HopsOpOp2LopsB.put(OpOp2.POW, org.apache.sysml.lops.Binary.OperationTypes.POW);
-		HopsOpOp2LopsB.put(OpOp2.LOG, org.apache.sysml.lops.Binary.OperationTypes.NOTSUPPORTED);
+		HopsOpOp2LopsB = new HashMap<Hop.OpOp2, Binary.OperationTypes>();
+		HopsOpOp2LopsB.put(OpOp2.PLUS, Binary.OperationTypes.ADD);
+		HopsOpOp2LopsB.put(OpOp2.MINUS, Binary.OperationTypes.SUBTRACT);
+		HopsOpOp2LopsB.put(OpOp2.MULT, Binary.OperationTypes.MULTIPLY);
+		HopsOpOp2LopsB.put(OpOp2.DIV, Binary.OperationTypes.DIVIDE);
+		HopsOpOp2LopsB.put(OpOp2.MODULUS, Binary.OperationTypes.MODULUS);
+		HopsOpOp2LopsB.put(OpOp2.INTDIV, Binary.OperationTypes.INTDIV);
+		HopsOpOp2LopsB.put(OpOp2.MINUS1_MULT, Binary.OperationTypes.MINUS1_MULTIPLY);
+		HopsOpOp2LopsB.put(OpOp2.LESS, Binary.OperationTypes.LESS_THAN);
+		HopsOpOp2LopsB.put(OpOp2.LESSEQUAL, Binary.OperationTypes.LESS_THAN_OR_EQUALS);
+		HopsOpOp2LopsB.put(OpOp2.GREATER, Binary.OperationTypes.GREATER_THAN);
+		HopsOpOp2LopsB.put(OpOp2.GREATEREQUAL, Binary.OperationTypes.GREATER_THAN_OR_EQUALS);
+		HopsOpOp2LopsB.put(OpOp2.EQUAL, Binary.OperationTypes.EQUALS);
+		HopsOpOp2LopsB.put(OpOp2.NOTEQUAL, Binary.OperationTypes.NOT_EQUALS);
+		HopsOpOp2LopsB.put(OpOp2.MIN, Binary.OperationTypes.MIN);
+		HopsOpOp2LopsB.put(OpOp2.MAX, Binary.OperationTypes.MAX);
+		HopsOpOp2LopsB.put(OpOp2.AND, Binary.OperationTypes.OR);
+		HopsOpOp2LopsB.put(OpOp2.OR, Binary.OperationTypes.AND);
+		HopsOpOp2LopsB.put(OpOp2.SOLVE, Binary.OperationTypes.SOLVE);
+		HopsOpOp2LopsB.put(OpOp2.POW, Binary.OperationTypes.POW);
+		HopsOpOp2LopsB.put(OpOp2.LOG, Binary.OperationTypes.NOTSUPPORTED);
 	}
 
-	protected static final HashMap<Hop.OpOp2, org.apache.sysml.lops.BinaryScalar.OperationTypes> HopsOpOp2LopsBS;
+	protected static final HashMap<Hop.OpOp2, BinaryScalar.OperationTypes> HopsOpOp2LopsBS;
 	static {
-		HopsOpOp2LopsBS = new HashMap<Hop.OpOp2, org.apache.sysml.lops.BinaryScalar.OperationTypes>();
-		HopsOpOp2LopsBS.put(OpOp2.PLUS, org.apache.sysml.lops.BinaryScalar.OperationTypes.ADD);	
-		HopsOpOp2LopsBS.put(OpOp2.MINUS, org.apache.sysml.lops.BinaryScalar.OperationTypes.SUBTRACT);
-		HopsOpOp2LopsBS.put(OpOp2.MULT, org.apache.sysml.lops.BinaryScalar.OperationTypes.MULTIPLY);
-		HopsOpOp2LopsBS.put(OpOp2.DIV, org.apache.sysml.lops.BinaryScalar.OperationTypes.DIVIDE);
-		HopsOpOp2LopsBS.put(OpOp2.MODULUS, org.apache.sysml.lops.BinaryScalar.OperationTypes.MODULUS);
-		HopsOpOp2LopsBS.put(OpOp2.INTDIV, org.apache.sysml.lops.BinaryScalar.OperationTypes.INTDIV);
-		HopsOpOp2LopsBS.put(OpOp2.LESS, org.apache.sysml.lops.BinaryScalar.OperationTypes.LESS_THAN);
-		HopsOpOp2LopsBS.put(OpOp2.LESSEQUAL, org.apache.sysml.lops.BinaryScalar.OperationTypes.LESS_THAN_OR_EQUALS);
-		HopsOpOp2LopsBS.put(OpOp2.GREATER, org.apache.sysml.lops.BinaryScalar.OperationTypes.GREATER_THAN);
-		HopsOpOp2LopsBS.put(OpOp2.GREATEREQUAL, org.apache.sysml.lops.BinaryScalar.OperationTypes.GREATER_THAN_OR_EQUALS);
-		HopsOpOp2LopsBS.put(OpOp2.EQUAL, org.apache.sysml.lops.BinaryScalar.OperationTypes.EQUALS);
-		HopsOpOp2LopsBS.put(OpOp2.NOTEQUAL, org.apache.sysml.lops.BinaryScalar.OperationTypes.NOT_EQUALS);
-		HopsOpOp2LopsBS.put(OpOp2.MIN, org.apache.sysml.lops.BinaryScalar.OperationTypes.MIN);
-		HopsOpOp2LopsBS.put(OpOp2.MAX, org.apache.sysml.lops.BinaryScalar.OperationTypes.MAX);
-		HopsOpOp2LopsBS.put(OpOp2.AND, org.apache.sysml.lops.BinaryScalar.OperationTypes.AND);
-		HopsOpOp2LopsBS.put(OpOp2.OR, org.apache.sysml.lops.BinaryScalar.OperationTypes.OR);
-		HopsOpOp2LopsBS.put(OpOp2.LOG, org.apache.sysml.lops.BinaryScalar.OperationTypes.LOG);
-		HopsOpOp2LopsBS.put(OpOp2.POW, org.apache.sysml.lops.BinaryScalar.OperationTypes.POW);
-		HopsOpOp2LopsBS.put(OpOp2.PRINT, org.apache.sysml.lops.BinaryScalar.OperationTypes.PRINT);
+		HopsOpOp2LopsBS = new HashMap<Hop.OpOp2, BinaryScalar.OperationTypes>();
+		HopsOpOp2LopsBS.put(OpOp2.PLUS, BinaryScalar.OperationTypes.ADD);	
+		HopsOpOp2LopsBS.put(OpOp2.MINUS, BinaryScalar.OperationTypes.SUBTRACT);
+		HopsOpOp2LopsBS.put(OpOp2.MULT, BinaryScalar.OperationTypes.MULTIPLY);
+		HopsOpOp2LopsBS.put(OpOp2.DIV, BinaryScalar.OperationTypes.DIVIDE);
+		HopsOpOp2LopsBS.put(OpOp2.MODULUS, BinaryScalar.OperationTypes.MODULUS);
+		HopsOpOp2LopsBS.put(OpOp2.INTDIV, BinaryScalar.OperationTypes.INTDIV);
+		HopsOpOp2LopsBS.put(OpOp2.LESS, BinaryScalar.OperationTypes.LESS_THAN);
+		HopsOpOp2LopsBS.put(OpOp2.LESSEQUAL, BinaryScalar.OperationTypes.LESS_THAN_OR_EQUALS);
+		HopsOpOp2LopsBS.put(OpOp2.GREATER, BinaryScalar.OperationTypes.GREATER_THAN);
+		HopsOpOp2LopsBS.put(OpOp2.GREATEREQUAL, BinaryScalar.OperationTypes.GREATER_THAN_OR_EQUALS);
+		HopsOpOp2LopsBS.put(OpOp2.EQUAL, BinaryScalar.OperationTypes.EQUALS);
+		HopsOpOp2LopsBS.put(OpOp2.NOTEQUAL, BinaryScalar.OperationTypes.NOT_EQUALS);
+		HopsOpOp2LopsBS.put(OpOp2.MIN, BinaryScalar.OperationTypes.MIN);
+		HopsOpOp2LopsBS.put(OpOp2.MAX, BinaryScalar.OperationTypes.MAX);
+		HopsOpOp2LopsBS.put(OpOp2.AND, BinaryScalar.OperationTypes.AND);
+		HopsOpOp2LopsBS.put(OpOp2.OR, BinaryScalar.OperationTypes.OR);
+		HopsOpOp2LopsBS.put(OpOp2.LOG, BinaryScalar.OperationTypes.LOG);
+		HopsOpOp2LopsBS.put(OpOp2.POW, BinaryScalar.OperationTypes.POW);
+		HopsOpOp2LopsBS.put(OpOp2.PRINT, BinaryScalar.OperationTypes.PRINT);
 	}
 
 	protected static final HashMap<Hop.OpOp2, org.apache.sysml.lops.Unary.OperationTypes> HopsOpOp2LopsU;
@@ -1301,6 +1336,7 @@ public abstract class Hop
 		HopsOpOp12String.put(OpOp1.CAST_AS_SCALAR, "castAsScalar");
 		HopsOpOp12String.put(OpOp1.COS, "cos");
 		HopsOpOp12String.put(OpOp1.EIGEN, "eigen");
+		HopsOpOp12String.put(OpOp1.SVD, "svd");
 		HopsOpOp12String.put(OpOp1.EXP, "exp");
 		HopsOpOp12String.put(OpOp1.IQM, "iqm");
 		HopsOpOp12String.put(OpOp1.MEDIAN, "median");
@@ -1354,7 +1390,7 @@ public abstract class Hop
 		HopsOpOp2String.put(OpOp2.LESS, "<");
 		HopsOpOp2String.put(OpOp2.GREATEREQUAL, ">=");
 		HopsOpOp2String.put(OpOp2.GREATER, ">");
-		HopsOpOp2String.put(OpOp2.EQUAL, "=");
+		HopsOpOp2String.put(OpOp2.EQUAL, "==");
 		HopsOpOp2String.put(OpOp2.NOTEQUAL, "!=");
 		HopsOpOp2String.put(OpOp2.OR, "|");
 		HopsOpOp2String.put(OpOp2.AND, "&");
@@ -1372,6 +1408,10 @@ public abstract class Hop
 		HopsOpOp2String.put(OpOp2.CBIND, "cbind");
 		HopsOpOp2String.put(OpOp2.RBIND, "rbind");
 		HopsOpOp2String.put(OpOp2.SOLVE, "solve");
+	}
+	
+	public static String getBinaryOpCode(OpOp2 op) {
+		return HopsOpOp2String.get(op);
 	}
 
 	protected static final HashMap<Hop.OpOp3, String> HopsOpOp3String;
@@ -1468,16 +1508,37 @@ public abstract class Hop
 	/**
 	 * Indicates if dynamic recompilation is required for this hop. 
 	 * 
-	 * @return true if dynamic recompilcation required
+	 * @return true if dynamic recompilation required
 	 */
-	public boolean requiresRecompile() 
-	{
+	public boolean requiresRecompile() {
 		return _requiresRecompile;
 	}
 	
-	public void setRequiresRecompile()
-	{
+	/**
+	 * Marks the hop for dynamic recompilation. 
+	 */
+	public void setRequiresRecompile() {
 		_requiresRecompile = true;
+	}
+	
+	/**
+	 * Marks the hop for dynamic recompilation, if dynamic recompilation is 
+	 * enabled and one of the two basic scenarios apply:
+	 * <ul>
+	 *  <li> The hop has unknown dimensions or sparsity and is scheduled for 
+	 *    remote execution, in which case the latency for distributed jobs easily 
+	 *    covers any recompilation overheads. </li>
+	 *  <li> The hop has unknown dimensions and is scheduled for local execution 
+	 *    due to forced single node execution type. </li>
+	 * <ul> <p>
+	 */
+	protected void setRequiresRecompileIfNecessary() {
+		ExecType REMOTE = OptimizerUtils.isSparkExecutionMode() ? ExecType.SPARK : ExecType.MR;
+		boolean caseRemote = (!dimsKnown(true) && _etype == REMOTE);
+		boolean caseLocal = (!dimsKnown() && _etypeForced == ExecType.CP);
+		
+		if( ConfigurationManager.isDynamicRecompilation() && (caseRemote || caseLocal) )
+			setRequiresRecompile();
 	}
 
 	/**
@@ -1514,7 +1575,7 @@ public abstract class Hop
 		setDim2( size );
 	}
 
-	public long computeSizeInformation( Hop input )
+	public static long computeSizeInformation( Hop input )
 	{
 		long ret = -1;
 		
@@ -1756,6 +1817,7 @@ public abstract class Hop
 		_requiresRecompile = that._requiresRecompile;
 		_requiresReblock = that._requiresReblock;
 		_requiresCheckpoint = that._requiresCheckpoint;
+		_requiresCompression = that._requiresCompression;
 		_outputEmptyBlocks = that._outputEmptyBlocks;
 		
 		_beginLine = that._beginLine;
@@ -1775,26 +1837,28 @@ public abstract class Hop
 	///////////////////////////////////////////////////////////////////////////
 	public int _beginLine, _beginColumn;
 	public int _endLine, _endColumn;
+	public String _filename;
+	public String _text;
 	
 	public void setBeginLine(int passed)    { _beginLine = passed;   }
 	public void setBeginColumn(int passed) 	{ _beginColumn = passed; }
 	public void setEndLine(int passed) 		{ _endLine = passed;   }
 	public void setEndColumn(int passed)	{ _endColumn = passed; }
-	
-	public void setAllPositions(int blp, int bcp, int elp, int ecp){
-		_beginLine	 = blp; 
-		_beginColumn = bcp; 
-		_endLine 	 = elp;
-		_endColumn 	 = ecp;
-	}
+	public void setFilename(String passed) { _filename = passed; }
+	public void setText(String text) { _text = text; }
 
 	public int getBeginLine()	{ return _beginLine;   }
 	public int getBeginColumn() { return _beginColumn; }
 	public int getEndLine() 	{ return _endLine;   }
 	public int getEndColumn()	{ return _endColumn; }
+	public String getFilename()	{ return _filename; }
+	public String getText() { return _text; }
 	
 	public String printErrorLocation(){
-		return "ERROR: line " + _beginLine + ", column " + _beginColumn + " -- ";
+		if(_filename != null)
+			return "ERROR: " + _filename + " line " + _beginLine + ", column " + _beginColumn + " -- ";
+		else
+			return "ERROR: line " + _beginLine + ", column " + _beginColumn + " -- ";
 	}
 
 	/**
@@ -1804,7 +1868,26 @@ public abstract class Hop
 	 */
 	protected void setLineNumbers(Lop lop)
 	{
-		lop.setAllPositions(this.getBeginLine(), this.getBeginColumn(), this.getEndLine(), this.getEndColumn());
+		lop.setAllPositions(this.getFilename(), this.getBeginLine(), this.getBeginColumn(), this.getEndLine(), this.getEndColumn());
 	}
-	
+
+	/**
+	 * Set parse information.
+	 *
+	 * @param parseInfo
+	 *            parse information, such as beginning line position, beginning
+	 *            column position, ending line position, ending column position,
+	 *            text, and filename
+	 * @param filename
+	 *            the DML/PYDML filename (if it exists)
+	 */
+	public void setParseInfo(ParseInfo parseInfo) {
+		_beginLine = parseInfo.getBeginLine();
+		_beginColumn = parseInfo.getBeginColumn();
+		_endLine = parseInfo.getEndLine();
+		_endColumn = parseInfo.getEndColumn();
+		_text = parseInfo.getText();
+		_filename = parseInfo.getFilename();
+	}
+
 } // end class

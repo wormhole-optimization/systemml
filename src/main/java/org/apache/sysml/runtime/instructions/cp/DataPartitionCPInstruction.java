@@ -37,13 +37,12 @@ import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.matrix.data.OutputInfo;
 import org.apache.sysml.runtime.matrix.operators.Operator;
 
-public class DataPartitionCPInstruction extends UnaryCPInstruction
-{	
-	
+public class DataPartitionCPInstruction extends UnaryCPInstruction {
+
 	private PDataPartitionFormat _pformat = null;
-	
-	public DataPartitionCPInstruction(Operator op, CPOperand in1, PDataPartitionFormat pformat, CPOperand out, String opcode, String istr)
-	{
+
+	private DataPartitionCPInstruction(Operator op, CPOperand in1, PDataPartitionFormat pformat, CPOperand out,
+			String opcode, String istr) {
 		super(op, in1, out, opcode, istr);
 		_cptype = CPINSTRUCTION_TYPE.MMTSJ;
 		_pformat = pformat;
@@ -97,6 +96,6 @@ public class DataPartitionCPInstruction extends UnaryCPInstruction
 		}
 		
 		//release input
-		ec.releaseMatrixInput(input1.getName());		
+		ec.releaseMatrixInput(input1.getName(), getExtendedOpcode());		
 	}
 }

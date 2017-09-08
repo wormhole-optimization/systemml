@@ -299,7 +299,7 @@
 							<outputDirectory>${basedir}/target/lib/hadoop/bin</outputDirectory>
 						</configuration>
 					</execution>
-					
+
 					<execution>
 						<id>copy-resources-filtered</id>
 						<phase>compile</phase>
@@ -340,7 +340,7 @@
 					</execution>
 				</executions>
 			</plugin>
-			
+
 			<plugin>
 			    <groupId>com.github.os72</groupId>
 			    <artifactId>protoc-jar-maven-plugin</artifactId>
@@ -459,6 +459,7 @@
 						<include>**/integration/functions/sparse/*Suite.java</include>
 						<include>**/integration/functions/**/*Test*.java</include>
 						<include>**/integration/mlcontext/*Suite.java</include>
+						<include>**/integration/mlcontext/algorithms/*Suite.java</include>
 						<include>**/integration/scripts/nn/*Suite.java</include>
 						<include>**/integration/scalability/**/*Test.java</include>
 					</includes>
@@ -931,12 +932,15 @@
 								<exclude>**/*.keep</exclude>
 								<exclude>**/target/**</exclude>
 								<exclude>**/README.md</exclude>
+ 								<exclude>**/*.svg</exclude>
 								<!-- Jupyter Notebooks -->
 								<exclude>**/*.ipynb</exclude>
 								<!-- Generated antlr files -->
 								<exclude>src/main/java/*.tokens</exclude>
 								<!-- Generated python files -->
 								<exclude>src/main/python/systemml.egg-info/**</exclude>
+								<!-- Sphinx reStructuredText files -->
+								<exclude>src/main/pythondoc/*.rst</exclude>
 								<!-- Compiled ptx file from nvcc -->
 								<exclude>src/main/cpp/kernels/SystemML.ptx</exclude>
 								<!-- Proto files -->
@@ -956,6 +960,8 @@
 								<exclude>src/test/scripts/functions/jmlc/tfmtd_example/dummycoded.column.names</exclude>
 								<exclude>src/test/scripts/functions/jmlc/tfmtd_example2/column.names</exclude>
 								<exclude>src/test/scripts/functions/jmlc/tfmtd_frame_example/tfmtd_frame</exclude>
+								<!-- Perftest requirement file -->
+								<exclude>scripts/perftest/python/requirements.txt</exclude>
 							</excludes>
 						</configuration>
 					</plugin>
@@ -1189,6 +1195,30 @@
 							</execution>
 						</executions>
 					</plugin>
+					<!-- Attach python artifact so it can be installed and deployed. -->
+					<plugin>
+						<groupId>org.codehaus.mojo</groupId>
+						<artifactId>build-helper-maven-plugin</artifactId>
+						<version>1.8</version>
+						<executions>
+							<execution>
+								<id>attach-python-artifact</id>
+								<phase>pre-integration-test</phase>
+								<goals>
+									<goal>attach-artifact</goal>
+								</goals>
+								<configuration>
+									<artifacts>
+										<artifact>
+											<file>${basedir}/target/${project.artifactId}-${project.version}-python.tgz</file>
+											<type>tgz</type>
+											<classifier>python</classifier>
+										</artifact>
+									</artifacts>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
 				</plugins>
 			</build>
 		</profile>
@@ -1251,12 +1281,6 @@
 		</dependency>
 		<dependency>
 			<groupId>org.jcuda</groupId>
-			<artifactId>jcufft</artifactId>
-			<version>${jcuda.version}</version>
-			<scope>${jcuda.scope}</scope>
-		</dependency>
-		<dependency>
-			<groupId>org.jcuda</groupId>
 			<artifactId>jcusparse</artifactId>
 			<version>${jcuda.version}</version>
 			<scope>${jcuda.scope}</scope>
@@ -1264,18 +1288,6 @@
 		<dependency>
 			<groupId>org.jcuda</groupId>
 			<artifactId>jcusolver</artifactId>
-			<version>${jcuda.version}</version>
-			<scope>${jcuda.scope}</scope>
-		</dependency>
-		<dependency>
-			<groupId>org.jcuda</groupId>
-			<artifactId>jcurand</artifactId>
-			<version>${jcuda.version}</version>
-			<scope>${jcuda.scope}</scope>
-		</dependency>
-		<dependency>
-			<groupId>org.jcuda</groupId>
-			<artifactId>jnvgraph</artifactId>
 			<version>${jcuda.version}</version>
 			<scope>${jcuda.scope}</scope>
 		</dependency>
@@ -1302,13 +1314,6 @@
 		</dependency>
 		<dependency>
 			<groupId>org.jcuda</groupId>
-			<artifactId>jcufft-natives</artifactId>
-			<classifier>${jcuda.os}-${jcuda.arch}</classifier>
-			<version>${jcuda.version}</version>
-			<scope>${jcuda.scope}</scope>
-		</dependency>
-		<dependency>
-			<groupId>org.jcuda</groupId>
 			<artifactId>jcusparse-natives</artifactId>
 			<classifier>${jcuda.os}-${jcuda.arch}</classifier>
 			<version>${jcuda.version}</version>
@@ -1323,22 +1328,117 @@
 		</dependency>
 		<dependency>
 			<groupId>org.jcuda</groupId>
-			<artifactId>jcurand-natives</artifactId>
-            <classifier>${jcuda.os}-${jcuda.arch}</classifier>
-            <version>${jcuda.version}</version>
+			<artifactId>jcudnn-natives</artifactId>
+			<classifier>${jcuda.os}-${jcuda.arch}</classifier>
+			<version>${jcuda.version}</version>
+			<scope>${jcuda.scope}</scope>
+		</dependency>
+
+		<!-- for all platforms, to be included in the extra jar -->
+		<dependency>
+			<groupId>org.jcuda</groupId>
+			<artifactId>jcuda-natives</artifactId>
+			<classifier>windows-x86_64</classifier>
+			<version>${jcuda.version}</version>
 			<scope>${jcuda.scope}</scope>
 		</dependency>
 		<dependency>
 			<groupId>org.jcuda</groupId>
-			<artifactId>jnvgraph-natives</artifactId>
-			<classifier>${jcuda.os}-${jcuda.arch}</classifier>
+			<artifactId>jcublas-natives</artifactId>
+			<classifier>windows-x86_64</classifier>
+			<version>${jcuda.version}</version>
+			<scope>${jcuda.scope}</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.jcuda</groupId>
+			<artifactId>jcusparse-natives</artifactId>
+			<classifier>windows-x86_64</classifier>
+			<version>${jcuda.version}</version>
+			<scope>${jcuda.scope}</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.jcuda</groupId>
+			<artifactId>jcusolver-natives</artifactId>
+			<classifier>windows-x86_64</classifier>
 			<version>${jcuda.version}</version>
 			<scope>${jcuda.scope}</scope>
 		</dependency>
 		<dependency>
 			<groupId>org.jcuda</groupId>
 			<artifactId>jcudnn-natives</artifactId>
-			<classifier>${jcuda.os}-${jcuda.arch}</classifier>
+			<classifier>windows-x86_64</classifier>
+			<version>${jcuda.version}</version>
+			<scope>${jcuda.scope}</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.jcuda</groupId>
+			<artifactId>jcuda-natives</artifactId>
+			<classifier>linux-x86_64</classifier>
+			<version>${jcuda.version}</version>
+			<scope>${jcuda.scope}</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.jcuda</groupId>
+			<artifactId>jcublas-natives</artifactId>
+			<classifier>linux-x86_64</classifier>
+			<version>${jcuda.version}</version>
+			<scope>${jcuda.scope}</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.jcuda</groupId>
+			<artifactId>jcusparse-natives</artifactId>
+			<classifier>linux-x86_64</classifier>
+			<version>${jcuda.version}</version>
+			<scope>${jcuda.scope}</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.jcuda</groupId>
+			<artifactId>jcusolver-natives</artifactId>
+			<classifier>linux-x86_64</classifier>
+			<version>${jcuda.version}</version>
+			<scope>${jcuda.scope}</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.jcuda</groupId>
+			<artifactId>jcudnn-natives</artifactId>
+			<classifier>linux-x86_64</classifier>
+			<version>${jcuda.version}</version>
+			<scope>${jcuda.scope}</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.jcuda</groupId>
+			<artifactId>jcuda-natives</artifactId>
+			<classifier>linux-ppc_64</classifier>
+			<version>${jcuda.version}</version>
+			<scope>${jcuda.scope}</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.jcuda</groupId>
+			<artifactId>jcublas-natives</artifactId>
+			<classifier>linux-ppc_64</classifier>
+			<version>${jcuda.version}</version>
+			<scope>${jcuda.scope}</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.jcuda</groupId>
+			<artifactId>jcusparse-natives</artifactId>
+			<classifier>linux-ppc_64</classifier>
+			<version>${jcuda.version}</version>
+			<scope>${jcuda.scope}</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.jcuda</groupId>
+			<artifactId>jcusolver-natives</artifactId>
+			<classifier>linux-ppc_64</classifier>
+			<version>${jcuda.version}</version>
+			<scope>${jcuda.scope}</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.jcuda</groupId>
+			<artifactId>jcudnn-natives</artifactId>
+			<classifier>linux-ppc_64</classifier>
 			<version>${jcuda.version}</version>
 			<scope>${jcuda.scope}</scope>
 		</dependency>
