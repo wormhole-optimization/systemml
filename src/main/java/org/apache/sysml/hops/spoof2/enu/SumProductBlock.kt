@@ -110,6 +110,7 @@ sealed class SumProduct {
     }
 
     open fun toStringWithTab(tab: Int): String = toString()
+    abstract fun toString_TSVFriendly(): String
 
     // possibly add a Constant subclass
 
@@ -141,6 +142,16 @@ sealed class SumProduct {
         override fun deepCopy() = this
         override fun toString(): String {
             return "Input<${snode.id}>($snode${if(SHOW_NNZ) ", nnz=$nnz" else ""}):$schema"
+        }
+
+        override fun toString_TSVFriendly(): String {
+            val ss = when(snode) {
+                is SNodeBind -> "bi(${snode.id})"
+                is SNodeUnbind -> "ub(${snode.id})"
+                is SNodeData -> if( snode.isLiteral ) snode.literalDouble.toString() else snode.toString()
+                else -> snode.toString()
+            }
+            return "$ss:${schema.names}"
         }
 
     }
@@ -205,6 +216,9 @@ sealed class SumProduct {
             }
             return "Block$sumBlocks<$product>: $schema" +
                     edges.joinToString(prefix = sep, separator = sep, transform = {it.toStringWithTab(tab+1)}) +(if(SHOW_NNZ) "(nnz=$nnz)" else "")
+        }
+        override fun toString_TSVFriendly(): String {
+            return "Block$sumBlocks<$product>[${edges.joinToString { it.toString_TSVFriendly() }}]"
         }
 
         override fun deepCopy() = Block(

@@ -1,11 +1,13 @@
 package org.apache.sysml.hops.spoof2.enu
 
 import org.apache.commons.logging.LogFactory
+import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.SPlanBottomUpRewriter
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriteRule.RewriteResult
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter.RewriterResult
+import org.apache.sysml.runtime.controlprogram.parfor.util.IDSequence
 import org.apache.sysml.utils.Explain
 import java.io.File
 import java.io.FileWriter
@@ -20,6 +22,82 @@ import kotlin.collections.component2
  */
 class NormalFormExploreEq : SPlanRewriter {
     companion object {
+        private fun normalSpb_Verify(spb: SumProduct.Block) {
+            // top-level block is allowed to have aggregates
+            if( spb.product == SNodeNary.NaryOp.PLUS ) {
+                if( spb.sumBlocks.any { it.op != Hop.AggOp.SUM } )
+                    throw SNodeException("unexpected aggregation type in $spb")
+                if( spb.sumBlocks.size > 1 )
+                    throw SNodeException("too many SumBlocks in $spb")
+                spb.edges.forEach { normalSpb_VerifyMult(it, false) }
+            } else normalSpb_VerifyMult(spb, true)
+        }
+
+        private fun normalSpb_VerifyMult(spb: SumProduct, allowAggs: Boolean) {
+            when(spb) {
+                is SumProduct.Input -> {}
+                is SumProduct.Block -> {
+                    if( !allowAggs && spb.sumBlocks.isNotEmpty() )
+                        throw SNodeException("found sumBlocks where none expected (sumBlocks should only be at the top in normal form): $spb")
+                    if( spb.sumBlocks.any { it.op != Hop.AggOp.SUM } )
+                        throw SNodeException("unexpected aggregation type in $spb")
+                    if( spb.sumBlocks.size > 1 )
+                        throw SNodeException("too many SumBlocks in $spb")
+                    if( spb.product != SNodeNary.NaryOp.MULT )
+                        throw SNodeException("found a non-MULT product below the PLUS level in normal form: $spb")
+                    if( spb.edges.any { it !is SumProduct.Input } )
+                        throw SNodeException("found multiple layers of MULT; one layer expected in normal form")
+                }
+            }
+        }
+
+        private fun normalSpb_GetAggs(spb: SumProduct.Block): List<Name> {
+            return spb.sumBlocks.flatMap { it.names }
+        }
+
+        private fun normalSpb_GetPlusInputs(spb: SumProduct.Block): List<SumProduct> {
+            return if( spb.product == SNodeNary.NaryOp.PLUS ) spb.edges else listOf(spb)
+        }
+
+        // first-level factorization opportunities
+        private fun normalSpb_GetFactorOutOfPlus(plusInputs: List<SumProduct>): Int {
+            val baseInputs = plusInputs.map { when(it) {
+                is SumProduct.Input -> listOf(it)
+                is SumProduct.Block -> it.edges as List<SumProduct.Input>
+            } }
+            var cnt = 0
+            for( i in plusInputs.indices )
+                for( j in i+1 until plusInputs.size ) {
+                    // if the whole terms are equal, count that as a single factorization opportunity
+                    if( plusInputs[i] == plusInputs[j] )
+                        cnt++
+                    else
+                        cnt += baseInputs[i].intersect(baseInputs[j]).size
+                }
+            return cnt
+        }
+
+        private fun normalSpb_GetBaseInputsPullableFromPlus(plusInputs: List<SumProduct>): Set<SumProduct.Input> {
+            val baseInputs = plusInputs.map { when(it) {
+                is SumProduct.Input -> listOf(it)
+                is SumProduct.Block -> it.edges as List<SumProduct.Input>
+            } }
+            return baseInputs.flatten().toSet()
+                    .filter { bi ->
+                        baseInputs.indexOfFirst { bi in it } != baseInputs.indexOfLast { bi in it }
+                    }.toSet()
+        }
+
+        private fun normalSpb_GetBaseInputs(spb: SumProduct.Block): List<SumProduct.Input> {
+            return if( spb.product == SNodeNary.NaryOp.PLUS )
+                spb.edges.flatMap { when(it) {
+                    is SumProduct.Input -> listOf(it)
+                    is SumProduct.Block -> it.edges as List<SumProduct.Input>
+                } }
+            else spb.edges as List<SumProduct.Input>
+        }
+
+
         private val LOG = LogFactory.getLog(NormalFormExploreEq::class.java)!!
         private val statsAll = mutableListOf<Stats>()
         private val _addedHook = AtomicBoolean(false)
@@ -29,15 +107,16 @@ class NormalFormExploreEq : SPlanRewriter {
                     override fun run() {
                         if( LOG.isInfoEnabled ) {
 //                            au.com.bytecode.opencsv.CSVWriter
-                            if( statsAll.size in 1..99 )
+                            if( statsAll.size in 1..39 )
                                 LOG.info("Sum-Product stats:\n${statsAll.joinToString("\n")}")
                             val total = Stats()
-                            val f = File("stats.csv")
+                            val f = File("stats.tsv")
                             FileWriter(f).buffered().use { writer ->
                                 writer.write(Stats.header())
                                 writer.newLine()
                                 statsAll.forEach { stat ->
                                     writer.write(stat.toCSVString())
+                                    writer.write(Stats.sep.toInt())
                                     writer.newLine()
                                     total += stat
                                 }
@@ -59,8 +138,10 @@ class NormalFormExploreEq : SPlanRewriter {
             var numLabels: Long = 0L,
             var numContingencies: Long = 0L,
             var maxCC: Int = 0,
-            var considerPlan: Long = 0L
+            var considerPlan: Long = 0L,
+            val spbs: MutableList<SumProduct.Block> = mutableListOf() // after partitioning by connected components, before factoring
     ) {
+        val id = _idSeq.nextID
         operator fun plusAssign(s: Stats) {
             numSP += s.numSP
             numInserts += s.numInserts
@@ -69,6 +150,7 @@ class NormalFormExploreEq : SPlanRewriter {
             numContingencies += s.numContingencies
             maxCC += s.maxCC
             considerPlan += s.considerPlan
+            spbs.clear()
         }
         fun reset() {
             numSP = 0
@@ -78,14 +160,33 @@ class NormalFormExploreEq : SPlanRewriter {
             numContingencies = 0
             maxCC = 0
             considerPlan = 0
+            spbs.clear()
         }
         companion object {
+            private val _idSeq = IDSequence()
+            const val sep: Char = '\t'
             fun header(): String {
-                return "numSP,numInserts,numAggPlusMultiply,numLabels,numContingencies,maxCC,considerPlan"
+                //numPlusInputs: # of inputs to n-ary + (this is 1 if there is no n-ary plus)
+                //numUniqueBaseInputsPullableFromPlus: # of unique base inputs that occur in at least two plus terms
+                return "id${sep}numSP${sep}numInserts${sep}numAggPlusMultiply${sep}numLabels${sep}numContingencies${sep}maxCC${sep}considerPlan" +
+                        "${sep}numAggNames${sep}numPlusInputs${sep}numBaseInputs${sep}numUniqueBaseInputs${sep}numUniqueBaseInputsPullableFromPlus${sep}normalSpb"
             }
         }
+        fun toCSVString_Basic(): String {
+            return "$id$sep$numSP$sep$numInserts$sep$numAggPlusMultiply$sep$numLabels$sep$numContingencies$sep$maxCC$sep$considerPlan"
+        }
         fun toCSVString(): String {
-            return "$numSP,$numInserts,$numAggPlusMultiply,$numLabels,$numContingencies,$maxCC,$considerPlan"
+            val s = toCSVString_Basic()
+            return spbs.joinToString("\n") { spb ->
+                val aggs = NormalFormExploreEq.normalSpb_GetAggs(spb)
+                val plusInputs = NormalFormExploreEq.normalSpb_GetPlusInputs(spb)
+//                val factorOutOfPlus = NormalFormExploreEq.normalSpb_GetFactorOutOfPlus(plusInputs)
+                // a better measure is the number of base inputs that appear in at least 2 terms
+                val baseInputs_PullableFromPlus = NormalFormExploreEq.normalSpb_GetBaseInputsPullableFromPlus(plusInputs)
+                val baseInputs = NormalFormExploreEq.normalSpb_GetBaseInputs(spb)
+                "$s$sep${aggs.size}$sep${plusInputs.size}$sep${baseInputs.size}$sep${baseInputs.toSet().size}$sep${baseInputs_PullableFromPlus.size}" +
+                        "$sep${spb.toString_TSVFriendly()}"
+            }
         }
     }
 
@@ -99,7 +200,6 @@ class NormalFormExploreEq : SPlanRewriter {
         // for each sum-product block, place an ENode at the top
         // fill the ENode with different rewrites.
         // do CSE Elim and Bind Unify
-
         eNodes.clear()
         stats.reset()
         if( !_addedHook.get() )
@@ -121,8 +221,8 @@ class NormalFormExploreEq : SPlanRewriter {
 
         if( LOG.isDebugEnabled )
             LOG.debug("$stats")
-        if( LOG.isTraceEnabled )
-            LOG.trace("E-DAG before CSE Elim: "+Explain.explainSPlan(roots))
+//        if( LOG.isTraceEnabled )
+//            LOG.trace("E-DAG before CSE Elim: "+Explain.explainSPlan(roots))
 
         SPlanValidator.validateSPlan(roots)
         cseElim.rewriteSPlan(roots)
@@ -151,7 +251,7 @@ class NormalFormExploreEq : SPlanRewriter {
 //            }
 //        }
 
-        statsAll += stats
+        statsAll += stats.copy()
         return RewriterResult.NewRoots(roots)
     }
 
@@ -225,6 +325,9 @@ class NormalFormExploreEq : SPlanRewriter {
 
             return RewriteResult.NewNode(spb.applyToNormalForm(node)) // these will be handled as disjoint sub-problems in SPlanNormalFormRewriter at next recursion
         }
+        // We will factor this spb.
+        stats.spbs += spb.deepCopy()
+        normalSpb_Verify(spb)
 
         // Create ENode
         val eNode = ENode(node.schema)
