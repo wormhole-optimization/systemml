@@ -188,7 +188,13 @@ class NormalFormExploreEq : SPlanRewriter {
                         "$sep${spb.toString_TSVFriendly()}"
             }
         }
-    }
+
+         override fun toString(): String {
+             return "Stats(id=$id, numSP=$numSP, numInserts=$numInserts, numAggPlusMultiply=$numAggPlusMultiply, numLabels=$numLabels, numContingencies=$numContingencies, maxCC=$maxCC, considerPlan=$considerPlan, " +
+                     "spbs=${spbs.joinToString("\n","\n")})"
+         }
+
+     }
 
 
     val eNodes: ArrayList<ENode> = arrayListOf()

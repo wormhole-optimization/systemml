@@ -81,13 +81,14 @@ class SPlanNormalFormRewriter : SPlanRewriter {
 
         var count = 0
         do {
+            val startCount = count
             var changed: Boolean
             do {
                 count++
                 if (CHECK) SPlanValidator.validateSPlan(roots)
                 changed = rewriteDown(roots, _rulesToNormalForm)
             } while( changed )
-            changed = bottomUpRewrite(roots) is RewriterResult.NewRoots || changed
+            changed = bottomUpRewrite(roots) is RewriterResult.NewRoots || count > startCount+1
         } while (changed)
 
         if( count == 1 && count0 == 1 ) {
@@ -97,9 +98,9 @@ class SPlanNormalFormRewriter : SPlanRewriter {
         }
         if( SPlanRewriteRule.LOG.isTraceEnabled )
             SPlanRewriteRule.LOG.trace("Ran 'to normal form' rewrites $count times to yield: "+Explain.explainSPlan(roots))
-
-        bottomUpRewrite(roots)
         if( CHECK ) SPlanValidator.validateSPlan(roots)
+
+
 
         rewriteDown(roots, _rulesNormalFormPrior)
         bottomUpRewrite(roots)
