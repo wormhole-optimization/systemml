@@ -122,15 +122,16 @@ blah blah
 \item Our work aims to expand the scope of sum-product optimization to tackle these additional issues present in real-world ML scripts. We present an addition to SystemML called SPOOF---sum-product optimization and operator fusion---that addresses these challenges and accelerates real-world ML scripts by XXX times.
 \item SystemML already has an optimization framework that consists of a first phase of deterministic rewriting and a second phase of fusing operators together. While SystemML does achieve speedup with this simplified framework, it leaves plenty of speedup on the table on account of the following factors:
   \begin{enumerate}
-  \item Most of SystemML's optimizations operate locally on a small sub-expression of operators. Optimizing at the local level may produce locally optimal yet globally suboptimal expressions. In SPOOF, we aim to widen the scope of optimization to entire DAGs at a time, avoiding expressions that are local minima in terms of runtime.
+  \item Most of SystemML's optimizations apply to a small, local sub-expression of operators. Optimizing at the local level may produce locally optimal yet globally suboptimal expressions. In SPOOF, we aim to widen the scope of optimization to entire DAGs at a time, avoiding expressions that are local minima in terms of runtime.
   \item SystemML uses a deterministic list of rules (ordered and guarded by conditions) for most optimizations. This list of rules may miss optimization opportunities and leads to a long-term maintenance burden: every time it is necessary to add a new rule, the rule list must be carefully engineered so as not to produce suboptimal rule interactions.
 
-  The fundamental issue is that deterministic rule lists do not establish a \emph{search space completeness}.
-  We call a rewriting algorithm complete if for every query (initial expression) and input data, the optimal expression equivalent to the query for that data can be found using the rewriting algorithm.
-  Thus, the rule list must be updated every time a user presents a query that the rule list does not optimally rewrite. This issue is further compounded by the fact that SystemML uses compound operators such as \texttt{trace(X)}, which overlaps with rewrites that concern matrix sub-selection (of the diagonal, in this case) and summations.
+  The fundamental issue is that deterministic rule lists do not establish \emph{search space completeness}.
+  We call a rewriting algorithm complete if for every query (initial expression) and input data, the optimal expression equivalent to the query for that data can be found via the rewriting algorithm.
+  
+  Because the rule list is not search space complete, it must be updated every time a user presents a query that the rule list does not optimally rewrite. This issue is further compounded by the fact that SystemML uses compound operators such as \texttt{trace(A)}, which overlaps with rewrites that concern matrix sub-selection (of the diagonal, in this case) and summations.
 
   SPOOF aims to achieve search space completeness by using a cost-based optimization method on an algera of elementary operators. These elementary operators include sums and products over scalar, and the rewrites we consider over them involve basic algebraic rewrites such as the commutative and distributive laws. We also expect a much lower long-term maintenance buden on account of using such a minimal set of operators and rewrites.
-  \item SystemML rewrites expressions separately from fusing expressions together. While the separation between rewrite and fusion simplifies SystemML's architecture, it can lead to suboptimal plans: a expression that is more expensive to compute without fusion may be the optimal expression with fusion.
+  \item SystemML rewrites expressions separately from fusing expressions together. While the separation between rewrite and fusion simplifies SystemML's architecture, it can lead to suboptimal plans: an expression that is more expensive to compute without fusion may be the optimal expression with fusion.
   SPOOF aims to holistically consider fusion and rewrites at the same time.
   \end{enumerate}
 \item Use sum($(X - UV^T)^2$) as a motivating example.
