@@ -28,6 +28,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.sysml.api.DMLScript;
 import org.apache.sysml.api.DMLScript.RUNTIME_PLATFORM;
 import org.apache.sysml.conf.ConfigurationManager;
+import org.apache.sysml.conf.DMLConfig;
 import org.apache.sysml.lops.Binary;
 import org.apache.sysml.lops.BinaryScalar;
 import org.apache.sysml.lops.CSVReBlock;
@@ -1535,7 +1536,7 @@ public abstract class Hop implements ParseInfo
 	
 	/**
 	 * Marks the hop for dynamic recompilation, if dynamic recompilation is 
-	 * enabled and one of the three basic scenarios apply:
+	 * enabled and one of the 4 basic scenarios apply:
 	 * <ul>
 	 *  <li> The hop has unknown dimensions or sparsity and is scheduled for 
 	 *    remote execution, in which case the latency for distributed jobs easily 
@@ -1545,6 +1546,7 @@ public abstract class Hop implements ParseInfo
 	 *  <li> The hop has unknown dimensions and is scheduled for local execution 
 	 *    due to good worst-case memory estimates but codegen is enabled, which
 	 *    requires (mostly) known sizes to validity conditions and cost estimation. </li>
+	 *  <li> Same as above, but for holistic sum-product optimization. </li>
 	 * <ul> <p>
 	 */
 	protected void setRequiresRecompileIfNecessary() {
@@ -1552,9 +1554,10 @@ public abstract class Hop implements ParseInfo
 		boolean caseRemote = (!dimsKnown(true) && _etype == REMOTE);
 		boolean caseLocal = (!dimsKnown() && _etypeForced == ExecType.CP);
 		boolean caseCodegen = (!dimsKnown() && ConfigurationManager.isCodegenEnabled());
+		boolean caseSpoof = (!dimsKnown() && ConfigurationManager.getDMLConfig().getBooleanValue(DMLConfig.SPOOF));
 		
 		if( ConfigurationManager.isDynamicRecompilation() 
-			&& (caseRemote || caseLocal || caseCodegen) )
+			&& (caseRemote || caseLocal || caseCodegen || caseSpoof) )
 			setRequiresRecompile();
 	}
 
