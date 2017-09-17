@@ -34,6 +34,7 @@ import org.apache.sysml.runtime.matrix.data.IJV;
 import org.apache.sysml.runtime.matrix.data.LibMatrixAgg;
 import org.apache.sysml.runtime.matrix.data.LibMatrixMult;
 import org.apache.sysml.runtime.matrix.data.MatrixBlock;
+import org.apache.sysml.runtime.matrix.data.SparseBlock;
 import org.apache.sysml.runtime.matrix.data.SparseBlock.Type;
 import org.apache.sysml.runtime.matrix.operators.AggregateUnaryOperator;
 import org.apache.sysml.runtime.matrix.operators.ScalarOperator;
@@ -416,6 +417,11 @@ public class ColGroupUncompressed extends ColGroup
 		return new UCIterator(rl, ru, inclZeros);
 	}
 	
+	@Override
+	public ColGroupRowIterator getRowIterator(int rl, int ru) {
+		return new UCRowIterator(rl, ru);
+	}
+	
 	private class UCIterator implements Iterator<IJV>
 	{
 		//iterator configuration
@@ -458,6 +464,48 @@ public class ColGroupUncompressed extends ColGroup
 				_value = _data.quickGetValue(_rpos, _cpos);
 			}
 			while( !_inclZeros && _value==0 );
+		}
+	}
+	
+	private class UCRowIterator extends ColGroupRowIterator
+	{
+		private final int _ru;
+		private int _rpos = -1;
+		
+		public UCRowIterator(int rl, int ru) {
+			_ru = ru;
+			_rpos = rl;
+		}
+		
+		@Override
+		public boolean hasNext() {
+			return (_rpos < _ru);
+		}
+		
+		@Override
+		public void next(double[] buff) {
+			//copy entire dense/sparse row
+			if( _data.isAllocated() ) {
+				if( _data.isInSparseFormat() ) {
+					if( !_data.getSparseBlock().isEmpty(_rpos) ) {
+						SparseBlock sblock = _data.getSparseBlock();
+						int apos = sblock.pos(_rpos);
+						int alen = sblock.size(_rpos);
+						int[] aix = sblock.indexes(_rpos);
+						double[] avals = sblock.values(_rpos);
+						for(int k=apos; k<apos+alen; k++)
+							buff[_colIndexes[aix[k]]] = avals[k];
+					}
+				}
+				else {
+					final int clen = getNumCols();
+					double[] a = _data.getDenseBlock();
+					for(int j=0, aix=_rpos*clen; j<clen; j++)
+						buff[_colIndexes[j]] = a[aix+j];
+				}
+			}
+			//advance position to next row
+			_rpos++;
 		}
 	}
 }

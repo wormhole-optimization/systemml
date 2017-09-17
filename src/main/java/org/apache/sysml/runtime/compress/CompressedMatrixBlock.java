@@ -47,6 +47,7 @@ import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.lops.MMTSJ.MMTSJType;
 import org.apache.sysml.lops.MapMultChain.ChainType;
 import org.apache.sysml.runtime.DMLRuntimeException;
+import org.apache.sysml.runtime.compress.ColGroup.ColGroupRowIterator;
 import org.apache.sysml.runtime.compress.ColGroup.CompressionType;
 import org.apache.sysml.runtime.compress.cocode.PlanningCoCoder;
 import org.apache.sysml.runtime.compress.estim.CompressedSizeEstimator;
@@ -2305,55 +2306,25 @@ public class CompressedMatrixBlock extends MatrixBlock implements Externalizable
 		protected final int _ru;
 		
 		//iterator state
-		private Iterator<IJV>[] _iters = null;
-		protected final int[] _ixbuff = new int[clen];
-		protected final double[] _vbuff = new double[clen];
+		protected ColGroupRowIterator[] _iters = null;
 		protected int _rpos;
 		
-		@SuppressWarnings("unchecked")
 		public RowIterator(int rl, int ru) {
 			_rl = rl;
 			_ru = ru;
 			
 			//initialize array of column group iterators
-			_iters = new Iterator[_colGroups.size()];
+			_iters = new ColGroupRowIterator[_colGroups.size()];
 			for( int i=0; i<_colGroups.size(); i++ )
-				_iters[i] = _colGroups.get(i).getIterator(
-					_rl, _ru, true, true);
-			Arrays.fill(_ixbuff, -1);
+				_iters[i] = _colGroups.get(i).getRowIterator(_rl, _ru);
 			
 			//get initial row
-			_rpos = rl-1;
-			getNextRow();
+			_rpos = rl;
 		}
 		
 		@Override
 		public boolean hasNext() {
 			return (_rpos < _ru);
-		}
-		
-		@Override
-		public abstract T next();
-		
-		protected void getNextRow() {
-			_rpos++;
-			//read iterators if necessary
-			for(int j=0; j<_iters.length; j++) {
-				ColGroup grp = _colGroups.get(j);
-				if( _ixbuff[grp.getColIndex(0)] < _rpos ) {
-					if( _iters[j].hasNext() ) {
-						for( int k=0; k<grp.getNumCols(); k++ ) {
-							IJV cell = _iters[j].next();
-							_ixbuff[cell.getJ()] = cell.getI();
-							_vbuff[cell.getJ()] = cell.getV();
-						}
-					}
-					else {
-						for( int k=0; k<grp.getNumCols(); k++ )
-							_ixbuff[grp.getColIndex(k)] = _ru;
-					}
-				}
-			}
 		}
 	}
 	
@@ -2367,13 +2338,12 @@ public class CompressedMatrixBlock extends MatrixBlock implements Externalizable
 		
 		@Override
 		public double[] next() {
-			if( !hasNext() )
-				throw new RuntimeException("No more rows in row partition ["+_rl+","+_ru+")");
-			//copy currently buffered row entries
-			for( int j=0; j<clen; j++ )
-				_ret[j] = (_ixbuff[j] == _rpos) ? _vbuff[j] : 0;
+			//copy group rows into consolidated row
+			Arrays.fill(_ret, 0);
+			for(int j=0; j<_iters.length; j++)
+				_iters[j].next(_ret);
 			//advance to next row and return buffer
-			getNextRow();
+			_rpos++;
 			return _ret;
 		}
 	}
@@ -2381,27 +2351,24 @@ public class CompressedMatrixBlock extends MatrixBlock implements Externalizable
 	private class SparseRowIterator extends RowIterator<SparseRow>
 	{
 		private final SparseRowVector _ret = new SparseRowVector(clen);
+		private final double[] _tmp = new double[clen];
 		
 		public SparseRowIterator(int rl, int ru) {
 			super(rl, ru);
 		}
-
-		@Override
-		public boolean hasNext() {
-			return (_rpos < _ru);
-		}
-
+		
 		@Override
 		public SparseRow next() {
-			if( !hasNext() )
-				throw new RuntimeException("No more rows in row partition ["+_rl+","+_ru+")");
-			//copy currently buffered row entries
+			//copy group rows into consolidated dense vector
+			//to avoid binary search+shifting or final sort
+			for(int j=0; j<_iters.length; j++)
+				_iters[j].next(_tmp);
+			//append non-zero values to consolidated sparse row
 			_ret.setSize(0);
-			for( int j=0; j<clen; j++ )
-				if( _ixbuff[j] == _rpos )
-					_ret.append(j, _vbuff[j]);
+			for(int i=0; i<_tmp.length; i++)
+				_ret.append(i, _tmp[i]);
 			//advance to next row and return buffer
-			getNextRow();
+			_rpos++;
 			return _ret;
 		}
 	}

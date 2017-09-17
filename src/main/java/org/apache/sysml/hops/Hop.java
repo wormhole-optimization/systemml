@@ -231,14 +231,6 @@ public abstract class Hop implements ParseInfo
 			}
 		}
 	}
-	
-	public void setRequiresReblock(boolean flag) {
-		_requiresReblock = flag;
-	}
-	
-	public void setRequiresCompression(boolean flag) {
-		_requiresCompression = flag;
-	}
 
 	public boolean hasMatrixInputWithDifferentBlocksizes()
 	{
@@ -254,27 +246,35 @@ public abstract class Hop implements ParseInfo
 		return false;
 	}
 	
-	public void setOutputBlocksizes( long brlen, long bclen )
-	{
+	public void setOutputBlocksizes( long brlen, long bclen ) {
 		setRowsInBlock( brlen );
 		setColsInBlock( bclen );
 	}
 	
-	public boolean requiresReblock()
-	{
+	public void setRequiresReblock(boolean flag) {
+		_requiresReblock = flag;
+	}
+	
+	public boolean requiresReblock() {
 		return _requiresReblock;
 	}
 	
-	public void setRequiresCheckpoint(boolean flag)
-	{
+	public void setRequiresCheckpoint(boolean flag) {
 		_requiresCheckpoint = flag;
 	}
 	
-	public boolean requiresCheckpoint()
-	{
+	public boolean requiresCheckpoint() {
 		return _requiresCheckpoint;
 	}
-
+	
+	public void setRequiresCompression(boolean flag) {
+		_requiresCompression = flag;
+	}
+	
+	public boolean requiresCompression() {
+		return _requiresCompression;
+	}
+	
 	public void constructAndSetLopsDataFlowProperties() 
 		throws HopsException
 	{
@@ -983,6 +983,10 @@ public abstract class Hop implements ParseInfo
 		_dim2 = dim2;
 	}
 	
+	public long getLength() {
+		return _dim1 * _dim2;
+	}
+	
 	public double getSparsity() {
 		return OptimizerUtils.getSparsity(_dim1, _dim2, _nnz);
 	}
@@ -1012,6 +1016,14 @@ public abstract class Hop implements ParseInfo
 	
 	public void setDataType( DataType dt ) {
 		_dataType = dt;
+	}
+	
+	public boolean isScalar() {
+		return _dataType.isScalar();
+	}
+	
+	public boolean isMatrix() {
+		return _dataType.isMatrix();
 	}
 
 	public void setVisited() {
@@ -1523,21 +1535,26 @@ public abstract class Hop implements ParseInfo
 	
 	/**
 	 * Marks the hop for dynamic recompilation, if dynamic recompilation is 
-	 * enabled and one of the two basic scenarios apply:
+	 * enabled and one of the three basic scenarios apply:
 	 * <ul>
 	 *  <li> The hop has unknown dimensions or sparsity and is scheduled for 
 	 *    remote execution, in which case the latency for distributed jobs easily 
 	 *    covers any recompilation overheads. </li>
 	 *  <li> The hop has unknown dimensions and is scheduled for local execution 
 	 *    due to forced single node execution type. </li>
+	 *  <li> The hop has unknown dimensions and is scheduled for local execution 
+	 *    due to good worst-case memory estimates but codegen is enabled, which
+	 *    requires (mostly) known sizes to validity conditions and cost estimation. </li>
 	 * <ul> <p>
 	 */
 	protected void setRequiresRecompileIfNecessary() {
 		ExecType REMOTE = OptimizerUtils.isSparkExecutionMode() ? ExecType.SPARK : ExecType.MR;
 		boolean caseRemote = (!dimsKnown(true) && _etype == REMOTE);
 		boolean caseLocal = (!dimsKnown() && _etypeForced == ExecType.CP);
+		boolean caseCodegen = (!dimsKnown() && ConfigurationManager.isCodegenEnabled());
 		
-		if( ConfigurationManager.isDynamicRecompilation() && (caseRemote || caseLocal) )
+		if( ConfigurationManager.isDynamicRecompilation() 
+			&& (caseRemote || caseLocal || caseCodegen) )
 			setRequiresRecompile();
 	}
 

@@ -92,8 +92,8 @@ public class PlanSelectionFuseCostBasedV2 extends PlanSelection
 	private static final double SPARSE_SAFE_SPARSITY_EST = 0.1;
 	
 	//optimizer configuration
-	private static final boolean USE_COST_PRUNING = true;
-	private static final boolean USE_STRUCTURAL_PRUNING = true;
+	public static boolean USE_COST_PRUNING = true;
+	public static boolean USE_STRUCTURAL_PRUNING = true;
 	
 	private static final IDSequence COST_ID = new IDSequence();
 	private static final TemplateRow ROW_TPL = new TemplateRow();
@@ -107,12 +107,14 @@ public class PlanSelectionFuseCostBasedV2 extends PlanSelection
 		Collection<PlanPartition> parts = PlanAnalyzer.analyzePlanPartitions(memo, roots, true);
 		
 		//step 2: optimize individual plan partitions
+		int sumMatPoints = 0;
 		for( PlanPartition part : parts ) {
 			//create composite templates (within the partition)
 			createAndAddMultiAggPlans(memo, part.getPartition(), part.getRoots());
 			
 			//plan enumeration and plan selection
 			selectPlans(memo, part);
+			sumMatPoints += part.getMatPointsExt().length;
 		}
 		
 		//step 3: add composite templates (across partitions)
@@ -121,6 +123,10 @@ public class PlanSelectionFuseCostBasedV2 extends PlanSelection
 		//take all distinct best plans
 		for( Entry<Long, List<MemoTableEntry>> e : getBestPlans().entrySet() )
 			memo.setDistinct(e.getKey(), e.getValue());
+		
+		//maintain statistics
+		if( DMLScript.STATISTICS )
+			Statistics.incrementCodegenEnumAll(UtilFunctions.pow(2, sumMatPoints));
 	}
 	
 	private void selectPlans(CPlanMemoTable memo, PlanPartition part) 
@@ -235,7 +241,8 @@ public class PlanSelectionFuseCostBasedV2 extends PlanSelection
 			}
 			
 			//cost assignment on hops. Stop early if exceeds bestC.
-			double C = getPlanCost(memo, part, matPoints, plan, costs._computeCosts, bestC);
+			double pCBound = USE_COST_PRUNING ? bestC : Double.MAX_VALUE;
+			double C = getPlanCost(memo, part, matPoints, plan, costs._computeCosts, pCBound);
 			if (LOG.isTraceEnabled())
 				LOG.trace("Enum: " + Arrays.toString(plan) + " -> " + C);
 			numEvalPartPlans += (C==Double.POSITIVE_INFINITY) ? 1 : 0;
@@ -256,7 +263,7 @@ public class PlanSelectionFuseCostBasedV2 extends PlanSelection
 		}
 		
 		if( DMLScript.STATISTICS ) {
-			Statistics.incrementCodegenEnumAll((rgraph!=null)?len:0);
+			Statistics.incrementCodegenEnumAllP((rgraph!=null)?len:0);
 			Statistics.incrementCodegenEnumEval(numEvalPlans);
 			Statistics.incrementCodegenEnumEvalP(numEvalPartPlans);
 		}

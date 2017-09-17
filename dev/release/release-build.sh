@@ -265,11 +265,14 @@ if [[ "$RELEASE_PREPARE" == "true" ]]; then
     echo "RELEASE_STAGING_LOCATION=$RELEASE_STAGING_LOCATION"
     echo "BASE_DIR=$BASE_DIR"
 
-    exit 5
+    # As fix has been added below to update version information exit to update pom file is not needed.
+    # exit 5
 
     # Update dev/release/target/release/systemml/pom.xml  with similar to following contents which is for 0.13.0 RC1
     #   Update <version>0.13.0</version>
     #   Update <tag>v0.13.0-rc1</tag>
+    sed -i .bak "s|<version>$DEVELOPMENT_VERSION<\/version>|<version>$RELEASE_VERSION<\/version>|" $BASE_DIR/target/release/systemml/pom.xml
+    sed -i .bak "s|<tag>HEAD<\/tag>|<tag>$RELEASE_TAG<\/tag>|" $BASE_DIR/target/release/systemml/pom.xml
 
     cd $RELEASE_WORK_DIR/systemml
     ## Rerunning mvn with clean and package goals, as release:prepare changes ordeer for some dependencies like unpack and shade.
@@ -286,11 +289,11 @@ if [[ "$RELEASE_PREPARE" == "true" ]]; then
 
         cd svn-release-staging/$RELEASE_VERSION-$RELEASE_RC/
         rm -f *.asc
-        for i in *.zip *.tgz; do gpg --output $i.asc --detach-sig --armor $i; done
+        for i in *.zip *.tgz *.tar.gz; do gpg --output $i.asc --detach-sig --armor $i; done
         rm -f *.md5
-        for i in *.zip *.tgz; do openssl md5 -hex $i | sed 's/MD5(\([^)]*\))= \([0-9a-f]*\)/\2 *\1/' > $i.md5; done
+        for i in *.zip *.tgz *.tar.gz; do openssl md5 -hex $i | sed 's/MD5(\([^)]*\))= \([0-9a-f]*\)/\2 *\1/' > $i.md5; done
         rm -f *.sha512
-        for i in *.zip *.tgz; do shasum -a 512 $i > $i.sha512; done
+        for i in *.zip *.tgz *.tar.gz; do shasum -a 512 $i > $i.sha512; done
 
         cd .. #exit $RELEASE_VERSION-$RELEASE_RC/
 

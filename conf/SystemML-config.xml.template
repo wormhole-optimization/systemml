@@ -55,10 +55,13 @@
    <cp.parallel.io>true</cp.parallel.io>
    
    <!-- enables compressed linear algebra, experimental feature -->
-   <compressed.linalg>false</compressed.linalg>
+   <compressed.linalg>auto</compressed.linalg>
    
    <!-- enables operator fusion via code generation, experimental feature -->
    <codegen.enabled>false</codegen.enabled>
+   
+   <!-- set the codegen java compiler (auto, janino, javac) -->
+   <codegen.compiler>auto</codegen.compiler>
    
    <!-- if codegen.enabled, enables source code caching of fused operators -->
    <codegen.plancache>false</codegen.plancache>
@@ -80,6 +83,9 @@
 
     <!-- sets the GPUs to use per process, -1 for all GPUs, a specific GPU number (5), a range (eg: 0-2) or a comma separated list (eg: 0,2,4)-->
     <systemml.gpu.availableGPUs>-1</systemml.gpu.availableGPUs>
+    
+    <!-- whether to synchronize GPUs after every GPU instruction -->
+    <systemml.gpu.sync.postProcess>true</systemml.gpu.sync.postProcess>
     
     <!-- maximum wrap length for instruction and miscellaneous timer column of statistics -->
    <systemml.stats.maxWrapLength>30</systemml.stats.maxWrapLength>

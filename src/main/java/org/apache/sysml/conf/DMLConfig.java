@@ -40,6 +40,8 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.sysml.hops.OptimizerUtils;
+import org.apache.sysml.hops.codegen.SpoofCompiler.CompilerType;
+import org.apache.sysml.lops.Compression;
 import org.apache.sysml.parser.ParseException;
 import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.io.IOUtilFunctions;
@@ -71,17 +73,20 @@ public class DMLConfig
 	public static final String YARN_APPQUEUE        = "dml.yarn.app.queue"; 
 	public static final String CP_PARALLEL_OPS      = "cp.parallel.ops";
 	public static final String CP_PARALLEL_IO       = "cp.parallel.io";
-	public static final String COMPRESSED_LINALG    = "compressed.linalg";
+	public static final String COMPRESSED_LINALG    = "compressed.linalg"; //auto, true, false
 	public static final String NATIVE_BLAS          = "native.blas";
 	public static final String SPOOF                = "spoof.enabled"; //boolean
 	public static final String CODEGEN              = "codegen.enabled"; //boolean
+	public static final String CODEGEN_COMPILER     = "codegen.compiler"; //see SpoofCompiler.CompilerType
 	public static final String CODEGEN_PLANCACHE    = "codegen.plancache"; //boolean
 	public static final String CODEGEN_LITERALS     = "codegen.literals"; //1..heuristic, 2..always
+
 	public static final String EXTRA_FINEGRAINED_STATS = "systemml.stats.finegrained"; //boolean
 	public static final String STATS_MAX_WRAP_LEN = "systemml.stats.maxWrapLength"; //int
 	public static final String EXTRA_GPU_STATS      = "systemml.stats.extraGPU"; //boolean
 	public static final String EXTRA_DNN_STATS      = "systemml.stats.extraDNN"; //boolean
 	public static final String AVAILABLE_GPUS       = "systemml.gpu.availableGPUs"; // String to specify which GPUs to use (a range, all GPUs, comma separated list or a specific GPU)
+	public static final String SYNCHRONIZE_GPU       = "systemml.gpu.sync.postProcess"; // boolean: whether to synchronize GPUs after every instruction
 
 	// Fraction of available memory to use. The available memory is computer when the GPUContext is created
 	// to handle the tradeoff on calling cudaMemGetInfo too often.
@@ -118,19 +123,20 @@ public class DMLConfig
 		_defaultVals.put(YARN_APPQUEUE,    	     "default" );
 		_defaultVals.put(CP_PARALLEL_OPS,        "true" );
 		_defaultVals.put(CP_PARALLEL_IO,         "true" );
-		_defaultVals.put(COMPRESSED_LINALG,      "false" );
+		_defaultVals.put(COMPRESSED_LINALG,      Compression.CompressConfig.AUTO.name() );
 		_defaultVals.put(SPOOF,                  "true" );  // hehe
 		_defaultVals.put(CODEGEN,                "false" );
+		_defaultVals.put(CODEGEN_COMPILER,       CompilerType.AUTO.name() );
 		_defaultVals.put(CODEGEN_PLANCACHE,      "true" );
 		_defaultVals.put(CODEGEN_LITERALS,       "1" );
 		_defaultVals.put(NATIVE_BLAS,            "none" );
 		_defaultVals.put(EXTRA_FINEGRAINED_STATS,"false" );
-		_defaultVals.put(STATS_MAX_WRAP_LEN,"30" );
+		_defaultVals.put(STATS_MAX_WRAP_LEN,     "30" );
 		_defaultVals.put(EXTRA_GPU_STATS,        "false" );
 		_defaultVals.put(EXTRA_DNN_STATS,        "false" );
-
 		_defaultVals.put(GPU_MEMORY_UTILIZATION_FACTOR,      "0.9" );
-		_defaultVals.put(AVAILABLE_GPUS,   "-1");
+		_defaultVals.put(AVAILABLE_GPUS,         "-1");
+		_defaultVals.put(SYNCHRONIZE_GPU,        "false" );
 	}
 	
 	public DMLConfig()
@@ -410,9 +416,10 @@ public class DMLConfig
 				NUM_REDUCERS, DEFAULT_BLOCK_SIZE,
 				YARN_APPMASTER, YARN_APPMASTERMEM, YARN_MAPREDUCEMEM, 
 				CP_PARALLEL_OPS, CP_PARALLEL_IO, NATIVE_BLAS,
-				COMPRESSED_LINALG, CODEGEN, CODEGEN_LITERALS, CODEGEN_PLANCACHE,
+				COMPRESSED_LINALG,
+				CODEGEN, CODEGEN_COMPILER, CODEGEN_PLANCACHE, CODEGEN_LITERALS,
 				EXTRA_GPU_STATS, EXTRA_DNN_STATS, EXTRA_FINEGRAINED_STATS, STATS_MAX_WRAP_LEN,
-				AVAILABLE_GPUS
+				AVAILABLE_GPUS, SYNCHRONIZE_GPU
 		}; 
 		
 		StringBuilder sb = new StringBuilder();

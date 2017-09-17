@@ -1210,11 +1210,40 @@
 								<configuration>
 									<artifacts>
 										<artifact>
-											<file>${basedir}/target/${project.artifactId}-${project.version}-python.tgz</file>
-											<type>tgz</type>
+											<file>${basedir}/target/${project.artifactId}-${project.version}-python.tar.gz</file>
+											<type>tar.gz</type>
 											<classifier>python</classifier>
 										</artifact>
 									</artifacts>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+
+		<profile>
+			<!-- Profile to create lightweight jar (currently for JMLC only) -->
+			<id>lite</id>
+			<build>
+				<plugins>
+					<plugin>
+						<artifactId>maven-assembly-plugin</artifactId>
+						<configuration>
+							<tarLongFileMode>gnu</tarLongFileMode>
+						</configuration>
+						<executions>
+							<execution>
+								<id>create-lite-jar</id>
+								<phase>package</phase>
+								<goals>
+									<goal>single</goal>
+								</goals>
+								<configuration>
+									<descriptors>
+										<descriptor>src/assembly/lite.xml</descriptor>
+									</descriptors>
 								</configuration>
 							</execution>
 						</executions>

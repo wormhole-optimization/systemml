@@ -55,7 +55,12 @@ import org.apache.sysml.hops.UnaryOp;
 import org.apache.sysml.hops.Hop.OpOp1;
 import org.apache.sysml.parser.DataExpression;
 import org.apache.sysml.parser.DataIdentifier;
+import org.apache.sysml.parser.ForStatementBlock;
+import org.apache.sysml.parser.FunctionStatementBlock;
+import org.apache.sysml.parser.IfStatementBlock;
 import org.apache.sysml.parser.Statement;
+import org.apache.sysml.parser.StatementBlock;
+import org.apache.sysml.parser.WhileStatementBlock;
 import org.apache.sysml.parser.Expression.DataType;
 import org.apache.sysml.parser.Expression.ValueType;
 import org.apache.sysml.runtime.instructions.cp.ScalarObject;
@@ -280,6 +285,13 @@ public class HopRewriteUtils
 		for( Hop input : inputs )
 			if( input.getParent().isEmpty() )
 				removeAllChildReferences(input);
+	}
+	
+	public static Hop getOtherInput(Hop hop, Hop input) {
+		for( Hop c : hop.getInput() )
+			if( c != input )
+				return c;
+		return null;
 	}
 	
 	public static Hop createDataGenOp( Hop input, double value ) 
@@ -1158,8 +1170,7 @@ public class HopRewriteUtils
 	
 	/**
 	 * Compares the size of outputs from hop1 and hop2, in terms of number
-	 * of matrix cells. Note that this methods throws a RuntimeException
-	 * if either hop has unknown dimensions. 
+	 * of matrix cells. 
 	 * 
 	 * @param hop1 high-level operator 1
 	 * @param hop2 high-level operator 2
@@ -1169,5 +1180,12 @@ public class HopRewriteUtils
 		long size1 = hop1.getDim1() * hop1.getDim2();
 		long size2 = hop2.getDim1() * hop2.getDim2();
 		return Long.compare(size1, size2);
+	}
+	
+	public static boolean isLastLevelStatementBlock(StatementBlock sb) {
+		return !(sb instanceof FunctionStatementBlock 
+			|| sb instanceof WhileStatementBlock
+			|| sb instanceof IfStatementBlock
+			|| sb instanceof ForStatementBlock); //incl parfor
 	}
 }

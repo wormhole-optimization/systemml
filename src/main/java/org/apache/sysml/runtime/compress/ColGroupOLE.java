@@ -473,7 +473,7 @@ public class ColGroupOLE extends ColGroupOffset
 			//iterate over bitmap blocks and add partial results
 			double vsum = 0;
 			for( int j = boff+1; j < boff+1+_data[boff]; j++ )
-				vsum += a.getData(_data[j], 0);
+				vsum += a.getData(_data[j]);
 			
 			//scale partial results by values and write results
 			for( int j = 0; j < numCols; j++ )
@@ -780,7 +780,12 @@ public class ColGroupOLE extends ColGroupOffset
 	public Iterator<Integer> getIterator(int k, int rl, int ru) {
 		return new OLEValueIterator(k, rl, ru);
 	}
-
+	
+	@Override
+	public ColGroupRowIterator getRowIterator(int rl, int ru) {
+		return new OLERowIterator(rl, ru);
+	}
+	
 	private class OLEValueIterator implements Iterator<Integer>
 	{
 		private final int _ru;
@@ -845,6 +850,62 @@ public class ColGroupOLE extends ColGroupOffset
 				else {
 					_rpos = _ru;
 				}
+			}
+		}
+	}
+	
+	private class OLERowIterator extends ColGroupRowIterator
+	{
+		//iterator configuration 
+		private final int _ru;
+		//iterator state
+		private final int[] _apos;
+		private final int[] _vcodes;
+		private int _rpos = -1;
+		
+		public OLERowIterator(int rl, int ru) {
+			_ru = ru;
+			_rpos = rl;
+			_apos = skipScan(getNumValues(), rl);
+			_vcodes = new int[Math.min(BitmapEncoder.BITMAP_BLOCK_SZ, ru-rl)];
+			Arrays.fill(_vcodes, -1); //initial reset
+			getNextSegment();
+		}
+		
+		@Override
+		public boolean hasNext() {
+			return (_rpos < _ru);
+		}
+		
+		@Override
+		public void next(double[] buff) {
+			//copy entire value tuple or reset to zero
+			int ix = _rpos%BitmapEncoder.BITMAP_BLOCK_SZ;
+			final int clen = getNumCols();
+			for(int j=0, off=_vcodes[ix]*clen; j<clen; j++)
+				if( _vcodes[ix] >= 0 )
+					buff[_colIndexes[j]] = _values[off+j];
+			//reset vcode to avoid scan on next segment
+			_vcodes[ix] = -1;
+			//advance position to next row
+			_rpos++;
+			if( _rpos%BitmapEncoder.BITMAP_BLOCK_SZ==0 && _rpos<_ru )
+				getNextSegment();
+		}
+		
+		public void getNextSegment() {
+			//materialize value codes for entire segment in a 
+			//single pass over all values (store value code by pos)
+			final int numVals = getNumValues();
+			for (int k = 0; k < numVals; k++)  {
+				int boff = _ptr[k];
+				int blen = len(k);
+				int bix = _apos[k];
+				if( bix >= blen ) continue;
+				int slen = _data[boff+bix];
+				for(int i=0, off=boff+bix+1; i<slen; i++)
+					_vcodes[_data[off+i]] = k;
+				_apos[k] += slen+1;
 			}
 		}
 	}
