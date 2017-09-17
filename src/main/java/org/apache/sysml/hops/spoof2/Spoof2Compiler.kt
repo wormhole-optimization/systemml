@@ -148,7 +148,51 @@ object Spoof2Compiler {
         return roots
     }
 
-    /**
+    // dim -> <Input -> Dim>
+    private fun dimsToInputDims(root: SNode): List<Map<SNode, Int>> {
+        return root.schema.indices.map { i ->
+            mapToInputs(root, i)
+        }
+    }
+
+    private fun mapToInputs(node: SNode, i: Int): Map<SNode, Int> {
+        return when( node ) {
+            is SNodeData -> {
+                if( node.isWrite )
+                    mapToInputs(node.inputs[0], i)
+                else if( node.isLiteral )
+                    mapOf()
+                else
+                    mapOf<SNode, Int>(node to i)
+            }
+            is SNodeBind -> mapToInputs(node.input, i)
+            is SNodeUnbind -> {
+                if( i in node.unbindings )
+                    mapToInputs(node.input, node.unbindings[i]!!)
+                else
+                    mapToInputs(node.input, i)
+            }
+            is SNodeExt -> {
+                mapOf(node to i)
+            }
+            else -> throw SNodeException(node, "don't know how to handle snode type $node")
+        }
+    }
+    private fun mapToInputs(node: SNode, n: Name): Map<SNode, Int> {
+        return when( node ) {
+            is SNodeBind -> {
+                if( n in node.bindings.values )
+                    mapToInputs(node.input, node.bindings.entries.find { it.value == n }!!.key)
+                else
+                    mapToInputs(node.input, n)
+            }
+            else -> {
+                node.inputs.filter { n in it.schema }.map { mapToInputs(it, n) }.reduce { a, b -> a + b }
+            }
+        }
+    }
+
+        /**
      * Main interface of sum-product optimizer, statement block dag.
 
      * @param roots dag root nodes
@@ -202,6 +246,12 @@ object Spoof2Compiler {
             }
             return programRewriteHops(roots, recompile, doDynamicProgramRewriter)
         }
+
+            val baseInputs = sroots.map { sroot ->
+                dimsToInputDims(sroot)
+            }
+            if( LOG.isTraceEnabled )
+                LOG.trace("Base input map: "+sroots.zip(baseInputs))
 
 
 //        BasicSPlanRewriter().rewriteSPlan(sroots, listOf(RewriteBindElim()))
