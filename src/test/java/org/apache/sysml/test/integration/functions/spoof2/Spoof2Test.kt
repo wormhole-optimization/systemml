@@ -85,7 +85,8 @@ class Spoof2Test(
         //	TEST_NAME+43;  //AB, ABC, BCD, where B=log(CDE)
         //	TEST_NAME+44;  //sum(A+7) // test aggregation over an edge that does not have the aggregated name
         //	TEST_NAME+45;  //sum(A)+7
-        private const val NUM_TESTS = 45
+        //	TEST_NAME+46;  //sum(A)+7
+        private const val NUM_TESTS = 46
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"

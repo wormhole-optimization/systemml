@@ -4,6 +4,7 @@ import org.apache.sysml.hops.Hop.AggOp
 import org.apache.sysml.hops.LiteralOp
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
+import org.apache.sysml.parser.Expression
 
 class RewritePushAggIntoPlus(
         val constantAggToMultiply: Boolean = false
@@ -53,7 +54,7 @@ class RewritePushAggIntoPlus(
             var needsSplitCSE = mult.parents.size > 1
             val notInInput = agg.aggsNotInInputSchema()
             @Suppress("UNCHECKED_CAST")
-            val litInputs = (mult.inputs.filter { it is SNodeData && it.isLiteral } as List<SNodeData>).toMutableList()
+            val litInputs = (mult.inputs.filter { it is SNodeData && it.isLiteralNumeric } as List<SNodeData>).toMutableList()
 
             loop@while( notInInput.isNotEmpty() && litInputs.isNotEmpty() ) {
                 for( v in 1L until (1L shl notInInput.size) ) {
@@ -61,7 +62,10 @@ class RewritePushAggIntoPlus(
                         v and (1L shl p) != 0L
                     }.run(::Schema)
                     val tgt = selectSchema.shapes.fold(1.0, Double::div)
-                    val exact = litInputs.find { (it.hop as LiteralOp).doubleValue == tgt }
+                    val exact = litInputs.find {
+                        val hop = it.hop as LiteralOp
+                        hop.doubleValue == tgt
+                    }
                     if( exact != null ) {
                         if( needsSplitCSE ) {
                             val otherParents = mult.parents.filter { it != agg }.toSet()

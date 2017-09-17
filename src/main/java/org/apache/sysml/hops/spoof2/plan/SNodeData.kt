@@ -22,6 +22,10 @@ class SNodeData private constructor(
     constructor(hop: Hop, input: SNode): this(hop, listOf(input))
 
     val isLiteral = hop is LiteralOp
+    val isLiteralNumeric = hop is LiteralOp && when( hop.valueType!! ) {
+        Expression.ValueType.STRING, Expression.ValueType.OBJECT, Expression.ValueType.UNKNOWN -> false
+        Expression.ValueType.BOOLEAN, Expression.ValueType.INT, Expression.ValueType.DOUBLE -> true
+    }
     val isWrite = hop is DataOp && hop.isWrite
 
     val literalLong: Long
