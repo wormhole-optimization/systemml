@@ -336,10 +336,10 @@ class SPlanCSEElimRewriter(
                             if( idx1 != idx2 ) {
                                 val n2p = ArrayList(n2.parents)
                                 n2.parents.clear()
-                                val oldSchema = n2.schema.names.mapIndexed { i, s: Name -> i to s }.toMap()
+                                val oldSchema = Schema(n2.schema)
                                 n2.inputs.swap(0, 1)
                                 n2.refreshSchema()
-                                val u = SNodeUnbind(n2, n2.schema.names.mapIndexed { i, s: Name -> i to s }.toMap())
+                                val u = SNodeUnbind(n2, oldSchema.names.mapIndexed { i, s: Name -> i to s }.toMap())
                                 val b = SNodeBind(u, oldSchema)
                                 b.parents.addAll(n2p)
                                 n2p.forEach {

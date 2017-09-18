@@ -15,7 +15,7 @@ class SNodeBind(
     constructor(input: SNode)
             : this(input, input.schema)
     constructor(input: SNode, schema: Schema)
-            : this(input, schema.names.mapIndexed { i, n -> i to n }.filter { (_, n) -> !n.isBound() }.toMap())
+            : this(input, schema.names.mapIndexed { i, n -> i to n }.filter { (_, n) -> n.isBound() }.toMap())
 
     override fun compare(o: SNode) =
             o is SNodeBind && o.bindings == this.bindings && o.input == this.input
