@@ -1,26 +1,12 @@
 package org.apache.sysml.hops.spoof2
 
-import com.google.common.collect.HashMultimap
-import com.google.common.collect.Multimap
-import java.util.ArrayList
-import java.util.Arrays
-
+import com.google.common.collect.ArrayListMultimap
+import com.google.common.collect.ListMultimap
 import org.apache.commons.logging.LogFactory
 import org.apache.log4j.Level
 import org.apache.log4j.Logger
-import org.apache.sysml.hops.AggBinaryOp
-import org.apache.sysml.hops.AggUnaryOp
-import org.apache.sysml.hops.BinaryOp
-import org.apache.sysml.hops.DataGenOp
-import org.apache.sysml.hops.DataOp
-import org.apache.sysml.hops.Hop
-import org.apache.sysml.hops.Hop.OpOp1
-import org.apache.sysml.hops.Hop.OpOp2
-import org.apache.sysml.hops.Hop.OpOp3
-import org.apache.sysml.hops.HopsException
-import org.apache.sysml.hops.LiteralOp
-import org.apache.sysml.hops.ReorgOp
-import org.apache.sysml.hops.UnaryOp
+import org.apache.sysml.hops.*
+import org.apache.sysml.hops.Hop.*
 import org.apache.sysml.hops.rewrite.*
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
@@ -29,6 +15,7 @@ import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter
 import org.apache.sysml.parser.*
 import org.apache.sysml.runtime.DMLRuntimeException
 import org.apache.sysml.utils.Explain
+import java.util.*
 
 object Spoof2Compiler {
     private val LOG = LogFactory.getLog(Spoof2Compiler::class.java.name)
@@ -151,15 +138,15 @@ object Spoof2Compiler {
     }
 
     // dim -> <Input -> Dim>
-    private fun dimsToInputDims(root: SNode): List<Multimap<SNode, Int>> {
+    private fun dimsToInputDims(root: SNode): List<ListMultimap<SNode, Int>> {
         return root.schema.indices.map { i ->
-            val mm = HashMultimap.create<SNode, Int>()
+            val mm = ArrayListMultimap.create<SNode, Int>()
             mapToInputs(root, i, mm)
             mm
         }
     }
 
-    private fun mapToInputs(node: SNode, i: Int, mm: Multimap<SNode, Int>) {
+    private fun mapToInputs(node: SNode, i: Int, mm: ListMultimap<SNode, Int>) {
         when( node ) {
             is SNodeData -> {
                 if( node.isWrite ) mapToInputs(node.inputs[0], i, mm)
@@ -177,7 +164,7 @@ object Spoof2Compiler {
             else -> throw SNodeException(node, "don't know how to handle snode type $node")
         }
     }
-    private fun mapToInputs(node: SNode, n: Name, mm: Multimap<SNode, Int>) {
+    private fun mapToInputs(node: SNode, n: Name, mm: ListMultimap<SNode, Int>) {
         when( node ) {
             is SNodeBind -> {
                 if( n in node.bindings.values )
@@ -248,8 +235,6 @@ object Spoof2Compiler {
         val baseInputs = sroots.map { sroot ->
             dimsToInputDims(sroot)
         }
-        if( LOG.isTraceEnabled )
-            LOG.trace("Base input map: "+sroots.zip(baseInputs))
 
 
 //        BasicSPlanRewriter().rewriteSPlan(sroots, listOf(RewriteBindElim()))
@@ -277,19 +262,91 @@ object Spoof2Compiler {
         for (sroot in sroots)
             roots2.add(rReconstructHopDag(sroot, hopMemo))
 
+        val baseInputs2 = sroots.map { sroot ->
+            dimsToInputDims(sroot)
+        }
+        if( LOG.isTraceEnabled ) {
+            LOG.trace("Base input map: ${baseInputs.mapIndexed {i, bil -> "\nr$i\t${bil.mapIndexed { d, bi -> "d$d: $bi" }.joinToString("\n\t")}"}.reduce(String::plus)}" +
+                    "\nBase input map2: ${baseInputs2.mapIndexed {i, bil -> "\nr$i\t${bil.mapIndexed { d, bi -> "d$d: $bi" }.joinToString("\n\t")}"}.reduce(String::plus)}")
+        }
+
+
         // add transposes if necessary to roots in order to maintain same orientation as original
         // shouldn't be necessary because the roots are generally Writes, which correct orientation on their own
         roots2.mapInPlaceIndexed { idx, root2 ->
             if( rootClasses[idx].isVector && root2.classify() != rootClasses[idx] ) {
-
                 check( root2.classify().isVector ) {"root changed type after reconstruction? Old type ${rootClasses[idx]}; new type ${root2.classify()} dims ${root2.dim1}, ${root2.dim2} hopid=${root2.hopID}" +
                         "\n modified Hop Dag is:\n" + Explain.explainHops(roots2)}
-                // todo look at transposes
                 if( LOG.isTraceEnabled )
                     LOG.trace("creating root transpose at root $idx to enforce orientation ${rootClasses[idx]}")
                 HopRewriteUtils.createTranspose(root2)
-            }
-            else
+            } else if( rootClasses[idx] == HopClass.MATRIX ) { // check data flow
+                val bi = baseInputs[idx]
+                // does dim 0 base inputs == dim 1 base inputs? If so, it is symmetric and orientation does not matter.
+                if( bi[0] == bi[1] )
+                    root2
+                else {
+                    val bi2 = baseInputs2[idx]
+                    // Does bi[0] and bi[1] have different unique inputs? If so, distinguish based on # of unique inputs.
+                    val biu = bi.map { it.asMap().mapValues { (_,v) -> v.distinct() }.toList().distinct() }
+                    if( biu[0] != biu[1] ) {
+                        val biu2 = bi2.map { it.asMap().mapValues { (_,v) -> v.distinct() }.toList().distinct() }
+                        if( biu[0] == biu2[0] ) { // need better method?
+                            root2
+                        } else if( biu[0] == biu2[1] ) {
+                            if( LOG.isTraceEnabled )
+                                LOG.trace("create root transpose at root $idx based on data flow; unique inputs differ case")
+                            HopRewriteUtils.createTranspose(root2)
+                        } else {
+                            throw SNodeException(sroots[idx], "Failed to distinguish orientation for old Hop root ${roots[idx].hopID} and new Hop root ${root2.hopID}; " +
+                                    "baseInputs have different unique inputs but neither equal to base inputs 2:" +
+                                    "\n\t0: ${biu[0].map { (k,_) -> k }.toSet().joinToString { "(${it.id})$it" }}" +
+                                    "\n\t1: ${biu[1].map { (k,_) -> k }.toSet().joinToString { "(${it.id})$it" }}" +
+                                    "\n\t0: ${biu2[0].map { (k,_) -> k }.toSet().joinToString { "(${it.id})$it" }}" +
+                                    "\n\t1: ${biu2[0].map { (k,_) -> k }.toSet().joinToString { "(${it.id})$it" }}")
+                        }
+                    } else {
+                        // for each unique base input, if the number of base inputs is different between dimensions,
+                        // go with the orientation that agrees with the disparity
+                        @Suppress("NAME_SHADOWING")
+                        val r = bi[0].keySet().fold(-1) { commit, uniqueBase ->
+                            // bi[0] is the base input of root dimension 0
+                            // x1[0] corresponds to bi[0]
+                            // x1[0][0] is the first dimension of the base input
+                            val x1 = bi.map { it[uniqueBase]!!.groupBy { it }.map { it.key to it.value.sum() }.sortedBy { it.first }.map { it.second }}
+                            val x2 = bi2.map { it[uniqueBase]!!.groupBy { it }.map { it.key to it.value.sum() }.sortedBy { it.first }.map { it.second }}
+                            // -1 -> uncommitted; 0 -> commit no transpose; 1 -> commit transpose
+                            x1[0].indices.fold(commit) { commit, baseIdx ->
+                                val c = x1[0][baseIdx].compareTo(x1[1][baseIdx])
+                                if( c == 0 )
+                                    commit
+                                else {
+                                    val c2 = x2[0][baseIdx].compareTo(x2[1][baseIdx])
+                                    val newCommit = when (c2) {
+                                        0 -> commit
+                                        c -> 0
+                                        else -> 1
+                                    }
+                                    if( commit >= 0 && commit != newCommit )
+                                        throw SNodeException(sroots[idx], "Failed to distinguish orientation for old Hop root ${roots[idx].hopID} and new Hop root ${root2.hopID}; " +
+                                                "baseInputs have same unique inputs and on input $uniqueBase, diagreeement with a previous unique input")
+                                    newCommit
+                                }
+                            }
+                        }
+                        when( r ) {
+                            0 -> root2
+                            1 -> {
+                                if( LOG.isTraceEnabled )
+                                    LOG.trace("create root transpose at root $idx based on data flow; unique inputs equal case")
+                                HopRewriteUtils.createTranspose(root2)
+                            }
+                            -1 -> root2 // symmetric again
+                            else -> throw AssertionError("impossible by design")
+                        }
+                    }
+                }
+            } else // scalar or ok vector
                 root2
         }
 
