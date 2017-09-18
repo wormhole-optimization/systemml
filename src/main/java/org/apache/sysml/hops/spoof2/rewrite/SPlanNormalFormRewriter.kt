@@ -15,7 +15,7 @@ import org.apache.sysml.utils.Explain
  * 3. Apply the rewrite rules that get us back to Hop-ready form, repeatedly until convergence.
  */
 class SPlanNormalFormRewriter : SPlanRewriter {
-    private val _rulesFirstOnce = listOf(
+    private val _rulesFirstOnce = listOf<SPlanRewriteRule>(
             RewriteDecompose()          // Subtract  + and *(-1);   ^2  Self-*
     )
     private val _ruleBindElim = listOf(

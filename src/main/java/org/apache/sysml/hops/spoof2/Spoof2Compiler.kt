@@ -1,5 +1,7 @@
 package org.apache.sysml.hops.spoof2
 
+import com.google.common.collect.HashMultimap
+import com.google.common.collect.Multimap
 import java.util.ArrayList
 import java.util.Arrays
 
@@ -31,19 +33,19 @@ import org.apache.sysml.utils.Explain
 object Spoof2Compiler {
     private val LOG = LogFactory.getLog(Spoof2Compiler::class.java.name)
 
-        //internal configuration flags
-        const val LDEBUG = true
-        // for internal debugging only
-        init {
-            if (LDEBUG) Logger.getLogger("org.apache.sysml.hops.spoof2").level = Level.TRACE
-        }
+    //internal configuration flags
+    const val LDEBUG = true
+    // for internal debugging only
+    init {
+        if (LDEBUG) Logger.getLogger("org.apache.sysml.hops.spoof2").level = Level.TRACE
+    }
 
-        // todo inefficient; might be fine just to check the top-level sizes
-        fun allKnownSizes(hop: Hop): Boolean {
-            if (!hop.dimsKnown())
-                return false
-            return hop.input.all { allKnownSizes(it) }
-        }
+    // todo inefficient; might be fine just to check the top-level sizes
+    fun allKnownSizes(hop: Hop): Boolean {
+        if (!hop.dimsKnown())
+            return false
+        return hop.input.all { allKnownSizes(it) }
+    }
 
     @JvmStatic
     @Throws(LanguageException::class, HopsException::class, DMLRuntimeException::class)
@@ -71,14 +73,14 @@ object Spoof2Compiler {
                 val fstmt = current.getStatement(0) as FunctionStatement
                 for (sb in fstmt.body)
                     generateCodeFromStatementBlock(sb)
-            } 
+            }
             is WhileStatementBlock -> {
                 val wsb = current
                 val wstmt = wsb.getStatement(0) as WhileStatement
                 wsb.predicateHops = optimize(wsb.predicateHops, false, true)
                 for (sb in wstmt.body)
                     generateCodeFromStatementBlock(sb)
-            } 
+            }
             is IfStatementBlock -> {
                 val isb = current
                 val istmt = isb.getStatement(0) as IfStatement
@@ -87,7 +89,7 @@ object Spoof2Compiler {
                     generateCodeFromStatementBlock(sb)
                 for (sb in istmt.elseBody)
                     generateCodeFromStatementBlock(sb)
-            } 
+            }
             is ForStatementBlock -> { //incl parfor
                 val fsb = current
                 val fstmt = fsb.getStatement(0) as ForStatement
@@ -96,7 +98,7 @@ object Spoof2Compiler {
                 fsb.incrementHops = optimize(fsb.incrementHops, false, true)
                 for (sb in fstmt.body)
                     generateCodeFromStatementBlock(sb)
-            } 
+            }
             else -> { //generic (last-level)
                 current._hops = generateCodeFromHopDAGs(current._hops, false, true)
                 current.updateRecompilationFlag()
@@ -142,57 +144,52 @@ object Spoof2Compiler {
 //        recompile, inplace=true  ==>  CSE; SumProduct
 //        LOG.trace("Call ProgramRewriter with static=${!recompile} dynamic=$doDynamicProgramRewriter")
         val rewriter2 = ProgramRewriter(!recompile, doDynamicProgramRewriter)
-            // todo - some fix with handling literals in predicates, as exposed by CSE in static rewrites during recompile - need fix from master
+        // todo - some fix with handling literals in predicates, as exposed by CSE in static rewrites during recompile - need fix from master
         rewriter2.rewriteHopDAGs(roots, ProgramRewriteStatus())
         Hop.resetVisitStatus(roots)
         return roots
     }
 
     // dim -> <Input -> Dim>
-    private fun dimsToInputDims(root: SNode): List<Map<SNode, Int>> {
+    private fun dimsToInputDims(root: SNode): List<Multimap<SNode, Int>> {
         return root.schema.indices.map { i ->
-            mapToInputs(root, i)
+            val mm = HashMultimap.create<SNode, Int>()
+            mapToInputs(root, i, mm)
+            mm
         }
     }
 
-    private fun mapToInputs(node: SNode, i: Int): Map<SNode, Int> {
-        return when( node ) {
+    private fun mapToInputs(node: SNode, i: Int, mm: Multimap<SNode, Int>) {
+        when( node ) {
             is SNodeData -> {
-                if( node.isWrite )
-                    mapToInputs(node.inputs[0], i)
+                if( node.isWrite ) mapToInputs(node.inputs[0], i, mm)
                 else if( node.isLiteral )
-                    mapOf()
-                else
-                    mapOf<SNode, Int>(node to i)
+                else mm.put(node, i)
             }
-            is SNodeBind -> mapToInputs(node.input, i)
+            is SNodeBind -> mapToInputs(node.input, i, mm)
             is SNodeUnbind -> {
                 if( i in node.unbindings )
-                    mapToInputs(node.input, node.unbindings[i]!!)
+                    mapToInputs(node.input, node.unbindings[i]!!, mm)
                 else
-                    mapToInputs(node.input, i)
+                    mapToInputs(node.input, i, mm)
             }
-            is SNodeExt -> {
-                mapOf(node to i)
-            }
+            is SNodeExt -> mm.put(node, i)
             else -> throw SNodeException(node, "don't know how to handle snode type $node")
         }
     }
-    private fun mapToInputs(node: SNode, n: Name): Map<SNode, Int> {
-        return when( node ) {
+    private fun mapToInputs(node: SNode, n: Name, mm: Multimap<SNode, Int>) {
+        when( node ) {
             is SNodeBind -> {
                 if( n in node.bindings.values )
-                    mapToInputs(node.input, node.bindings.entries.find { it.value == n }!!.key)
+                    mapToInputs(node.input, node.bindings.entries.find { it.value == n }!!.key, mm)
                 else
-                    mapToInputs(node.input, n)
+                    mapToInputs(node.input, n, mm)
             }
-            else -> {
-                node.inputs.filter { n in it.schema }.map { mapToInputs(it, n) }.reduce { a, b -> a + b }
-            }
+            else -> node.inputs.filter { n in it.schema }.map { mapToInputs(it, n, mm) }
         }
     }
 
-        /**
+    /**
      * Main interface of sum-product optimizer, statement block dag.
 
      * @param roots dag root nodes
@@ -247,11 +244,12 @@ object Spoof2Compiler {
             return programRewriteHops(roots, recompile, doDynamicProgramRewriter)
         }
 
-            val baseInputs = sroots.map { sroot ->
-                dimsToInputDims(sroot)
-            }
-            if( LOG.isTraceEnabled )
-                LOG.trace("Base input map: "+sroots.zip(baseInputs))
+        // for each root, a map from input dimensions (acutally a list) to the base inputs and input dimensions
+        val baseInputs = sroots.map { sroot ->
+            dimsToInputDims(sroot)
+        }
+        if( LOG.isTraceEnabled )
+            LOG.trace("Base input map: "+sroots.zip(baseInputs))
 
 
 //        BasicSPlanRewriter().rewriteSPlan(sroots, listOf(RewriteBindElim()))
@@ -675,7 +673,7 @@ object Spoof2Compiler {
             {"don't know how to compile aggregate to Hop with aggregates ${agg.aggs}"}
             var dir = when {
                 agg.aggs.size == 2 -> Hop.Direction.RowCol
-                // change to RowCol when aggregating vectors, in order to create a scalar rather than a 1x1 matrix
+            // change to RowCol when aggregating vectors, in order to create a scalar rather than a 1x1 matrix
                 hop0.dim2 == 1L -> Hop.Direction.RowCol // sum first dimension ==> row vector : Hop.Direction.Col
                 hop0.dim1 == 1L -> Hop.Direction.RowCol // sum second dimension ==> col vector: Hop.Direction.Row
                 agg.aggs[0] == aggInput.schema.names[0] -> {
@@ -719,7 +717,7 @@ object Spoof2Compiler {
 
     private fun reconstructNary(nary: SNodeNary, hopMemo: MutableMap<SNode, Hop>): Hop {
         val hopInputs = nary.inputs.mapTo(ArrayList()) { input ->
-                rReconstructHopDag(input, hopMemo)
+            rReconstructHopDag(input, hopMemo)
         }
 
         // if joining on two names and both matrices, ensure that they align by possibly transposing one of them
@@ -748,7 +746,7 @@ object Spoof2Compiler {
         // transpose vector if it does not match the correct dimension
         if( nary.inputs.size == 2 &&
                 (nary.inputs[0].schema.size == 2 && nary.inputs[1].schema.size == 1 ||
-                nary.inputs[1].schema.size == 2 && nary.inputs[0].schema.size == 1))
+                        nary.inputs[1].schema.size == 2 && nary.inputs[0].schema.size == 1))
         {
             val (mat,vec) = if( nary.inputs[1].schema.size == 2 ) {
                 hopInputs.swap(0,1)
