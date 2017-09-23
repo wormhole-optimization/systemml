@@ -699,7 +699,7 @@ object Spoof2Compiler {
                         }
                         1 -> when( i1!!.dim ) {
                             0 -> {}                                                 //[a,b]x[b,c]
-                            1 -> hop1 = HopRewriteUtils.createTranspose(hop1)       //[a,b]x[c,b]
+                            1 -> {hop1 = HopRewriteUtils.createTranspose(hop1); swap01(mapInput1)}       //[a,b]x[c,b]
                         }
                     }
                     fm.put(AU.U0, mapInput0[AU.U0]!!)

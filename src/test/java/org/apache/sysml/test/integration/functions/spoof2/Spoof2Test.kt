@@ -87,7 +87,8 @@ class Spoof2Test(
         //	TEST_NAME+45;  //sum(A)+7
         //	TEST_NAME+46;  //sum(A)+7, with print statement
         //	TEST_NAME+47;  //AB, t(B)t(A)
-        private const val NUM_TESTS = 47
+        //	TEST_NAME+48;  //t(t(-2 * (X %*% t(C))) + rowSums (C ^ 2));  //genRandData4Kmeans
+        private const val NUM_TESTS = 48
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
@@ -103,7 +104,7 @@ class Spoof2Test(
         fun testParams(): Collection<Array<Any>> {
             val params = ArrayList<Array<Any>>(NUM_TESTS * 3)
             for (testNum in 1..NUM_TESTS) {
-//                if (testNum != NUM_TESTS) continue
+                if (testNum != NUM_TESTS) continue
 
                 val testName = TEST_NAME + testNum
 //                params.add(arrayOf(testName, false, CP))

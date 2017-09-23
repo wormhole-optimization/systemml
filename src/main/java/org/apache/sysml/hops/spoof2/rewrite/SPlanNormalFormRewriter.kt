@@ -18,7 +18,6 @@ import org.apache.sysml.utils.Explain
  */
 class SPlanNormalFormRewriter : SPlanRewriter {
     private val _rulesFirstOnce = listOf<SPlanRewriteRule>(
-//            RewriteStripTranspose(),
             RewriteDecompose()          // Subtract  + and *(-1);   ^2  Self-*
     )
     private val _ruleBindElim = listOf(
@@ -163,18 +162,3 @@ class SPlanNormalFormRewriter : SPlanRewriter {
         return changed
     }
 }
-
-//class RewriteStripTranspose : SPlanRewriteRule() {
-//    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
-//        if( node is SNodeUnbind ) {
-//            val child = node.input
-//            if( child is SNodeBind && node.unbindings != child.bindings ) {
-//                child.input.parents -= child
-//                node.parents.forEach { it.inputs[it.inputs.indexOf(node)] = child.input; child.input.parents += it }
-//                return RewriteResult.NewNode(child.input)
-//            }
-//        }
-//        return RewriteResult.NoChange
-//    }
-//}
-
