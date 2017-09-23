@@ -2,15 +2,13 @@ package org.apache.sysml.hops.spoof2.enu
 
 import com.google.common.collect.HashMultimap
 import com.google.common.collect.Multimap
-import org.apache.sysml.hops.spoof2.plan.SNode
-import org.apache.sysml.hops.spoof2.plan.Schema
-import org.apache.sysml.hops.spoof2.plan.mapInPlace
+import org.apache.sysml.hops.spoof2.plan.*
 import java.util.*
 
-class ENode(schema: Schema) : SNode() {
+class ENode(schema: Map<Attribute.Unbound, Pair<AB, Shape>>) : SNode() {
     init {
-        this.schema.setTo(schema)
-        this.schema.names.mapInPlace { it.substring(0,1) } // force all unbound
+        for( (au, e) in schema )
+            this.schema.put(au, e.second)
     }
 
     /** These correspond to the SNodes in [inputs]. */

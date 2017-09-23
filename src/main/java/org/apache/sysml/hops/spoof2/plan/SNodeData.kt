@@ -56,12 +56,12 @@ class SNodeData private constructor(
 
         if( hop.dataType == Expression.DataType.SCALAR || hop.dim1 == 1L && hop.dim2 == 1L )
         else if( hop.dim1 == 1L )
-            schema.addUnboundAttribute(hop.dim2, Schema.NamePrefix.ROW)
+            schema.put(AU.U0, hop.dim2)
         else if( hop.dim2 == 1L )
-            schema.addUnboundAttribute(hop.dim1, Schema.NamePrefix.COL)
+            schema.put(AU.U0, hop.dim1)
         else {
-            schema.addUnboundAttribute(hop.dim1, Schema.NamePrefix.ROW)
-            schema.addUnboundAttribute(hop.dim2, Schema.NamePrefix.COL)
+            schema.put(AU.U0, hop.dim1)
+            schema.put(AU.U1, hop.dim2)
         }
     }
 

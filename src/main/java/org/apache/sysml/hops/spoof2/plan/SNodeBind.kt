@@ -1,27 +1,24 @@
 package org.apache.sysml.hops.spoof2.plan
 
+import com.google.common.collect.BiMap
+import com.google.common.collect.HashBiMap
+
 /**
  * Bind attributes.
  */
 class SNodeBind(
         input: SNode,
-        bindings: Map<Int, Name>
+        bindings: Map<AU, AB>
 ) : SNode(input) {
     var input: SNode
         get() = inputs[0]
         set(v) { inputs[0] = v }
 
-    /** Bind all unbound attributes in the input's schema. */
-    constructor(input: SNode)
-            : this(input, input.schema)
-    constructor(input: SNode, schema: Schema)
-            : this(input, schema.names.mapIndexed { i, n -> i to n }.filter { (_, n) -> n.isBound() }.toMap())
+    val bindings: BiMap<AU, AB> = HashBiMap.create(bindings) // defensive copy
 
     override fun compare(o: SNode) =
             o is SNodeBind && o.bindings == this.bindings && o.input == this.input
-
     override fun shallowCopyNoParentsYesInputs() = SNodeBind(input, bindings)
-    val bindings: MutableMap<Int, Name> = HashMap(bindings) // defensive copy
 
     init {
         refreshSchema()
@@ -35,8 +32,7 @@ class SNodeBind(
 
     override fun refreshSchema() {
         val si = inputs[0].schema
-        this.check(bindings.keys.none(si::isBound)) { "attempt to bind by $bindings on input schema $si" }
         schema.setTo(si)
-        bindings.forEach(schema::bindName)
+        bindings.forEach { d, b -> schema.replaceKey(d, b) }
     }
 }

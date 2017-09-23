@@ -44,7 +44,7 @@ class Spoof2Test(
         //	TEST_NAME+ 2;  //rowSum(t(X)) -- check for +C
         //	TEST_NAME+ 3;  //colSum(t(X)) -- check for +R
         //	TEST_NAME+ 4;  //sum(t(X))
-        //	TEST_NAME+ 5;  //X%*%Y
+        //	TEST_NAME+ 5;  //t(X%*%Y)
         //	TEST_NAME+ 6;  //t(t(X)%*%t(Y))
         //	TEST_NAME+ 7;  //rowSums(t(t(X)%*%t(Y)))
         //	TEST_NAME+ 8;  //colSums(t(t(X)%*%t(Y)))

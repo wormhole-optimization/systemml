@@ -5,12 +5,12 @@ import org.apache.sysml.hops.spoof2.plan.SNode.Companion.FN_RET
 
 /** Rename attribute names throughout this sub-DAG.
  * Assumes the new names do not conflict with existing names. */
-fun SNode.renameAttributes(renaming: Map<Name, Name>, useInternalGuard: Boolean) {
+fun SNode.renameAttributes(renaming: Map<AB, AB>, useInternalGuard: Boolean) {
     val postVisit: (SNode, Boolean) -> Boolean = { it, c ->
         var changed = c
         when( it ) {
             is SNodeAggregate -> {
-                changed = it.aggs.names.mapInPlace { renaming[it] ?: it } || changed
+                changed = it.aggs.replaceKeys { renaming[it] ?: it } || changed
             }
             is SNodeUnbind -> {
                 changed = it.unbindings.mapValuesInPlace { renaming[it] ?: it } || changed
@@ -62,13 +62,13 @@ fun SNode.isEntirelyDataExtEquals(): Boolean {
 }
 
 fun SNodeAggregate.copyAggRenameDown(): SNodeAggregate {
-    val renaming = this.aggs.names.map { it to Schema.freshNameCopy(it) }.toMap()
+    val renaming = this.aggs.names.map { (it as AB); it to it.deriveFresh() }.toMap()
     val aggInput = this.inputs[0].renameCopyDown(renaming, HashMap())
     return SNodeAggregate(op, aggInput, Schema.copyShapes(aggInput.schema, renaming.values))
 }
 
 
-private fun SNode.renameCopyDown(renaming: Map<Name, Name>, memo: HashMap<Long, SNode>): SNode {
+private fun SNode.renameCopyDown(renaming: Map<AB, AB>, memo: HashMap<Long, SNode>): SNode {
     check( this.schema.names.containsAll(renaming.keys) ) {"renameCopyDown should only touch SNodes that have a schema to rename; saw id=${this.id} $this ${this.schema}"}
     if( this.id in memo )
         return memo[this.id]!!

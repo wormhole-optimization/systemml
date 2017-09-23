@@ -58,9 +58,9 @@ class RewritePushAggIntoPlus(
 
             loop@while( notInInput.isNotEmpty() && litInputs.isNotEmpty() ) {
                 for( v in 1L until (1L shl notInInput.size) ) {
-                    val selectSchema = notInInput.zip().filterIndexed { p, _ ->
+                    val selectSchema = notInInput.entries.filterIndexed { p, _ ->
                         v and (1L shl p) != 0L
-                    }.run(::Schema)
+                    }.run { Schema(this.map { (n,s) -> n to s }) }
                     val tgt = selectSchema.shapes.fold(1.0, Double::div)
                     val exact = litInputs.find {
                         val hop = it.hop as LiteralOp

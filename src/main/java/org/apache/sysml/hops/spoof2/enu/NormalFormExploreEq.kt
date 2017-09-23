@@ -336,8 +336,10 @@ class NormalFormExploreEq : SPlanRewriter {
         normalSpb_Verify(spb)
 
         // Create ENode
-        val eNode = ENode(node.schema)
-        val bind = SNodeBind(eNode, node.schema.names.mapIndexed { i, n -> i to n }.toMap())
+        val tmp = node.schema.entries.mapIndexed { i, (n,s) -> AU(i) to (n as AB to s) }.toMap()
+        val eNodeNameMapping = tmp.mapValues { (_,v) -> v.first }
+        val eNode = ENode(tmp)
+        val bind = SNodeBind(eNode, eNodeNameMapping)
         node.parents.forEach { it.inputs[it.inputs.indexOf(node)] = bind }
         bind.parents.addAll(node.parents)
         eNodes += eNode
@@ -346,7 +348,7 @@ class NormalFormExploreEq : SPlanRewriter {
 //        stripDead(node, spb.getAllInputs()) // performed by constructBlock()
 
         // 1. Insert all paths into the E-DAG
-        val numInserts = factorAndInsert(eNode, spb)
+        val numInserts = factorAndInsert(eNode, spb, eNodeNameMapping)
         if( LOG.isTraceEnabled )
             LOG.trace("numInserts: $numInserts")
 
@@ -362,10 +364,10 @@ class NormalFormExploreEq : SPlanRewriter {
     /**
      * @return The number of inserts performed
      */
-    private fun factorAndInsert(eNode: ENode, spb: SumProduct.Block): Int {
+    private fun factorAndInsert(eNode: ENode, spb: SumProduct.Block, unbindMap: Map<AU, AB>): Int {
         if (spb.edgesGroupByIncidentNames().size == 1) {
             // all edges fit in a single group; nothing to do
-            return insert(eNode, spb)
+            return insert(eNode, spb, unbindMap)
         }
 
         // 1. Multiply within groups
@@ -382,7 +384,7 @@ class NormalFormExploreEq : SPlanRewriter {
 
         // Done if no aggregations remain
         if (spb.aggNames().isEmpty()) {
-            return insert(eNode, spb)
+            return insert(eNode, spb, unbindMap)
         }
 
         // Determine what variables we could eliminate at this point
@@ -398,19 +400,19 @@ class NormalFormExploreEq : SPlanRewriter {
         return minDegreeAggNames.sumBy { elimName ->
             val incidentEdges = spb.nameToIncidentEdge()[elimName]!!
             if( incidentEdges.size == spb.edges.size && spb.aggNames().isEmpty() ) { // if all edges remaining touch this one, nothing to do.
-                insert(eNode, spb)
+                insert(eNode, spb, unbindMap)
             } else {
                 val factoredSpb = spb.deepCopy()
                 factoredSpb.factorEdgesToBlock(incidentEdges)
-                factorAndInsert(eNode, factoredSpb)
+                factorAndInsert(eNode, factoredSpb, unbindMap)
             }
         }
     }
 
-    private fun insert(eNode: ENode, spb: SumProduct.Block): Int {
+    private fun insert(eNode: ENode, spb: SumProduct.Block, unbindMap: Map<AU, AB>): Int {
 //        if( LOG.isTraceEnabled )
 //            LOG.trace("Insert: "+spb)
-        val newTopInput = spb.constructSPlan().let { SNodeUnbind(it) }
+        val newTopInput = spb.constructSPlan().let { SNodeUnbind(it, unbindMap) }
         eNode.addNewEPath(newTopInput)
         stats.numAggPlusMultiply += spb.countAggsAndInternalBlocks()
         return 1

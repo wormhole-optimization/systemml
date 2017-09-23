@@ -5,11 +5,13 @@ import org.apache.sysml.hops.HopsException
 import org.apache.sysml.parser.Expression
 
 // See [Schema].
-typealias Attribute = Pair<Name, Shape>
-typealias Name = String
+//typealias Attribute = Pair<Name, Shape>
+typealias Name = Attribute
+typealias AB = Attribute.Bound
+typealias AU = Attribute.Unbound
 typealias Shape = Long
+typealias Dim = Int
 typealias Id = Long
-fun Name.isBound() = this.length >= 2
 
 /**
  * Modify the elements of a List in place.
@@ -124,6 +126,20 @@ fun <K,V> Map<K,V>.intersectEntries(m: Map<K,V>): Map<K,V> {
     return this.filter { (k,v) -> m[k] == v }
 }
 
+fun <K,V> Map<K,V>.invert(): Map<V,K> {
+    return this.map { (k,v) -> v to k }.toMap()
+}
+
+fun <T> Iterable<T>.firstSecond(): Pair<T,T> {
+    val iterator = iterator()
+    if (!iterator.hasNext())
+        throw NoSuchElementException("Collection is empty.")
+    val f = iterator.next()
+    if (!iterator.hasNext())
+        throw NoSuchElementException("Collection has one element.")
+    return f to iterator.next()
+}
+
 inline fun <T> Iterable<T>.sumByLong(selector: (T) -> Long): Long {
     var sum = 0L
     for (element in this) {
@@ -137,7 +153,7 @@ fun <T> Iterable<T>.disjoint(b: Iterable<T>): Boolean {
 }
 
 /** "Agnostic bindings", for SNodeBind or SNodeUnbind. */
-fun SNode.agBindings(): MutableMap<Int, Name> = when(this) {
+fun SNode.agBindings(): MutableMap<AU, AB> = when(this) {
     is SNodeBind -> this.bindings
     is SNodeUnbind -> this.unbindings
     else -> throw IllegalArgumentException()
@@ -166,4 +182,3 @@ private tailrec fun rStripDead(toRemove: MutableSet<SNode>, noStrip: Set<SNode>)
     node.inputs.clear()
     return rStripDead(toRemove, noStrip)
 }
-

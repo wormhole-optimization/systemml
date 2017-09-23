@@ -2,6 +2,7 @@ package org.apache.sysml.hops.spoof2.enu
 
 import org.apache.sysml.hops.spoof2.plan.Name
 import org.apache.sysml.hops.spoof2.plan.Schema
+import org.apache.sysml.hops.spoof2.plan.firstSecond
 import org.apache.sysml.hops.spoof2.plan.sumByLong
 
 data class SPCost(
@@ -41,7 +42,8 @@ data class SPCost(
          * todo: sparsity
          */
         private fun numMultiply(a: Schema, b: Schema): Long {
-            val ns = Schema(a).apply { unionWithBound(b) }
+            val ns = Schema(a)
+            ns += b
             return ns.shapes.reduce(Long::times)
         }
         // when there are more than two tensors to multiply, the order can be significant.
@@ -52,11 +54,9 @@ data class SPCost(
             if (elimName !in a)
                 return 0L
             var adds = 1L
-            for (i in a.indices) {
-                adds *= if (a.names[i] == elimName)
-                    a.shapes[i] - 1
-                else
-                    a.shapes[i]
+            for ((n,s) in a) {
+                adds *= if (n == elimName) s - 1
+                else s
             }
             return adds
         }
@@ -67,13 +67,13 @@ data class SPCost(
          */
         fun betterToMultiplyWithFirst(vector: Schema, matrix1: Schema, matrix2: Schema): Boolean {
             require(vector.names.size == 1
-                    && vector.names[0] in matrix1 && vector.names[0] in matrix2
+                    && vector.names.first() in matrix1 && vector.names.first() in matrix2
                     && matrix1.size == 2 && matrix2.size == 2
             ) { "vector $vector matrix1 $matrix1 matrix2 $matrix2" }
-            val vname = vector.names[0]
-            val i1 = matrix1.names.indexOfFirst { it != vname }
-            val i2 = matrix2.names.indexOfFirst { it != vname }
-            return matrix1.shapes[i1] <= matrix2.shapes[i2]
+            val vname = vector.names.first()
+            val i1 = matrix1.names.first { it != vname }
+            val i2 = matrix2.names.first { it != vname }
+            return matrix1[i1]!! <= matrix2[i2]!!
         }
 
         fun costFactoredBlock(spb: SumProduct, recursive: Boolean = true): SPCost {
@@ -88,7 +88,7 @@ data class SPCost(
                         0 -> ZERO_COST
                         1 -> { // all edges are vectors over this single name
                             val isAgg = spb.aggNames().isNotEmpty()
-                            val shape = spb.allSchema().shapes[0]
+                            val shape = spb.allSchema().shapes.first()
                             // first multiply them together
                             val multCost = (spb.edges.size-1) * shape
                             val addCost = if( isAgg ) shape - 1 else 0L
@@ -102,9 +102,9 @@ data class SPCost(
                             }
                             // now multiply across groups
                             val allSchema = spb.allSchema() //repSchemasToCount.map(Pair<Schema,Int>::first).fold(Schema()) { acc, schema -> acc.apply { unionWithBound(schema) } }
-                            val tmp = allSchema.zip()
-                            var (n1,s1) = tmp.first()
-                            var (n2,s2) = tmp.drop(1).first()
+                            val (e1,e2) = allSchema.entries.firstSecond()
+                            var (n1,s1) = e1
+                            var (n2,s2) = e2
                             var h1 = spb.edgesGroupByIncidentNames()[setOf(n1)] != null
                             var h2 = spb.edgesGroupByIncidentNames()[setOf(n2)] != null
                             val h12 = spb.edgesGroupByIncidentNames()[setOf(n1, n2)] != null
@@ -182,7 +182,7 @@ data class SPCost(
                             val m1Schema = _m1Schema!!
                             val m2Schema = _m2Schema!!
                             val n12 = m1Schema.names.intersect(m2Schema.names).also { check(it.size == 1) {"the matrices' schemas should only overlap in one position"} }.first()
-                            val s12 = m1Schema.getShape(n12)
+                            val s12 = m1Schema[n12]!!
                             val n1 = (m1Schema.names - n12).first()
                             val n2 = (m2Schema.names - n12).first()
                             val s1 = (m1Schema.shapes - s12).first()

@@ -23,7 +23,7 @@ class RewritePushAggIntoMult : SPlanRewriteRule() {
             for (i in mult.inputs.indices) {
                 val input = mult.inputs[i]
                 // find indices that are neither in the output nor in the join condition
-                val preAggAttrs = input.schema.names.filter { it !in agg.schema && it !in joinAttrs }
+                val preAggAttrs = input.schema.filter { it,_ -> it !in agg.schema && it !in joinAttrs }
                 if (preAggAttrs.isNotEmpty()) {
                     // pre-aggregate these indices!
                     val preAgg = SNodeAggregate(AggOp.SUM, input, preAggAttrs)

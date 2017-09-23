@@ -11,11 +11,11 @@ private const val SHOW_NNZ = false
 
 class SumBlock private constructor(
         val op: Hop.AggOp,
-        val names: MutableSet<Name>
+        val names: MutableSet<AB>
 ) {
-    constructor(sum: Hop.AggOp, names: Collection<Name>)
+    constructor(sum: Hop.AggOp, names: Collection<AB>)
             : this(sum, HashSet(names))
-    constructor(sum: Hop.AggOp, vararg names: Name)
+    constructor(sum: Hop.AggOp, vararg names: AB)
             : this(sum, HashSet(names.asList()))
     fun deepCopy() = SumBlock(op, HashSet(names))
     override fun toString(): String {
@@ -83,7 +83,8 @@ sealed class SumProduct {
             var top = _top
             val sumBlocks = ArrayList<SumBlock>()
             while (top is SNodeAggregate) {
-                sumBlocks += SumBlock(top.op, top.aggs.names.toMutableSet())
+                @Suppress("UNCHECKED_CAST")
+                sumBlocks += SumBlock(top.op, top.aggs.names.toMutableSet() as MutableSet<AB>)
                 val topTemp = top
                 top = top.inputs[0]
                 top.parents -= topTemp
@@ -171,8 +172,8 @@ sealed class SumProduct {
         fun allSchema(refresh: Boolean = false): Schema {
             if( refresh || _allSchema == null ) {
                 _allSchema = edges.fold(Schema()) { schema, sp ->
-                    schema.apply{unionWithBound(sp.schema)} }
-            }
+                    schema += sp.schema; schema
+            } }
             return _allSchema!!
         }
 
@@ -181,7 +182,7 @@ sealed class SumProduct {
             get() {
                 if( _schema == null ) {
                     _schema = Schema(allSchema())
-                    _schema!!.removeBoundAttributes(aggNames())
+                    _schema!! -= aggNames()
                 }
                 return _schema!!
             }
@@ -191,9 +192,11 @@ sealed class SumProduct {
         fun aggSchema(refresh: Boolean = false): Schema {
             if( refresh || _aggSchema == null ) {
                 _aggSchema = edges.fold(Schema()) { schema, sp ->
-                    schema.apply{unionWithBound(sp.schema.zip().filter { (n,_) ->
+                    schema += sp.schema.filter { (n,_) ->
                         n in aggNames()
-                    }.unzip().let { (ns,ss) -> Schema(ns,ss) })} }
+                    }
+                    schema
+                }
             }
             return _aggSchema!!
         }
@@ -240,10 +243,10 @@ sealed class SumProduct {
         constructor(product: SNodeNary.NaryOp, vararg edges: SumProduct)
                 : this(ArrayList<SumBlock>(), product, ArrayList(edges.asList()))
 
-        private var _aggNames: Set<Name>? = null
-        fun aggNames(refresh: Boolean = false): Set<Name> {
+        private var _aggNames: Set<AB>? = null
+        fun aggNames(refresh: Boolean = false): Set<AB> {
             if( refresh || _aggNames == null ) {
-                _aggNames = sumBlocks.fold(setOf<Name>()) { acc, sb -> acc + sb.names }
+                _aggNames = sumBlocks.fold(setOf()) { acc, sb -> acc + sb.names }
             }
             return _aggNames!!
         }
@@ -262,7 +265,7 @@ sealed class SumProduct {
                                         when( it.schema.size ) {
                                             0 -> 0
                                             1 -> 2
-                                            else -> if( it.schema.names[0] == n ) 3 else 1
+                                            else -> if( it.schema.names.first() == n ) 3 else 1
                                         }
                                     }
                         }
@@ -321,7 +324,7 @@ sealed class SumProduct {
             return eligibleAggs
         }
 
-        fun canAggregate(aggName: Name): Boolean {
+        fun canAggregate(aggName: AB): Boolean {
             val sumBlockIndex = sumBlocks.indexOfFirst { aggName in it.names }
             require( sumBlockIndex != -1 ) {"no such aggregation over $aggName in $this"}
             val adjacentNames = this.nameToAdjacentNames()[aggName]!!
@@ -331,7 +334,7 @@ sealed class SumProduct {
             }
         }
 
-        private fun removeAggName(aggName: Name): Hop.AggOp {
+        private fun removeAggName(aggName: AB): Hop.AggOp {
             val idx = sumBlocks.indexOfFirst { aggName in it.names }
             require(idx != -1) {"tried to remove an aggName $aggName that is not being aggregated in $this"}
             val sumBlock = sumBlocks[idx]
@@ -341,7 +344,7 @@ sealed class SumProduct {
             return sumBlock.op
         }
 
-        private fun addAggNamesToFront(aggOp: Hop.AggOp, vararg aggName: Name) {
+        private fun addAggNamesToFront(aggOp: Hop.AggOp, vararg aggName: AB) {
             if( sumBlocks.isEmpty() || sumBlocks[0].op != aggOp ) {
                 sumBlocks.add(0, SumBlock(aggOp, *aggName))
             } else {
@@ -499,7 +502,7 @@ sealed class SumProduct {
 
     fun recUnionSchema(rSchema: Schema = Schema()): Schema {
         when( this ) {
-            is Input -> rSchema.unionWithBound(this.schema)
+            is Input -> rSchema += this.schema
             is Block -> this.edges.forEach { it.recUnionSchema(rSchema) }
         }
         return rSchema

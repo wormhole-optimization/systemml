@@ -117,15 +117,12 @@ object SPlanValidator {
         val oldSchema = Schema(node.schema)
         val aggSchema = (node as? SNodeAggregate)?.aggs
         node.refreshSchema()
-        // Check names, not shapes; shapes may be messed up due to Structural CSE Elim
-        node.check( node.schema.names == oldSchema.names ) {"refreshing changed schema from old schema $oldSchema"}
-        node.check( node.schema.shapes == oldSchema.shapes ) {"refreshing changed schema from old schema $oldSchema"}
-        node.check( node.schema.names.filter(Name::isBound).let { it.toSet().size == it.size }) {"duplicate bound names: ${node.schema}"}
+        node.check( node.schema.entries == oldSchema.entries ) {"refreshing changed schema from old schema $oldSchema"}
         if( aggSchema != null ) {
             node.check(aggSchema == (node as SNodeAggregate).aggs) { "refreshing changed aggregation schema from old agg schema $aggSchema" }
-            aggSchema.indices.forEach { i ->
-                if (aggSchema.names[i] in node.inputs[0].schema)
-                    node.check(aggSchema.shapes[i] == node.inputs[0].schema.getShape(aggSchema.names[i])) { "shape changed in aggregation schema" }
+            aggSchema.forEach { (n,s) ->
+                if (n in node.inputs[0].schema)
+                    node.check(s == node.inputs[0].schema[n]) { "shape changed in aggregation schema" }
             }
         }
 

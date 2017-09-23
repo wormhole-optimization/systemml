@@ -658,6 +658,7 @@
                                 <source>src/main/java</source>
                                 <source>src/main/scala</source>
                             </sourceDirs>
+							<jvmTarget>1.8</jvmTarget>
                         </configuration>
                     </execution>
                     <execution>

@@ -85,7 +85,7 @@ class RewriteBindElim : SPlanRewriteRule() {
             // bind-unbind
             if( bind.inputs[0] is SNodeUnbind && bind.inputs[0].parents.size == 1 ) {
                 val unbind = bind.inputs[0] as SNodeUnbind
-                val renamings = mutableMapOf<Name,Name>()
+                val renamings = mutableMapOf<AB,AB>()
                 val iter = bind.bindings.iterator()
                 while( iter.hasNext() ) {
                     val (dim,newName) = iter.next()

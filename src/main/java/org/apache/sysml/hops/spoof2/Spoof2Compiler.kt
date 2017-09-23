@@ -138,15 +138,18 @@ object Spoof2Compiler {
     }
 
     // dim -> <Input -> Dim>
-    private fun dimsToInputDims(root: SNode): List<ListMultimap<SNode, Int>> {
-        return root.schema.indices.map { i ->
-            val mm = ArrayListMultimap.create<SNode, Int>()
-            mapToInputs(root, i, mm)
+    private fun dimsToInputDims(root: SNode): List<ListMultimap<SNode, AU>> {
+        return root.schema.map { (n,_) ->
+            val mm = ArrayListMultimap.create<SNode, AU>()
+            when( n ) {
+                is AB -> mapToInputs(root, n, mm)
+                is AU -> mapToInputs(root, n, mm)
+            }
             mm
         }
     }
 
-    private fun mapToInputs(node: SNode, i: Int, mm: ListMultimap<SNode, Int>) {
+    private fun mapToInputs(node: SNode, i: AU, mm: ListMultimap<SNode, AU>) {
         when( node ) {
             is SNodeData -> {
                 if( node.isWrite ) mapToInputs(node.inputs[0], i, mm)
@@ -155,7 +158,7 @@ object Spoof2Compiler {
             }
             is SNodeBind -> mapToInputs(node.input, i, mm)
             is SNodeUnbind -> {
-                if( i in node.unbindings )
+                if( node.unbindings.containsKey(i) )
                     mapToInputs(node.input, node.unbindings[i]!!, mm)
                 else
                     mapToInputs(node.input, i, mm)
@@ -164,7 +167,7 @@ object Spoof2Compiler {
             else -> throw SNodeException(node, "don't know how to handle snode type $node")
         }
     }
-    private fun mapToInputs(node: SNode, n: Name, mm: ListMultimap<SNode, Int>) {
+    private fun mapToInputs(node: SNode, n: AB, mm: ListMultimap<SNode, AU>) {
         when( node ) {
             is SNodeBind -> {
                 if( n in node.bindings.values )
@@ -235,6 +238,7 @@ object Spoof2Compiler {
         val baseInputs = sroots.map { sroot ->
             dimsToInputDims(sroot)
         }
+        // strip all transposes
 
 
 //        BasicSPlanRewriter().rewriteSPlan(sroots, listOf(RewriteBindElim()))
@@ -258,9 +262,11 @@ object Spoof2Compiler {
         //re-construct modified HOP DAG
         var roots2 = ArrayList<Hop>()
         SNode.resetVisited(sroots)
-        val hopMemo: MutableMap<SNode, Hop> = hashMapOf()
-        for (sroot in sroots)
-            roots2.add(rReconstructHopDag(sroot, hopMemo))
+        val hopMemo: MutableMap<SNode, Pair<Hop, Map<AU,AB>>> = hashMapOf()
+        for (sroot in sroots) {
+            val (h,_) = rReconstructHopDag(sroot, hopMemo)
+            roots2.add(h)
+        }
 
         val baseInputs2 = sroots.map { sroot ->
             dimsToInputDims(sroot)
@@ -279,7 +285,7 @@ object Spoof2Compiler {
                         "\n modified Hop Dag is:\n" + Explain.explainHops(roots2)}
                 if( LOG.isTraceEnabled )
                     LOG.trace("creating root transpose at root $idx to enforce orientation ${rootClasses[idx]}")
-                HopRewriteUtils.createTranspose(root2)
+                transposeRoot(root2)
             } else if( rootClasses[idx] == HopClass.MATRIX ) { // check data flow
                 val bi = baseInputs[idx]
                 // does dim 0 base inputs == dim 1 base inputs? If so, it is symmetric and orientation does not matter.
@@ -296,7 +302,7 @@ object Spoof2Compiler {
                         } else if( biu[0] == biu2[1] ) {
                             if( LOG.isTraceEnabled )
                                 LOG.trace("create root transpose at root $idx based on data flow; unique inputs differ case")
-                            HopRewriteUtils.createTranspose(root2)
+                            transposeRoot(root2)
                         } else {
                             throw SNodeException(sroots[idx], "Failed to distinguish orientation for old Hop root ${roots[idx].hopID} and new Hop root ${root2.hopID}; " +
                                     "baseInputs have different unique inputs but neither equal to base inputs 2:" +
@@ -313,8 +319,8 @@ object Spoof2Compiler {
                             // bi[0] is the base input of root dimension 0
                             // x1[0] corresponds to bi[0]
                             // x1[0][0] is the first dimension of the base input
-                            val x1 = bi.map { it[uniqueBase]!!.groupBy { it }.map { it.key to it.value.sum() }.sortedBy { it.first }.map { it.second }}
-                            val x2 = bi2.map { it[uniqueBase]!!.groupBy { it }.map { it.key to it.value.sum() }.sortedBy { it.first }.map { it.second }}
+                            val x1 = bi.map { it[uniqueBase]!!.groupBy { it }.map { it.key to it.value.count() }.sortedBy { it.first }.map { it.second }}
+                            val x2 = bi2.map { it[uniqueBase]!!.groupBy { it }.map { it.key to it.value.count() }.sortedBy { it.first }.map { it.second }}
                             // -1 -> uncommitted; 0 -> commit no transpose; 1 -> commit transpose
                             x1[0].indices.fold(commit) { commit, baseIdx ->
                                 val c = x1[0][baseIdx].compareTo(x1[1][baseIdx])
@@ -339,7 +345,7 @@ object Spoof2Compiler {
                             1 -> {
                                 if( LOG.isTraceEnabled )
                                     LOG.trace("create root transpose at root $idx based on data flow; unique inputs equal case")
-                                HopRewriteUtils.createTranspose(root2)
+                                transposeRoot(root2)
                             }
                             -1 -> root2 // symmetric again
                             else -> throw AssertionError("impossible by design")
@@ -373,6 +379,7 @@ object Spoof2Compiler {
         HopDagValidator.validateHopDag(roots2)
 
         //rewrite after applied sum-product optimizer
+        ProgramRewriter(RewriteCommonSubexpressionElimination()).rewriteHopDAGs(roots, ProgramRewriteStatus())
         programRewriteHops(roots2, recompile, doDynamicProgramRewriter)
 //        if( doDynamicProgramRewriter )
 //            RewriteAlgebraicSimplificationDynamic().rewriteHopDAGs(roots2, ProgramRewriteStatus())
@@ -386,7 +393,17 @@ object Spoof2Compiler {
         return roots2
     }
 
-
+    private fun transposeRoot(root2: Hop): Hop {
+        return if( root2 is DataOp && root2.isWrite ) {
+            val child = root2.input[0]
+            child.parent -= root2
+            root2.input[0] = HopRewriteUtils.createTranspose(child)
+            root2.input[0].parent += root2
+            root2.refreshSizeInformation()
+            root2
+        } else
+            HopRewriteUtils.createTranspose(root2)
+    }
 
 
     // Input Hop Dag has matrices, vectors, and scalars. No tensors here.
@@ -420,7 +437,7 @@ object Spoof2Compiler {
                         val bindings = inputs[0].schema.genAllBindings()
                         inputs[0] = SNodeBind(inputs[0], bindings)
 
-                        val flipBindings = mapOf(0 to bindings[1]!!, 1 to bindings[0]!!)
+                        val flipBindings = mapOf(AU.U0 to bindings[AU.U1]!!, AU.U1 to bindings[AU.U0]!!)
                         SNodeUnbind(inputs[0], flipBindings)
                     } else {
                         inputs[0] // skip transpose on vector
@@ -457,7 +474,7 @@ object Spoof2Compiler {
                     var (i0, i1, iMap) = largerSmaller(inputs[0], inputs[1]) { it.schema.size }
                     // i0's dimension is >= i1's dimension
 
-                    val boundNames = mutableMapOf<Int,Name>()
+                    val boundNames = mutableMapOf<AU,AB>()
                     when( i0.schema.size ) {
                         0 -> {}
                         1 -> {
@@ -478,9 +495,9 @@ object Spoof2Compiler {
                                 1 -> { // matrix * vector: check orientation and bind appropriately
                                     val vector = current.input[iMap[1]]
                                     val bs1 = if( vector.dim1 == 1L )
-                                        mapOf(0 to bs0[1]!!) // row vector matches on cols
+                                        mapOf(AU.U0 to bs0[AU.U1]!!) // row vector matches on cols
                                     else
-                                        mapOf(0 to bs0[0]!!) // col vector matches on rows
+                                        mapOf(AU.U0 to bs0[AU.U0]!!) // col vector matches on rows
                                     i1 = SNodeBind(i1, bs1)
                                 }
                                 2 -> { // matrix * matrix: bind both
@@ -508,22 +525,22 @@ object Spoof2Compiler {
                     1 -> { // aggregate a vector to a scalar
                         val bs = inputs[0].schema.genAllBindings()
                         inputs[0] = SNodeBind(inputs[0], bs)
-                        SNodeAggregate(current.op, inputs[0], bs[0]!!)
+                        SNodeAggregate(current.op, inputs[0], bs[AU.U0]!!)
                     }
                     2 -> { // aggregate a matrix; check direction
                         val bs = inputs[0].schema.genAllBindings()
                         inputs[0] = SNodeBind(inputs[0], bs)
                         when( current.direction!! ) {
                             Hop.Direction.RowCol -> {
-                                SNodeAggregate(current.op, inputs[0], bs[0]!!, bs[1]!!)
+                                SNodeAggregate(current.op, inputs[0], bs[AU.U0]!!, bs[AU.U1]!!)
                             }
                             Hop.Direction.Row -> { // sum rows ==> col vector
-                                val agg = SNodeAggregate(current.op, inputs[0], bs[1]!!)
-                                SNodeUnbind(agg, mapOf(0 to bs[0]!!))
+                                val agg = SNodeAggregate(current.op, inputs[0], bs[AU.U1]!!)
+                                SNodeUnbind(agg, mapOf(AU.U0 to bs[AU.U0]!!))
                             }
                             Hop.Direction.Col -> { // sum cols ==> row vector
-                                val agg = SNodeAggregate(current.op, inputs[0], bs[0]!!)
-                                SNodeUnbind(agg, mapOf(0 to bs[1]!!))
+                                val agg = SNodeAggregate(current.op, inputs[0], bs[AU.U0]!!)
+                                SNodeUnbind(agg, mapOf(AU.U0 to bs[AU.U1]!!))
                             }
                         }
                     }
@@ -532,8 +549,8 @@ object Spoof2Compiler {
             }
             is AggBinaryOp -> { // matrix multiply. There may be vectors.
                 if( current.innerOp.name in NaryOp ) {
-                    val boundNames = mutableMapOf<Int,Name>()
-                    val aggName: Name?
+                    val boundNames = mutableMapOf<AU,AB>()
+                    val aggName: AB?
                     when (current.input[0].classify()) {
                         HopClass.SCALAR -> throw HopsException("AggBinaryOp id=${current.hopID} should not act on scalars but input SNodes are $inputs")
                         HopClass.COL_VECTOR -> {
@@ -543,11 +560,11 @@ object Spoof2Compiler {
                             // outer product
                             val bs0 = inputs[0].schema.genAllBindings()
                             inputs[0] = SNodeBind(inputs[0], bs0)
-                            boundNames += 0 to bs0[0]!!
+                            boundNames += AU.U0 to bs0[AU.U0]!!
                             if( inputs[1].schema.isNotEmpty() ) { // check for multiply with scalar
                                 val bs1 = inputs[1].schema.genAllBindings()
                                 inputs[1] = SNodeBind(inputs[1], bs1)
-                                boundNames += 1 to bs1[0]!!
+                                boundNames += AU.U1 to bs1[AU.U0]!!
                             }
                             aggName = null
                         }
@@ -559,12 +576,12 @@ object Spoof2Compiler {
                             val bs0 = inputs[0].schema.genAllBindings()
                             inputs[0] = SNodeBind(inputs[0], bs0)
                             // bind last name of inputs[0] to first name of inputs[1]
-                            aggName = bs0[inputs[0].schema.size - 1]!!
-                            val bs1 = mutableMapOf(0 to aggName)
+                            aggName = bs0[AU(inputs[0].schema.size - 1)]!!
+                            val bs1 = mutableMapOf(AU.U0 to aggName)
                             inputs[1].schema.fillWithBindings(bs1) // match row vector binding with first dim on inputs[1]
                             inputs[1] = SNodeBind(inputs[1], bs1)
-                            if( inputs[0].schema.size == 2 ) boundNames += 0 to bs0[0]!!
-                            if( inputs[1].schema.size == 2 ) boundNames += boundNames.size to bs1[1]!!
+                            if( inputs[0].schema.size == 2 ) boundNames += AU.U0 to bs0[AU.U0]!!
+                            if( inputs[1].schema.size == 2 ) boundNames += AU(boundNames.size) to bs1[AU.U1]!!
                         }
                     }
                     var ret: SNode = SNodeNary(NaryOp.valueOf(current.innerOp.name), inputs)
@@ -589,7 +606,7 @@ object Spoof2Compiler {
     }
 
 
-    private fun reconstructAggregate(agg: SNodeAggregate, hopMemo: MutableMap<SNode, Hop>): Hop {
+    private fun reconstructAggregate(agg: SNodeAggregate, hopMemo: MutableMap<SNode, Pair<Hop, Map<AU,AB>>>): Pair<Hop, Map<AU,AB>> {
         val mult = agg.input
 
         return if( mult is SNodeNary && mult.op == NaryOp.MULT && agg.op == Hop.AggOp.SUM
@@ -602,8 +619,8 @@ object Spoof2Compiler {
 
             // We may have a Bind because the output is a scalar (thus no Unbind)
             // but the inputs are non-scalars (and are therefore Bound)
-            var hop0 = rReconstructHopDag(mult0, hopMemo)
-            var hop1 = rReconstructHopDag(mult1, hopMemo)
+            var (hop0, mapInput0) = rReconstructHopDag(mult0, hopMemo).let { it.first to it.second.toMutableMap() }
+            var (hop1, mapInput1) = rReconstructHopDag(mult1, hopMemo).let { it.first to it.second.toMutableMap() }
 
             // AggBinaryOp always expects matrix inputs
             if( hop0.dataType == Expression.DataType.SCALAR ) {
@@ -619,40 +636,44 @@ object Spoof2Compiler {
             agg.check(mult0.schema.size in 1..2 && mult1.schema.size in 1..2) {"matrix multiply with tensors? inputs: $mult0 $mult1"}
 
             // use symmetry
-            if( mult0.schema.size == 2 && mult1.schema.size == 1 ) {
+            if( mapInput0.size == 2 && mapInput1.size == 1 ) {
                 val tmp = mult0; mult0 = mult1; mult1 = tmp
                 val t = hop0; hop0 = hop1; hop1 = t
+                val tt = mapInput0; mapInput0 = mapInput1; mapInput1 = tt
             }
             // check positions of labels and see if we need to transpose
-            val aggName: Name = agg.aggs[0]
-            when( mult0.schema.size ) {
-                1 -> when( mult1.schema.size ) { // hop0 is V
+            val aggName: Name = agg.aggs.names.first()
+            val fm: MutableMap<AU,AB> = mutableMapOf()
+            when( mapInput0.size ) {
+                1 -> when( mapInput1.size ) { // hop0 is V
                     1 -> when( hop0.classify() ) { // hop1 is V; inner product
                         HopClass.ROW_VECTOR -> when( hop1.classify() ) {
                             HopClass.COL_VECTOR -> {}
-                            HopClass.ROW_VECTOR -> hop1 = HopRewriteUtils.createTranspose(hop1)
+                            HopClass.ROW_VECTOR -> {hop1 = HopRewriteUtils.createTranspose(hop1)} //; swap01(mapInput1)}
                             else -> throw AssertionError()
                         }
                         HopClass.COL_VECTOR -> when( hop1.classify() ) {
-                            HopClass.COL_VECTOR -> hop0 = HopRewriteUtils.createTranspose(hop0)
-                            HopClass.ROW_VECTOR -> {val t = hop0; hop0 = hop1; hop1 = t}
+                            HopClass.COL_VECTOR -> {hop0 = HopRewriteUtils.createTranspose(hop0)} //; swap01(mapInput0)}
+                            HopClass.ROW_VECTOR -> {val t = hop0; hop0 = hop1; hop1 = t; val tt = mapInput0; mapInput0 = mapInput1; mapInput1 = tt}
                             else -> throw AssertionError()
                         }
                         else -> throw AssertionError()
                     }
                     2 -> { // hop1 is M; check VxM or MxV
                         // get matching name, which is also aggregated over
-                        val i1 = mult1.schema.names.indexOf(aggName); agg.check(i1 != -1) {"$mult1 should have the name $aggName we are aggregating over"}
-                        when( i1 ) {
+                        fm.put(AU.U0, mapInput1.entries.find { (_,ab) -> ab != aggName }!!.value)
+                        val i1 = mapInput1.invert()[aggName]; agg.check(i1 != null) {"$mult1 should have the name $aggName we are aggregating over"}
+                        when( i1!!.dim ) {
                             0 -> when( hop0.classify() ) { // VxM; ensure vector is a row vector
                                 HopClass.ROW_VECTOR -> {}
-                                HopClass.COL_VECTOR -> hop0 = HopRewriteUtils.createTranspose(hop0) //
+                                HopClass.COL_VECTOR -> {hop0 = HopRewriteUtils.createTranspose(hop0)} //; swap01(mapInput0)}
                                 else -> throw AssertionError()
                             }
                             1 -> { // MxV; swap hops and ensure vector is a col vector
                                 val t = hop0; hop0 = hop1; hop1 = t
+                                val tt = mapInput0; mapInput0 = mapInput1; mapInput1 = tt
                                 when( hop1.classify() ) {
-                                    HopClass.ROW_VECTOR -> hop1 = HopRewriteUtils.createTranspose(hop1)
+                                    HopClass.ROW_VECTOR -> {hop1 = HopRewriteUtils.createTranspose(hop1)} //; swap01(mapInput1)}
                                     HopClass.COL_VECTOR -> {}
                                     else -> throw AssertionError()
                                 }
@@ -661,13 +682,14 @@ object Spoof2Compiler {
                     }
                 }
                 2 -> { // MxM case
-                    val i0 = mult0.schema.names.indexOf(aggName); agg.check(i0 != -1) {"$mult0 should have the name $aggName we are aggregating over"}
-                    val i1 = mult1.schema.names.indexOf(aggName); agg.check(i1 != -1) {"$mult1 should have the name $aggName we are aggregating over"}
+                    val i0 = mapInput0.invert()[aggName]; agg.check(i0 != null) {"$mult0 should have the name $aggName we are aggregating over"}
+                    val i1 = mapInput1.invert()[aggName]; agg.check(i1 != null) {"$mult1 should have the name $aggName we are aggregating over"}
                     // make common attribute on position 1 of hop0 and position0 of hop1
-                    when( i0 ) {
-                        0 -> when( i1 ) {
-                            0 -> hop0 = HopRewriteUtils.createTranspose(hop0)       //[b,a]x[b,c]
+                    when( i0!!.dim ) {
+                        0 -> when( i1!!.dim ) {
+                            0 -> {hop0 = HopRewriteUtils.createTranspose(hop0); swap01(mapInput0)}       //[b,a]x[b,c]
                             1 -> { val tmp = hop0; hop0 = hop1; hop1 = tmp     //[b,a]x[c,b]
+                                val tt = mapInput0; mapInput0 = mapInput1; mapInput1 = tt
                                 // also switch the SNode plan inputs and refresh schema, for later reconstruction
                                 if( LOG.isTraceEnabled )
                                     LOG.trace("Switch MxM inputs of (${mult.id}) $mult ${mult.schema}")
@@ -675,11 +697,13 @@ object Spoof2Compiler {
                                 mult.refreshSchemasUpward() // refresh schema of all parents above, as long as schema changes
                             }
                         }
-                        1 -> when( i1 ) {
+                        1 -> when( i1!!.dim ) {
                             0 -> {}                                                 //[a,b]x[b,c]
                             1 -> hop1 = HopRewriteUtils.createTranspose(hop1)       //[a,b]x[c,b]
                         }
                     }
+                    fm.put(AU.U0, mapInput0[AU.U0]!!)
+                    fm.put(AU.U1, mapInput1[AU.U1]!!)
                 }
             }
             var mxm: Hop = HopRewriteUtils.createMatrixMultiply(hop0, hop1)
@@ -688,7 +712,7 @@ object Spoof2Compiler {
                     LOG.debug("Casting result of matrix multiply ${mxm.hopID} to scalar")
                 mxm = HopRewriteUtils.createUnary(mxm, OpOp1.CAST_AS_SCALAR)
             }
-            mxm
+            mxm to fm
         }
         else { // general Agg
 
@@ -714,9 +738,9 @@ object Spoof2Compiler {
             }
 
             val aggInput = agg.input
-            var hop0 = rReconstructHopDag(aggInput, hopMemo)
+            var (hop0, mi) = rReconstructHopDag(aggInput, hopMemo)
             if( agg.aggs.isEmpty() ) // empty aggregation
-                return hop0
+                return hop0 to mi
 
             // AggUnaryOp always requires MATRIX input
             if( hop0.dataType == Expression.DataType.SCALAR ) {
@@ -733,7 +757,7 @@ object Spoof2Compiler {
             // change to RowCol when aggregating vectors, in order to create a scalar rather than a 1x1 matrix
                 hop0.dim2 == 1L -> Hop.Direction.RowCol // sum first dimension ==> row vector : Hop.Direction.Col
                 hop0.dim1 == 1L -> Hop.Direction.RowCol // sum second dimension ==> col vector: Hop.Direction.Row
-                agg.aggs[0] == aggInput.schema.names[0] -> {
+                agg.aggs.names.first() == mi[AU.U0]!! -> {
                     agg.check(aggInput.schema.size == 2) {"this may be erroneous if aggInput is not a matrix: ${aggInput.id} $aggInput ${aggInput.schema}"}
                     Hop.Direction.Col
                 }
@@ -758,88 +782,91 @@ object Spoof2Compiler {
             if( LOG.isTraceEnabled )
                 LOG.trace("Decide direction $dir on input dims [${hop0.dim1},${hop0.dim2}], schema $aggInput, " +
                         "aggregating on ${agg.aggs} by ${agg.op} to schema ${agg.schema} for SNode ${agg.id} and new Hop ${ret.hopID}")
-            ret
+            mi = if( agg.schema.isNotEmpty() ) {
+                agg.check(agg.schema.size == 1) {"expect agg to have 0 or 1 attributes in schema: ${agg.id} $agg ${agg.schema}"}
+                mapOf(AU.U0 to agg.schema.names.first() as AB)
+            }  else mapOf()
+            ret to mi
         }
     }
 
-    // cast matrix to scalar
-    // sometimes this is necessary, sometimes not
-    // code in the SNodeExt reconstruct to Hop block checks for duplicate CAST_AS_SCALAR
-    private fun checkCastScalar(hop: Hop): Hop {
-        return if( hop.dimsKnown() && hop.dim1 == 1L && hop.dim2 == 1L && hop.dataType == Expression.DataType.MATRIX )
-            HopRewriteUtils.createUnary(hop, OpOp1.CAST_AS_SCALAR)
-        else
-            hop
-    }
+//    // cast matrix to scalar
+//    // sometimes this is necessary, sometimes not
+//    // code in the SNodeExt reconstruct to Hop block checks for duplicate CAST_AS_SCALAR
+//    private fun checkCastScalar(hop: Hop): Hop {
+//        return if( hop.dimsKnown() && hop.dim1 == 1L && hop.dim2 == 1L && hop.dataType == Expression.DataType.MATRIX )
+//            HopRewriteUtils.createUnary(hop, OpOp1.CAST_AS_SCALAR)
+//        else
+//            hop
+//    }
 
-    private fun reconstructNary(nary: SNodeNary, hopMemo: MutableMap<SNode, Hop>): Hop {
-        val hopInputs = nary.inputs.mapTo(ArrayList()) { input ->
+    private fun reconstructNary(nary: SNodeNary, hopMemo: MutableMap<SNode, Pair<Hop, Map<AU,AB>>>): Pair<Hop, Map<AU,AB>> {
+        val (hopInputs, mis) = nary.inputs.map { input ->
             rReconstructHopDag(input, hopMemo)
-        }
+        }.unzip().let { it.first.toMutableList() to it.second.toMutableList() }
 
-        // if joining on two names and both matrices, ensure that they align by possibly transposing one of them
-        if( nary.inputs.size == 2 && nary.inputs[0].schema.size == 2
-                && nary.inputs[0].schema.names.toSet() == nary.inputs[1].schema.names.toSet() ) {
-            if( nary.inputs[0].schema.names[0] != nary.inputs[1].schema.names[0] ) {
-                hopInputs[1] = HopRewriteUtils.createTranspose(hopInputs[1])
-                if( LOG.isDebugEnabled )
-                    LOG.debug("transpose second matrix ${nary.inputs} hopid=${hopInputs[1].hopID} to match matrix element-wise multiply id=${nary.inputs[1].id}")
+        if( nary.inputs.size == 2 ) {
+            // if joining on two names and both matrices, ensure that they align by possibly transposing one of them
+            if (nary.inputs[0].schema.size == 2 && nary.inputs[1].schema.size == 2) {
+                if (mis[0][AU.U0]!! != mis[1][AU.U0]!!) {
+                    hopInputs[1] = HopRewriteUtils.createTranspose(hopInputs[1])
+                    if (LOG.isDebugEnabled)
+                        LOG.debug("transpose second matrix ${nary.inputs} hopid=${hopInputs[1].hopID} to match matrix element-wise multiply id=${nary.inputs[1].id}")
+                }
+            }
+            // if joining on one name and both vectors, ensure that they align by possibly transposing one of them
+            else if (nary.inputs[0].schema.size == 1 && nary.inputs[0].schema == nary.inputs[1].schema) {
+                assert(hopInputs[0].classify().isVector)
+                assert(hopInputs[1].classify().isVector)
+                if (hopInputs[0].classify() != hopInputs[1].classify()) {
+                    hopInputs[1] = HopRewriteUtils.createTranspose(hopInputs[1])
+                    if (LOG.isDebugEnabled)
+                        LOG.debug("transpose vector ${nary.inputs[1]} id=${nary.inputs[1].id} hopid=${hopInputs[1].hopID} to match vector element-wise multiply")
+                }
+            }
+            // matrix-vector element-wise multiply case (vector expansion)
+            // swap inputs if matrix is on right
+            // transpose vector if it does not match the correct dimension
+            else if (nary.inputs[0].schema.size == 2 && nary.inputs[1].schema.size == 1 ||
+                            nary.inputs[1].schema.size == 2 && nary.inputs[0].schema.size == 1) {
+                val (mat, vec) = if (nary.inputs[1].schema.size == 2) {
+                    hopInputs.swap(0, 1)
+                    mis[0] = mis[1]
+                    nary.inputs[1] to nary.inputs[0]
+                } else
+                    nary.inputs[0] to nary.inputs[1]
+                assert(hopInputs[1].classify().isVector)
+                val vec1 = vec.schema.names.first()
+                val (mat1, mat2) = mis[0][AU.U0]!! to mis[0][AU.U1]!! //mat.schema.names.firstSecond()
+                if (vec1 == mat1) {
+                    // require vector to be column
+                    if (hopInputs[1].classify() != HopClass.COL_VECTOR) {
+                        hopInputs[1] = HopRewriteUtils.createTranspose(hopInputs[1])
+                        if (LOG.isDebugEnabled)
+                            LOG.debug("transpose vector $vec to col vector to match vector expansion element-wise multiply on first dimension of matrix $mat")
+                    }
+                } else if (vec1 == mat2) {
+                    // require vector to be row
+                    if (hopInputs[1].classify() != HopClass.ROW_VECTOR) {
+                        hopInputs[1] = HopRewriteUtils.createTranspose(hopInputs[1])
+                        if (LOG.isDebugEnabled)
+                            LOG.debug("transpose vector $vec to row vector to match vector expansion element-wise multiply on second dimension of matrix $mat")
+                    }
+                } else throw SNodeException(nary, "attribute name of vector does not match either attribute name of matrix in vector-expansion element-wise multiply")
             }
         }
-
-        // if joining on one name and both vectors, ensure that they align by possibly transposing one of them
-        if( nary.inputs.size == 2 && nary.inputs[0].schema.size == 1 && nary.inputs[0].schema == nary.inputs[1].schema) {
-            assert(hopInputs[0].classify().isVector)
-            assert(hopInputs[1].classify().isVector)
-            if( hopInputs[0].classify() != hopInputs[1].classify() ) {
-                hopInputs[1] = HopRewriteUtils.createTranspose(hopInputs[1])
-                if( LOG.isDebugEnabled )
-                    LOG.debug("transpose vector ${nary.inputs[1]} id=${nary.inputs[1].id} hopid=${hopInputs[1].hopID} to match vector element-wise multiply")
-            }
-        }
-
-        // matrix-vector element-wise multiply case (vector expansion)
-        // swap inputs if matrix is on right
-        // transpose vector if it does not match the correct dimension
-        if( nary.inputs.size == 2 &&
-                (nary.inputs[0].schema.size == 2 && nary.inputs[1].schema.size == 1 ||
-                        nary.inputs[1].schema.size == 2 && nary.inputs[0].schema.size == 1))
-        {
-            val (mat,vec) = if( nary.inputs[1].schema.size == 2 ) {
-                hopInputs.swap(0,1)
-                nary.inputs[1] to nary.inputs[0]
-            } else
-                nary.inputs[0] to nary.inputs[1]
-            assert(hopInputs[1].classify().isVector)
-            if( vec.schema.names[0] == mat.schema.names[0] ) {
-                // require vector to be column
-                if( hopInputs[1].classify() != HopClass.COL_VECTOR ) {
-                    hopInputs[1] = HopRewriteUtils.createTranspose(hopInputs[1])
-                    if( LOG.isDebugEnabled )
-                        LOG.debug("transpose vector $vec to col vector to match vector expansion element-wise multiply on first dimension of matrix $mat")
-                }
-            } else if ( vec.schema.names[0] == mat.schema.names[1] ) {
-                // require vector to be row
-                if( hopInputs[1].classify() != HopClass.ROW_VECTOR ) {
-                    hopInputs[1] = HopRewriteUtils.createTranspose(hopInputs[1])
-                    if( LOG.isDebugEnabled )
-                        LOG.debug("transpose vector $vec to row vector to match vector expansion element-wise multiply on second dimension of matrix $mat")
-                }
-            } else throw SNodeException(nary, "attribute name of vector does not match either attribute name of matrix in vector-expansion element-wise multiply")
-
-        }
-
 
         // check for outer product: nary(*) between two vectors whose names do not join
         return if( nary.op == NaryOp.MULT && nary.inputs[0].schema.size == 1 && nary.inputs[1].schema.size == 1
-                && nary.inputs[0].schema.names[0] != nary.inputs[1].schema.names[0] ) {
-            HopRewriteUtils.createMatrixMultiply(hopInputs[0], hopInputs[1])
+                && nary.inputs[0].schema.names.first() != nary.inputs[1].schema.names.first() ) {
+            HopRewriteUtils.createMatrixMultiply(hopInputs[0], hopInputs[1]) to
+                    mapOf(AU.U0 to (nary.inputs[0].schema.names.first() as AB), AU.U1 to (nary.inputs[1].schema.names.first() as AB))
         }
         else
             when( nary.inputs.size ) {
-                1 -> HopRewriteUtils.createUnary(hopInputs[0], OpOp1.valueOf(nary.op.name))
-                2 -> HopRewriteUtils.createBinary(hopInputs[0], hopInputs[1], OpOp2.valueOf(nary.op.name))
-                3 -> HopRewriteUtils.createTernary(hopInputs[0], hopInputs[1], hopInputs[2], OpOp3.valueOf(nary.op.name))
+                1 -> HopRewriteUtils.createUnary(hopInputs[0], OpOp1.valueOf(nary.op.name)) to mis[0]
+                2 -> HopRewriteUtils.createBinary(hopInputs[0], hopInputs[1], OpOp2.valueOf(nary.op.name)) to if(mis[0].size == 2) mis[0] else mis[1]
+                3 -> HopRewriteUtils.createTernary(hopInputs[0], hopInputs[1], hopInputs[2], OpOp3.valueOf(nary.op.name)) to mis[0] // ?
                 else -> throw SNodeException(nary, "don't know how to reconstruct a Hop from an nary with ${nary.inputs.size} inputs $nary")
             }
     }
@@ -847,15 +874,15 @@ object Spoof2Compiler {
 
 
     // Later we will map blocks between bind/unbind all at once, into either Fused Ops or Regular Hops.
-    private fun rReconstructHopDag(current: SNode, hopMemo: MutableMap<SNode, Hop>): Hop {
+    private fun rReconstructHopDag(current: SNode, hopMemo: MutableMap<SNode, Pair<Hop, Map<AU, AB>>>): Pair<Hop, Map<AU,AB>> {
         if (current.visited) {
             return hopMemo[current]!!
         }
 
-        val node: Hop = when( current ) {
+        val node: Pair<Hop, Map<AU,AB>> = when( current ) {
             is SNodeData -> {
                 //recursively process child nodes
-                val inputs = current.inputs.mapTo(arrayListOf()) { rReconstructHopDag(it, hopMemo) }
+                val inputs = current.inputs.mapTo(arrayListOf()) { rReconstructHopDag(it, hopMemo).first }
 
                 if( current.isWrite ) {
                     if (current.hop.dataType == Expression.DataType.SCALAR && inputs[0].dataType != Expression.DataType.SCALAR) {
@@ -882,16 +909,15 @@ object Spoof2Compiler {
                     }
                 }
                 if (inputs.isNotEmpty()) {
-                    HopRewriteUtils.replaceChildReference(current.hop,
-                            current.hop.input[0], inputs[0], 0)
+                    HopRewriteUtils.replaceChildReference(current.hop, current.hop.input[0], inputs[0], 0)
                 }
                 current.hop.parent.removeIf { it !is DataOp || it.input.indexOf(current.hop) == 0 }
                 current.hop.resetVisitStatus() // visit status may be set from SNode construction
                 current.hop.refreshSizeInformation()
-                current.hop
+                current.hop to mapOf()
             }
             is SNodeExt -> {
-                val inputs = current.inputs.mapTo(arrayListOf()) { rReconstructHopDag(it, hopMemo) }
+                val inputs = current.inputs.mapTo(arrayListOf()) { rReconstructHopDag(it, hopMemo).first }
                 current.hop.resetVisitStatus() // visit status may be set from SNode construction
 
                 // prevent duplicate CAST_AS_SCALAR
@@ -903,12 +929,12 @@ object Spoof2Compiler {
                 if( HopRewriteUtils.isUnary(current.hop, OpOp1.CAST_AS_SCALAR)
                         && inputs[0].dataType.isScalar ) {
                     // skip the cast
-                    inputs[0]
+                    inputs[0] to mapOf()
                 }
                 else if( HopRewriteUtils.isUnary(current.hop, OpOp1.CAST_AS_MATRIX)
                         && inputs[0].dataType.isMatrix ) {
                     // skip the cast
-                    inputs[0]
+                    inputs[0] to mapOf()
                 }
                 else {
                     // change input orientation if necessary
@@ -929,7 +955,7 @@ object Spoof2Compiler {
                             current.hop.addInput(c)
                     }
                     current.hop.parent.removeIf { it !is DataOp || it.input.indexOf(current.hop) == 0 }
-                    current.hop
+                    current.hop to mapOf()
                 }
             }
             is SNodeAggregate -> reconstructAggregate(current, hopMemo)
@@ -937,28 +963,33 @@ object Spoof2Compiler {
             is SNodeUnbind -> {
                 // match on the SNode beneath SNodeUnbind. Go to the Binds that are children to this block.
                 val bu = current.inputs[0]
-                val hop = when( bu ) {
+                val (hop: Hop, inputMap: Map<AU,AB>) = when( bu ) {
                     is SNodeAggregate -> reconstructAggregate(bu, hopMemo)
                     is SNodeNary -> reconstructNary(bu, hopMemo)
                     is SNodeBind -> { // unbind-bind
-                        rReconstructHopDag(bu.inputs[0], hopMemo)
+                        rReconstructHopDag(bu.inputs[0], hopMemo).let { (h,m) -> h to (m + bu.bindings) }
                     }
                     else -> throw SNodeException("don't know how to translate (${bu.id}) $bu")
-                }
-                // check if the Unbind necessitates a permutation
-                // if the Unbind has a map of Int to Attribute that does not agree with the schema of the input, then transpose
-                if( current.unbindings.any { (pos,n) -> current.input.schema.names[pos] != n } ) {
-                    // log this in case we encounter transpose issues
-                    if( LOG.isDebugEnabled )
-                        LOG.debug("insert transpose at Unbind (${current.id}) $current with input (${current.input.id}) ${current.input} ${current.input.schema}")
-                    HopRewriteUtils.createTranspose(hop)
-                }
-                else
-                    hop
+                }.let { it.first to it.second.toMutableMap() }
+                if( inputMap.entries.intersect(current.unbindings.entries).size != current.unbindings.entries.size ) {
+                    if( LOG.isTraceEnabled )
+                        LOG.trace("insert transpose at unbind (${current.id}) $current")
+                    HopRewriteUtils.createTranspose(hop) to (swap01(inputMap) - current.unbindings.keys)
+                } else hop to (inputMap - current.unbindings.keys)
+//                // check if the Unbind necessitates a permutation
+//                // if the Unbind has a map of Int to Attribute that does not agree with the schema of the input, then transpose
+//                if( current.unbindings.any { (pos,n) -> current.input.schema.names[pos] != n } ) {
+//                    // log this in case we encounter transpose issues
+//                    if( LOG.isDebugEnabled )
+//                        LOG.debug("insert transpose at Unbind (${current.id}) $current with input (${current.input.id}) ${current.input} ${current.input.schema}")
+//                    HopRewriteUtils.createTranspose(hop)
+//                }
+//                else
+//                    hop
             }
             is SNodeBind -> {
                 // ignore SNodeBind
-                rReconstructHopDag(current.inputs[0], hopMemo)
+                rReconstructHopDag(current.inputs[0], hopMemo).let { (h,m) -> h to (m + current.bindings) }
             }
             else -> throw SNodeException(current, "recurse on unknown SNode")
         }
@@ -968,4 +999,20 @@ object Spoof2Compiler {
 
         return node
     }
+
+    private fun swap01(m: MutableMap<AU,AB>): MutableMap<AU,AB> {
+        if( AU.U0 in m ) {
+            if( AU.U1 in m ) {
+                val z = m[AU.U0]!!
+                m[AU.U0] = m[AU.U1]!!
+                m[AU.U1] = z
+            } else {
+                m[AU.U1] = m.remove(AU.U0)!!
+            }
+        } else if( AU.U1 in m ) {
+            m[AU.U0] = m.remove(AU.U1)!!
+        }
+        return m
+    }
+
 }

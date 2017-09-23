@@ -14,10 +14,10 @@ class SNodeAggregate(
         get() = inputs[0]
         set(v) { inputs[0] = v }
 
-    constructor(op: AggOp, input: SNode, vararg names: Name) :
-            this(op, input, Schema.copyShapes(input.schema, *names))
-    constructor(op: AggOp, input: SNode, names: Iterable<Name>) :
-            this(op, input, Schema.copyShapes(input.schema, names))
+    constructor(op: AggOp, input: SNode, vararg names: AB) :
+            this(op, input, input.schema.filterKeys { it in names })
+    constructor(op: AggOp, input: SNode, names: Iterable<AB>) :
+            this(op, input, input.schema.filterKeys { it in names })
 
     override fun shallowCopyNoParentsYesInputs() = SNodeAggregate(op, input, aggs)
     override fun compare(o: SNode) =
@@ -37,10 +37,10 @@ class SNodeAggregate(
     override fun refreshSchema() {
         // input names minus aggregated names
         schema.setTo(inputs[0].schema)
-        schema.removeBoundAttributes(aggs.names)
+        schema -= aggs
     }
 
     fun aggsNotInInputSchema(): Schema {
-        return aggs.zip().filter { (n,_) -> n !in input.schema }.unzip().let { (n,s) -> Schema(n,s) }
+        return aggs.filterKeys { n -> n !in input.schema }
     }
 }

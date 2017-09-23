@@ -92,7 +92,7 @@ class SNodeNary(
     override fun refreshSchema() {
         // union of input schemas
         schema.clear()
-        inputs.forEach { schema.unionWithBound(it.schema) }
+        inputs.forEach { schema += it.schema }
     }
 
     /**

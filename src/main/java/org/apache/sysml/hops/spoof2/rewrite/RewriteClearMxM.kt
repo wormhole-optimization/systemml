@@ -38,32 +38,22 @@ class RewriteClearMxM : SPlanRewriteRule() {
             }
 
             // map the aggNames below the unbind-bind
-            agg.aggs.names.mapInPlace {
+            agg.aggs.replaceKeys {
+                it as AB
                 if( it in unbind.input.schema && it !in bind.schema ) // maintain constant aggregation
-                    Schema.freshNameCopy(it)
-                else
-                    if( it !in bind.bindings.values )
+                    it.deriveFresh()
+                else if( it !in bind.bindings.values )
                     it
                 else {
-                    val pos = bind.bindings.entries.find { (_,n) -> n == it }!!.key
+                    val pos = bind.bindings.inverse()[it]!!
                     //remove names from unbind and bind that were aggregated away
                     val oldAggName = unbind.unbindings[pos]!!
                     bind.bindings -= pos
                     unbind.unbindings -= pos
-                    val adjustPositions: (Int, Name) -> Pair<Int,Name> = { p, n -> (if( p > pos ) p-1 else p) to n }
-                    bind.bindings.mapInPlace(adjustPositions)
-                    unbind.unbindings.mapInPlace(adjustPositions)
+//                    val adjustPositions: (Int, Name) -> Pair<Int,Name> = { p, n -> (if( p > pos ) p-1 else p) to n }
+//                    bind.bindings.mapInPlace(adjustPositions)
+//                    unbind.unbindings.mapInPlace(adjustPositions)
                     oldAggName
-                }
-            }
-            // check for duplicate aggNames. This could happen during constant aggregation.
-            val nameSet = agg.aggs.names.toSet()
-            if( nameSet.size != agg.aggs.names.size ) {
-                nameSet.forEach { n ->
-                    val first = agg.aggs.names.indexOf(n)
-                    val last = agg.aggs.names.lastIndexOf(n)
-                    if( first != last )
-                        agg.aggs.names[last] = Schema.freshNameCopy(n)
                 }
             }
 
@@ -93,5 +83,4 @@ class RewriteClearMxM : SPlanRewriteRule() {
         }
         return RewriteResult.NoChange
     }
-
 }

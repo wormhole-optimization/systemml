@@ -29,27 +29,27 @@ class HandTest {
 //    }
 
     private val A = SNodeData(createReadHop("A"))
-    private val a = "a1"
-    private val b = "b2"
-    private val c = "c3"
-    private val d = "d4"
-    private val e = "e5"
+    private val a = AB() //"a1"
+    private val b = AB() //"b2"
+    private val c = AB() //"c3"
+    private val d = AB() //"d4"
+    private val e = AB() //"e5"
     private val p = Hop.AggOp.SUM
     private val m = SNodeNary.NaryOp.MULT
 
     @Test
     fun testStructureCSEElim_AAA() {
-        val ab = SNodeBind(A, mapOf(0 to a, 1 to b))
-        val bc = SNodeBind(A, mapOf(0 to b, 1 to c))
-        val cd = SNodeBind(A, mapOf(0 to c, 1 to d))
-        val de = SNodeBind(A, mapOf(0 to d, 1 to e))
+        val ab = SNodeBind(A, mapOf(AU.U0 to a, AU.U1 to b))
+        val bc = SNodeBind(A, mapOf(AU.U0 to b, AU.U1 to c))
+        val cd = SNodeBind(A, mapOf(AU.U0 to c, AU.U1 to d))
+        val de = SNodeBind(A, mapOf(AU.U0 to d, AU.U1 to e))
         val r1 = SNodeData(createWriteHop("X"),
                 SNodeUnbind(
                 SNodeAggregate(p, SNodeNary(m,
                 SNodeAggregate(p, SNodeNary(m, ab, bc), b),
                 cd
                 ), c)
-                , mapOf(0 to a, 1 to d))
+                , mapOf(AU.U0 to a, AU.U1 to d))
         )
         val r2 = SNodeData(createWriteHop("Y"),
                 SNodeUnbind(
@@ -57,7 +57,7 @@ class HandTest {
                 SNodeAggregate(p, SNodeNary(m, bc, cd), c),
                 de
                 ), d)
-                , mapOf(0 to b, 1 to e))
+                , mapOf(AU.U0 to b, AU.U1 to e))
         )
         val roots = arrayListOf<SNode>(r1, r2)
         System.out.print("Before:")
@@ -88,10 +88,10 @@ class HandTest {
     fun testStructureCSEElim_AB_BA() {
         val A = SNodeData(createReadHop("A"))
         val B = SNodeData(createReadHop("B"))
-        val ab = SNodeBind(A, mapOf(0 to a, 1 to b))
-        val bc = SNodeBind(B, mapOf(0 to b, 1 to c))
-        val cd = SNodeBind(B, mapOf(0 to c, 1 to d))
-        val de = SNodeBind(A, mapOf(0 to d, 1 to e))
+        val ab = SNodeBind(A, mapOf(AU.U0 to a, AU.U1 to b))
+        val bc = SNodeBind(B, mapOf(AU.U0 to b, AU.U1 to c))
+        val cd = SNodeBind(B, mapOf(AU.U0 to c, AU.U1 to d))
+        val de = SNodeBind(A, mapOf(AU.U0 to d, AU.U1 to e))
         val AB = SNodeAggregate(p,
                     SNodeNary(m, ab, bc)
                 , b)

@@ -40,20 +40,21 @@ class RewritePullAggAbovePlus : SPlanRewriteRule() {
             if( pc is SNodeAggregate && pc.op == AggOp.SUM // todo expand to min, max
                     && pc.parents.all { it == plus }) {
                 // assume the agg is not empty
-                val overlapNames = pc.aggs.names.withIndex().filter { (_, n) -> n in plus.schema }.map { (i,n) -> i to n }.toMap()
+                val overlapNames: Schema = pc.aggs.filter { n, _ -> n in plus.schema }
                 if( overlapNames.isNotEmpty() ) {
                     pc.input.parents -= pc
-                    val u = SNodeUnbind(pc.input, overlapNames)
-                    val nb = overlapNames.mapValues { (_,n) -> Schema.freshNameCopy(n) }
-                    val b = SNodeBind(u, nb)
+                    val renameMap = overlapNames.mapValues { (n,_) -> n as AB; n.deriveFresh() }
+                    val (unbindings, bindings) = renameMap.toList().mapIndexed { i, (on, nn) -> AU(i).let { (it to (on as AB)) to (it to nn) } }.unzip()
+                    val u = SNodeUnbind(pc.input, unbindings.toMap())
+                    val b = SNodeBind(u, bindings.toMap())
                     b.parents += pc
                     pc.input = b
-                    pc.aggs.names.mapInPlaceIndexed { i, n -> if( i in nb ) nb[i]!! else n }
+                    pc.aggs.replaceKeys { n -> renameMap.getOrDefault(n, n) }
                     if( LOG.isTraceEnabled )
                         LOG.trace("In RewritePullAggAbovePlus, rename (${pc.id}) $overlapNames into ${pc.aggs}")
                 }
                 // kill pc
-                mapInputToNames += pc.aggs.zip().toMap()
+                mapInputToNames += pc.aggs
                 pc.input.parents -= pc
                 val cnt = pc.parents.size
                 for( i in 1..cnt ) {

@@ -27,12 +27,12 @@ class SNodeExt(
 
         if( hop.dataType == Expression.DataType.SCALAR || hop.dim1 == 1L && hop.dim2 == 1L )
         else if( hop.dim1 == 1L )
-            hopSchema.addUnboundAttribute(hop.dim2, Schema.NamePrefix.ROW)
+            hopSchema.put(AU.U0, hop.dim2)
         else if( hop.dim2 == 1L )
-            hopSchema.addUnboundAttribute(hop.dim1, Schema.NamePrefix.COL)
+            hopSchema.put(AU.U0, hop.dim1)
         else {
-            hopSchema.addUnboundAttribute(hop.dim1, Schema.NamePrefix.ROW)
-            hopSchema.addUnboundAttribute(hop.dim2, Schema.NamePrefix.COL)
+            hopSchema.put(AU.U0, hop.dim1)
+            hopSchema.put(AU.U1, hop.dim2)
         }
 
         refreshSchema()

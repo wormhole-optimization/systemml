@@ -133,7 +133,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                         RewriteBindElim.eliminateEmpty(above)
                     val newNode = if (node.agBindings().isEmpty()) RewriteBindElim.eliminateEmpty(node) else node
                     if (LOG.isTraceEnabled)
-                        LOG.trace("RewriteBindUnify: elim redundant bindings $commonBindings in ${above.id} $above -- ${node.id} $node ${if (otherNodeParents.isNotEmpty()) "(with split CSE)" else ""}")
+                        LOG.trace("RewriteBindUnify: elim redundant bindings $commonBindings in ${above.id} $above -- ${node.id} $node ${if (otherNodeParents.isNotEmpty()) "(with split CSE)" else ""} to yield ${newNode.id} $newNode")
                     return rRewriteBindUnify(newNode, true)
             }
 
@@ -180,7 +180,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                     val nodeName = node.unbindings[unbindBindPos]!!
                     // exception: if aboveName has a parent that is an SNodeAggregate, then reverse the ordering
                     val flip = above.parents.any { it is SNodeAggregate && nodeName in it.aggs }
-                    val success = if( Schema.nameComparator.compare(aboveName, nodeName) > 0 ) // flip!
+                    val success = if(aboveName > nodeName) // flip!
                         tryRenameSingle(above, aboveName, nodeName)
                     else
                         tryRenameSingle(node, nodeName, aboveName)
@@ -199,9 +199,9 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                 // p2Bind binds to the same positions as p1Unbind
                 val p2Bind = p1Unbind.parents.find { it is SNodeBind && it.bindings.keys == p1Unbind.unbindings.keys } as? SNodeBind
                 if( p2Bind != null ) {
-                    val p1UnbindRev = p1Unbind.unbindings.map { (p,n) -> n to p }.toMap()
-                    val newBindings = node.bindings.mapValues { (p,n) ->
-                         if( p in p1Unbind.unbindings ) p2Bind.bindings[p1UnbindRev[n]]!! else n
+                    val newBindings = node.bindings.mapValues { (_,n) ->
+                         if( n in p1Unbind.unbindings.inverse() ) p2Bind.bindings[p1Unbind.unbindings.inverse()[n]]!!
+                         else n
                     }
 
                     // Split the bottom bind (node) and wire it to the parents of p2Bind
@@ -224,11 +224,15 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                         it.inputs[it.inputs.indexOf(p2Bind)] = bindNewName
                         bindNewName.parents += it
                     }
+                    val nn = if( node.parents.isEmpty() ) {
+                        belowBind.parents -= node
+                        node.input
+                    } else node
                     bindNewName.parents.forEach { it.refreshSchemasUpward() }
 
                     if (LOG.isTraceEnabled)
                         LOG.trace("RewriteBindUnify: eliminate transpose-like renaming pattern (${p2Bind.id}) $p2Bind -- (${p1Unbind.id}) $p1Unbind -- (${node.id}) $node")
-                    return rRewriteBindUnify(node, true)
+                    return rRewriteBindUnify(nn, true)
                 }
             }
         }
@@ -237,7 +241,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
         val bindIndices = node.parents.withIndex().filter { (_,p) -> p is SNodeBind }.map { (i,_) -> i }
         for( bindi in 0..bindIndices.size-2) {
             val bind1 = node.parents[bindIndices[bindi]] as SNodeBind
-            for( bindj in bindi+1..bindIndices.size-1) {
+            for( bindj in bindi+1 until bindIndices.size) {
                 // see if there is overlap. If so, try renaming the bindj to bindi
                 val bind2 = node.parents[bindIndices[bindj]] as SNodeBind
                 // Common positions that map to different names
@@ -246,7 +250,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                         .filter { bind1.bindings[it]!! != bind2.bindings[it]!! }) {
                     val name1 = bind1.bindings[bindingPosition]!!
                     val name2 = bind2.bindings[bindingPosition]!!
-                    val success = if( Schema.nameComparator.compare(name1, name2) > 0 ) // flip!
+                    val success = if( name1 > name2 ) // flip!
                         tryRenameSingle(bind1, name1, name2)
                     else
                         tryRenameSingle(bind2, name2, name1)
@@ -262,39 +266,46 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
     companion object {
         fun SNode.isBindOrUnbind() = this is SNodeBind || this is SNodeUnbind
 
-        fun renameTwoSteps(node: SNode, desiredBindings: Map<Int, Name>): Boolean {
-            if( !node.isBindOrUnbind() )
-                return false
-            val desiredNames = desiredBindings.filter { (p, desiredName) ->
-                node.agBindings().let {
-                    if( p !in it )
-                        throw SNodeException(node, "does not have a binding for $p; desired $desiredBindings")
-                    it[p] != desiredName
-                }
-            }
-            val oldNames = node.agBindings().filter { (p, _) -> p in desiredNames }
-            val intermediateNames = oldNames.mapValues { (_, oldName) -> Schema.freshNameCopy(oldName) }
-            val oldToIntermediate = oldNames.map { (p, oldName) -> oldName to intermediateNames[p]!! }.toMap()
-            val intermediateToNew = intermediateNames.map { (p, intermediateName) -> intermediateName to desiredNames[p]!! }.toMap()
-            val success1 = forceRenameAll(node, oldToIntermediate)
-            if( !success1 )
-                throw SNodeException(node, "problem renaming to intermediate via $oldToIntermediate")
-            val success2 = forceRenameAll(node, intermediateToNew)
-            if( !success2 )
-                throw SNodeException(node, "problem renaming to new via $intermediateToNew")
-            return true
-        }
+//        fun renameTwoSteps(node: SNode, desiredBindings: Map<AU, AB>): Boolean {
+//            if( !node.isBindOrUnbind() )
+//                return false
+//            val desiredNames = desiredBindings.filter { (p, desiredName) ->
+//                node.agBindings().let {
+//                    if( p !in it )
+//                        throw SNodeException(node, "does not have a binding for $p; desired $desiredBindings")
+//                    it[p] != desiredName
+//                }
+//            }
+//            val oldNames = node.agBindings().filter { (p, _) -> p in desiredNames }
+//            val intermediateNames = oldNames.mapValues { (_, oldName) -> oldName.deriveFresh() }
+//            val oldToIntermediate = oldNames.map { (p, oldName) -> oldName to intermediateNames[p]!! }.toMap()
+//            val intermediateToNew = intermediateNames.map { (p, intermediateName) -> intermediateName to desiredNames[p]!! }.toMap()
+//            val success1 = forceRenameAll(node, oldToIntermediate)
+//            if( !success1 )
+//                throw SNodeException(node, "problem renaming to intermediate via $oldToIntermediate")
+//            val success2 = forceRenameAll(node, intermediateToNew)
+//            if( !success2 )
+//                throw SNodeException(node, "problem renaming to new via $intermediateToNew")
+//            return true
+//        }
+//
+//        fun forceRenameAll(node: SNode, oldToNew: Map<AB,AB>): Boolean {
+//            if( !node.isBindOrUnbind() )
+//                return false
+//            for ((oldName, newName) in oldToNew) {
+//                val success = tryRenameSingle(node, oldName, newName)
+//                if( !success )
+//                    throw SNodeException(node, "failed to rename $oldName to $newName on this node during forceful rename all $oldToNew")
+//            }
+//            return true
+//        }
 
-        fun forceRenameAll(node: SNode, oldToNew: Map<Name,Name>): Boolean {
-            if( !node.isBindOrUnbind() )
-                return false
-            for ((oldName, newName) in oldToNew) {
-                val success = tryRenameSingle(node, oldName, newName)
-                if( !success )
-                    throw SNodeException(node, "failed to rename $oldName to $newName on this node during forceful rename all $oldToNew")
-            }
-            return true
-        }
+        private fun BAD_COND(newName: AB, it: SNode): Boolean =
+            newName in it.schema || (it is SNodeAggregate && newName in it.aggs) || it is ENode || it is SNodeUnbind && newName in it.unbindings.values
+
+        private fun BAD_COND_REC(newName: AB, it: SNode): Boolean =
+            if( it.isBindOrUnbind() ) it.parents.all { BAD_COND_REC(newName, it) }
+            else BAD_COND(newName, it)
 
 
         /**
@@ -305,7 +316,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
          * If [node] is [SNodeUnbind], it is successful if [node]'s input does not have [newName] in its schema,
          * and the propagation is downward.
          */
-        fun tryRenameSingle(node: SNode, oldName: Name, newName: Name): Boolean {
+        fun tryRenameSingle(node: SNode, oldName: AB, newName: AB): Boolean {
             if( !node.isBindOrUnbind() || oldName == newName || newName in node.schema || oldName !in node.agBindings().values )
                 return false
 
@@ -316,16 +327,15 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                     val bindingPosition = node.unbindings.entries.find { (_, n) -> n == oldName }!!.key
                     node.unbindings.mapValuesInPlace { if (it == oldName) newName else it }
                     rRenamePropagate(oldName, newName, node.input, node)
-                    if (oldName[0] != newName[0])
-                        node.refreshSchemasUpward()
                     if (LOG.isTraceEnabled)
                         LOG.trace("RewriteBindUnify: downward propagate rename $bindingPosition: $oldName -> $newName on ${node.id}")
                     return true
                 }
             } else {
                 node as SNodeBind
+                // filter parents based on whether they are eligible for at least one step of renaming. Avoid bind-unbind traps.
                 val (bind2parentsOverlap, bind2parentsNoOverlap) = node.parents.partition {
-                    newName in it.schema || (it is SNodeAggregate && newName in it.aggs) || it is ENode || it is SNodeUnbind && newName in it.unbindings.values
+                    BAD_COND_REC(newName, it)
                 }
                 if (bind2parentsNoOverlap.isNotEmpty()) {
                     val bindingPosition = node.bindings.entries.find { (_, n) -> n == oldName }!!.key
@@ -370,7 +380,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
             return false
         }
 
-        private fun rRenamePropagate(oldName: Name, newName: Name, node: SNode, fromNode: SNode) {
+        private fun rRenamePropagate(oldName: AB, newName: AB, node: SNode, fromNode: SNode) {
             val refreshParentsList = LinkedList<SNode>()
             rRenamePropagate(oldName, newName, node, fromNode, refreshParentsList)
             refreshParentsList.forEach { n ->
@@ -413,7 +423,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
          *
          * @param refreshParentsList A list of nodes whose parents should be checked for propagation after the recursion finishes
          */
-        private fun rRenamePropagate(oldName: Name, newName: Name, node: SNode, fromNode: SNode, refreshParentsList: MutableList<SNode>) {
+        private fun rRenamePropagate(oldName: AB, newName: AB, node: SNode, fromNode: SNode, refreshParentsList: MutableList<SNode>) {
             val fromInput = fromNode in node.inputs
             if (LOG.isTraceEnabled)
                 LOG.trace("at (${node.id}) $node ${node.schema} from ${if (fromInput) "input" else "parent"} (${fromNode.id}) $fromNode")
@@ -422,9 +432,9 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
 //            return
             if (newName in node.schema || node is SNodeAggregate && newName in node.aggs || node is ENode || node is SNodeUnbind && newName in node.unbindings.values) {
                 if (fromInput) {
-                    val bindingPosition = fromNode.schema.names.indexOf(newName)
-                    val unbindNew = SNodeUnbind(fromNode, mapOf(bindingPosition to newName)).apply { this.visited = fromNode.visited }
-                    val bindOld = SNodeBind(unbindNew, mapOf(bindingPosition to oldName)).apply { this.visited = fromNode.visited }
+                    val au = fromNode.schema.leastFreeUnbound() //fromNode.schema.names.indexOf(newName)
+                    val unbindNew = SNodeUnbind(fromNode, mapOf(au to newName)).apply { this.visited = fromNode.visited }
+                    val bindOld = SNodeBind(unbindNew, mapOf(au to oldName)).apply { this.visited = fromNode.visited }
                     node.inputs.mapInPlace {
                         if (it == fromNode) {
                             fromNode.parents -= node
@@ -433,8 +443,9 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                         } else it
                     }
                 } else {
-                    val unbindOld = SNodeUnbind(node, mapOf(node.schema.names.indexOf(oldName) to oldName))
-                    val bindNew = SNodeBind(unbindOld, mapOf(node.schema.names.indexOf(oldName) to newName))
+                    val au = fromNode.schema.leastFreeUnbound()
+                    val unbindOld = SNodeUnbind(node, mapOf(au to oldName))
+                    val bindNew = SNodeBind(unbindOld, mapOf(au to newName))
                     fromNode.inputs.mapInPlace {
                         if (it == node) {
                             node.parents -= fromNode
@@ -449,15 +460,13 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
             when (node) {
                 is SNodeAggregate -> {
                     if (oldName in node.aggs) {
-                        node.aggs[node.aggs.names.indexOf(oldName)] = newName
+                        node.aggs.replaceKey(oldName, newName)
                         return
                     }
                 }
                 is SNodeUnbind -> {
                     if (oldName in node.unbindings.values) {
                         node.unbindings.mapValuesInPlace { if (it == oldName) newName else it }
-                        if (oldName[0] != newName[0])
-                            node.refreshSchemasUpward()
                         return
                     }
                 }

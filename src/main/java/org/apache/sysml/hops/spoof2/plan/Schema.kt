@@ -1,6 +1,5 @@
 package org.apache.sysml.hops.spoof2.plan
 
-import org.apache.sysml.runtime.controlprogram.parfor.util.IDSequence
 import java.util.*
 
 /**
@@ -10,113 +9,34 @@ import java.util.*
  * Only LeftIndex and RightIndex operators are allowed to have schemas with unbound attributes.
  */
 class Schema private constructor(
-        val names: ArrayList<Name>,
-        val shapes: ArrayList<Shape>
-) {
+        private val nameShapes: HashMap<Name,Shape>
+): MutableMap<Name, Shape> by nameShapes {
     // defensive copy constructors
-    constructor() : this(arrayListOf(), arrayListOf())
-    constructor(names: List<Name>, shapes: List<Shape>) : this(ArrayList(names), ArrayList(shapes))
-    constructor(s: Schema) : this(ArrayList(s.names), ArrayList(s.shapes))
-    constructor(m: List<Pair<Name,Shape>>) : this(m.unzip().first, m.unzip().second)
-    constructor(m: Map<Name,Shape>) : this(m.toList())
+    constructor() : this(hashMapOf())
+    constructor(names: List<Name>, shapes: List<Shape>) : this(names.zip(shapes).toMap(HashMap<Name,Shape>())) {
+        require(names.size == shapes.size) {"different number of names and shapes: $names, $shapes"}
+    }
+    constructor(s: Schema) : this(HashMap<Name,Shape>(s.nameShapes))
+    constructor(m: List<Pair<Name,Shape>>) : this(m.toMap(HashMap<Name,Shape>()))
+    constructor(m: Map<Name,Shape>) : this(m.toMap(HashMap<Name,Shape>()))
 
-    init { check() }
-    fun check() {
-        require(names.size == shapes.size) {"mismatched names and shapes in Schema $this"}
+    val names: Set<Name>
+        get() = nameShapes.keys
+    val shapes: Collection<Shape>
+        get() = nameShapes.values
+
+//    operator fun contains(name: Name) = name in names
+    operator fun plusAssign(other: Schema) {
+        putAll(other)
     }
 
-    companion object {
-        private val _idSeq = IDSequence()
-        private fun nextNameId(): String = _idSeq.nextID.toString()
-        fun freshNameCopy(n: Name): Name {
-            return n+'_'+_idSeq.nextID
-        }
-
-        /** Compare names by id. */
-        val nameComparator: Comparator<Name> = compareBy {
-            val i = it.lastIndexOf('_', it.length-2)
-            if( i == -1 ) it.substring(1).toLong() else it.substring(i + 1).toLong()
-        }
-
-        fun copyShapes(src: Schema, tgt: Iterable<Name>): Schema {
-            val s = Schema(arrayListOf(), arrayListOf())
-            tgt.forEach { n ->
-                check( n in src.names ) {"error copying schema information from $src to names $tgt; src does not contain name $n"}
-                s.names += n
-                s.shapes += src.getShape(n)
-            }
-            return s
-        }
-        fun copyShapes(src: Schema, vararg names: Name): Schema {
-             return copyShapes(src, names.asList())
-        }
-    }
-
-    fun deepCopy() = Schema(this)
-
-    operator fun get(pos: Int) = names[pos]
-    operator fun set(pos: Int, name: Name) { names[pos] = name }
-    operator fun contains(name: Name) = name in names
-    operator fun plusAssign(schema: Schema) {
-        this.unionWithBound(schema)
-    }
-    operator fun minusAssign(schema: Schema) {
-        this.removeBoundAttributes(schema.names)
-    }
-    operator fun minusAssign(names: Iterable<Name>) {
-        this.removeBoundAttributes(names)
-    }
-
-    fun zip(): List<Pair<Name,Shape>> = names.zip(shapes)
-
-    fun getShape(name: Name): Shape {
-        val idx = names.indexOf(name)
-        require(idx != -1) {"no such name $name in $this"}
-        return shapes[idx]
-    }
-
-    fun getName(position: Int): Name {
-        return names[position]
+    override fun toString(): String {
+        return nameShapes.map { (n,s) -> "$n-$s" }.joinToString(prefix = "{", postfix = "}")
     }
 
     fun setTo(s: Schema) {
         clear()
-        names += s.names
-        shapes += s.shapes
-    }
-
-    /** Append the attributes from [s] that are not already in this to this. */
-    fun unionWithBound(s: Schema) {
-        check( s.allBound() ) {"cannot union with a Schema with unbound attributes; $this; $s"}
-        s.names.zip(s.shapes).forEach { (l,d) ->
-            if (l !in names) {
-                names += l
-                shapes += d
-            }
-        }
-    }
-
-    fun clear() {
-        names.clear()
-        shapes.clear()
-    }
-
-    /** Remove the bound attributes that are in [removes]. */
-    fun removeBoundAttributes(removes: Iterable<Name>) {
-        removes.forEach { l ->
-            if( l.isBound() ) {
-                val idx = names.indexOf(l)
-                if (idx != -1) {
-                    names.removeAt(idx)
-                    shapes.removeAt(idx)
-                }
-            }
-        }
-    }
-
-    override fun toString(): String {
-        return "$names:$shapes"
-//        names.zip(dims).joinToString(prefix = "[", postfix = "]", transform = { (l,d) -> "$l: $d" })
+        nameShapes += s.nameShapes
     }
 
     override fun equals(other: Any?): Boolean {
@@ -125,120 +45,114 @@ class Schema private constructor(
 
         other as Schema
 
-        if (names != other.names) return false
-        if (shapes != other.shapes) return false
+        if (nameShapes != other.nameShapes) return false
 
         return true
     }
+    override fun hashCode() = nameShapes.hashCode()
 
-    override fun hashCode() = 31 * names.hashCode() + shapes.hashCode()
+    fun allBound() = names.all { it is Attribute.Bound }
 
-    fun allBound() = names.all(Name::isBound)
-    fun isBound(pos: Int) = names[pos].isBound()
-
-    /** Add a new unbound attribute */
-    fun addUnboundAttribute(shape: Shape, namePrefix: NamePrefix) {
-        names += namePrefix.prefixStr
-        shapes += shape
+    fun unbindName(name: Attribute.Bound, dim: Dim) {
+        val shape = nameShapes.remove(name) ?: throw IllegalArgumentException("attempt to unbind a name $name that is not in the schema $this")
+        nameShapes.put(name.unbind(dim), shape)
     }
-
-    enum class NamePrefix(val prefixChar: Char) {
-        ROW('r'), COL('c');
-        val prefixStr: String = prefixChar.toString()
-    }
-
-    fun unbindName(name: Name) {
-        require(name.isBound()) {"attempt to unbind an invalid name $name from schema $this"}
-        val idx = names.indexOf(name)
-        require(idx != -1) {"attempt to unbind a name $name that is not in the schema $this"}
-        names[idx] = name.substring(0, 1)
-    }
-
-    fun bindName(pos: Int, name: Name) {
-        val pre = names[pos]
-        require(!pre.isBound()) {"name $pre at position $pos is already bound in schema $this"}
-        names[pos] = name // replace pre
-    }
-
-    fun permutePositions(permutation: Map<Int,Int>) {
-        val pf = permutation.filter { (k,v) -> k != v }
-        when( pf.size ) {
-        // common cases
-            0 -> return
-            1 -> {
-                // this could occur if an Unbind is partially eliminated
-                val (k,v) = pf.iterator().next()
-                names.swap(k,v)
-                shapes.swap(k,v)
-            }
-//            2 -> {
-//                val (a, b) = permutation.keys.iterator().let { it.next() to it.next() }
-//                names.swap(a,b)
-//                shapes.swap(a,b)
-//            }
-            else -> { // advanced case with >2 permutes
-                // Complete the permutation
-                val newPerm = if( size != permutation.size ) {
-                    val rng = (0..size-1).filter { it !in permutation.values }
-                    permutation + ((0..size-1) - permutation.keys).zip(rng)
-                } else permutation
-
-                val tmpNames = ArrayList(names)
-                names.mapInPlaceIndexed { idx, _ -> tmpNames[if (idx in newPerm) newPerm[idx]!! else idx] }
-                val tmpShapes = ArrayList(shapes)
-                shapes.mapInPlaceIndexed { idx, _ -> tmpShapes[if (idx in newPerm) newPerm[idx]!! else idx] }
-            }
-        }
-    }
-
-    fun permuteNames(permutation: Map<Name, Name>) {
-        when( permutation.filter { (k,v) -> k != v }.size ) {
-            // common cases
-            0 -> return
-            1 -> throw IllegalArgumentException("bad permutation $permutation on $this")
-            2 -> {
-                val (a, b) = permutation.keys.iterator().let { names.indexOf(it.next()) to names.indexOf(it.next()) }
-                require(a != -1 && b != -1) {"bad permutation $permutation on $this"}
-                names.swap(a,b)
-            }
-            else -> { // advanced case with >2 permutes
-                val indexMap = names.mapIndexed { idx, n ->
-                    if (n in permutation) {
-                        val newidx = names.indexOf(permutation[n])
-                        require(newidx != -1) {"bad permutation $permutation on $this"}
-                        newidx
-                    } else
-                        idx
-                }
-                val tmpNames = ArrayList(names)
-                names.mapInPlaceIndexed { idx, _ -> tmpNames[indexMap[idx]] }
-                val tmpShapes = ArrayList(shapes)
-                shapes.mapInPlaceIndexed { idx, _ -> tmpShapes[indexMap[idx]] }
-            }
-        }
-    }
-
-    fun isEmpty() = names.isEmpty()
-    fun isNotEmpty() = names.isNotEmpty()
-    val size: Int
-        get() = names.size
-    val indices: IntRange
-        get() = 0..size - 1
 
     /**
      * Create names to bind all the unbound attributes in this Schema.
      * Add them to [partialBindings].
      * Retain any bindings already in [partialBindings].
      */
-    fun fillWithBindings(partialBindings: MutableMap<Int, Name>) {
-        this.indices.map {
-            if( it in partialBindings )
-                require(!names[it].isBound()) {"required binding to position $it is already bound in $this"}
-            else if( !names[it].isBound() )
-                partialBindings[it] = names[it] + nextNameId()
+    fun fillWithBindings(partialBindings: MutableMap<AU, AB>) {
+        this.names.forEach {
+            if( it is AU && it !in partialBindings )
+                partialBindings.put(it, it.bindFresh())
+        }
+    }
+    fun genAllBindings(): MutableMap<AU, AB> = linkedMapOf<AU,AB>().also { this.fillWithBindings(it) }
+
+
+    companion object {
+        fun copyShapes(src: Schema, tgt: Iterable<Name>): Schema {
+            val s = Schema()
+            tgt.forEach { n ->
+                check( n in src ) {"error copying schema information from $src to names $tgt; src does not contain name $n"}
+                s.put(n, src[n]!!)
+            }
+            return s
+        }
+        fun copyShapes(src: Schema, vararg names: Name): Schema {
+            return copyShapes(src, names.asList())
         }
     }
 
-    fun genAllBindings(): MutableMap<Int, Name> = linkedMapOf<Int,Name>().also { this.fillWithBindings(it) }
+    
+    inline fun filterKeys(predicate: (Attribute) -> Boolean): Schema {
+        return filterKeysTo(Schema(), predicate)
+    }
+    inline fun filterKeysTo(destination: Schema, predicate: (Attribute) -> Boolean): Schema {
+        val result = destination
+        for ((key, value) in this)
+            if (predicate(key))
+                result.put(key, value)
+        return result
+    }
+    inline fun filter(predicate: (Attribute, Shape) -> Boolean): Schema {
+        return filterTo(Schema(), predicate)
+    }
+    inline fun filterTo(destination: Schema, predicate: (Attribute, Shape) -> Boolean): Schema {
+        val result = destination
+        for ((key, value) in this)
+            if (predicate(key, value))
+                result.put(key, value)
+        return result
+    }
+    fun filterBound() = filter { a, _ -> a is Attribute.Bound }
+    operator fun minusAssign(other: Schema) {
+        other.forEach { remove(it.key) }
+    }
+    fun replaceKey(aOld: Attribute, aNew: Attribute): Boolean {
+        val changed = if( aOld != aNew ) {
+            val shape = remove(aOld) ?: throw IllegalArgumentException("old attribute $aOld is not present in this schema")
+            put(aNew, shape)
+            true
+        } else false
+        return changed
+    }
+    inline fun replaceKeys(oldToNew: (Attribute) -> Attribute): Boolean {
+        val m0 = keys.mapTo(mutableListOf()) { it to oldToNew(it) }
+        var changed = false
+        do {
+            val iter = m0.iterator()
+            while( iter.hasNext() ) {
+                val (o, n) = iter.next()
+                when{
+                    o == n -> iter.remove()
+                    n in this -> {}
+                    else -> {changed = replaceKey(o, n) || changed; iter.remove()}
+                }
+            }
+        } while(m0.isNotEmpty())
+        return changed
+    }
+    inline fun partition(predicate: (Name, Shape) -> Boolean): Pair<Schema, Schema> {
+        val first = Schema()
+        val second = Schema()
+        for ((n,s) in this) {
+            if (predicate(n,s)) {
+                first.put(n,s)
+            } else {
+                second.put(n,s)
+            }
+        }
+        return Pair(first, second)
+    }
 
+
+    fun leastFreeUnbound(): AU {
+        var au = AU.U0
+        while( au in this )
+            au = AU(au.dim+1)
+        return au
+    }
 }
