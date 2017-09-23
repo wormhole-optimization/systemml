@@ -19,6 +19,7 @@ class SPlanBottomUpRewriter : SPlanRewriter {
     companion object {
         /** Whether to invoke the SPlanValidator after every rewrite pass. */
         private const val CHECK = true
+        private const val CHECK_DURING_RECUSION = false
         internal val LOG = LogFactory.getLog(SPlanBottomUpRewriter::class.java)!!
 
         //internal configuration flags
@@ -63,7 +64,7 @@ class SPlanBottomUpRewriter : SPlanRewriter {
         var changed = false
         val collectedRoots = arrayListOf<SNode>()
         for( i in leaves.indices ) {
-            val result = rRewriteSPlan(leaves[i], _rules, collectedRoots)
+            val result = rRewriteSPlan(leaves[i], _rules, collectedRoots, roots)
             when( result ) {
                 SPlanRewriteRule.RewriteResult.NoChange -> {}
                 is SPlanRewriteRule.RewriteResult.NewNode -> {
@@ -88,7 +89,7 @@ class SPlanBottomUpRewriter : SPlanRewriter {
         return if( changed ) RewriterResult.NewRoots(roots) else rr
     }
 
-    private fun rRewriteSPlan(node0: SNode, rules: List<SPlanRewriteRuleBottomUp>, collectedRoots: ArrayList<SNode>): SPlanRewriteRule.RewriteResult {
+    private fun rRewriteSPlan(node0: SNode, rules: List<SPlanRewriteRuleBottomUp>, collectedRoots: ArrayList<SNode>, allRoots: List<SNode>): SPlanRewriteRule.RewriteResult {
         var node = node0
         if (node.visited)
             return SPlanRewriteRule.RewriteResult.NoChange
@@ -102,6 +103,8 @@ class SPlanBottomUpRewriter : SPlanRewriter {
                 is SPlanRewriteRule.RewriteResult.NewNode -> {
                     node = result.newNode
                     changed = result
+                    if( CHECK_DURING_RECUSION )
+                        SPlanValidator.validateSPlan(allRoots, false)
                 }
             }
         }
@@ -113,7 +116,7 @@ class SPlanBottomUpRewriter : SPlanRewriter {
             var i = 0
             while (i < node.parents.size) {
                 val parent = node.parents[i]
-                val result = rRewriteSPlan(parent, rules, collectedRoots)
+                val result = rRewriteSPlan(parent, rules, collectedRoots, allRoots)
                 if (changed == SPlanRewriteRule.RewriteResult.NoChange && result is SPlanRewriteRule.RewriteResult.NewNode)
                     changed = SPlanRewriteRule.RewriteResult.NewNode(node)
                 i++

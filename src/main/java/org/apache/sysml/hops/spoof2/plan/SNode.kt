@@ -72,7 +72,7 @@ abstract class SNode(inputs: List<SNode>) {
         private val _idSeq = IDSequence()
 
         @JvmStatic
-        fun resetVisited(roots: ArrayList<SNode>) {
+        fun resetVisited(roots: List<SNode>) {
             for (root in roots)
                 root.resetVisited()
         }

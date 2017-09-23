@@ -107,7 +107,7 @@ class NormalFormExploreEq : SPlanRewriter {
                     override fun run() {
                         if( LOG.isInfoEnabled ) {
 //                            au.com.bytecode.opencsv.CSVWriter
-                            if( statsAll.size in 1..39 )
+                            if( statsAll.size in 1..9 )
                                 LOG.info("Sum-Product stats:\n${statsAll.joinToString("\n")}")
                             val total = Stats()
                             val f = File("stats.tsv")

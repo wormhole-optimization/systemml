@@ -18,14 +18,13 @@ import org.apache.sysml.utils.Explain
  */
 class SPlanNormalFormRewriter : SPlanRewriter {
     private val _rulesFirstOnce = listOf<SPlanRewriteRule>(
-            RewriteDecompose()          // Subtract  + and *(-1);   ^2  Self-*
+//            RewriteDecompose()          // Subtract  + and *(-1);   ^2  Self-*
     )
     private val _ruleBindElim = listOf(
             RewriteBindElim(),
             RewriteMultiplyPlusSimplify()
     )
     private val _rulesToNormalForm: List<SPlanRewriteRule> = listOf(
-//            RewriteBindElim(),
             RewriteSplitCSE(),          // split CSEs when they would block a sum-product rearrangement
             RewritePullAggAboveMult(),
             RewriteAggregateElim(),
@@ -54,6 +53,7 @@ class SPlanNormalFormRewriter : SPlanRewriter {
     companion object {
         /** Whether to invoke the SPlanValidator after every rewrite pass. */
         private const val CHECK = true
+        private const val CHECK_DURING_RECUSION = false
 
         val bottomUp = SPlanBottomUpRewriter()
         fun bottomUpRewrite(roots: ArrayList<SNode>): RewriterResult {
@@ -129,12 +129,12 @@ class SPlanNormalFormRewriter : SPlanRewriter {
 
     private fun rewriteDown(roots: ArrayList<SNode>, rules: List<SPlanRewriteRule>): Boolean {
         SNode.resetVisited(roots)
-        val changed = roots.fold(false) { changed, root -> rRewriteSPlan(root, rules) || changed }
+        val changed = roots.fold(false) { changed, root -> rRewriteSPlan(root, rules, roots) || changed }
         SNode.resetVisited(roots)
         return changed
     }
 
-    private fun rRewriteSPlan(node: SNode, rules: List<SPlanRewriteRule>): Boolean {
+    private fun rRewriteSPlan(node: SNode, rules: List<SPlanRewriteRule>, allRoots: List<SNode>): Boolean {
         if (node.visited)
             return false
         var changed = false
@@ -150,12 +150,14 @@ class SPlanNormalFormRewriter : SPlanRewriter {
                     is SPlanRewriteRule.RewriteResult.NewNode -> {
                         child = result.newNode
                         changed = true
+                        if( CHECK_DURING_RECUSION )
+                            SPlanValidator.validateSPlan(allRoots, false)
                     }
                 }
             }
 
             //process children recursively after rewrites
-            changed = rRewriteSPlan(child, rules) || changed
+            changed = rRewriteSPlan(child, rules, allRoots) || changed
         }
 
         node.visited = true

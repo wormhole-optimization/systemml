@@ -210,7 +210,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                     val bindNewName = belowBind.parents.find {
                         it !== node && it is SNodeBind &&
                                 it.bindings == newBindings
-                    } ?: if (node.parents.size == 1) {
+                    } ?: if (node.parents.size == 1 && p1Unbind.parents.size == 1) {
                         // safe to do a destructive rename
                         node.bindings.putAll(newBindings)
                         node.refreshSchema()

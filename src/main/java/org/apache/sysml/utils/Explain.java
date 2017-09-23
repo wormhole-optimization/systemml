@@ -19,11 +19,7 @@
 
 package org.apache.sysml.utils;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
 import java.util.stream.Collectors;
 
@@ -486,11 +482,11 @@ public class Explain
 		return explainCNode(node, level);
 	}
 	
-	public static String explainSPlan( ArrayList<SNode> splan )
+	public static String explainSPlan( List<SNode> splan )
 		throws DMLRuntimeException {
 		return explainSPlan(splan, false);
 	}
-	public static String explainSPlan( ArrayList<SNode> splan, boolean useExternalId )
+	public static String explainSPlan( List<SNode> splan, boolean useExternalId )
 		throws DMLRuntimeException
 	{
 		StringBuilder sb = new StringBuilder();

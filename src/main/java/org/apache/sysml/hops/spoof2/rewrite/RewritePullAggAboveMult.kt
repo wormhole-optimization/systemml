@@ -181,8 +181,8 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
             node.parents.removeIf { it.parents.isEmpty() }
             if (node.parents.isEmpty()) {
                 action(node)
+                node.inputs.forEach { stripDead(it, action) }
             }
-            node.inputs.forEach { stripDead(it, action) }
         }
     }
 }

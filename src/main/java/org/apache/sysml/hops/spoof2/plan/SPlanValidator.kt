@@ -12,16 +12,19 @@ import org.apache.sysml.utils.Explain
 /**
  * This class allows to check node dags for validity, e.g., parent-child linking.
  * Use it for debugging (enabled in [org.apache.sysml.hops.rewrite.ProgramRewriter]).
+ *
+ * The `checkVisit` flag determines whether the validator checks and resets the visit status of each SNode.
+ * Set this to false if you want to use the SPlanValidator in the middle of a rewrite.
  */
 object SPlanValidator {
     private val LOG = LogFactory.getLog(SPlanValidator::class.java.name)
 
-    fun validateSPlan(roots: ArrayList<SNode>?) {
+    fun validateSPlan(roots: List<SNode>?, checkVisit: Boolean = true) {
         if (roots == null)
             return
         try {
             SNode.resetVisited(roots)
-            val state = ValidatorState()
+            val state = ValidatorState(checkVisit)
             for (node in roots)
                 rValidateNode(node, state)
             SNode.resetVisited(roots)
@@ -35,12 +38,12 @@ object SPlanValidator {
 
     }
 
-    fun validateSPlan(root: SNode?) {
+    fun validateSPlan(root: SNode?, checkVisit: Boolean = true) {
         if (root == null)
             return
         try {
             root.resetVisited()
-            val state = ValidatorState()
+            val state = ValidatorState(checkVisit)
             rValidateNode(root, state)
             root.resetVisited()
             checkAllRootsAreReal(listOf(root), state)
@@ -69,7 +72,9 @@ object SPlanValidator {
         }
     }
 
-    private class ValidatorState {
+    private class ValidatorState(
+            internal val checkVisit: Boolean
+    ) {
         internal val seen: MutableSet<Long> = HashSet()
         internal val leaves: MutableSet<SNode> = HashSet()
     }
@@ -80,7 +85,7 @@ object SPlanValidator {
 
         //check visit status
         val seen = !state.seen.add(id)
-        if (seen != node.visited) {
+        if (state.checkVisit && seen != node.visited) {
             val parentIDs = node.parents.map(SNode::id)
             Explain.SHOW_VISIT_STATUS = true
             throw SNodeException(node, "problem with visit status, incorrectly set to ${node.visited}; parentIDs=$parentIDs")
@@ -126,6 +131,7 @@ object SPlanValidator {
             }
         }
 
-        node.visited = true
+        if( state.checkVisit )
+            node.visited = true
     }
 }
