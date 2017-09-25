@@ -90,7 +90,8 @@ class Spoof2Test(
         //	TEST_NAME+48;  //t(t(-2 * (X %*% t(C))) + rowSums (C ^ 2));  //genRandData4Kmeans
         //	TEST_NAME+49;  //AB + AC
         //	TEST_NAME+50;  //ABC + DBE
-        private const val NUM_TESTS = 50
+        //	TEST_NAME+51;  // B=B1%*%B2; (A+B) / (rowSums(A+B) %*% C)
+        private const val NUM_TESTS = 51
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"

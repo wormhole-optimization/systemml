@@ -859,6 +859,15 @@ object Spoof2Compiler {
         // check for outer product: nary(*) between two vectors whose names do not join
         return if( nary.op == NaryOp.MULT && nary.inputs[0].schema.size == 1 && nary.inputs[1].schema.size == 1
                 && nary.inputs[0].schema.names.first() != nary.inputs[1].schema.names.first() ) {
+            when( hopInputs[0].classify() ) {
+                HopClass.ROW_VECTOR -> {
+                    nary.check(hopInputs[1].classify() == HopClass.COL_VECTOR) {"expected outer product but is not: $hopInputs with dims ${hopInputs.map { it.dim1 to it.dim2 }}"}
+                    hopInputs.swap(0,1)
+                    nary.inputs.swap(0,1)
+                }
+                HopClass.COL_VECTOR -> {nary.check(hopInputs[1].classify() == HopClass.ROW_VECTOR){"expected outer product but is not: $hopInputs with dims ${hopInputs.map { it.dim1 to it.dim2 }}"}}
+                else -> throw SNodeException(nary, "expected outer product but is not: $hopInputs with dims ${hopInputs.map { it.dim1 to it.dim2 }}")
+            }
             HopRewriteUtils.createMatrixMultiply(hopInputs[0], hopInputs[1]) to
                     mapOf(AU.U0 to (nary.inputs[0].schema.names.first() as AB), AU.U1 to (nary.inputs[1].schema.names.first() as AB))
         }

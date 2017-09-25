@@ -219,7 +219,7 @@ class NormalFormExploreEq : SPlanRewriter {
 
          override fun toString(): String {
              return "Stats(id=$id, numSP=$numSP, numInserts=$numInserts, numAggPlusMultiply=$numAggPlusMultiply, numLabels=$numLabels, numContingencies=$numContingencies, maxCC=$maxCC, considerPlan=$considerPlan, " +
-                     "spbs=${spbs.joinToString("\n","\n")})"
+                     "spbs=${spbs.joinToString("\n","\n", limit = 3)})"
          }
 
      }

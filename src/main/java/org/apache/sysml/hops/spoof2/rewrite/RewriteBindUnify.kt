@@ -146,6 +146,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                     it.javaClass == node.javaClass
                             && it.agBindings().keys.disjoint(a2.agBindings().keys)
                             && it.agBindings().keys.disjoint(node.agBindings().keys)
+                            && it.agBindings().values.disjoint(a2.agBindings().values)
                 }
                 if (a3 != null) {
                     if( node.parents.size > 1 || a2.parents.size > 1 ) {
@@ -323,7 +324,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
             if (node is SNodeUnbind) {
                 if (newName in node.unbindings.values )
                     return false
-                if (node.input.let { newName !in it.schema && (it !is SNodeAggregate || newName !in it.aggs) && it !is ENode && (it !is SNodeUnbind || newName !in it.unbindings.values) }) {
+                if (!BAD_COND_REC(newName, node.input)) {
                     val bindingPosition = node.unbindings.entries.find { (_, n) -> n == oldName }!!.key
                     node.unbindings.mapValuesInPlace { if (it == oldName) newName else it }
                     rRenamePropagate(oldName, newName, node.input, node)
@@ -443,7 +444,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                         } else it
                     }
                 } else {
-                    val au = fromNode.schema.leastFreeUnbound()
+                    val au = node.schema.leastFreeUnbound()
                     val unbindOld = SNodeUnbind(node, mapOf(au to oldName))
                     val bindNew = SNodeBind(unbindOld, mapOf(au to newName))
                     fromNode.inputs.mapInPlace {
