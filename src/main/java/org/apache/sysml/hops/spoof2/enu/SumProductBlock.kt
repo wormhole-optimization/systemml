@@ -508,8 +508,8 @@ sealed class SumProduct {
         return rSchema
     }
 
-    fun getAllInputs(): Set<SNode> = mutableSetOf<SNode>().let { getAllInputs(it); it }
-    private fun getAllInputs(inputs: MutableSet<SNode>) {
+    fun getAllInputs(): List<SNode> = mutableListOf<SNode>().let { getAllInputs(it); it }
+    private fun getAllInputs(inputs: MutableList<SNode>) {
         when(this) {
             is Input -> inputs += snode
             is Block -> this.edges.forEach { it.getAllInputs(inputs) }

@@ -124,6 +124,34 @@ class NormalFormExploreEq : SPlanRewriter {
 //                                writer.newLine()
                             }
                             LOG.info("Sum-Product all stats:\n\t$total") // statsAll.fold(Stats()) {acc, s -> acc += s; acc}
+
+                            val inputFreqs = statsAll.fold(mutableMapOf<String,Int>()) { acc, stat ->
+                                stat.spbs.fold(acc) { acc, spb ->
+                                    spb.getAllInputs().groupBy {
+                                        when( it ) {
+                                            is SNodeAggregate -> "agg(${it.op}[${it.aggs.size}])"
+                                            is SNodeExt -> "ext(${it.hop.javaClass.simpleName})"
+                                            is SNodeBind -> "bi[${it.bindings.size}]"
+                                            else -> it.toString()
+                                        }
+                                    }.mapValues { (_, l) -> l.count() }.forEach { s, c ->
+                                        acc.put(s, acc.getOrDefault(s, 0) + c)
+                                    }
+                                    acc
+                                }
+                                acc
+                            }
+                            val totalInputs = inputFreqs.values.sum()
+                            val fInputAgg = File("stats-inputs.tsv")
+                            FileWriter(fInputAgg).buffered().use { writer ->
+                                writer.write("input\tcount\tprop")
+                                writer.newLine()
+                                inputFreqs.forEach { s, c ->
+                                    writer.write("$s\t$c\t${Math.round(c.toDouble()/totalInputs*1000).toDouble()/1000}")
+                                    writer.newLine()
+                                }
+                            }
+
                         }
                     }
                 })
