@@ -76,6 +76,8 @@ class RewritePullAggAbovePlus : SPlanRewriteRule() {
                     val cnt = pc.parents.count { it == plus }
                     pc.parents.removeIf { it == plus }
                     val mult = SNodeNary(NaryOp.MULT, pc, lit)
+                    mult.visited = pc.visited
+                    lit.visited = pc.visited
                     repeat(cnt) { mult.parents += plus }
                     plus.inputs.mapInPlace { if (it == pc) mult else it }
                 }

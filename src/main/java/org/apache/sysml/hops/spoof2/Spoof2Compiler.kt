@@ -865,7 +865,7 @@ object Spoof2Compiler {
         else
             when( nary.inputs.size ) {
                 1 -> HopRewriteUtils.createUnary(hopInputs[0], OpOp1.valueOf(nary.op.name)) to mis[0]
-                2 -> HopRewriteUtils.createBinary(hopInputs[0], hopInputs[1], OpOp2.valueOf(nary.op.name)) to if(mis[0].size == 2) mis[0] else mis[1]
+                2 -> HopRewriteUtils.createBinary(hopInputs[0], hopInputs[1], OpOp2.valueOf(nary.op.name)) to if(mis[0].size >= mis[1].size) mis[0] else mis[1]
                 3 -> HopRewriteUtils.createTernary(hopInputs[0], hopInputs[1], hopInputs[2], OpOp3.valueOf(nary.op.name)) to mis[0] // ?
                 else -> throw SNodeException(nary, "don't know how to reconstruct a Hop from an nary with ${nary.inputs.size} inputs $nary")
             }

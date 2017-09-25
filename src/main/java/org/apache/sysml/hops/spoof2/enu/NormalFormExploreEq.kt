@@ -357,7 +357,7 @@ class NormalFormExploreEq : SPlanRewriter {
                         "Component 1: $CCspb\n" +
                         "Component 2: $NCspb")
 
-            return RewriteResult.NewNode(spb.applyToNormalForm(node)) // these will be handled as disjoint sub-problems in SPlanNormalFormRewriter at next recursion
+            return RewriteResult.NewNode(spb.applyToNormalForm(node, false)) // these will be handled as disjoint sub-problems in SPlanNormalFormRewriter at next recursion
         }
         // We will factor this spb.
         stats.spbs += spb.deepCopy()

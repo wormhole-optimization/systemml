@@ -401,27 +401,32 @@ sealed class SumProduct {
             return result
         }
 
-        internal fun buildAndCostAggs(mult: SNode): SNode {
+        internal fun buildAndCostAggs(mult: SNode, doCost: Boolean): SNode {
             return when( this.sumBlocks.size ) {
                 0 -> {
-                    val cost = SPCost.costFactoredBlock(this, false)
-                    mult.cachedCost += cost.multiplyPart()
+                    if( doCost ) {
+                        val cost = SPCost.costFactoredBlock(this, false)
+                        mult.cachedCost += cost.multiplyPart()
+                    }
                     mult
                 }
                 1 -> {
                     val sumBlock = this.sumBlocks[0]
                     val agg = SNodeAggregate(sumBlock.op, mult, sumBlock.names)
-                    val cost = SPCost.costFactoredBlock(this, false)
-                    agg.cachedCost = cost.addPart()
-                    mult.cachedCost += cost.multiplyPart()
+                    if( doCost ) {
+                        val cost = SPCost.costFactoredBlock(this, false)
+                        agg.cachedCost = cost.addPart()
+                        mult.cachedCost += cost.multiplyPart()
+                    }
                     agg
                 }
                 else -> {
                     val spb = SumProduct.Block(this.sumBlocks.subList(1, this.sumBlocks.size), this.product, this.edges)
-                    val aggBelow = spb.buildAndCostAggs(mult)
+                    val aggBelow = spb.buildAndCostAggs(mult, doCost)
                     val sumBlock = this.sumBlocks[0]
                     val agg = SNodeAggregate(sumBlock.op, aggBelow, sumBlock.names)
-                    agg.cachedCost = SPCost.costFactoredBlock(this, false).addPart() - agg.cachedCost
+                    if( doCost )
+                        agg.cachedCost = SPCost.costFactoredBlock(this, false).addPart() - agg.cachedCost
                     agg
                 }
             }
@@ -432,8 +437,8 @@ sealed class SumProduct {
      * Given the top-most SNodeAggregate from which the SumProduct was formed,
      * rewrite the SNodes in the sum-product block to reflect the factorized structure of the SumProduct.
      */
-    fun applyToNormalForm(_top: SNode): SNode {
-        val newTop: SNode = rConstructSPlan()
+    fun applyToNormalForm(_top: SNode, cost: Boolean = true): SNode {
+        val newTop: SNode = rConstructSPlan(cost)
         SNodeRewriteUtils.rewireAllParentChildReferences(_top, newTop)
         newTop.parents.forEach { it.refreshSchemasUpward() }
         return newTop
@@ -442,17 +447,17 @@ sealed class SumProduct {
     /**
      * Construct SNodes from this block. Each multiply and agg SNode has a cached cost according to SPCost.
      */
-    fun constructSPlan(): SNode = rConstructSPlan()
+    fun constructSPlan(cost: Boolean = true): SNode = rConstructSPlan()
 
-    private fun rConstructSPlan(): SNode = when( this ) {
+    private fun rConstructSPlan(cost: Boolean = true): SNode = when( this ) {
         is Input -> this.snode
         is Block -> {
             // children are recursively created
             // create an SNodeNary for the product, if there are at least two inputs
             // create an SNodeAggregate for each SumBlock
-            val inputNodes = this.edges.map { it.rConstructSPlan() }
+            val inputNodes = this.edges.map { it.rConstructSPlan(cost) }
             val mult: SNode = createMultiply(inputNodes)
-            buildAndCostAggs(mult) // assigns add costs to each SNAggregate
+            buildAndCostAggs(mult, cost) // assigns add costs to each SNAggregate
         }
     }
 
