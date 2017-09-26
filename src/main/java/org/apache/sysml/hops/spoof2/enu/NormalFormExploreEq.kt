@@ -242,13 +242,14 @@ class NormalFormExploreEq : SPlanRewriter {
         if( LOG.isTraceEnabled )
             LOG.trace("before normal form rewriting: "+Explain.explainSPlan(roots))
 
-        do {
+//        do {
             val skip = HashSet<Long>()
-            var changed = false // this could be due to a partitioning or a real Sum-Product block
+//            var changed = false // this could be due to a partitioning or a real Sum-Product block
             for (root in roots)
-                changed = rRewriteSPlan(root, skip) || changed
+                rRewriteSPlan(root, skip)
+//                changed = rRewriteSPlan(root, skip) || changed
             SNode.resetVisited(roots)
-        } while( changed && eNodes.isEmpty() )
+//        } while( changed && eNodes.isEmpty() )
 
         if( eNodes.isEmpty() )
             return RewriterResult.NoChange
@@ -298,7 +299,7 @@ class NormalFormExploreEq : SPlanRewriter {
             var child = node.inputs[i]
 
             if( child.id !in skip) {
-                val result = rewriteNode(child, skip)
+                val result = rewriteNode(node, child, skip)
                 when (result) {
                     RewriteResult.NoChange -> {}
                     is RewriteResult.NewNode -> {
@@ -316,14 +317,15 @@ class NormalFormExploreEq : SPlanRewriter {
         return changed
     }
 
-    private fun rewriteNode(node: SNode, skip: HashSet<Long>): RewriteResult {
+    private fun rewriteNode(parent: SNode, node: SNode, skip: HashSet<Long>): RewriteResult {
         if( !SumProduct.isSumProductBlock(node))
             return RewriteResult.NoChange
 //        val origSchema = Schema(node.schema)
-        val spb = SumProduct.constructBlock(node, false)
+        val spb = SumProduct.constructBlock(node, parent)
         if( node.schema.names.any { !it.isBound() } )
             throw SNodeException(node, "Found unbound name in Sum-Product block; may not be handled incorrectly. $spb")
-        if( LOG.isTraceEnabled )
+        val isTrivialBlock = spb.getAllInputs().size <= 2
+        if( LOG.isTraceEnabled && !isTrivialBlock )
             LOG.trace("Found Sum-Product Block:\n"+spb)
 
         // 0. Check if this normal form can be partitioned into two separate connected components.
@@ -352,15 +354,18 @@ class NormalFormExploreEq : SPlanRewriter {
             spb.edges += NCspb
             spb.refresh()
 
-            if( LOG.isDebugEnabled )
+            if( LOG.isDebugEnabled && !isTrivialBlock )
                 LOG.debug("Partition Sum-Product block into disjoint components:\n" +
                         "Component 1: $CCspb\n" +
                         "Component 2: $NCspb")
 
             return RewriteResult.NewNode(spb.applyToNormalForm(node, false)) // these will be handled as disjoint sub-problems in SPlanNormalFormRewriter at next recursion
         }
+
+
         // We will factor this spb.
-        stats.spbs += spb.deepCopy()
+        if( !isTrivialBlock )
+            stats.spbs += spb.deepCopy()
         normalSpb_Verify(spb)
 
         // Create ENode
@@ -370,23 +375,40 @@ class NormalFormExploreEq : SPlanRewriter {
         val bind = SNodeBind(eNode, eNodeNameMapping)
         node.parents.forEach { it.inputs[it.inputs.indexOf(node)] = bind }
         bind.parents.addAll(node.parents)
-        eNodes += eNode
         // disconnect and dead code elim the input
         node.parents.clear() // can no longer use applyToNormalForm
 //        stripDead(node, spb.getAllInputs()) // performed by constructBlock()
 
         // 1. Insert all paths into the E-DAG
         val numInserts = factorAndInsert(eNode, spb, eNodeNameMapping)
-        if( LOG.isTraceEnabled )
-            LOG.trace("numInserts: $numInserts")
+
+        val top = if( eNode.inputs.size == 1 ) {
+            if( (eNode.parents[0] as SNodeBind).bindings != (eNode.inputs[0] as SNodeUnbind).unbindings ) {
+                println("hi")
+            }
+            val bb = eNode.inputs[0].inputs[0]
+            bb.parents.removeIf { it == eNode.inputs[0] }
+            bind.parents.forEach {
+                it.inputs[it.inputs.indexOf(bind)] = bb
+                bb.parents += it
+            }
+//            skip.add(bb.id)
+            bb
+        } else {
+            if( LOG.isTraceEnabled )
+                LOG.trace("numInserts: $numInserts")
+            eNodes += eNode
+            stats.numSP++
+            stats.numInserts += numInserts
+            skip.addAll(eNode.inputs.flatMap { if(it is SNodeUnbind) listOf(it.id, it.input.id) else listOf(it.id) })
+            bind
+        }
 
 //        // 2. CSE
 //        SPlanBottomUpRewriter().rewriteSPlan(roots)
 
-        stats.numSP++
-        stats.numInserts += numInserts
-        skip.addAll(eNode.inputs.flatMap { if(it is SNodeUnbind) listOf(it.id, it.input.id) else listOf(it.id) })
-        return RewriteResult.NewNode(bind) //(bind)
+
+        return RewriteResult.NewNode(top) //(bind)
     }
 
     /**

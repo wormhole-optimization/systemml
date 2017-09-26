@@ -79,30 +79,43 @@ sealed class SumProduct {
         }
 
         /** Strips references as it constructs the sum-product block. */
-        fun constructBlock(_top: SNode, splitCse: Boolean): Block {
+        fun constructBlock(_top: SNode, initialParentForSplitCse: SNode?): Block {
             var top = _top
+            var topTemp = initialParentForSplitCse
             val sumBlocks = ArrayList<SumBlock>()
             while (top is SNodeAggregate) {
                 @Suppress("UNCHECKED_CAST")
                 sumBlocks += SumBlock(top.op, top.aggs.names.toMutableSet() as MutableSet<AB>)
-                val topTemp = top
+                topTemp = top
                 top = top.inputs[0]
                 top.parents -= topTemp
-//                if( splitCse && top.parents.size > 1 ) {
-//                    // Split CSE
-//                    val copy = top.shallowCopyNoParentsYesInputs()
-//                    val otherParents = ArrayList(top.parents)
-//                    otherParents -= topTemp
-//                    top.parents.clear()
-//                    top.parents += topTemp
-//                    otherParents.forEach {
-//                        it.inputs[it.inputs.indexOf(top)] = copy
-//                    }
-//                    copy.parents.addAll(otherParents)
-//                }
+                if( top.parents.size > 1 ) {
+                    // Split CSE
+                    val copy = top.shallowCopyNoParentsYesInputs()
+                    val otherParents = ArrayList(top.parents)
+                    otherParents -= topTemp
+                    top.parents.clear()
+                    top.parents += topTemp
+                    otherParents.forEach {
+                        it.inputs[it.inputs.indexOf(top)] = copy
+                    }
+                    copy.parents.addAll(otherParents)
+                }
             }
             require( top is SNodeNary ) {"sum-product block does not have a product; found $top id=${top.id}"}
             top as SNodeNary
+            if( topTemp != null && top.parents.size > 1 ) {
+                // Split CSE
+                val copy = top.shallowCopyNoParentsYesInputs()
+                val otherParents = ArrayList(top.parents)
+                otherParents -= topTemp
+                top.parents.clear()
+                top.parents += topTemp
+                otherParents.forEach {
+                    it.inputs[it.inputs.indexOf(top)] = copy
+                }
+                copy.parents.addAll(otherParents)
+            }
             val product = top.op
             val edges = top.inputs.mapTo(ArrayList(), SumProduct::Input)
             top.inputs.forEach { it.parents -= top }

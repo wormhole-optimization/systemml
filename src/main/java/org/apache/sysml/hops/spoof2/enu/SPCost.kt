@@ -150,8 +150,9 @@ data class SPCost(
                             costCrossGroup.plusMultiply(multWithinGroupCost)
                         }
                         3 -> {
-                            check( spb.aggNames().isNotEmpty() ) {"SumProduct not completely factored; output is a tensor from $spb"}
-                            //We could be
+                            if( spb.aggNames().isEmpty() ) // max cost if this produces a tensor output
+                                return MAX_COST
+//                            check( spb.aggNames().isNotEmpty() ) {"SumProduct not completely factored; output is a tensor from $spb"}
 
                             // The only possible pattern is a--x--y with matrix Aax, matrix Bxy, and possibly vector Vx
                             // If the vector Vx is present, then either multiply it with A or with B.

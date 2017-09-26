@@ -213,6 +213,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                                 it.bindings == newBindings
                     } ?: if (node.parents.size == 1 && p1Unbind.parents.size == 1) {
                         // safe to do a destructive rename
+                        node.bindings.clear()
                         node.bindings.putAll(newBindings)
                         node.refreshSchema()
                         node
