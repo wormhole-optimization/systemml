@@ -43,7 +43,6 @@ class SumBlock private constructor(
 }
 
 /**
- * Treat this class as immutable (even though it is technically possible to modify the schema and various lists.
  * A SumProduct is either an Input (base case, representing an SNode input) or a Block (inductive case, representing
  * some number of sums over the product of SumProducts).
  */
@@ -444,6 +443,45 @@ sealed class SumProduct {
                 }
             }
         }
+
+        fun unionInSumBlocks(sums: List<SumBlock>) {
+            sums.forEach { sum ->
+                val sb = sumBlocks.find { it.op == sum.op } ?: SumBlock(sum.op).also { sumBlocks += it }
+                sb.names += sum.names
+            }
+        }
+
+        fun constructNoRec(inputNodes: List<SNode>, cost: Boolean = true): SNode {
+            val mult: SNode = createMultiply(inputNodes)
+            return buildAndCostAggs(mult, cost) // assigns add costs to each SNAggregate
+        }
+    }
+
+    class EBlock(
+            val blocks: List<SumProduct>
+    ) : SumProduct() {
+        init {
+            check(blocks.isNotEmpty())
+        }
+        var nextBlock = 0
+
+        override val schema = blocks[0].schema
+        override val nnz = blocks[0].nnz
+        override fun deepCopy() = EBlock(blocks.map(SumProduct::deepCopy))
+        override fun toString_TSVFriendly(): String {
+            return "EBlock(${blocks.map { it.toString_TSVFriendly() }})"
+        }
+        override fun toString(): String {
+            return toStringWithTab(1)
+        }
+        override fun toStringWithTab(tab: Int): String {
+            val sep = StringBuilder(",\n").let { sb ->
+                repeat(tab) {sb.append('\t')}
+                sb.toString()
+            }
+            return "EBlock{" +
+                    blocks.joinToString(prefix = sep.substring(1,sep.length), separator = sep, transform = {it.toStringWithTab(tab+1)}, postfix = "}")
+        }
     }
 
     /**
@@ -472,15 +510,20 @@ sealed class SumProduct {
             val mult: SNode = createMultiply(inputNodes)
             buildAndCostAggs(mult, cost) // assigns add costs to each SNAggregate
         }
+        is ESP -> throw IllegalStateException("unexpected EBlock")
     }
 
 
 
-    private fun createMultiply(inputNodes: List<SNode>): SNode {
+
+
+    internal fun createMultiply(inputNodes: List<SNode>): SNode {
         this as Block
         check( inputNodes.isNotEmpty() )
         if(inputNodes.size == 1)
             return inputNodes[0]
+        if( this.product == SNodeNary.NaryOp.PLUS ) // todo: maybe change order of inputs to add scalars first, then vectors, then matrices
+            return SNodeNary(this.product, inputNodes)
         // check for case VMV -- choose which MxV is better to do first
         // if there is no aggregate then it doesn't actually matter, but no harm done
         if( inputNodes.size == 3) {
@@ -537,6 +580,7 @@ sealed class SumProduct {
     fun countAggsAndInternalBlocks(): Int = when(this) {
         is Input -> 0
         is Block -> this.sumBlocks.size + 1 + this.edges.sumBy { it.countAggsAndInternalBlocks() }
+        is ESP -> throw IllegalStateException("unexpected EBlock")
     }
 
 }

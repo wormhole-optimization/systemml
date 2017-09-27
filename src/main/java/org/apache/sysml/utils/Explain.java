@@ -1053,76 +1053,14 @@ public class Explain
 	// internal explain SNODE
 
 	private static String explainSNode(SNode snode, int level) 
-		throws DMLRuntimeException 
-	{
-		if( snode.getVisited() )
-			return "";
-		
-		StringBuilder sb = new StringBuilder();
-		String offset = createOffset(level);
-		
-		for( SNode input : snode.getInputs() )
-			sb.append(explainSNode(input, level));
-		
-		//indentation
-		sb.append(offset);
-		
-		//hop id
-		if( SHOW_DATA_DEPENDENCIES )
-			sb.append("("+snode.getId()+") ");
-		
-		//operation string
-		sb.append(snode.toString());
-		
-		//input hop references 
-		if( SHOW_DATA_DEPENDENCIES ) {
-			StringBuilder childs = new StringBuilder();
-			childs.append(" (");
-			boolean childAdded = false;
-			for( SNode input : snode.getInputs() ) {
-				childs.append(childAdded?",":"");
-				childs.append(input.getId());
-				childAdded = true;
-			}
-			childs.append(")");		
-			if( childAdded )
-				sb.append(childs.toString());
-		}
-		
-		//schema and tensor characteristics
-		sb.append(" ").append(snode.getSchema());
-
-		if( SNODE_SHOW_CACHED_COST ) {
-			if( !snode.getCachedCost().equals(SPCost.Companion.getZERO_COST()) )
-				sb.append(' ').append(snode.getCachedCost());
-			if( snode.getOnRootPath() )
-				sb.append('R');
-		}
-
-		if( SNODE_SHOW_PARENTS ) {
-			sb.append(snode.getParents().stream().mapToLong(SNode::getId).mapToObj(Long::toString)
-					.collect(Collectors.joining(","," <",">")));
-		}
-		
-		sb.append('\n');
-
-		if( snode instanceof ENode ) {
-			final ENode enode = (ENode) snode;
-			for (final EPath ePath : enode.getEPaths()) {
-				sb.append('\t');
-				sb.append(ePath);
-				sb.append('\n');
-			}
-		}
-
-		snode.setVisited(true);
-		return sb.toString();
+		throws DMLRuntimeException {
+		return explainSNode(snode, level, null);
 	}
 
 	private static String explainSNode(SNode snode, int level, HashSet<Long> ids )
 			throws DMLRuntimeException
 	{
-		if( ids.contains(snode.getId()) )
+		if( ids == null ? snode.getVisited() : ids.contains(snode.getId()) )
 			return "";
 
 		StringBuilder sb = new StringBuilder();
@@ -1166,13 +1104,25 @@ public class Explain
 		//schema and tensor characteristics
 		sb.append(' ').append(snode.getSchema());
 
+		if( SNODE_SHOW_CACHED_COST ) {
+			if( !snode.getCachedCost().equals(SPCost.Companion.getZERO_COST()) )
+				sb.append(' ').append(snode.getCachedCost());
+			if( snode.getOnRootPath() )
+				sb.append('R');
+		}
+
 		if( SNODE_SHOW_PARENTS ) {
 			sb.append(snode.getParents().stream().mapToLong(SNode::getId).mapToObj(Long::toString)
 					.collect(Collectors.joining(","," <",">")));
 		}
 
 		sb.append('\n');
-		ids.add(snode.getId());
+
+		if (ids == null) {
+			snode.setVisited(true);
+		} else {
+			ids.add(snode.getId());
+		}
 
 		return sb.toString();
 	}

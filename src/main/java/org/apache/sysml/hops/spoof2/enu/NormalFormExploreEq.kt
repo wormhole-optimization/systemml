@@ -64,6 +64,7 @@ class NormalFormExploreEq : SPlanRewriter {
             val baseInputs = plusInputs.map { when(it) {
                 is SumProduct.Input -> listOf(it)
                 is SumProduct.Block -> it.edges as List<SumProduct.Input>
+                is ESP -> throw IllegalStateException("unexpected EBlock")
             } }
             var cnt = 0
             for( i in plusInputs.indices )
@@ -81,6 +82,7 @@ class NormalFormExploreEq : SPlanRewriter {
             val baseInputs = plusInputs.map { when(it) {
                 is SumProduct.Input -> listOf(it)
                 is SumProduct.Block -> it.edges as List<SumProduct.Input>
+                is ESP -> throw IllegalStateException("unexpected EBlock")
             } }
             return baseInputs.flatten().toSet()
                     .filter { bi ->
@@ -93,6 +95,7 @@ class NormalFormExploreEq : SPlanRewriter {
                 spb.edges.flatMap { when(it) {
                     is SumProduct.Input -> listOf(it)
                     is SumProduct.Block -> it.edges as List<SumProduct.Input>
+                    is ESP -> throw IllegalStateException("unexpected EBlock")
                 } }
             else spb.edges as List<SumProduct.Input>
         }
@@ -125,6 +128,7 @@ class NormalFormExploreEq : SPlanRewriter {
                             }
                             LOG.info("Sum-Product all stats:\n\t$total") // statsAll.fold(Stats()) {acc, s -> acc += s; acc}
 
+                            @Suppress("NAME_SHADOWING")
                             val inputFreqs = statsAll.fold(mutableMapOf<String,Int>()) { acc, stat ->
                                 stat.spbs.fold(acc) { acc, spb ->
                                     spb.getAllInputs().groupBy {
@@ -219,7 +223,7 @@ class NormalFormExploreEq : SPlanRewriter {
 
          override fun toString(): String {
              return "Stats(id=$id, numSP=$numSP, numInserts=$numInserts, numAggPlusMultiply=$numAggPlusMultiply, numLabels=$numLabels, numContingencies=$numContingencies, maxCC=$maxCC, considerPlan=$considerPlan, " +
-                     "spbs=${spbs.joinToString("\n","\n", limit = 3)})"
+                     "spbs=${spbs.joinToString("\n","\n", limit = 0)})"
          }
 
      }
@@ -246,7 +250,7 @@ class NormalFormExploreEq : SPlanRewriter {
             val skip = HashSet<Long>()
 //            var changed = false // this could be due to a partitioning or a real Sum-Product block
             for (root in roots)
-                rRewriteSPlan(root, skip)
+                rRewriteSPlan(root, skip, roots)
 //                changed = rRewriteSPlan(root, skip) || changed
             SNode.resetVisited(roots)
 //        } while( changed && eNodes.isEmpty() )
@@ -290,7 +294,7 @@ class NormalFormExploreEq : SPlanRewriter {
         return RewriterResult.NewRoots(roots)
     }
 
-    private fun rRewriteSPlan(node: SNode, skip: HashSet<Long>): Boolean {
+    private fun rRewriteSPlan(node: SNode, skip: HashSet<Long>, roots: List<SNode>): Boolean {
         if (node.visited)
             return false
         var changed = false
@@ -298,19 +302,21 @@ class NormalFormExploreEq : SPlanRewriter {
         for (i in node.inputs.indices) {
             var child = node.inputs[i]
 
-            if( child.id !in skip) {
+            if( (child is SNodeAggregate || child is SNodeNary) && child.id !in skip ) {
                 val result = rewriteNode(node, child, skip)
                 when (result) {
                     RewriteResult.NoChange -> {}
                     is RewriteResult.NewNode -> {
                         child = result.newNode
                         changed = true
+//                        if( LOG.isTraceEnabled )
+//                            LOG.trace("after factoring a SPB at (${child.id}) $child:"+Explain.explainSPlan(roots, true))
                     }
                 }
             }
 
             //process children recursively after rewrites
-            changed = rRewriteSPlan(child, skip) || changed
+            changed = rRewriteSPlan(child, skip, roots) || changed
         }
 
         node.visited = true
@@ -325,8 +331,8 @@ class NormalFormExploreEq : SPlanRewriter {
         if( node.schema.names.any { !it.isBound() } )
             throw SNodeException(node, "Found unbound name in Sum-Product block; may not be handled incorrectly. $spb")
         val isTrivialBlock = spb.getAllInputs().size <= 2
-        if( LOG.isTraceEnabled && !isTrivialBlock )
-            LOG.trace("Found Sum-Product Block:\n"+spb)
+        if( LOG.isTraceEnabled )
+            LOG.trace("Found Sum-Product Block at (${node.id}) $node:\n"+spb)
 
         // 0. Check if this normal form can be partitioned into two separate connected components.
         // This occurs if some portion of the multiplies produces a scalar.
@@ -380,7 +386,7 @@ class NormalFormExploreEq : SPlanRewriter {
 //        stripDead(node, spb.getAllInputs()) // performed by constructBlock()
 
         // 1. Insert all paths into the E-DAG
-        val numInserts = factorAndInsert(eNode, spb, eNodeNameMapping)
+        val numInserts = factorAndInsertAll(eNode, spb, eNodeNameMapping, skip)
 
         val top = if( eNode.inputs.size == 1 ) {
             if( (eNode.parents[0] as SNodeBind).bindings != (eNode.inputs[0] as SNodeUnbind).unbindings ) {
@@ -392,7 +398,6 @@ class NormalFormExploreEq : SPlanRewriter {
                 it.inputs[it.inputs.indexOf(bind)] = bb
                 bb.parents += it
             }
-//            skip.add(bb.id)
             bb
         } else {
             if( LOG.isTraceEnabled )
@@ -400,7 +405,6 @@ class NormalFormExploreEq : SPlanRewriter {
             eNodes += eNode
             stats.numSP++
             stats.numInserts += numInserts
-            skip.addAll(eNode.inputs.flatMap { if(it is SNodeUnbind) listOf(it.id, it.input.id) else listOf(it.id) })
             bind
         }
 
@@ -411,13 +415,45 @@ class NormalFormExploreEq : SPlanRewriter {
         return RewriteResult.NewNode(top) //(bind)
     }
 
+    private fun factorAndInsertAll(eNode: ENode, spb: SumProduct.Block, eNodeNameMapping: Map<AU, AB>, skip: HashSet<Long>): Int {
+        val allSpbs = factor(spb)
+        return insertSaturated(eNode, allSpbs, eNodeNameMapping, skip)
+//        allSpbs.forEach { insert(eNode, it, eNodeNameMapping) }
+//        return allSpbs.size
+    }
+
     /**
      * @return The number of inserts performed
      */
-    private fun factorAndInsert(eNode: ENode, spb: SumProduct.Block, unbindMap: Map<AU, AB>): Int {
+    private fun factor(spb: SPB): SP {
+        return when (spb.product) {
+            SNodeNary.NaryOp.PLUS -> factorPlus(spb)
+            SNodeNary.NaryOp.MULT -> factorMult(spb)
+            else -> throw IllegalStateException("unexpected product type")
+        }
+
+    }
+    private fun factorPlus(spb: SPB): SP {
+        // push down aggregates into the inputs
+        spb.edges.mapInPlace {
+            when (it) {
+                is SumProduct.Input -> SumProduct.Block(spb.sumBlocks, SNodeNary.NaryOp.MULT, it)
+                is SumProduct.Block -> {
+                    it.unionInSumBlocks(spb.sumBlocks); it
+                }
+                is ESP -> throw IllegalStateException("unexpected EBlock")
+            }
+        }
+        spb.sumBlocks.clear()
+
+        // factor each input
+        spb.edges.mapInPlace { factor(it as SumProduct.Block) }
+        return spb
+    }
+    private fun factorMult(spb: SPB): SP {
         if (spb.edgesGroupByIncidentNames().size == 1) {
             // all edges fit in a single group; nothing to do
-            return insert(eNode, spb, unbindMap)
+            return finishFactorMult(spb)
         }
 
         // 1. Multiply within groups
@@ -432,9 +468,25 @@ class NormalFormExploreEq : SPlanRewriter {
             }
         }
 
+        // If an aggName does not touch any other aggNames, then it is independent of them. Factor it.
+        loop@ do {
+            for (agg in spb.aggNames()) {
+                if (spb.nameToAdjacentNames()[agg]!!.disjoint(spb.aggNames() - agg)) {
+                    val incidentEdges = spb.nameToIncidentEdge()[agg]!!
+                    if (incidentEdges.size == spb.edges.size) { // if all edges remaining touch this one, nothing to do. // && spb.aggNames().isEmpty()
+                        return finishFactorMult(spb)
+                    } else {
+                        spb.factorEdgesToBlock(incidentEdges)
+                        continue@loop
+                    }
+                }
+            }
+            break
+        } while (true)
+
         // Done if no aggregations remain
         if (spb.aggNames().isEmpty()) {
-            return insert(eNode, spb, unbindMap)
+            return finishFactorMult(spb)
         }
 
         // Determine what variables we could eliminate at this point
@@ -447,25 +499,82 @@ class NormalFormExploreEq : SPlanRewriter {
         val minDegreeAggNames = tmp.filter { it.second == minDegree }.map { it.first }
 
         // fork on the different possible agg names
-        return minDegreeAggNames.sumBy { elimName ->
+        val x = minDegreeAggNames.map { elimName ->
             val incidentEdges = spb.nameToIncidentEdge()[elimName]!!
-            if( incidentEdges.size == spb.edges.size && spb.aggNames().isEmpty() ) { // if all edges remaining touch this one, nothing to do.
-                insert(eNode, spb, unbindMap)
+            if( incidentEdges.size == spb.edges.size ) { // if all edges remaining touch this one, nothing to do. // && spb.aggNames().isEmpty()
+                finishFactorMult(spb)
             } else {
                 val factoredSpb = spb.deepCopy()
                 factoredSpb.factorEdgesToBlock(incidentEdges)
-                factorAndInsert(eNode, factoredSpb, unbindMap)
+                factor(factoredSpb)
+            }
+        }
+        return when {
+            x.size == 1 -> x[0]
+            x.all { it is ESP } -> ESP(x.flatMap { (it as ESP).blocks }) // flatten
+            else -> ESP(x)
+        }
+    }
+
+    private fun finishFactorMult(spb: SPB): SP {
+        spb.edges.mapInPlace { when(it) {
+            is SPB -> factor(it)
+            is SPI -> it
+            is ESP -> throw IllegalStateException("unexpected EBlock")
+        } }
+        return spb
+    }
+
+    private class ConstructState(
+            val skip: HashSet<Long>
+    ) {
+        var changed = false
+        var numAggMultiply = 0L
+    }
+
+    private fun constructNext(sp: SP, state: ConstructState): SNode {
+        return when( sp ) {
+            is SPI -> sp.snode
+            is SPB -> {
+                state.numAggMultiply += sp.sumBlocks.size + if(sp.edges.size > 1) 1 else 0
+                val x = sp.constructNoRec(sp.edges.map { constructNext(it, state) })
+                state.skip += x.id
+                if( x is SNodeAggregate )
+                    state.skip += x.input.id
+//                if( LOG.isTraceEnabled )
+//                    LOG.trace("Construct:\n$sp\n-> (${x.id}) $x @ ${x.cachedCost}"+if(x is SNodeAggregate) " -- (${x.input.id}) ${x.input} @ ${x.input.cachedCost}" else "")
+                x
+            }
+            is ESP -> {
+                if( !state.changed ) {
+                    if (sp.nextBlock == sp.blocks.size - 1)
+                        sp.nextBlock = 0
+                    else {
+                        sp.nextBlock++
+                        state.changed = true
+                    }
+                }
+                constructNext(sp.blocks[sp.nextBlock], state)
             }
         }
     }
 
-    private fun insert(eNode: ENode, spb: SumProduct.Block, unbindMap: Map<AU, AB>): Int {
-//        if( LOG.isTraceEnabled )
-//            LOG.trace("Insert: "+spb)
-        val newTopInput = spb.constructSPlan().let { SNodeUnbind(it, unbindMap) }
-        eNode.addNewEPath(newTopInput)
-        stats.numAggPlusMultiply += spb.countAggsAndInternalBlocks()
-        return 1
+    private fun insertSaturated(eNode: ENode, spb: SumProduct, unbindMap: Map<AU, AB>, skip: HashSet<Long>): Int {
+        if( LOG.isTraceEnabled )
+            LOG.trace("Saturated SPB:\n"+spb)
+        val state = ConstructState(skip)
+        var inserts = 0
+        do {
+            state.changed = false
+            val construct = constructNext(spb, state)
+//            if( LOG.isTraceEnabled )
+//                LOG.trace("Insert: "+construct)
+            val newTopInput = SNodeUnbind(construct, unbindMap)
+            eNode.addNewEPath(newTopInput)
+            inserts++
+        } while( state.changed )
+        stats.numAggPlusMultiply += state.numAggMultiply
+        return inserts
     }
 
 

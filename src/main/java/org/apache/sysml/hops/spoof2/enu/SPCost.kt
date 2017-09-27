@@ -75,6 +75,7 @@ data class SPCost(
 
         fun costFactoredBlock(spb: SumProduct, recursive: Boolean = true): SPCost {
             return when( spb ) {
+                is ESP -> throw IllegalStateException("unexpected EBlock")
                 is SumProduct.Input -> ZERO_COST
                 is SumProduct.Block -> {
                     val recCost =

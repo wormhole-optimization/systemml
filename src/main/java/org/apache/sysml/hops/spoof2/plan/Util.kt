@@ -2,6 +2,7 @@ package org.apache.sysml.hops.spoof2.plan
 
 import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.HopsException
+import org.apache.sysml.hops.spoof2.enu.SumProduct
 import org.apache.sysml.parser.Expression
 
 // See [Schema].
@@ -12,6 +13,10 @@ typealias AU = Attribute.Unbound
 typealias Shape = Long
 typealias Dim = Int
 typealias Id = Long
+typealias SPB = SumProduct.Block
+typealias ESP = SumProduct.EBlock
+typealias SP = SumProduct
+typealias SPI = SumProduct.Input
 
 /**
  * Modify the elements of a List in place.
