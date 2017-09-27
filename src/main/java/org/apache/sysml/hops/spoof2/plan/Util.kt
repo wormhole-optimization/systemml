@@ -182,3 +182,10 @@ private tailrec fun rStripDead(toRemove: MutableSet<SNode>, noStrip: Set<SNode>)
     node.inputs.clear()
     return rStripDead(toRemove, noStrip)
 }
+
+fun Iterable<Long>.prod(): Long {
+    var accumulator = 1L
+    for (element in this) accumulator *= element
+    return accumulator
+}
+

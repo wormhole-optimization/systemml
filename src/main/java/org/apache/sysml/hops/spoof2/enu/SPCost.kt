@@ -1,9 +1,6 @@
 package org.apache.sysml.hops.spoof2.enu
 
-import org.apache.sysml.hops.spoof2.plan.Name
-import org.apache.sysml.hops.spoof2.plan.Schema
-import org.apache.sysml.hops.spoof2.plan.firstSecond
-import org.apache.sysml.hops.spoof2.plan.sumByLong
+import org.apache.sysml.hops.spoof2.plan.*
 
 data class SPCost(
         val nMultiply: Long = 0L,
@@ -84,6 +81,25 @@ data class SPCost(
                             if(recursive) spb.edges.fold(ZERO_COST) { acc, edge -> acc + costFactoredBlock(edge, recursive) }
                             else SPCost.ZERO_COST
 
+                    if( spb.product == SNodeNary.NaryOp.PLUS ) {
+//                        check( spb.sumBlocks.isEmpty() ) {"expecting Σ to be pushed into +, but there are Σs above +"}
+                        // 1. Aggregate each input down to the non-aggregate schema
+                        val aggIndependentlyCost = spb.edges.sumByLong { input ->
+                            if( !spb.aggNames().disjoint(input.schema.keys) )
+                                input.schema.values.prod()
+                            else
+                                0L
+                        }
+                        // 2. Sum together inputs with the same type in their non-aggregated schema (if >1 input with same type)
+                        val inputsByNonAgg = spb.edges.groupBy { it.schema.filter { n, _ -> n !in spb.aggNames() } }
+                        val sumEachType = inputsByNonAgg.entries.sumByLong { (type, inputs) ->
+                            (inputs.size-1) * type.values.prod()
+                        }
+                        // 3. Add to the final output (if >1 input with different types)
+                        val sumAcrossTypes = (inputsByNonAgg.size-1)*spb.schema.values.prod()
+                        return recCost + SPCost(sumEachType + sumAcrossTypes, aggIndependentlyCost)
+                    }
+
                     recCost + when( spb.allSchema().size ) {
                         0 -> ZERO_COST
                         1 -> { // all edges are vectors over this single name
@@ -91,25 +107,25 @@ data class SPCost(
                             val shape = spb.allSchema().shapes.first()
                             // first multiply them together
                             val multCost = (spb.edges.size-1) * shape
-                            val addCost = if( isAgg ) shape - 1 else 0L
+                            val addCost = if( isAgg ) shape else 0L // not shape - 1 because added to 0; similar changes below
                             SPCost(multCost, addCost)
                         }
                         2 -> { // a--b: vectors on a; matrices on a,b; vectors on b
                             // first multiply the groups together
                             val repSchemasToCount = spb.edgesGroupByIncidentNames().map { (_,edges) -> edges.first().schema to edges.size }
                             val multWithinGroupCost = repSchemasToCount.sumByLong { (repSchema,count) ->
-                                (count-1) * repSchema.shapes.fold(1L) { acc, shape -> acc * shape }
+                                (count-1) * repSchema.shapes.prod()
                             }
                             // now multiply across groups
                             val allSchema = spb.allSchema() //repSchemasToCount.map(Pair<Schema,Int>::first).fold(Schema()) { acc, schema -> acc.apply { unionWithBound(schema) } }
                             val (e1,e2) = allSchema.entries.firstSecond()
                             var (n1,s1) = e1
                             var (n2,s2) = e2
-                            var h1 = spb.edgesGroupByIncidentNames()[setOf(n1)] != null
-                            var h2 = spb.edgesGroupByIncidentNames()[setOf(n2)] != null
-                            val h12 = spb.edgesGroupByIncidentNames()[setOf(n1, n2)] != null
-                            var a1 = n1 in spb.aggNames()
-                            var a2 = n2 in spb.aggNames()
+                            var h1 = spb.edgesGroupByIncidentNames()[setOf(n1)] != null // are there edges on n1?
+                            var h2 = spb.edgesGroupByIncidentNames()[setOf(n2)] != null // n2?
+                            val h12 = spb.edgesGroupByIncidentNames()[setOf(n1, n2)] != null // n1 and n2?
+                            var a1 = n1 in spb.aggNames() // are we aggregating n1?
+                            var a2 = n2 in spb.aggNames() // n2?
                             if( !h1 && h2 ) { // symmetry
                                 h1 = true; h2 = false
                                 run { val t = n1; n1 = n2; n2 = t }
@@ -129,17 +145,18 @@ data class SPCost(
                             if( h1 ) {
                                 if( h2 ) {
                                     if( a1 )
-                                        if( a2 ) SPCost(s1 * s2 + s1, s1 * (s2 - 1) + s1 - 1).min(SPCost(s1 * s2 + s2, (s1 - 1) * s2 + s2 - 1))
-                                        else SPCost(s1 * s2 + s2, (s1 - 1) * s2)
+                                        if( a2 ) if(s1 <= s2) SPCost(s1 * s2 + s1, s1 * s2 + s1)
+                                                 else SPCost(s1 * s2 + s2, s1 * s2 + s2)
+                                        else SPCost(s1 * s2 + s2, s1 * s2)
                                     else
-                                        if( a2 ) SPCost(s1 * s2 + s1, s1 * (s2 - 1))
+                                        if( a2 ) SPCost(s1 * s2 + s1, s1 * s2)
                                         else SPCost(2 * s1 * s2, 0)
                                 } else {
                                     if( a1 )
-                                        if( a2 ) SPCost(s1, s1 * (s2 - 1) + s1 - 1)
-                                        else SPCost(s1 * s2, (s1 - 1) * s2)
+                                        if( a2 ) SPCost(s1, s1 * s2 + s1)
+                                        else SPCost(s1 * s2, s1 * s2)
                                     else
-                                        if( a2 ) SPCost(s1, s1 * (s2 - 1))
+                                        if( a2 ) SPCost(s1, s1 * s2)
                                         else SPCost(s1 * s2, 0)
                                 }
                             } else {
@@ -194,7 +211,7 @@ data class SPCost(
                                 check( vSchema!!.names.first() == n12 ) {"SumProduct not completely factored; vector is not over shared dimension in $spb"}
                                 Math.min(s1, s2) * s12
                             } else 0L
-                            val matrixMultCost = SPCost(s1 * s12 * s2, s1 * (s12 - 1) * s2)
+                            val matrixMultCost = SPCost(s1 * s12 * s2, s1 * s12 * s2)
 
                             matrixMultCost.plusMultiply(multWithinGroupCost + vectorMultCost)
                         }
