@@ -473,8 +473,8 @@ class NormalFormExploreEq : SPlanRewriter {
             for (agg in spb.aggNames()) {
                 if (spb.nameToAdjacentNames()[agg]!!.disjoint(spb.aggNames() - agg)) {
                     val incidentEdges = spb.nameToIncidentEdge()[agg]!!
-                    if (incidentEdges.size == spb.edges.size) { // if all edges remaining touch this one, nothing to do. // && spb.aggNames().isEmpty()
-                        return finishFactorMult(spb)
+                    if (incidentEdges.size == spb.edges.size) { // if all edges remaining touch this one, nothing to do.
+
                     } else {
                         spb.factorEdgesToBlock(incidentEdges)
                         continue@loop

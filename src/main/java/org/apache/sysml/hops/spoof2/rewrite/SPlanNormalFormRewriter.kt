@@ -18,7 +18,7 @@ import org.apache.sysml.utils.Explain
  */
 class SPlanNormalFormRewriter : SPlanRewriter {
     private val _rulesFirstOnce = listOf<SPlanRewriteRule>(
-//            RewriteDecompose()          // Subtract  + and *(-1);   ^2  Self-*
+            RewriteDecompose()          // Subtract  + and *(-1);   ^2  Self-*
     )
     private val _ruleBindElim = listOf(
             RewriteBindElim(),
@@ -32,7 +32,7 @@ class SPlanNormalFormRewriter : SPlanRewriter {
             RewritePullPlusAboveMult(),
             RewritePullAggAbovePlus()
     )
-    private val _rulesNormalFormPrior = listOf(
+    private val _rulesNormalFormPrior = listOf<SPlanRewriteRule>(
             RewritePushAggIntoPlus(),
             RewriteSplitCSE(),
             RewriteAggregateElim(),     // req. SplitCSE

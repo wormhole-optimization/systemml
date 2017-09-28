@@ -24,6 +24,6 @@ r= matrix( "1 2 3", rows=1, cols=3)
 M= matrix( "9 8 7 6 5 4 3 2 1", rows=3, cols=3)
 c= matrix( "9 8 7", rows=3, cols=1)
 while (FALSE) {}
-S = X * (r %*% M %*% c)
+S = X + X * (r %*% M %*% c)
 write(S,$1)
 

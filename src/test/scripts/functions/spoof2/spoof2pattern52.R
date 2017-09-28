@@ -1,4 +1,4 @@
-#-------------------------------------------------------------
+ #-------------------------------------------------------------
 #
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -19,11 +19,12 @@
 #
 #-------------------------------------------------------------
 
-X= matrix( "1 2 3 4 5 6 7 8 9", rows=3, cols=3)
-r= matrix( "1 2 3", rows=1, cols=3)
-M= matrix( "9 8 7 6 5 4 3 2 1", rows=3, cols=3)
-c= matrix( "9 8 7", rows=3, cols=1)
-while (FALSE) {}
-S = X * (r %*% M %*% c)
-write(S,$1)
-
+args<-commandArgs(TRUE)
+options(digits=22)
+library(Matrix)
+X = matrix( c(1,2,3,4,5,6,7,8,9), nrow=3, ncol=3, byrow = TRUE)
+r = matrix( c(1,2,3), nrow=1, ncol=3, byrow=TRUE)
+M = matrix( c(9,8,7,6,5,4,3,2,1), nrow=3, ncol=3, byrow = TRUE)
+c = matrix( c(9,8,7), nrow=3, ncol=1, byrow=TRUE)
+S = X + X * as.numeric(r %*% M %*% c)
+writeMM(as(S, "CsparseMatrix"), paste(args[2], "S", sep=""));

@@ -91,7 +91,8 @@ class Spoof2Test(
         //	TEST_NAME+49;  //AB + AC
         //	TEST_NAME+50;  //ABC + DBE
         //	TEST_NAME+51;  // B=B1%*%B2; (A+B) / (rowSums(A+B) %*% C)
-        private const val NUM_TESTS = 51
+        //	TEST_NAME+52;  //X + X * (r %*% M %*% c) // + above a partition-able problem (test case 26)
+        private const val NUM_TESTS = 52
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
