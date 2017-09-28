@@ -161,7 +161,14 @@ blah blah
 
 \subsection{Plan Enumeration}
 \begin{enumerate}
-\item Decisions
+\item Review query hypergraph. It is a graph in the case of 2-D Linear Algebra.
+\item Variable elimination order decision.
+  \begin{enumerate}
+  \item Push $\Sigma$ into +.
+  \item Multiply within groups first, for all edges with the same attributes.
+  \item Min-degree heuristic; no tensor intermediates.
+  \item Independent aggregated attributes can be factored right away. These are aggregated attributes that are not adjacent to other aggregated attributes.
+  \end{enumerate}
 \item Memoization structure (for determining CSEs) --- E-DAG
 \item Size of space (add statistics on how large the search space is in real-world ML scripts)
 \item Pruning; upper and lower bounds

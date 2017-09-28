@@ -469,7 +469,7 @@ class NormalFormExploreEq : SPlanRewriter {
         }
 
         // If an aggName does not touch any other aggNames, then it is independent of them. Factor it.
-        loop@ do {
+        loop@do {
             for (agg in spb.aggNames()) {
                 if (spb.nameToAdjacentNames()[agg]!!.disjoint(spb.aggNames() - agg)) {
                     val incidentEdges = spb.nameToIncidentEdge()[agg]!!
@@ -485,9 +485,8 @@ class NormalFormExploreEq : SPlanRewriter {
         } while (true)
 
         // Done if no aggregations remain
-        if (spb.aggNames().isEmpty()) {
+        if (spb.aggNames().isEmpty())
             return finishFactorMult(spb)
-        }
 
         // Determine what variables we could eliminate at this point
         val eligibleAggNames = spb.eligibleAggNames()
