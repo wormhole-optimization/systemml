@@ -56,7 +56,7 @@ sealed class SumProduct {
     companion object {
 
         private val ALLOWED_SUMS = setOf(Hop.AggOp.SUM)
-        private val ALLOWED_PRODUCTS = setOf(SNodeNary.NaryOp.MULT)
+        private val ALLOWED_PRODUCTS = setOf(SNodeNary.NaryOp.MULT, SNodeNary.NaryOp.PLUS)
 
         fun isSumProductBlock(_top: SNode): Boolean {
             var top = _top
@@ -78,7 +78,7 @@ sealed class SumProduct {
         }
 
         /** Strips references as it constructs the sum-product block. */
-        fun constructBlock(_top: SNode, initialParentForSplitCse: SNode?): Block {
+        fun constructBlock(_top: SNode, initialParentForSplitCse: SNode): Block {
             var top = _top
             var topTemp = initialParentForSplitCse
             val sumBlocks = ArrayList<SumBlock>()
@@ -87,39 +87,36 @@ sealed class SumProduct {
                 sumBlocks += SumBlock(top.op, top.aggs.names.toMutableSet() as MutableSet<AB>)
                 topTemp = top
                 top = top.inputs[0]
-                top.parents -= topTemp
-                if( top.parents.size > 1 ) {
-                    // Split CSE
-                    val copy = top.shallowCopyNoParentsYesInputs()
-                    val otherParents = ArrayList(top.parents)
-                    otherParents -= topTemp
-                    top.parents.clear()
-                    top.parents += topTemp
-                    otherParents.forEach {
-                        it.inputs[it.inputs.indexOf(top)] = copy
-                    }
-                    copy.parents.addAll(otherParents)
-                }
+                splitOtherParents(topTemp, top)
             }
             require( top is SNodeNary ) {"sum-product block does not have a product; found $top id=${top.id}"}
             top as SNodeNary
-            if( topTemp != null && top.parents.size > 1 ) {
-                // Split CSE
-                val copy = top.shallowCopyNoParentsYesInputs()
-                val otherParents = ArrayList(top.parents)
-                otherParents -= topTemp
-                top.parents.clear()
-                top.parents += topTemp
-                otherParents.forEach {
-                    it.inputs[it.inputs.indexOf(top)] = copy
+            if( top !== _top )
+                splitOtherParents(topTemp, top)
+            val edges = top.inputs.mapTo(ArrayList()) { child ->
+                if( child is SNodeNary && child.op in ALLOWED_PRODUCTS && child.inputs.size >= 2 && child.schema.isNotEmpty() ) {
+                    splitOtherParents(top, child)
+                    child.inputs.forEach { it.parents -= child }
+                    SPB(child.op, child.inputs.map(::SPI))
+                } else {
+                    child.parents -= top
+                    SPI(child)
                 }
-                copy.parents.addAll(otherParents)
             }
-            val product = top.op
-            val edges = top.inputs.mapTo(ArrayList(), SumProduct::Input)
-            top.inputs.forEach { it.parents -= top }
-            return Block(sumBlocks, product, edges)
+            return Block(sumBlocks, top.op, edges)
         }
+        private fun splitOtherParents(desiredParent: SNode, node: SNode) {
+            node.parents -= desiredParent
+            if( node.parents.isNotEmpty() ) {
+                val copy = node.shallowCopyNoParentsYesInputs()
+                node.parents.forEach {
+                    it.inputs[it.inputs.indexOf(node)] = copy
+                }
+                copy.parents.addAll(node.parents)
+                node.parents.clear()
+            }
+        }
+
     }
 
     open fun toStringWithTab(tab: Int): String = toString()
@@ -488,8 +485,8 @@ sealed class SumProduct {
      * Given the top-most SNodeAggregate from which the SumProduct was formed,
      * rewrite the SNodes in the sum-product block to reflect the factorized structure of the SumProduct.
      */
-    fun applyToNormalForm(_top: SNode, cost: Boolean = true): SNode {
-        val newTop: SNode = rConstructSPlan(cost)
+    fun applyToNormalForm(_top: SNode, cost: Boolean = true, factor: Boolean = true): SNode {
+        val newTop: SNode = rConstructSPlan(cost, factor)
         SNodeRewriteUtils.rewireAllParentChildReferences(_top, newTop)
         newTop.parents.forEach { it.refreshSchemasUpward() }
         return newTop
@@ -500,24 +497,21 @@ sealed class SumProduct {
      */
     fun constructSPlan(cost: Boolean = true): SNode = rConstructSPlan()
 
-    private fun rConstructSPlan(cost: Boolean = true): SNode = when( this ) {
+    private fun rConstructSPlan(cost: Boolean = true, factor: Boolean = true): SNode = when( this ) {
         is Input -> this.snode
         is Block -> {
             // children are recursively created
             // create an SNodeNary for the product, if there are at least two inputs
             // create an SNodeAggregate for each SumBlock
-            val inputNodes = this.edges.map { it.rConstructSPlan(cost) }
-            val mult: SNode = createMultiply(inputNodes)
+            val inputNodes = this.edges.map { it.rConstructSPlan(cost, factor) }
+            val mult: SNode = createMultiply(inputNodes, factor)
             buildAndCostAggs(mult, cost) // assigns add costs to each SNAggregate
         }
         is ESP -> throw IllegalStateException("unexpected EBlock")
     }
 
 
-
-
-
-    internal fun createMultiply(inputNodes: List<SNode>): SNode {
+    internal fun createMultiply(inputNodes: List<SNode>, factor: Boolean = true): SNode {
         this as Block
         check( inputNodes.isNotEmpty() )
         if(inputNodes.size == 1)
@@ -526,7 +520,7 @@ sealed class SumProduct {
             return SNodeNary(this.product, inputNodes)
         // check for case VMV -- choose which MxV is better to do first
         // if there is no aggregate then it doesn't actually matter, but no harm done
-        if( inputNodes.size == 3) {
+        if( factor && inputNodes.size == 3) {
             val size1count = inputNodes.count { it.schema.size == 1 }
             val size2count = inputNodes.count { it.schema.size == 2 }
             if (size2count == 1 && size1count == 2) {

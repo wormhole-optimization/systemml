@@ -223,7 +223,7 @@ class NormalFormExploreEq : SPlanRewriter {
 
          override fun toString(): String {
              return "Stats(id=$id, numSP=$numSP, numInserts=$numInserts, numAggPlusMultiply=$numAggPlusMultiply, numLabels=$numLabels, numContingencies=$numContingencies, maxCC=$maxCC, considerPlan=$considerPlan, " +
-                     "spbs=${spbs.joinToString("\n","\n", limit = 0)})"
+                     "#spbs=${spbs.size})"
          }
 
      }
@@ -311,6 +311,7 @@ class NormalFormExploreEq : SPlanRewriter {
                         changed = true
 //                        if( LOG.isTraceEnabled )
 //                            LOG.trace("after factoring a SPB at (${child.id}) $child:"+Explain.explainSPlan(roots, true))
+//                        SPlanValidator.validateSPlan(roots, false)
                     }
                 }
             }
@@ -339,7 +340,6 @@ class NormalFormExploreEq : SPlanRewriter {
         val CCnames = findConnectedNames(spb, spb.allSchema().names.first())
         if( CCnames != spb.allSchema().names.toSet() ) {
             val NCnames = spb.allSchema().names - CCnames
-
             val CCspb = SumProduct.Block(
                     spb.sumBlocks.map { SumBlock(it.op, it.names.filter { it in CCnames }) }
                             .filter { it.names.isNotEmpty() },
@@ -359,15 +359,12 @@ class NormalFormExploreEq : SPlanRewriter {
             spb.edges += CCspb
             spb.edges += NCspb
             spb.refresh()
-
             if( LOG.isDebugEnabled && !isTrivialBlock )
                 LOG.debug("Partition Sum-Product block into disjoint components:\n" +
                         "Component 1: $CCspb\n" +
                         "Component 2: $NCspb")
-
-            return RewriteResult.NewNode(spb.applyToNormalForm(node, false)) // these will be handled as disjoint sub-problems in SPlanNormalFormRewriter at next recursion
+            return RewriteResult.NewNode(spb.applyToNormalForm(node, false, false)) // these will be handled as disjoint sub-problems in SPlanNormalFormRewriter at next recursion
         }
-
 
         // We will factor this spb.
         if( !isTrivialBlock )
@@ -435,19 +432,21 @@ class NormalFormExploreEq : SPlanRewriter {
     }
     private fun factorPlus(spb: SPB): SP {
         // push down aggregates into the inputs
-        spb.edges.mapInPlace {
-            when (it) {
-                is SumProduct.Input -> SumProduct.Block(spb.sumBlocks, SNodeNary.NaryOp.MULT, it)
-                is SumProduct.Block -> {
-                    it.unionInSumBlocks(spb.sumBlocks); it
+        if( spb.sumBlocks.isNotEmpty() ) {
+            spb.edges.mapInPlace {
+                when (it) {
+                    is SumProduct.Input -> SumProduct.Block(spb.sumBlocks, SNodeNary.NaryOp.MULT, it)
+                    is SumProduct.Block -> {
+                        it.unionInSumBlocks(spb.sumBlocks); it
+                    }
+                    is ESP -> throw IllegalStateException("unexpected EBlock")
                 }
-                is ESP -> throw IllegalStateException("unexpected EBlock")
             }
         }
         spb.sumBlocks.clear()
 
         // factor each input
-        spb.edges.mapInPlace { factor(it as SumProduct.Block) }
+        spb.edges.mapInPlace { if(it is SPB) factor(it) else it }
         return spb
     }
     private fun factorMult(spb: SPB): SP {
