@@ -17,7 +17,7 @@ class Schema private constructor(
         require(names.size == shapes.size) {"different number of names and shapes: $names, $shapes"}
     }
     constructor(s: Schema) : this(HashMap<Name,Shape>(s.nameShapes))
-    constructor(m: List<Pair<Name,Shape>>) : this(m.toMap(HashMap<Name,Shape>()))
+    constructor(m: Collection<Pair<Name,Shape>>) : this(m.toMap(HashMap<Name,Shape>()))
     constructor(m: Map<Name,Shape>) : this(m.toMap(HashMap<Name,Shape>()))
 
     val names: Set<Name>

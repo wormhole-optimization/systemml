@@ -2,6 +2,7 @@ package org.apache.sysml.hops.spoof2.enu
 
 import org.apache.commons.logging.LogFactory
 import org.apache.sysml.hops.Hop
+import org.apache.sysml.hops.LiteralOp
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.SPlanBottomUpRewriter
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriteRule.RewriteResult
@@ -52,7 +53,7 @@ class NormalFormExploreEq : SPlanRewriter {
         }
 
         private fun normalSpb_GetAggs(spb: SumProduct.Block): List<Name> {
-            return spb.sumBlocks.flatMap { it.names }
+            return spb.sumBlocks.flatMap { it.names.names }
         }
 
         private fun normalSpb_GetPlusInputs(spb: SumProduct.Block): List<SumProduct> {
@@ -341,14 +342,14 @@ class NormalFormExploreEq : SPlanRewriter {
         if( CCnames != spb.allSchema().names.toSet() ) {
             val NCnames = spb.allSchema().names - CCnames
             val CCspb = SumProduct.Block(
-                    spb.sumBlocks.map { SumBlock(it.op, it.names.filter { it in CCnames }) }
+                    spb.sumBlocks.map { SumBlock(it.op, it.names.filter { n,_ -> n in CCnames }) }
                             .filter { it.names.isNotEmpty() },
                     spb.product,
                     spb.edges.filter { it.schema.names.any { it in CCnames } }
                             .map { it.deepCopy() }
             )
             val NCspb = SumProduct.Block(
-                    spb.sumBlocks.map { SumBlock(it.op, it.names.filter { it in NCnames }) }
+                    spb.sumBlocks.map { SumBlock(it.op, it.names.filter { n,_ -> n in NCnames }) }
                             .filter { it.names.isNotEmpty() },
                     spb.product,
                     spb.edges.filter { it.schema.names.any { it in NCnames } }
@@ -437,19 +438,61 @@ class NormalFormExploreEq : SPlanRewriter {
                 when (it) {
                     is SumProduct.Input -> SumProduct.Block(spb.sumBlocks, SNodeNary.NaryOp.MULT, it)
                     is SumProduct.Block -> {
-                        it.unionInSumBlocks(spb.sumBlocks); it
+                        it.unionInSumBlocks(spb.sumBlocks); it.refresh(); it
                     }
                     is ESP -> throw IllegalStateException("unexpected EBlock")
                 }
             }
+            spb.sumBlocks.clear()
+            spb.refresh()
         }
-        spb.sumBlocks.clear()
 
         // factor each input
         spb.edges.mapInPlace { if(it is SPB) factor(it) else it }
         return spb
     }
     private fun factorMult(spb: SPB): SP {
+        // Handle constant aggregation; similar to RewritePushAggIntoPlus
+        // Eliminate exact matches with literal doubles if possible, otherwise introduce a literal double multiplicand
+        val notInInput = spb.aggSchemaNotInEdges()
+        if( notInInput.isNotEmpty() ) { // constant aggregation
+            @Suppress("UNCHECKED_CAST")
+            val litInputs = spb.edges.filter { it is SPI && it.snode is SNodeData && it.snode.isLiteralNumeric }
+//                    .map { it as SPI } //(it as SPI).snode as SNodeData }
+                    .toMutableList() as MutableList<SPI>
+
+            loop@while( notInInput.isNotEmpty() && litInputs.isNotEmpty() ) {
+                for( v in 1L until (1L shl notInInput.size) ) {
+                    val selectSchema = notInInput.entries.filterIndexed { p, _ ->
+                        v and (1L shl p) != 0L
+                    }.run { Schema(this.map { (n,s) -> n to s }) }
+                    val tgt = selectSchema.shapes.fold(1.0, Double::div)
+                    val exact = litInputs.find {
+                        val hop = (it.snode as SNodeData).hop as LiteralOp
+                        hop.doubleValue == tgt
+                    }
+                    if( exact != null ) {
+                        // exact match with a literal - eliminate the literal
+                        spb.edges -= exact
+                        spb.removeAggs(selectSchema)
+                        notInInput -= selectSchema
+                        litInputs -= exact
+                        continue@loop
+                    }
+                }
+                break
+            }
+            if( notInInput.isNotEmpty() ) {
+                if( LOG.isTraceEnabled )
+                    LOG.trace("Failed to eliminate constant aggs $notInInput from block $spb")
+                val mFactor = notInInput.shapes.prod()
+                val lit = SPI(SNodeData(LiteralOp(mFactor)))
+                spb.edges += lit
+                spb.removeAggs(notInInput)
+            }
+            spb.refresh()
+        }
+
         if (spb.edgesGroupByIncidentNames().size == 1) {
             // all edges fit in a single group; nothing to do
             return finishFactorMult(spb)
@@ -469,8 +512,9 @@ class NormalFormExploreEq : SPlanRewriter {
 
         // If an aggName does not touch any other aggNames, then it is independent of them. Factor it.
         loop@do {
+            val n2an = spb.nameToAdjacentNames()
             for (agg in spb.aggNames()) {
-                if (spb.nameToAdjacentNames()[agg]!!.disjoint(spb.aggNames() - agg)) {
+                if (n2an[agg]!!.disjoint(spb.aggNames() - agg)) {
                     val incidentEdges = spb.nameToIncidentEdge()[agg]!!
                     if (incidentEdges.size == spb.edges.size) { // if all edges remaining touch this one, nothing to do.
 

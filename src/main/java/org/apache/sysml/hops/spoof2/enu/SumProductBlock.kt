@@ -11,13 +11,16 @@ private const val SHOW_NNZ = false
 
 class SumBlock private constructor(
         val op: Hop.AggOp,
-        val names: MutableSet<AB>
+        val names: Schema
 ) {
-    constructor(sum: Hop.AggOp, names: Collection<AB>)
-            : this(sum, HashSet(names))
-    constructor(sum: Hop.AggOp, vararg names: AB)
-            : this(sum, HashSet(names.asList()))
-    fun deepCopy() = SumBlock(op, HashSet(names))
+    constructor(sum: Hop.AggOp, names: Collection<Pair<AB,Shape>>)
+            : this(sum, Schema(names))
+    constructor(sum: Hop.AggOp, vararg names: Pair<AB,Shape>)
+            : this(sum, Schema(names.asList()))
+    companion object {
+        operator fun invoke(op: Hop.AggOp, schema: Schema) = SumBlock(op, Schema(schema))
+    }
+    fun deepCopy() = SumBlock(op, Schema(names))
     override fun toString(): String {
         return "$op$names"
     }
@@ -63,7 +66,6 @@ sealed class SumProduct {
             while (top is SNodeAggregate) {
                 if( top.op !in ALLOWED_SUMS)
                     return false
-                // no foreign parents below the top agg
                 if( top !== _top )//&& top.parents.size > 1 )
                     return false
                 top = top.inputs[0]
@@ -83,8 +85,7 @@ sealed class SumProduct {
             var topTemp = initialParentForSplitCse
             val sumBlocks = ArrayList<SumBlock>()
             while (top is SNodeAggregate) {
-                @Suppress("UNCHECKED_CAST")
-                sumBlocks += SumBlock(top.op, top.aggs.names.toMutableSet() as MutableSet<AB>)
+                sumBlocks += SumBlock(top.op, top.aggs)
                 topTemp = top
                 top = top.inputs[0]
                 splitOtherParents(topTemp, top)
@@ -174,8 +175,6 @@ sealed class SumProduct {
 
         override val nnz: Long? = null // todo compute nnz estimate
 
-
-
         private var _allSchema: Schema? = null
         /** Schema of all attributes, both aggregated and retained. */
         fun allSchema(refresh: Boolean = false): Schema {
@@ -195,20 +194,6 @@ sealed class SumProduct {
                 }
                 return _schema!!
             }
-
-        private var _aggSchema: Schema? = null
-        /** Schema of aggregated attributes. */
-        fun aggSchema(refresh: Boolean = false): Schema {
-            if( refresh || _aggSchema == null ) {
-                _aggSchema = edges.fold(Schema()) { schema, sp ->
-                    schema += sp.schema.filter { (n,_) ->
-                        n in aggNames()
-                    }
-                    schema
-                }
-            }
-            return _aggSchema!!
-        }
 
         init {
             check(edges.isNotEmpty()) {"Empty inputs to Block $this"}
@@ -252,13 +237,19 @@ sealed class SumProduct {
         constructor(product: SNodeNary.NaryOp, vararg edges: SumProduct)
                 : this(ArrayList<SumBlock>(), product, ArrayList(edges.asList()))
 
-        private var _aggNames: Set<AB>? = null
-        fun aggNames(refresh: Boolean = false): Set<AB> {
-            if( refresh || _aggNames == null ) {
-                _aggNames = sumBlocks.fold(setOf()) { acc, sb -> acc + sb.names }
-            }
-            return _aggNames!!
+        fun aggSchemaNotInEdges(): Schema {
+            return aggSchema().filter { n, _ -> edges.none { n in it.schema } }
         }
+
+        private var _aggSchema: Schema? = null
+        @Suppress("UNCHECKED_CAST")
+        fun aggSchema(refresh: Boolean = false): Schema {
+            if( refresh || _aggSchema == null ) {
+                _aggSchema = sumBlocks.fold(Schema()) { acc, sb -> acc += sb.names; acc }
+            }
+            return _aggSchema!!
+        }
+        fun aggNames(refresh: Boolean = false): Set<AB> = aggSchema(refresh).map { (n,_) -> n as AB }.toSet()
 
         private var _nameToIncidentEdge: Map<Name,List<SumProduct>>? = null
         /** Map of name to all edges touching that name. */
@@ -303,12 +294,11 @@ sealed class SumProduct {
 
         fun refresh() {
             _schema = null
-            _aggNames = null
+            _aggSchema = null
             _allSchema = null
             _nameToIncidentEdge = null
             _nameToAdjacentNames = null
             _edgesGroupByIncidentNames = null
-            _aggSchema = null
         }
 
 
@@ -326,7 +316,7 @@ sealed class SumProduct {
             val (_,eligibleAggs) = sumBlocks.foldRight(setOf<Name>() to setOf<Name>())
             { sumBlock, (aggsSeen, eligibleAggs) ->
                 // all names in future blocks must not be adjacent
-                (aggsSeen + sumBlock.names) to (eligibleAggs + sumBlock.names.filter { testAggName ->
+                (aggsSeen + sumBlock.names.names) to (eligibleAggs + sumBlock.names.names.filter { testAggName ->
                     this.nameToAdjacentNames()[testAggName]!!.disjoint(aggsSeen)
                 })
             }
@@ -339,7 +329,7 @@ sealed class SumProduct {
             val adjacentNames = this.nameToAdjacentNames()[aggName]!!
             // check forward -- all names in future blocks must not be adjacent to aggName
             return (sumBlockIndex+1..sumBlocks.size-1).all { idx ->
-                this.sumBlocks[idx].names.all { it !in adjacentNames }
+                this.sumBlocks[idx].names.names.all { it !in adjacentNames }
             }
         }
 
@@ -353,11 +343,11 @@ sealed class SumProduct {
             return sumBlock.op
         }
 
-        private fun addAggNamesToFront(aggOp: Hop.AggOp, vararg aggName: AB) {
+        private fun addAggNamesToFront(aggOp: Hop.AggOp, vararg agg: Pair<AB,Shape>) {
             if( sumBlocks.isEmpty() || sumBlocks[0].op != aggOp ) {
-                sumBlocks.add(0, SumBlock(aggOp, *aggName))
+                sumBlocks.add(0, SumBlock(aggOp, agg.asList()))
             } else {
-                sumBlocks[0].names.addAll(aggName)
+                sumBlocks[0].names += agg
             }
         }
 
@@ -367,7 +357,8 @@ sealed class SumProduct {
          */
         fun pushAggregations() {
             // no refresh on aggNames
-            aggNames().forEach { aggName ->
+            aggSchema().forEach { (aggName, shape) ->
+                aggName as AB
                 if( aggName in allSchema() ) {
                     val incidentEdges = nameToIncidentEdge()[aggName]!!
                     if (incidentEdges.size == 1 && canAggregate(aggName)) {
@@ -375,11 +366,11 @@ sealed class SumProduct {
                         val edge = incidentEdges[0]
                         when (edge) {
                             is Block -> {
-                                edge.addAggNamesToFront(sumOp, aggName)
+                                edge.addAggNamesToFront(sumOp, aggName to shape)
                                 edge.refresh()
                             }
                             is Input -> {
-                                val newBlock = Block(SumBlock(sumOp, aggName), product, edge)
+                                val newBlock = Block(SumBlock(sumOp, aggName to shape), product, edge)
                                 this.edges -= edge
                                 this.edges += newBlock
                             }
@@ -451,6 +442,16 @@ sealed class SumProduct {
         fun constructNoRec(inputNodes: List<SNode>, cost: Boolean = true): SNode {
             val mult: SNode = createMultiply(inputNodes)
             return buildAndCostAggs(mult, cost) // assigns add costs to each SNAggregate
+        }
+
+        fun removeAggs(toRemove: Schema) {
+            val iter = sumBlocks.iterator()
+            while( iter.hasNext() ) {
+                val sb = iter.next()
+                sb.names -= toRemove
+                if( sb.names.isEmpty() )
+                    iter.remove()
+            }
         }
     }
 

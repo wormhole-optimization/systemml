@@ -100,7 +100,7 @@ class RewritePushAggIntoPlus(
                 break
             }
             if( constantAggToMultiply && notInInput.isNotEmpty() ) {
-                val mFactor = notInInput.shapes.fold(1L, Long::times)
+                val mFactor = notInInput.shapes.prod()
                 val lit = SNodeData(LiteralOp(mFactor))
 
                 mult.inputs += lit

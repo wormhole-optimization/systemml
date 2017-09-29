@@ -194,3 +194,7 @@ fun Iterable<Long>.prod(): Long {
     return accumulator
 }
 
+fun Collection<Schema>.unionSchema(): Schema = this.fold(Schema()) { acc, schema ->
+    acc += schema; acc
+}
+
