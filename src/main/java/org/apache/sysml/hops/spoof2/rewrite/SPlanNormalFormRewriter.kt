@@ -29,8 +29,8 @@ class SPlanNormalFormRewriter : SPlanRewriter {
             RewritePullAggAboveMult(),
             RewriteAggregateElim(),
             RewriteMultiplyPlusElim(),
-            RewritePullPlusAboveMult(),
-            RewritePullAggAbovePlus()
+            RewritePullPlusAboveMult()//,
+//            RewritePullAggAbovePlus()
     )
     private val _rulesNormalFormPrior = listOf<SPlanRewriteRule>(
             RewritePushAggIntoPlus(),

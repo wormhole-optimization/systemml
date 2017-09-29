@@ -30,7 +30,7 @@ class NormalFormExploreEq : SPlanRewriter {
                     throw SNodeException("unexpected aggregation type in $spb")
                 if( spb.sumBlocks.size > 1 )
                     throw SNodeException("too many SumBlocks in $spb")
-                spb.edges.forEach { normalSpb_VerifyMult(it, false) }
+                spb.edges.forEach { normalSpb_VerifyMult(it, true) } // we now allow aggs below
             } else normalSpb_VerifyMult(spb, true)
         }
 
@@ -329,7 +329,7 @@ class NormalFormExploreEq : SPlanRewriter {
         if( !SumProduct.isSumProductBlock(node))
             return RewriteResult.NoChange
 //        val origSchema = Schema(node.schema)
-        val spb = SumProduct.constructBlock(node, parent)
+        val spb = SumProduct.constructBlock(node, parent) as SPB
         if( node.schema.names.any { !it.isBound() } )
             throw SNodeException(node, "Found unbound name in Sum-Product block; may not be handled incorrectly. $spb")
         val isTrivialBlock = spb.getAllInputs().size <= 2

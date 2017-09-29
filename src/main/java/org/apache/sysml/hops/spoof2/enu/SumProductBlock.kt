@@ -61,28 +61,29 @@ sealed class SumProduct {
         private val ALLOWED_SUMS = setOf(Hop.AggOp.SUM)
         private val ALLOWED_PRODUCTS = setOf(SNodeNary.NaryOp.MULT, SNodeNary.NaryOp.PLUS)
 
+        private fun COND_PRODUCT(top: SNode) = top is SNodeNary && top.op in ALLOWED_PRODUCTS
+//                    && top.parents.size == 1 // foreign parent
+                && top.schema.isNotEmpty() // all-scalar case
+
+        private tailrec fun COND_AGG(top: SNode, numAggsBefore: Int = 0): Boolean {
+            return if( top is SNodeAggregate ) {
+                if(top.op in ALLOWED_SUMS
+                        && numAggsBefore == 0) // currently no support for >1 aggregate type
+                    COND_AGG(top.input, numAggsBefore+1)
+                else false
+            } else COND_PRODUCT(top)
+        }
+
         fun isSumProductBlock(_top: SNode): Boolean {
-            var top = _top
-            while (top is SNodeAggregate) {
-                if( top.op !in ALLOWED_SUMS)
-                    return false
-                if( top !== _top )//&& top.parents.size > 1 )
-                    return false
-                top = top.inputs[0]
-            }
-            if( top !is SNodeNary || top.op !in ALLOWED_PRODUCTS
-//                    || top.parents.size > 1 // foreign parent
-                    || top.inputs.size <= 1 // too few inputs
-                    || top.schema.isEmpty() // all-scalar case
-                    )
-                return false
-            return true
+            return COND_AGG(_top)
         }
 
         /** Strips references as it constructs the sum-product block. */
-        fun constructBlock(_top: SNode, initialParentForSplitCse: SNode): Block {
+        fun constructBlock(_top: SNode, initialParentForSplitCse: SNode): SumProduct {
             var top = _top
             var topTemp = initialParentForSplitCse
+            if( !COND_PRODUCT(getBelowAgg(top)) )
+                return SPI(top)
             val sumBlocks = ArrayList<SumBlock>()
             while (top is SNodeAggregate) {
                 sumBlocks += SumBlock(top.op, top.aggs)
@@ -90,22 +91,20 @@ sealed class SumProduct {
                 top = top.inputs[0]
                 splitOtherParents(topTemp, top)
             }
-            require( top is SNodeNary ) {"sum-product block does not have a product; found $top id=${top.id}"}
             top as SNodeNary
             if( top !== _top )
                 splitOtherParents(topTemp, top)
-            val edges = top.inputs.mapTo(ArrayList()) { child ->
-                if( child is SNodeNary && child.op in ALLOWED_PRODUCTS && child.inputs.size >= 2 && child.schema.isNotEmpty() ) {
-                    splitOtherParents(top, child)
-                    child.inputs.forEach { it.parents -= child }
-                    SPB(child.op, child.inputs.map(::SPI))
-                } else {
+            val edges = top.inputs.map { child ->
+                val b = constructBlock(child, top)
+                if( b is SPI )
                     child.parents -= top
-                    SPI(child)
-                }
+                b
             }
             return Block(sumBlocks, top.op, edges)
         }
+
+        private tailrec fun getBelowAgg(node: SNode): SNode =
+                if( node is SNodeAggregate ) getBelowAgg(node.input) else node
         private fun splitOtherParents(desiredParent: SNode, node: SNode) {
             node.parents -= desiredParent
             if( node.parents.isNotEmpty() ) {
