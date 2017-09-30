@@ -61,9 +61,9 @@ sealed class SumProduct {
         private val ALLOWED_SUMS = setOf(Hop.AggOp.SUM)
         private val ALLOWED_PRODUCTS = setOf(SNodeNary.NaryOp.MULT, SNodeNary.NaryOp.PLUS)
 
-        private fun COND_PRODUCT(top: SNode) = top is SNodeNary && top.op in ALLOWED_PRODUCTS
+        private fun COND_PRODUCT(top: SNode, acceptNoSchema: Boolean = false) = top is SNodeNary && top.op in ALLOWED_PRODUCTS
 //                    && top.parents.size == 1 // foreign parent
-                && top.schema.isNotEmpty() // all-scalar case
+                && (acceptNoSchema || top.schema.isNotEmpty()) // all-scalar case
 
         private tailrec fun COND_AGG(top: SNode, numAggsBefore: Int = 0): Boolean {
             return if( top is SNodeAggregate ) {
@@ -112,7 +112,7 @@ sealed class SumProduct {
             return set
         }
         private fun getBelowAggPlusMult(node: SNode, set: MutableSet<SNode>) {
-            if( COND_PRODUCT(node) ) {
+            if( COND_PRODUCT(node, true) ) {
                 node.inputs.toSet().forEach { getBelowAggPlusMult(getBelowAgg(it), set) }
             } else {
                 set += node

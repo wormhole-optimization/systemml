@@ -94,7 +94,8 @@ class Spoof2Test(
         //	TEST_NAME+52;  //X + X * (r %*% M %*% c) // + above a partition-able problem (test case 26)
         //	TEST_NAME+53;  //AB + AC + A // todo problem with bind-unbind in middle
         //	TEST_NAME+54;  //A*B + A*C + A
-        private const val NUM_TESTS = 54
+        //	TEST_NAME+55;  //A*B + A + C*D + C
+        private const val NUM_TESTS = 55
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
