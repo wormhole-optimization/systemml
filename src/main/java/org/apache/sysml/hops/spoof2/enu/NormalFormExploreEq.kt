@@ -439,7 +439,7 @@ class NormalFormExploreEq : SPlanRewriter {
         val mcommon = getCommonMultiplyTerms(_spb.edges[i], _spb.edges[j]) // common multiplicands of i and j terms
 
         // decide which to factor out - there are 2^|mcommon| choices
-        val factorOut = ArrayList<SPI>(mcommon.size)
+        val factorOut = ArrayList<SP>(mcommon.size)
         val alternatives: ArrayList<SP> = arrayListOf()
         var rejectExplore = 0
 
@@ -458,10 +458,12 @@ class NormalFormExploreEq : SPlanRewriter {
             val sbs = if (pi is SPB && pj is SPB) {
                 val aggOverlap = pi.aggSchema().filter { n, _ -> factorOut.any { n in it.schema } }
                 check(aggOverlap == pj.aggSchema().filter { n, _ -> factorOut.any { n in it.schema } }) { "disagreement in overlapping aggregation between i and j terms: $pi, $pj, $factorOut" }
-                pi.removeAggs(aggOverlap)
-                pj.removeAggs(aggOverlap)
-                pi.refresh(); pj.refresh()
-                listOf(SumBlock(Hop.AggOp.SUM, aggOverlap))
+                if( aggOverlap.isNotEmpty() ) {
+                    pi.removeAggs(aggOverlap)
+                    pj.removeAggs(aggOverlap)
+                    pi.refresh(); pj.refresh()
+                    listOf(SumBlock(Hop.AggOp.SUM, aggOverlap))
+                } else listOf()
             } else listOf()
             pi = removeFromPlus(pi, factorOut)
             pj = removeFromPlus(pj, factorOut)
@@ -469,7 +471,10 @@ class NormalFormExploreEq : SPlanRewriter {
             val pnew = SPB(SNodeNary.NaryOp.PLUS, pi, pj)
             val mnew = SPB(sbs, SNodeNary.NaryOp.MULT, factorOut + pnew)
             spb.edges[i] = mnew
-            val newSpb = factorCommonTermsFromPlus_next(spb, i, j)
+            val newSpb = if(j < spb.edges.size) factorCommonTermsFromPlus(spb, i, j)
+                    else factorCommonTermsFromPlus_next(spb, i, j)
+//            if( LOG.isTraceEnabled )
+//                LOG.trace("Common factor pull from + choice $i $j $k /${spb.edges.size}:\n$newSpb")
             if (newSpb != null)
                 alternatives += newSpb
             else rejectExplore++
@@ -489,13 +494,13 @@ class NormalFormExploreEq : SPlanRewriter {
         } })
     }
 
-    private fun getCommonMultiplyTerms(spi: SP, spj: SP): List<Pair<SPI, Int>> {
+    private fun getCommonMultiplyTerms(spi: SP, spj: SP): List<Pair<SP, Int>> {
         val msi = getMultiplyTerms(spi)
         val msj = getMultiplyTerms(spj)
         return msi.intersect(msj).map { c -> c to Math.min(msi.count { c==it }, msj.count { c == it }) }
     }
 
-    private fun removeFromPlus(p: SP, factorOut: List<SPI>): SP {
+    private fun removeFromPlus(p: SP, factorOut: List<SP>): SP {
         return when(p) {
             is SPI -> CONSTANT_ONE
             is SPB -> {
@@ -520,13 +525,14 @@ class NormalFormExploreEq : SPlanRewriter {
         }
     }
 
-    private fun getMultiplyTerms(sp: SP): List<SPI> {
-        @Suppress("UNCHECKED_CAST")
+    private fun getMultiplyTerms(sp: SP): List<SP> {
         return when(sp) {
             is SPI -> listOf(sp)
-            is SPB -> sp.edges as List<SPI>
+            is SPB -> sp.edges
             is ESP -> throw AssertionError("unexpected EBlock")
-        }
+        }.filter { it !is SPI || it.snode !is SNodeData || !it.snode.isLiteral }
+        // this last filter prevents factoring out constants
+        // it is especially important to filter out '1'.
     }
 
     /**
