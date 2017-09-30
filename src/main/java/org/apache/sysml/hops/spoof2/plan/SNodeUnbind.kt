@@ -23,7 +23,7 @@ class SNodeUnbind(
         refreshSchema()
     }
 
-    override fun toString() = "ub$unbindings"
+    override fun toString() = "ub${unbindings.toSortedMap()}"
 
     override fun checkArity() {
         this.check( inputs.size == 1 ) {"must have one input but has $inputs"}

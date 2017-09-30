@@ -3,6 +3,7 @@ package org.apache.sysml.hops.spoof2.enu
 import org.apache.commons.logging.LogFactory
 import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.LiteralOp
+import org.apache.sysml.hops.spoof2.enu.SumProduct.Companion.getBelowAggPlusMult
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.SPlanBottomUpRewriter
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriteRule.RewriteResult
@@ -127,7 +128,7 @@ class NormalFormExploreEq : SPlanRewriter {
 //                                writer.write(total.toCSVString())
 //                                writer.newLine()
                             }
-                            LOG.info("Sum-Product all stats:\n\t$total") // statsAll.fold(Stats()) {acc, s -> acc += s; acc}
+                            LOG.info("Sum-Product all stats:\n$total") // statsAll.fold(Stats()) {acc, s -> acc += s; acc}
 
                             @Suppress("NAME_SHADOWING")
                             val inputFreqs = statsAll.fold(mutableMapOf<String,Int>()) { acc, stat ->
@@ -165,6 +166,10 @@ class NormalFormExploreEq : SPlanRewriter {
 
     data class Stats(
             var numSP: Int = 0,
+            /** # of paths rejected from "factor common term out of +" decision */
+            var rejectExplore: Long = 0L,
+            /** # of paths rejected during construction of SNodes from SumProduct blocks */
+            var rejectConstruct: Long = 0L,
             var numInserts: Long = 0L,
             /** # of different agg, plus, multiply ops constructed */
             var numAggPlusMultiply: Long = 0L,
@@ -177,6 +182,8 @@ class NormalFormExploreEq : SPlanRewriter {
         val id = _idSeq.nextID
         operator fun plusAssign(s: Stats) {
             numSP += s.numSP
+            rejectExplore += s.rejectExplore
+            rejectConstruct += s.rejectConstruct
             numInserts += s.numInserts
             numAggPlusMultiply += s.numAggPlusMultiply
             numLabels += s.numLabels
@@ -187,6 +194,8 @@ class NormalFormExploreEq : SPlanRewriter {
         }
         fun reset() {
             numSP = 0
+            rejectExplore = 0
+            rejectConstruct = 0
             numInserts = 0
             numAggPlusMultiply = 0
             numLabels = 0
@@ -201,12 +210,12 @@ class NormalFormExploreEq : SPlanRewriter {
             fun header(): String {
                 //numPlusInputs: # of inputs to n-ary + (this is 1 if there is no n-ary plus)
                 //numUniqueBaseInputsPullableFromPlus: # of unique base inputs that occur in at least two plus terms
-                return "id${sep}numSP${sep}numInserts${sep}numAggPlusMultiply${sep}numLabels${sep}numContingencies${sep}maxCC${sep}considerPlan" +
+                return "id${sep}numSP${sep}rejectExplore${sep}rejectConstruct${sep}numInserts${sep}numAggPlusMultiply${sep}numLabels${sep}numContingencies${sep}maxCC${sep}considerPlan" +
                         "${sep}numAggNames${sep}numPlusInputs${sep}numBaseInputs${sep}numUniqueBaseInputs${sep}numUniqueBaseInputsPullableFromPlus${sep}normalSpb"
             }
         }
         fun toCSVString_Basic(): String {
-            return "$id$sep$numSP$sep$numInserts$sep$numAggPlusMultiply$sep$numLabels$sep$numContingencies$sep$maxCC$sep$considerPlan"
+            return "$id$sep$numSP$sep$rejectExplore$sep$rejectConstruct$sep$numInserts$sep$numAggPlusMultiply$sep$numLabels$sep$numContingencies$sep$maxCC$sep$considerPlan"
         }
         fun toCSVString(): String {
             val s = toCSVString_Basic()
@@ -223,11 +232,11 @@ class NormalFormExploreEq : SPlanRewriter {
         }
 
          override fun toString(): String {
-             return "Stats(id=$id, numSP=$numSP, numInserts=$numInserts, numAggPlusMultiply=$numAggPlusMultiply, numLabels=$numLabels, numContingencies=$numContingencies, maxCC=$maxCC, considerPlan=$considerPlan, " +
+             return "Stats(id=$id, numSP=$numSP, rejectExplore=$rejectExplore, rejectConstruct=$rejectConstruct, numInserts=$numInserts, numAggPlusMultiply=$numAggPlusMultiply, numLabels=$numLabels, numContingencies=$numContingencies, maxCC=$maxCC, considerPlan=$considerPlan, " +
                      "#spbs=${spbs.size})"
          }
 
-     }
+    }
 
 
     val eNodes: ArrayList<ENode> = arrayListOf()
@@ -364,7 +373,7 @@ class NormalFormExploreEq : SPlanRewriter {
                 LOG.debug("Partition Sum-Product block into disjoint components:\n" +
                         "Component 1: $CCspb\n" +
                         "Component 2: $NCspb")
-            return RewriteResult.NewNode(spb.applyToNormalForm(node, false, false)) // these will be handled as disjoint sub-problems in SPlanNormalFormRewriter at next recursion
+            return RewriteResult.NewNode(spb.applyToNormalForm(node, false, false)!!) // these will be handled as disjoint sub-problems in SPlanNormalFormRewriter at next recursion
         }
 
         // We will factor this spb.
@@ -414,16 +423,116 @@ class NormalFormExploreEq : SPlanRewriter {
     }
 
     private fun factorAndInsertAll(eNode: ENode, spb: SumProduct.Block, eNodeNameMapping: Map<AU, AB>, skip: HashSet<Long>): Int {
-        val allSpbs = factor(spb)
+        val allSpbs = factorCommonTermsFromPlus(spb)
         return insertSaturated(eNode, allSpbs, eNodeNameMapping, skip)
 //        allSpbs.forEach { insert(eNode, it, eNodeNameMapping) }
 //        return allSpbs.size
     }
 
+    private fun factorCommonTermsFromPlus(spb: SumProduct.Block): SumProduct {
+        if( spb.product != SNodeNary.NaryOp.PLUS || spb.edges.size <= 1 )
+            return factor(spb)!!
+        return factorCommonTermsFromPlus(spb, 0, 1)
+    }
+
+    private fun factorCommonTermsFromPlus(_spb: SPB, i: Int, j: Int): SP {
+        val mcommon = getCommonMultiplyTerms(_spb.edges[i], _spb.edges[j]) // common multiplicands of i and j terms
+
+        // decide which to factor out - there are 2^|mcommon| choices
+        val factorOut = ArrayList<SPI>(mcommon.size)
+        val alternatives: ArrayList<SP> = arrayListOf()
+        var rejectExplore = 0
+
+        for (k in 1L until (1L shl mcommon.size)) {
+            val spb = _spb.deepCopy()
+            var pi = spb.edges[i]
+            var pj = spb.edges[j]
+            spb.edges.removeAt(j) // place new edge at position i
+
+            factorOut.clear()
+            for (l in mcommon.indices)
+                if (k and (1L shl l) != 0L)
+                    repeat(mcommon[l].second) { factorOut += mcommon[l].first }
+
+            // pull up the aggregate for all aggNames that are in the schema of factored out terms
+            val sbs = if (pi is SPB && pj is SPB) {
+                val aggOverlap = pi.aggSchema().filter { n, _ -> factorOut.any { n in it.schema } }
+                check(aggOverlap == pj.aggSchema().filter { n, _ -> factorOut.any { n in it.schema } }) { "disagreement in overlapping aggregation between i and j terms: $pi, $pj, $factorOut" }
+                pi.removeAggs(aggOverlap)
+                pj.removeAggs(aggOverlap)
+                pi.refresh(); pj.refresh()
+                listOf(SumBlock(Hop.AggOp.SUM, aggOverlap))
+            } else listOf()
+            pi = removeFromPlus(pi, factorOut)
+            pj = removeFromPlus(pj, factorOut)
+            //spb.refresh()
+            val pnew = SPB(SNodeNary.NaryOp.PLUS, pi, pj)
+            val mnew = SPB(sbs, SNodeNary.NaryOp.MULT, factorOut + pnew)
+            spb.edges[i] = mnew
+            val newSpb = factorCommonTermsFromPlus_next(spb, i, j)
+            if (newSpb != null)
+                alternatives += newSpb
+            else rejectExplore++
+        }
+
+        // option to factor nothing
+        val newSpb = factorCommonTermsFromPlus_next(_spb, i, j)
+        if( newSpb != null )
+            alternatives += newSpb
+        else rejectExplore++
+        stats.rejectExplore += rejectExplore
+
+        return if( alternatives.size == 1 ) alternatives[0]
+        else ESP(alternatives.flatMap { when(it) {
+            is SPB, is SPI -> listOf(it)
+            is ESP -> it.blocks
+        } })
+    }
+
+    private fun getCommonMultiplyTerms(spi: SP, spj: SP): List<Pair<SPI, Int>> {
+        val msi = getMultiplyTerms(spi)
+        val msj = getMultiplyTerms(spj)
+        return msi.intersect(msj).map { c -> c to Math.min(msi.count { c==it }, msj.count { c == it }) }
+    }
+
+    private fun removeFromPlus(p: SP, factorOut: List<SPI>): SP {
+        return when(p) {
+            is SPI -> CONSTANT_ONE
+            is SPB -> {
+                factorOut.forEach { p.edges -= it }
+                when(p.edges.size) {
+                    0 -> CONSTANT_ONE
+                    1 -> p.edges[0]
+                    else -> p
+                }
+            }
+            is ESP -> throw AssertionError("unexpected EBlock")
+        }
+    }
+
+    private val CONSTANT_ONE: SPI by lazy { SPI(SNodeData(LiteralOp(1))) }
+
+    private fun factorCommonTermsFromPlus_next(spb: SPB, i: Int, j: Int): SP? {
+        return when {
+            j < spb.edges.size-1 -> factorCommonTermsFromPlus(spb, i, j+1)
+            i < spb.edges.size-2 -> factorCommonTermsFromPlus(spb, i+1, i+2)
+            else -> factor(spb)
+        }
+    }
+
+    private fun getMultiplyTerms(sp: SP): List<SPI> {
+        @Suppress("UNCHECKED_CAST")
+        return when(sp) {
+            is SPI -> listOf(sp)
+            is SPB -> sp.edges as List<SPI>
+            is ESP -> throw AssertionError("unexpected EBlock")
+        }
+    }
+
     /**
      * @return The number of inserts performed
      */
-    private fun factor(spb: SPB): SP {
+    private fun factor(spb: SPB): SP? {
         return when (spb.product) {
             SNodeNary.NaryOp.PLUS -> factorPlus(spb)
             SNodeNary.NaryOp.MULT -> factorMult(spb)
@@ -431,7 +540,7 @@ class NormalFormExploreEq : SPlanRewriter {
         }
 
     }
-    private fun factorPlus(spb: SPB): SP {
+    private fun factorPlus(spb: SPB): SP? {
         // push down aggregates into the inputs
         if( spb.sumBlocks.isNotEmpty() ) {
             spb.edges.mapInPlace {
@@ -448,10 +557,10 @@ class NormalFormExploreEq : SPlanRewriter {
         }
 
         // factor each input
-        spb.edges.mapInPlace { if(it is SPB) factor(it) else it }
+        spb.edges.mapInPlace { if(it is SPB) factor(it) ?: return null else it }
         return spb
     }
-    private fun factorMult(spb: SPB): SP {
+    private fun factorMult(spb: SPB): SP? {
         // Handle constant aggregation; similar to RewritePushAggIntoPlus
         // Eliminate exact matches with literal doubles if possible, otherwise introduce a literal double multiplicand
         val notInInput = spb.aggSchemaNotInEdges()
@@ -537,7 +646,10 @@ class NormalFormExploreEq : SPlanRewriter {
         // Dylan: The minimum degree heuristic is very good.
         val tmp = eligibleAggNames.map { it to (spb.nameToAdjacentNames()[it]!!).size - 1 }
         val minDegree = tmp.map { it.second }.min()!!
-        check(minDegree <= 2) { "Minimum degree is >2. Will form tensor intermediary. In spb $spb" }
+        //check(minDegree <= 2) { "Minimum degree is >2. Will form tensor intermediary. In spb $spb" }
+        if( minDegree > 2 ) {
+            return null
+        }
         val minDegreeAggNames = tmp.filter { it.second == minDegree }.map { it.first }
 
         // fork on the different possible agg names
@@ -550,19 +662,20 @@ class NormalFormExploreEq : SPlanRewriter {
                 factoredSpb.factorEdgesToBlock(incidentEdges)
                 factor(factoredSpb)
             }
-        }
+        }.filterNotNull()
         return when {
+            x.isEmpty() -> null
             x.size == 1 -> x[0]
             x.all { it is ESP } -> ESP(x.flatMap { (it as ESP).blocks }) // flatten
             else -> ESP(x)
         }
     }
 
-    private fun finishFactorMult(spb: SPB): SP {
+    private fun finishFactorMult(spb: SPB): SP? {
         spb.edges.mapInPlace { when(it) {
-            is SPB -> factor(it)
+            is SPB -> factor(it) ?: return null
             is SPI -> it
-            is ESP -> throw IllegalStateException("unexpected EBlock")
+            is ESP -> throw AssertionError("unexpected EBlock")
         } }
         return spb
     }
@@ -572,14 +685,23 @@ class NormalFormExploreEq : SPlanRewriter {
     ) {
         var changed = false
         var numAggMultiply = 0L
+        var temp_numAggPlusMultiply = 0L
     }
 
-    private fun constructNext(sp: SP, state: ConstructState): SNode {
+    private fun constructNext(sp: SP, state: ConstructState): SNode? {
         return when( sp ) {
             is SPI -> sp.snode
             is SPB -> {
-                state.numAggMultiply += sp.sumBlocks.size + if(sp.edges.size > 1) 1 else 0
-                val x = sp.constructNoRec(sp.edges.map { constructNext(it, state) })
+                state.temp_numAggPlusMultiply += sp.sumBlocks.size + if(sp.edges.size > 1) 1 else 0
+                val recChildren = ArrayList<SNode>()
+                for (e in sp.edges) {
+                    recChildren += constructNext(e, state) ?: break
+                }
+                if( recChildren.size != sp.edges.size ) {
+                    recChildren.forEach { stripDead(it, getBelowAggPlusMult(it)) }
+                    return null
+                }
+                val x = sp.constructNoRec(recChildren) ?: return null
                 state.skip += x.id
                 if( x is SNodeAggregate )
                     state.skip += x.input.id
@@ -606,16 +728,25 @@ class NormalFormExploreEq : SPlanRewriter {
             LOG.trace("Saturated SPB:\n"+spb)
         val state = ConstructState(skip)
         var inserts = 0
+        var rejects = 0
         do {
             state.changed = false
             val construct = constructNext(spb, state)
+            if( construct == null ) {
+                state.temp_numAggPlusMultiply = 0
+                rejects++
+                continue
+            }
 //            if( LOG.isTraceEnabled )
 //                LOG.trace("Insert: "+construct)
             val newTopInput = SNodeUnbind(construct, unbindMap)
             eNode.addNewEPath(newTopInput)
+            state.numAggMultiply += state.temp_numAggPlusMultiply
+            state.temp_numAggPlusMultiply = 0
             inserts++
         } while( state.changed )
         stats.numAggPlusMultiply += state.numAggMultiply
+        stats.rejectConstruct += rejects
         return inserts
     }
 
@@ -733,6 +864,8 @@ class NormalFormExploreEq : SPlanRewriter {
     private fun findImplementBestPlanForCC(CC: List<ENode>) {
         // Consider contingencies
         val CCchoiceBest = ConsiderContingencies(CC, stats).findBestPlan()
+        if( LOG.isTraceEnabled )
+            LOG.trace(stats)
 
         // Implement best plan
         implementPlan(CCchoiceBest)

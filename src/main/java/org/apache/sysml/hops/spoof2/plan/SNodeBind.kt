@@ -24,7 +24,7 @@ class SNodeBind(
         refreshSchema()
     }
 
-    override fun toString() = "bi$bindings"
+    override fun toString() = "bi${bindings.toSortedMap()}"
 
     override fun checkArity() {
         this.check( inputs.size == 1 ) {"must have one input but has $inputs"}

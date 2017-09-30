@@ -184,7 +184,6 @@ private tailrec fun rStripDead(toRemove: MutableSet<SNode>, noStrip: Set<SNode>)
         it.parents.removeIf { it == node }
         it.parents.isEmpty() && it.inputs.isNotEmpty() && it !in noStrip
     }
-    node.inputs.clear()
     return rStripDead(toRemove, noStrip)
 }
 

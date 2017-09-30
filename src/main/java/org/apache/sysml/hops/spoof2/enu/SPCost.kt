@@ -27,6 +27,7 @@ data class SPCost(
     fun addPart() = if(nMultiply == 0L) this else SPCost(0, nAdd)
     fun multiplyPart() = if(nAdd == 0L) this else SPCost(nMultiply, 0)
     override fun toString() = "cost($nMultiply, $nAdd)"
+    fun exceedsMaxCost() = this >= SPCost.MAX_COST
 
     companion object {
         val MAX_COST = SPCost(1L shl 59, 1L shl 59)
@@ -82,24 +83,24 @@ data class SPCost(
                             if(recursive) spb.edges.fold(ZERO_COST) { acc, edge -> acc + costFactoredBlock(edge, recursive) }
                             else SPCost.ZERO_COST
 
-                    if( spb.product == SNodeNary.NaryOp.PLUS ) {
-//                        check( spb.sumBlocks.isEmpty() ) {"expecting Σ to be pushed into +, but there are Σs above +"}
-                        // 1. Aggregate each input down to the non-aggregate schema
-                        val aggIndependentlyCost = spb.edges.sumByLong { input ->
-                            if( !spb.aggNames().disjoint(input.schema.keys) )
-                                input.schema.values.prod()
-                            else
-                                0L
-                        }
-                        // 2. Sum together inputs with the same type in their non-aggregated schema (if >1 input with same type)
-                        val inputsByNonAgg = spb.edges.groupBy { it.schema.filter { n, _ -> n !in spb.aggNames() } }
-                        val sumEachType = inputsByNonAgg.entries.sumByLong { (type, inputs) ->
-                            (inputs.size-1) * type.values.prod()
-                        }
-                        // 3. Add to the final output (if >1 input with different types)
-                        val sumAcrossTypes = (inputsByNonAgg.size-1)*spb.schema.values.prod()
-                        return recCost + SPCost(sumEachType + sumAcrossTypes, aggIndependentlyCost)
-                    }
+//                    if( spb.product == SNodeNary.NaryOp.PLUS ) {
+////                        check( spb.sumBlocks.isEmpty() ) {"expecting Σ to be pushed into +, but there are Σs above +"}
+//                        // 1. Aggregate each input down to the non-aggregate schema
+//                        val aggIndependentlyCost = spb.edges.sumByLong { input ->
+//                            if( !spb.aggNames().disjoint(input.schema.keys) )
+//                                input.schema.values.prod()
+//                            else
+//                                0L
+//                        }
+//                        // 2. Sum together inputs with the same type in their non-aggregated schema (if >1 input with same type)
+//                        val inputsByNonAgg = spb.edges.groupBy { it.schema.filter { n, _ -> n !in spb.aggNames() } }
+//                        val sumEachType = inputsByNonAgg.entries.sumByLong { (type, inputs) ->
+//                            (inputs.size-1) * type.values.prod()
+//                        }
+//                        // 3. Add to the final output (if >1 input with different types)
+//                        val sumAcrossTypes = (inputsByNonAgg.size-1)*spb.schema.values.prod()
+//                        return recCost + SPCost(sumEachType + sumAcrossTypes, aggIndependentlyCost)
+//                    }
 
                     recCost + when( spb.allSchema().size ) {
                         0 -> ZERO_COST
@@ -200,7 +201,10 @@ data class SPCost(
                             check(_m1Schema != null && _m2Schema != null) {"expected two kinds of matrices in $spb"}
                             val m1Schema = _m1Schema!!
                             val m2Schema = _m2Schema!!
-                            val n12 = m1Schema.names.intersect(m2Schema.names).also { check(it.size == 1) {"the matrices' schemas should only overlap in one position"} }.first()
+                            val _n12 = m1Schema.names.intersect(m2Schema.names)
+                            if( _n12.size > 1 )
+                                return SPCost.MAX_COST // produced intermediate tensor
+                            val n12 = _n12.first()
                             val s12 = m1Schema[n12]!!
                             val n1 = (m1Schema.names - n12).first()
                             val n2 = (m2Schema.names - n12).first()
