@@ -239,9 +239,10 @@ class NormalFormExploreEq : SPlanRewriter {
     }
 
 
-    val eNodes: ArrayList<ENode> = arrayListOf()
-    var stats = Stats()
-    val cseElim = SPlanBottomUpRewriter()
+    private val eNodes: ArrayList<ENode> = arrayListOf()
+    private lateinit var LITERAL_ONE: SPI
+    private var stats = Stats()
+    private val cseElim = SPlanBottomUpRewriter()
 
 
     override fun rewriteSPlan(roots: ArrayList<SNode>): RewriterResult {
@@ -249,6 +250,7 @@ class NormalFormExploreEq : SPlanRewriter {
         // fill the ENode with different rewrites.
         // do CSE Elim and Bind Unify
         eNodes.clear()
+        LITERAL_ONE = SPI(SNodeData(LiteralOp(1)))
         stats.reset()
         if( !_addedHook.get() )
             addHook()
@@ -414,19 +416,12 @@ class NormalFormExploreEq : SPlanRewriter {
             stats.numInserts += numInserts
             bind
         }
-
-//        // 2. CSE
-//        SPlanBottomUpRewriter().rewriteSPlan(roots)
-
-
-        return RewriteResult.NewNode(top) //(bind)
+        return RewriteResult.NewNode(top)
     }
 
     private fun factorAndInsertAll(eNode: ENode, spb: SumProduct.Block, eNodeNameMapping: Map<AU, AB>, skip: HashSet<Long>): Int {
         val allSpbs = factorCommonTermsFromPlus(spb)
         return insertSaturated(eNode, allSpbs, eNodeNameMapping, skip)
-//        allSpbs.forEach { insert(eNode, it, eNodeNameMapping) }
-//        return allSpbs.size
     }
 
     private fun factorCommonTermsFromPlus(spb: SumProduct.Block): SumProduct {
@@ -502,11 +497,11 @@ class NormalFormExploreEq : SPlanRewriter {
 
     private fun removeFromPlus(p: SP, factorOut: List<SP>): SP {
         return when(p) {
-            is SPI -> CONSTANT_ONE
+            is SPI -> LITERAL_ONE
             is SPB -> {
                 factorOut.forEach { p.edges -= it }
                 when(p.edges.size) {
-                    0 -> CONSTANT_ONE
+                    0 -> LITERAL_ONE
                     1 -> p.edges[0]
                     else -> p
                 }
@@ -514,8 +509,6 @@ class NormalFormExploreEq : SPlanRewriter {
             is ESP -> throw AssertionError("unexpected EBlock")
         }
     }
-
-    private val CONSTANT_ONE: SPI by lazy { SPI(SNodeData(LiteralOp(1))) }
 
     private fun factorCommonTermsFromPlus_next(spb: SPB, i: Int, j: Int): SP? {
         return when {
@@ -687,7 +680,8 @@ class NormalFormExploreEq : SPlanRewriter {
     }
 
     private class ConstructState(
-            val skip: HashSet<Long>
+            val skip: HashSet<Long>//,
+//            val noStripBoundary: Set<SNode>
     ) {
         var changed = false
         var numAggMultiply = 0L
@@ -732,7 +726,8 @@ class NormalFormExploreEq : SPlanRewriter {
     private fun insertSaturated(eNode: ENode, spb: SumProduct, unbindMap: Map<AU, AB>, skip: HashSet<Long>): Int {
         if( LOG.isTraceEnabled )
             LOG.trace("Saturated SPB:\n"+spb)
-        val state = ConstructState(skip)
+//        val noStripBoundary = spb.getAllInputs().flatMap { it.inputs }.toSet()
+        val state = ConstructState(skip)//, noStripBoundary)
         var inserts = 0
         var rejects = 0
         do {

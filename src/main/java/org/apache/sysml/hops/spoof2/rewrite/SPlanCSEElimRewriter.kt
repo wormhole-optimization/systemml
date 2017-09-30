@@ -173,7 +173,11 @@ class SPlanCSEElimRewriter(
             val ra: SNode,
             /** map from att in real above to att in the base */
             val schemaMapping: Map<AB, Name>
-    )
+    ) {
+        override fun toString(): String {
+            return "RealAbove<${ra.id}>($ra, schemaMapping=$schemaMapping)"
+        }
+    }
 
     private fun case4(unbind: SNodeUnbind, bind: SNodeBind): Map<AB,Name> {
         // for each att in bind, map it to the att in below
@@ -285,8 +289,12 @@ class SPlanCSEElimRewriter(
         // parents that the two inputs may have in common, grouped by their class (Nary, Agg)
         val rs1 = getRealAboveSet(node, p1)
         val rs2 = getRealAboveSet(node, p2)
+        val blacklist = ArrayList<SNode>()
         for( jc in rs1.keys.intersect(rs2.keys) ) {
+            blacklist.clear()
             for ( (r1, idx1) in rs1[jc]!! ) {
+                if( r1.ra in blacklist )
+                    continue
                 val iter = rs2[jc]!!.iterator()
                 inner@ while( iter.hasNext() ) {
                     val (r2, idx2) = iter.next()
@@ -377,7 +385,8 @@ class SPlanCSEElimRewriter(
                             })
 
                             doElim(n1, n2, map21)
-                            iter.remove()
+                            iter.remove()    // remove n2 from rc2 AND rc1
+                            blacklist += n2
                             changed = true
                         }
                         else -> throw AssertionError("unreachable class: $jc $r1 $r2")
