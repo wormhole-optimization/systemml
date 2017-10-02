@@ -1,12 +1,9 @@
 package org.apache.sysml.hops.spoof2.rewrite
 
 import org.apache.sysml.hops.spoof2.enu.NormalFormExploreEq
-import org.apache.sysml.hops.spoof2.enu.RewriteNormalForm
 import java.util.ArrayList
 
 import org.apache.sysml.hops.spoof2.plan.SNode
-import org.apache.sysml.hops.spoof2.plan.SNodeBind
-import org.apache.sysml.hops.spoof2.plan.SNodeUnbind
 import org.apache.sysml.hops.spoof2.plan.SPlanValidator
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter.RewriterResult
 import org.apache.sysml.utils.Explain
@@ -41,7 +38,6 @@ class SPlanNormalFormRewriter : SPlanRewriter {
 //            RewritePushAggIntoPlus(true)    // req. ClearMxM
     )
     private val _normalFormRewrite: (ArrayList<SNode>) -> Unit =
-//            { rewriteDown(it, listOf(RewriteNormalForm())) }
             { NormalFormExploreEq().rewriteSPlan(it) }
     private val _rulesToHopReady = listOf(
             RewriteMultiplyCSEToPower(), // RewriteNormalForm factorizes, so we can't get powers >2. Need to reposition. // Obsolete by RewriteElementwiseMultiplyChain?
