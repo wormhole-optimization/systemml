@@ -68,7 +68,7 @@ fun SNodeAggregate.copyAggRenameDown(): SNodeAggregate {
 }
 
 
-private fun SNode.renameCopyDown(renaming: Map<AB, AB>, memo: HashMap<Long, SNode>): SNode {
+fun SNode.renameCopyDown(renaming: Map<AB, AB>, memo: HashMap<Long, SNode> = HashMap()): SNode {
     check( this.schema.names.containsAll(renaming.keys) ) {"renameCopyDown should only touch SNodes that have a schema to rename; saw id=${this.id} $this ${this.schema}"}
     if( this.id in memo )
         return memo[this.id]!!
@@ -79,7 +79,16 @@ private fun SNode.renameCopyDown(renaming: Map<AB, AB>, memo: HashMap<Long, SNod
             val i: SNode = if( r.isNotEmpty() ) this.inputs[0].renameCopyDown(r, memo) else this.inputs[0]
             SNodeBind(i, b)
         }
-        is SNodeAggregate -> SNodeAggregate(this.op, this.inputs[0].renameCopyDown(renaming, memo), this.aggs)
+        is SNodeAggregate -> {
+            // Let's rename all aggregated names to be safe. This is related to code in SumProductBlock's constructBlock.
+            @Suppress("UNCHECKED_CAST")
+            val overlap = this.aggs.names as Set<AB> // renaming.values.intersect(this.aggs.names) as Set<AB>
+            val (newRenaming, newAggs) = if( overlap.isNotEmpty() ) {
+                val addRenaming = overlap.map { it to it.deriveFresh() }.toMap()
+                (renaming+addRenaming) to this.aggs.mapKeys { n, _ -> addRenaming.getOrDefault(n, n) }
+            } else renaming to this.aggs
+            SNodeAggregate(this.op, this.inputs[0].renameCopyDown(newRenaming, memo), newAggs)
+        }
         is SNodeNary -> {
             SNodeNary(this.op, this.inputs.map { input ->
                 val renamingIntersect = renaming.filterKeys { it in input.schema.names }

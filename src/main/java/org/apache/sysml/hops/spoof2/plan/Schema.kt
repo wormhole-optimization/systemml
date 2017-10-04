@@ -84,6 +84,18 @@ class Schema private constructor(
         fun copyShapes(src: Schema, vararg names: Name): Schema {
             return copyShapes(src, names.asList())
         }
+
+        @PublishedApi
+        internal fun mapCapacity(expectedSize: Int): Int {
+            if (expectedSize < 3) {
+                return expectedSize + 1
+            }
+            if (expectedSize < INT_MAX_POWER_OF_TWO) {
+                return expectedSize + expectedSize / 3
+            }
+            return Int.MAX_VALUE // any large value
+        }
+        private const val INT_MAX_POWER_OF_TWO: Int = Int.MAX_VALUE / 2 + 1
     }
 
     
@@ -146,6 +158,10 @@ class Schema private constructor(
             }
         }
         return Pair(first, second)
+    }
+    inline fun mapKeys(transform: (Name, Shape) -> Name): Schema {
+        val newMap: Map<Name, Shape> = this.mapKeys { (n, s) -> transform(n, s) }
+        return Schema(newMap)
     }
 
 

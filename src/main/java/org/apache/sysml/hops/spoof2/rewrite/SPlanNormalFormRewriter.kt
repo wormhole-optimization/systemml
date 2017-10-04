@@ -34,7 +34,7 @@ class SPlanNormalFormRewriter : SPlanRewriter {
 //            RewritePushAggIntoPlus(),
 //            RewriteSplitCSE(),
 //            RewriteAggregateElim(),     // req. SplitCSE
-//            RewriteClearMxM(),
+//            RewriteClearMxM()
 //            RewritePushAggIntoPlus(true)    // req. ClearMxM
     )
     private val _normalFormRewrite: (ArrayList<SNode>) -> Unit =

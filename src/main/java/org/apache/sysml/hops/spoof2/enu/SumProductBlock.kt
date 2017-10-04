@@ -1,5 +1,6 @@
 package org.apache.sysml.hops.spoof2.enu
 
+import org.apache.commons.logging.LogFactory
 import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.spoof2.plan.disjoint
 import org.apache.sysml.hops.spoof2.plan.*
@@ -57,7 +58,7 @@ sealed class SumProduct {
     abstract fun deepCopy(): SumProduct
 
     companion object {
-
+        private const val SPLIT_BU_SPBLOCK = true
         private val ALLOWED_SUMS = setOf(Hop.AggOp.SUM)
         private val ALLOWED_PRODUCTS = setOf(SNodeNary.NaryOp.MULT, SNodeNary.NaryOp.PLUS)
 
@@ -83,11 +84,14 @@ sealed class SumProduct {
             return constructBlock(_top, initialParentForSplitCse, true)
         }
 
-        fun constructBlock(_top: SNode, initialParentForSplitCse: SNode, first: Boolean): SumProduct {
+        fun constructBlock(_top: SNode, initialParentForSplitCse: SNode, first: Boolean, collectedInputs: MutableSet<SNode> = hashSetOf()): SumProduct {
             var top = _top
             var topTemp = initialParentForSplitCse
+            if( SPLIT_BU_SPBLOCK )
+                top = splitBindBelowAgg(top, topTemp, collectedInputs) // if a bind-unbind is in the way of extending a SumProduct block, split it below
             if( !COND_PRODUCT(getBelowAgg(top)) ) {
                 top.parents -= topTemp
+                collectedInputs += top
                 return SPI(top)
             }
             if( !first )
@@ -100,12 +104,46 @@ sealed class SumProduct {
                 splitOtherParents(topTemp, top)
             }
             top as SNodeNary
-            val edges = top.inputs.map { child -> constructBlock(child, top, false) }
-            return Block(sumBlocks, top.op, edges)
+            val (newSumBlocks, edges) = top.inputs.map { child ->
+                val x = constructBlock(child, top, false, collectedInputs)
+                if( x is Block && x.product == (top as SNodeNary).op ) {
+                    x.sumBlocks to x.edges
+                } else listOf<SumBlock>() to listOf(x)
+            }.unzip().let { (sbs,es) ->
+                // The splitBindBelowAgg code renames ALL aggregated names, which makes this correct. This is conservative; some names will be renamed that needn't have been.
+                sbs.flatten() to es.flatten()
+            }
+            return Block(sumBlocks, top.op, edges).apply { unionInSumBlocks(newSumBlocks) }
+        }
+
+        private fun splitBindBelowAgg(top: SNode, aboveTop: SNode, collectedInputs: Set<SNode>): SNode {
+            val (bind, aboveBind) = getBelowAgg(top, aboveTop)
+            if( bind is SNodeBind && bind.input is SNodeUnbind ) {
+                val unbind = bind.input as SNodeUnbind
+                val below = getBelowAgg(unbind.input)
+                if( COND_PRODUCT(below) ) {
+                    // rename below the unbind from the unbind atts to the bind atts
+                    val renaming: Map<AB, AB> = unbind.unbindings.zipIntersect(bind.bindings).values.toMap()
+                    LogFactory.getLog(SumProduct::class.java)!!.debug("renaming is $renaming on unbind input ${unbind.input} ${unbind.input.schema}")
+                    val newUnbindInput = unbind.input.renameCopyDown(renaming)
+                    bind.parents -= aboveBind
+                    stripDead(bind, collectedInputs)
+                    // move aboveBind's input from bind to newUnbindInput
+                    do {
+                        aboveBind.inputs[aboveBind.inputs.indexOf(bind)] = newUnbindInput
+                        newUnbindInput.parents += aboveBind
+                    } while (aboveBind.inputs.indexOf(bind) != -1)
+                    aboveBind.refreshSchemasUpward()
+                    return newUnbindInput
+                }
+            }
+            return top
         }
 
         private tailrec fun getBelowAgg(node: SNode): SNode =
                 if( node is SNodeAggregate && node.op in ALLOWED_SUMS ) getBelowAgg(node.input) else node
+        private tailrec fun getBelowAgg(node: SNode, aboveNode: SNode): Pair<SNode,SNode> =
+                if( node is SNodeAggregate && node.op in ALLOWED_SUMS ) getBelowAgg(node.input, node) else node to aboveNode
         internal fun getBelowAggPlusMult(node: SNode): Set<SNode> {
             val set = mutableSetOf<SNode>()
             getBelowAggPlusMult(getBelowAgg(node), set)

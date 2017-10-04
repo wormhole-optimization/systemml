@@ -197,3 +197,13 @@ fun Collection<Schema>.unionSchema(): Schema = this.fold(Schema()) { acc, schema
     acc += schema; acc
 }
 
+fun <K,V1,V2> Map<K,V1>.zipIntersect(m: Map<K,V2>): Map<K, Pair<V1,V2>> {
+    val list: List<Map.Entry<K, Pair<Boolean, Any?>>> = this.mapValues { (_,v) -> false to v }.entries.toList() + m.mapValues { (_,v) -> true to v }.entries
+    return list.groupBy { it.key }.filterValues { it.size == 2 }.mapValues { (_,vo) ->
+        val v = vo.map { it.value }
+        val (v2,v1) = v.partition { it.first }
+        assert(v2.size == 1 && v1.size == 1)
+        @Suppress("UNCHECKED_CAST")
+        v1[0].second as V1 to v2[0].second as V2
+    }
+}
