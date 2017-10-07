@@ -183,12 +183,13 @@ sealed class SumProduct {
             override val nnz: Long?
     ) : SumProduct() {
 
-        val baseInput: SNode = if( snode is SNodeBind )
-            if( snode.input is SNodeUnbind )
-                snode.input.inputs[0]
-            else
-                snode.input
-        else snode
+        val baseInput: SNode =
+                if( snode is SNodeBind )
+                    if( snode.input is SNodeUnbind )
+                        snode.input.inputs[0]
+                    else
+                        snode.input
+                else snode
 
         constructor(snode: SNode)
                 : this(snode, Schema(snode.schema), null) // todo fill with nnz estimate
@@ -204,7 +205,7 @@ sealed class SumProduct {
         // Input is immutable
         override fun deepCopy() = this
         override fun toString(): String {
-            return "Input<${snode.id}>($snode${if(SHOW_NNZ) ", nnz=$nnz" else ""}):$schema"
+            return "Input<${snode.id}${if(baseInput != snode) ":${baseInput.id}" else ""}>($snode${if(SHOW_NNZ) ", nnz=$nnz" else ""}):$schema"
         }
 
         override fun toString_TSVFriendly(): String {

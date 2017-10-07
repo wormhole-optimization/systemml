@@ -37,6 +37,23 @@ inline fun <T> MutableList<T>.mapInPlace(f: (T) -> T): Boolean {
 
 /**
  * Modify the elements of a List in place.
+ * @return whether any element was removed.
+ */
+inline fun <T> MutableIterable<T>.filterInPlace(f: (T) -> Boolean): Boolean {
+    var changed = false
+    val iter = this.iterator()
+    while (iter.hasNext()) {
+        val o = iter.next()
+        if( !f(o) ) {
+            changed = true
+            iter.remove()
+        }
+    }
+    return changed
+}
+
+/**
+ * Modify the elements of a List in place.
  * Includes list indices.
  * @return whether any element was modified.
  */

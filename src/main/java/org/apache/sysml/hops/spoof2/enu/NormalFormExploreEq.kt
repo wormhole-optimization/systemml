@@ -429,25 +429,140 @@ class NormalFormExploreEq : SPlanRewriter {
             return factor(spb)!!
         return factorCommonTermsFromPlus(spb, 0, 1)
     }
+    /*
+    val msintersect = msi.intersect(msj)
+        val mcommon = msintersect.map { c -> c to Math.min(msi.count { c==it }, msj.count { c == it }) }
+        val (iMultReqRename, jMultReqRename) = run {
+            val t1 = (msi.filter { it is SPI && it.snode != it.baseInput && it !in msintersect } as List<SPI>).groupBy { it.baseInput } // todo expand to include those partially in mcommon
+            val t2 = (msj.filter { it is SPI && it.snode != it.baseInput && it !in msintersect } as List<SPI>).groupBy { it.baseInput }
+                    .filterKeys { it in t1 ||  }
 
+            t1 to t2
+        }
+//        val iMultReqRename = (msi.filter { it is SPI && it.snode != it.baseInput && it !in msintersect } as List<SPI>).groupBy { it.baseInput } // todo expand to include those partially in mcommon
+//        val jMultReqRename = (msj.filter { it is SPI && it.snode != it.baseInput && it !in msintersect } as List<SPI>).groupBy { it.baseInput }
+//        val mcommonReqRename =
+
+            val iaggs = when(pi) {
+                is SPI -> Schema()
+                is SPB -> pi.aggSchema() // assume SUM aggregate
+                is ESP -> throw AssertionError("unexpected EBlock")
+            }
+            val jaggs = when(pj) {
+                is SPI -> Schema()
+                is SPB -> pj.aggSchema()
+                is ESP -> throw AssertionError("unexpected EBlock")
+            }
+     */
+
+    @Suppress("UNCHECKED_CAST")
     private fun factorCommonTermsFromPlus(_spb: SPB, i: Int, j: Int): SP {
-        val mcommon = getCommonMultiplyTerms(_spb.edges[i], _spb.edges[j]) // common multiplicands of i and j terms
+        val msi = getMultiplyTerms(_spb.edges[i])
+        val msj = getMultiplyTerms(_spb.edges[j])
+        val groupByFun: (SP) -> Any = { when(it) {
+            is SPI -> it.snode//.baseInput // TODO switch back to baseInput when ready to actually do this
+            is SPB -> it
+            is ESP -> throw AssertionError("unexpected EBlock")
+        } }
+        val groupByBase = msi.groupBy(groupByFun).zipIntersect(msj.groupBy(groupByFun)).entries.toList() // grouper -> Pair<list of sps, list of sps>
 
         // decide which to factor out - there are 2^|mcommon| choices
-        val factorOut = ArrayList<SP>(mcommon.size)
-        val alternatives: ArrayList<SP> = arrayListOf()
+        val factorOut = ArrayList<SP>()
+        val alternatives = HashSet<SP>()
         var rejectExplore = 0
 
-        for (k in 1L until (1L shl mcommon.size)) {
+        for (k in 1L until (1L shl groupByBase.size)) {
             val spb = _spb.deepCopy()
             var pi = spb.edges[i]
             var pj = spb.edges[j]
             spb.edges.removeAt(j) // place new edge at position i
 
             factorOut.clear()
-            for (l in mcommon.indices)
-                if (k and (1L shl l) != 0L)
-                    repeat(mcommon[l].second) { factorOut += mcommon[l].first }
+            for (l in groupByBase.indices)
+                if (k and (1L shl l) != 0L) {
+                    // factor out groupByBase[l]
+                    val (fi, fj) = groupByBase[l].value
+                    assert(fi.isNotEmpty() && fj.isNotEmpty())
+                    when( groupByBase[l].key ) {
+                        is SPB -> {
+                            assert((fi+fj).distinct().size == 1)
+                            val c = Math.min(fi.size, fj.size)
+                            repeat(c) { factorOut += fi[0] }
+                        }
+                        is SNode -> { // all inputs are SPIs
+                            fi as List<SPI>; fj as List<SPI>
+                            val fim = fi.toMutableList()
+                            val fjm = fj.toMutableList()
+                            // get those that have exact matches (fcommon)
+                            val fcommon = fi.toSet().filter { it in fj }
+                            fcommon.forEach { fc ->
+                                val c = Math.min(fi.count { it == fc }, fj.count { it == fc })
+                                repeat(c) { factorOut += fc; fim -= fc; fjm -= fc }
+                            }
+                            // only types of factors we can handle now are those whose snode is SNodeBind
+                            fim.filterInPlace { it.snode is SNodeBind } // todo check necessary
+                            fjm.filterInPlace { it.snode is SNodeBind }
+                            LOG.info("fim and fjm: $fim, $fjm")
+                            if( fim.isNotEmpty() && fjm.isNotEmpty() && (pi is SPB && pj is SPB) ) {
+                                val iaggs = pi.aggNames()
+                                val jaggs = pj.aggNames()
+                                // try to do renaming.
+                                val iteri = fim.iterator()
+                                while( iteri.hasNext() ) {
+                                    val x = iteri.next()
+                                    x.snode as SNodeBind
+                                    // TODO the below code is incorrect. We need to check that the names that don't match are aggregated.
+                                    // (names that do not match that are not aggregated need the identity trick)
+//                                    val xBothAggs = iaggs.containsAll(x.schema.names)
+//                                    if( !xBothAggs ) {
+//                                        iteri.remove()
+//                                        continue
+//                                    }
+                                    val iterj = fjm.iterator()
+                                    while (iterj.hasNext()) {
+                                        val y = iterj.next()
+                                        y.snode as SNodeBind
+                                        // what are the indices that do not overlap-- these need to be renamed
+                                        if( x.snode.bindings.keys != y.snode.bindings.keys )
+                                            continue
+                                        val commonBindings = x.snode.bindings.intersectEntries(y.snode.bindings)
+                                        val uniqueBindingsX = (x.snode.bindings - commonBindings) as Map<AU,AB>
+                                        val uniqueBindingsY = (y.snode.bindings - commonBindings) as Map<AU,AB>
+                                        // only able to rename aggregated variables, for now
+                                        if( !iaggs.containsAll(uniqueBindingsX.values) || !jaggs.containsAll(uniqueBindingsY.values) )
+                                            continue
+                                        // try rename y to x
+                                        val edgesToRenameY = pj.edges.filter { it.schema.names.any { it in uniqueBindingsY } }
+                                        LOG.info("edgesToRenameY: $edgesToRenameY")
+//                                        if( edgesToRenameY.all { it is SPI && it.snode is SNodeBind && it.snode.bindings.values.containsAll(uniqueBindingsY.values) } ) {
+//                                            edgesToRenameY.forEach { etr ->
+//                                                pj as SPB
+//                                                (pj as SPB).edges[(pj as SPB).edges.indexOf(etr)] = newSpi
+//                                            }
+//                                            renameEdge
+//                                        }
+
+//                                        val yBothAggs = jaggs.containsAll(y.schema.names)
+//                                        if( !yBothAggs ) {
+//                                            iterj.remove()
+//                                            continue
+//                                        }
+//                                        // try renaming y to x, replacing SPIs with the bind on x or changing the Binds.
+//                                        val jEdgesOverlappingSchema = pj.edges.filter { it.schema.names.any { it in y.schema.names } }
+//                                        if( fjm.containsAll(jEdgesOverlappingSchema) ) {
+//                                            jEdgesOverlappingSchema.forEach { je ->
+//                                                je as SPI
+//                                                val bind = je.snode as SNodeBind
+//                                                // split CSE
+////                                                if( bind.parents.any { it !in  })
+//                                            }
+//                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
             // pull up the aggregate for all aggNames that are in the schema of factored out terms
             val sbs = if (pi is SPB && pj is SPB) {
@@ -482,7 +597,7 @@ class NormalFormExploreEq : SPlanRewriter {
         else rejectExplore++
         stats.rejectExplore += rejectExplore
 
-        return if( alternatives.size == 1 ) alternatives[0]
+        return if( alternatives.size == 1 ) alternatives.first()
         else ESP(alternatives.flatMap { when(it) {
             is SPB, is SPI -> listOf(it)
             is ESP -> it.blocks
@@ -493,6 +608,12 @@ class NormalFormExploreEq : SPlanRewriter {
         val msi = getMultiplyTerms(spi)
         val msj = getMultiplyTerms(spj)
         return msi.intersect(msj).map { c -> c to Math.min(msi.count { c==it }, msj.count { c == it }) }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun getReqRenameMultiplyTerms(spi: SP): Map<SNode, List<SPI>> {
+        val msi = (getMultiplyTerms(spi).filter { it is SPI && it.snode != it.baseInput } as List<SPI>).groupBy { it.baseInput }
+        return msi
     }
 
     private fun removeFromPlus(p: SP, factorOut: List<SP>): SP {
