@@ -166,6 +166,7 @@ class NormalFormExploreEq : SPlanRewriter {
 
     data class Stats(
             var numSP: Int = 0,
+            var renameInputToFactorOut: Long = 0L,
             /** # of paths rejected from "factor common term out of +" decision */
             var rejectExplore: Long = 0L,
             /** # of paths rejected during construction of SNodes from SumProduct blocks */
@@ -182,6 +183,7 @@ class NormalFormExploreEq : SPlanRewriter {
         val id = _idSeq.nextID
         operator fun plusAssign(s: Stats) {
             numSP += s.numSP
+            renameInputToFactorOut += s.renameInputToFactorOut
             rejectExplore += s.rejectExplore
             rejectConstruct += s.rejectConstruct
             numInserts += s.numInserts
@@ -194,6 +196,7 @@ class NormalFormExploreEq : SPlanRewriter {
         }
         fun reset() {
             numSP = 0
+            renameInputToFactorOut = 0
             rejectExplore = 0
             rejectConstruct = 0
             numInserts = 0
@@ -210,12 +213,12 @@ class NormalFormExploreEq : SPlanRewriter {
             fun header(): String {
                 //numPlusInputs: # of inputs to n-ary + (this is 1 if there is no n-ary plus)
                 //numUniqueBaseInputsPullableFromPlus: # of unique base inputs that occur in at least two plus terms
-                return "id${sep}numSP${sep}rejectExplore${sep}rejectConstruct${sep}numInserts${sep}numAggPlusMultiply${sep}numLabels${sep}numContingencies${sep}maxCC${sep}considerPlan" +
+                return "id${sep}numSP${sep}renameInputToFactorOut${sep}rejectExplore${sep}rejectConstruct${sep}numInserts${sep}numAggPlusMultiply${sep}numLabels${sep}numContingencies${sep}maxCC${sep}considerPlan" +
                         "${sep}numAggNames${sep}numPlusInputs${sep}numBaseInputs${sep}numUniqueBaseInputs${sep}numUniqueBaseInputsPullableFromPlus${sep}normalSpb"
             }
         }
         fun toCSVString_Basic(): String {
-            return "$id$sep$numSP$sep$rejectExplore$sep$rejectConstruct$sep$numInserts$sep$numAggPlusMultiply$sep$numLabels$sep$numContingencies$sep$maxCC$sep$considerPlan"
+            return "$id$sep$numSP$sep$renameInputToFactorOut$sep$rejectExplore$sep$rejectConstruct$sep$numInserts$sep$numAggPlusMultiply$sep$numLabels$sep$numContingencies$sep$maxCC$sep$considerPlan"
         }
         fun toCSVString(): String {
             val s = toCSVString_Basic()
@@ -232,7 +235,7 @@ class NormalFormExploreEq : SPlanRewriter {
         }
 
          override fun toString(): String {
-             return "Stats(id=$id, numSP=$numSP, rejectExplore=$rejectExplore, rejectConstruct=$rejectConstruct, numInserts=$numInserts, numAggPlusMultiply=$numAggPlusMultiply, numLabels=$numLabels, numContingencies=$numContingencies, maxCC=$maxCC, considerPlan=$considerPlan, " +
+             return "Stats(id=$id, numSP=$numSP, renameInputToFactorOut=$renameInputToFactorOut, rejectExplore=$rejectExplore, rejectConstruct=$rejectConstruct, numInserts=$numInserts, numAggPlusMultiply=$numAggPlusMultiply, numLabels=$numLabels, numContingencies=$numContingencies, maxCC=$maxCC, considerPlan=$considerPlan, " +
                      "#spbs=${spbs.size})"
          }
 
@@ -267,8 +270,11 @@ class NormalFormExploreEq : SPlanRewriter {
             SNode.resetVisited(roots)
 //        } while( changed && eNodes.isEmpty() )
 
-        if( eNodes.isEmpty() )
+        if( eNodes.isEmpty() ) {
+            if( stats.renameInputToFactorOut != 0L )
+                statsAll += stats
             return RewriterResult.NoChange
+        }
 
         if( LOG.isDebugEnabled )
             LOG.debug("$stats")
@@ -465,6 +471,17 @@ class NormalFormExploreEq : SPlanRewriter {
             is ESP -> throw AssertionError("unexpected EBlock")
         } }
         val groupByBase = msi.groupBy(groupByFun).zipIntersect(msj.groupBy(groupByFun)).entries.toList() // grouper -> Pair<list of sps, list of sps>
+
+        // temp statistics
+        run {
+            val a = msi.filter { it is SPI } as List<SPI>
+            val b = msj.filter { it is SPI } as List<SPI>
+            stats.renameInputToFactorOut += a.groupBy {it.baseInput}.zipIntersect(b.groupBy { it.baseInput }).entries.sumBy { (_,p) ->
+                val (x,y) = p
+                val c = x.intersect(y)
+                Math.min((x-c).size, (y-c).size)
+            }
+        }
 
         // decide which to factor out - there are 2^|mcommon| choices
         val factorOut = ArrayList<SP>()
