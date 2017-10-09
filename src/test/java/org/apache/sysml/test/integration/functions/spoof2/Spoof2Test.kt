@@ -97,7 +97,17 @@ class Spoof2Test(
         //	TEST_NAME+55;  //A*B + A + C*D + C
         //	TEST_NAME+56;  //A%*%B + A
         //	TEST_NAME+57;  //A%*%A%*%A%*%A
-        private const val NUM_TESTS = 57
+        //	TEST_NAME+58;  //(-X)%*%y
+        //	TEST_NAME+59;  //sum(0.001 * X)
+        //	TEST_NAME+60;  //rowSums(A %*% t(B))
+        //	TEST_NAME+61;  //sum(A+B)
+        //	TEST_NAME+62;  //(rowSums(A) %*% colSums(A)) / sum(A)
+        //	TEST_NAME+63;  //A - A*B
+        //	TEST_NAME+64;  //A*b*A*C*A*d
+        //	TEST_NAME+65;  //t(A) %*% (B + v)
+        //	TEST_NAME+66;  //t(X - 3 * colSums(X)) %*% (X - 3 * colSums(X)) //todo
+        //	TEST_NAME+67;  //t(X) %*% (P * (X %*% V) - P * rowSums(P * (X %*% V)))
+        private const val NUM_TESTS = 67
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
