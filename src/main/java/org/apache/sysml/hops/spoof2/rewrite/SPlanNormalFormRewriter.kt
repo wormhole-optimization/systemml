@@ -114,8 +114,11 @@ class SPlanNormalFormRewriter : SPlanRewriter {
                 count++
                 val changed = rewriteDown(roots, _rulesToNormalForm)
             } while (changed)
-//            bottomUpRewrite(roots, false) // dangerous! Do not put a bind-unbind in the middle of a block via BindUnify // todo iron out a minimal version
+            // dangerous! Do not put a bind-unbind in the middle of a block via BindUnify
+            // avert this problem by doing a final RewriteSplitBU_ExtendNormalForm
+            bottomUpRewrite(roots, false)
         } while( count != startCount+1 )
+        rewriteDown(roots, _rulesNormalFormPrior)
         if( SPlanRewriteRule.LOG.isTraceEnabled )
             SPlanRewriteRule.LOG.trace("Ran 'right before normal form' rewrites $count times")
 
