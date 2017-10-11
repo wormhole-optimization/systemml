@@ -45,7 +45,7 @@ public class IndexingOp extends Hop
 		CP_RIX, //in-memory range index
 		MR_RIX, //general case range reindex
 		MR_VRIX, //vector (row/col) range index
-	};
+	}
 	
 	
 	private IndexingOp() {
@@ -237,7 +237,8 @@ public class IndexingOp extends Hop
 	@Override
 	protected double computeOutputMemEstimate( long dim1, long dim2, long nnz )
 	{		
-		double sparsity = OptimizerUtils.getSparsity(dim1, dim2, nnz);
+		// only dense right indexing supported on GPU
+		double sparsity =  isGPUEnabled() ? 1.0 : OptimizerUtils.getSparsity(dim1, dim2, nnz);
 		return OptimizerUtils.estimateSizeExactSparsity(dim1, dim2, sparsity);
 	}
 	
@@ -286,7 +287,7 @@ public class IndexingOp extends Hop
 	 * @param ubound uppser bound high-level operator
 	 * @return true if block indexing expression
 	 */
-	private boolean isBlockIndexingExpression(Hop lbound, Hop ubound) 
+	private static boolean isBlockIndexingExpression(Hop lbound, Hop ubound) 
 	{
 		boolean ret = false;
 		LiteralOp constant = null;
@@ -350,8 +351,7 @@ public class IndexingOp extends Hop
 		return OptimizerUtils.isIndexingRangeBlockAligned(rl, ru, cl, cu, brlen, bclen);
 	}
 
-	private long getBlockIndexingExpressionSize(Hop lbound, Hop ubound) 
-	{
+	private static long getBlockIndexingExpressionSize(Hop lbound, Hop ubound) {
 		//NOTE: ensure consistency with isBlockIndexingExpression
 		LiteralOp c = (LiteralOp) ubound.getInput().get(0); //(c*i)
 		return HopRewriteUtils.getIntValueSafe(c);

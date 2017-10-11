@@ -30,11 +30,11 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.wink.json4j.JSONObject;
 import org.apache.sysml.api.DMLScript;
 import org.apache.sysml.api.jmlc.JMLCProxy;
 import org.apache.sysml.conf.ConfigurationManager;
 import org.apache.sysml.conf.CompilerConfig.ConfigType;
-import org.apache.sysml.conf.ConfigurationManager;
 import org.apache.sysml.hops.DataGenOp;
 import org.apache.sysml.hops.DataOp;
 import org.apache.sysml.hops.FunctionOp;
@@ -106,7 +106,6 @@ import org.apache.sysml.utils.Explain;
 import org.apache.sysml.utils.Explain.ExplainType;
 import org.apache.sysml.utils.JSONHelper;
 import org.apache.sysml.utils.MLContextProxy;
-import org.apache.wink.json4j.JSONObject;
 
 /**
  * Dynamic recompilation of hop dags to runtime instructions, which includes the 
@@ -119,8 +118,7 @@ import org.apache.wink.json4j.JSONObject;
  * 
  */
 public class Recompiler 
-{	
-	
+{
 	private static final Log LOG = LogFactory.getLog(Recompiler.class.getName());
 	
 	//Max threshold for in-memory reblock of text input [in bytes]
@@ -134,8 +132,17 @@ public class Recompiler
 	/** Local DML configuration for thread-local config updates */
 	private static ThreadLocal<ProgramRewriter> _rewriter = new ThreadLocal<ProgramRewriter>() {
 		@Override protected ProgramRewriter initialValue() { return new ProgramRewriter(false, true); }
-    };
+	};
 	
+	public enum ResetType {
+		RESET,
+		RESET_KNOWN_DIMS,
+		NO_RESET;
+		public boolean isReset() {
+			return this != NO_RESET;
+		}
+	}
+
 	/**
 	 * Re-initializes the recompiler according to the current optimizer flags.
 	 */
@@ -172,10 +179,10 @@ public class Recompiler
 		//need for synchronization as we do temp changes in shared hops/lops
 		//however, we create deep copies for most dags to allow for concurrent recompile
 		synchronized( hops ) 
-		{	
+		{
 			LOG.debug ("\n**************** Optimizer (Recompile) *************\nMemory Budget = " + 
-					   OptimizerUtils.toMB(OptimizerUtils.getLocalMemBudget()) + " MB");
-	
+					OptimizerUtils.toMB(OptimizerUtils.getLocalMemBudget()) + " MB");
+
 			// prepare hops dag for recompile
 			if( !inplace ){ 
 				// deep copy hop dag (for non-reversable rewrites)
@@ -195,15 +202,15 @@ public class Recompiler
 					rReplaceLiterals( hopRoot, vars, false );
 			}
 			
-			// refresh matrix characteristics (update stats)			
+			// refresh matrix characteristics (update stats)
 			Hop.resetVisitStatus(hops);
 			for( Hop hopRoot : hops )
 				rUpdateStatistics( hopRoot, vars );
 			
 			// dynamic hop rewrites
 			if( !inplace ) {
-				_rewriter.get().rewriteHopDAGs( hops, null );
-
+				_rewriter.get().rewriteHopDAG( hops, null );
+				
 				//update stats after rewrites
 				Hop.resetVisitStatus(hops);
 				for( Hop hopRoot : hops )
@@ -232,12 +239,12 @@ public class Recompiler
 //					(status==null || !status.isInitialCodegen()));
 //			}
 			
-			// construct lops			
-			Dag<Lop> dag = new Dag<Lop>();
+			// construct lops
+			Dag<Lop> dag = new Dag<>();
 			for( Hop hopRoot : hops ){
 				Lop lops = hopRoot.constructLops();
 				lops.addToDag(dag);	
-			}		
+			}
 			
 			// generate runtime instructions (incl piggybacking)
 			newInst = dag.getJobs(sb, ConfigurationManager.getDMLConfig());
@@ -247,12 +254,12 @@ public class Recompiler
 		if( tid != 0 ) //only in parfor context
 			newInst = ProgramConverter.createDeepCopyInstructionSet(newInst, tid, -1, null, null, null, false, false);
 		
-		// remove writes if called through mlcontext or jmlc
+		// remove writes if called through mlcontext or jmlc 
 		if( MLContextProxy.isActive() )
 			newInst = MLContextProxy.performCleanupAfterRecompilation(newInst);
 		else if( JMLCProxy.isActive() )
 			newInst = JMLCProxy.performCleanupAfterRecompilation(newInst);
-
+		
 		// explain recompiled hops / instructions
 		if( DMLScript.EXPLAIN == ExplainType.RECOMPILE_HOPS ){
 			LOG.info("EXPLAIN RECOMPILE \nGENERIC (lines "+sb.getBeginLine()+"-"+sb.getEndLine()+"):\n" + 
@@ -305,7 +312,7 @@ public class Recompiler
 			if( !inplace ) {
 				// deep copy hop dag (for non-reversable rewrites)
 				//(this also clears existing lops in the created dag) 
-				hops = deepCopyHopsDag(hops);	
+				hops = deepCopyHopsDag(hops);
 			}
 			else {
 				// clear existing lops
@@ -319,7 +326,7 @@ public class Recompiler
 				rReplaceLiterals( hops, vars, false );
 			}
 			
-			// refresh matrix characteristics (update stats)			
+			// refresh matrix characteristics (update stats)
 			hops.resetVisitStatus();
 			rUpdateStatistics( hops, vars );
 			
@@ -337,7 +344,7 @@ public class Recompiler
 			hops.resetVisitStatus();
 			memo.init(hops, status);
 			hops.resetVisitStatus();
-			hops.refreshMemEstimates(memo); 		
+			hops.refreshMemEstimates(memo);
 			
 			// Todo call Spoof2Compiler
 			hops.resetVisitStatus();
@@ -354,10 +361,10 @@ public class Recompiler
 //					(status==null || !status.isInitialCodegen()));
 //			}
 			
-			// construct lops			
-			Dag<Lop> dag = new Dag<Lop>();
+			// construct lops
+			Dag<Lop> dag = new Dag<>();
 			Lop lops = hops.constructLops();
-			lops.addToDag(dag);		
+			lops.addToDag(dag);
 			
 			// generate runtime instructions (incl piggybacking)
 			newInst = dag.getJobs(null, ConfigurationManager.getDMLConfig());
@@ -416,14 +423,14 @@ public class Recompiler
 			Hop.resetVisitStatus(hops);
 			
 			// construct lops			
-			Dag<Lop> dag = new Dag<Lop>();
+			Dag<Lop> dag = new Dag<>();
 			for( Hop hopRoot : hops ){
 				Lop lops = hopRoot.constructLops();
 				lops.addToDag(dag);	
 			}		
 			
 			// generate runtime instructions (incl piggybacking)
-			newInst = dag.getJobs(sb, ConfigurationManager.getDMLConfig());			
+			newInst = dag.getJobs(sb, ConfigurationManager.getDMLConfig());
 		}
 		
 		// replace thread ids in new instructions
@@ -468,10 +475,10 @@ public class Recompiler
 			rSetExecType( hops, et );
 			hops.resetVisitStatus();
 			
-			// construct lops			
-			Dag<Lop> dag = new Dag<Lop>();
+			// construct lops
+			Dag<Lop> dag = new Dag<>();
 			Lop lops = hops.constructLops();
-			lops.addToDag(dag);		
+			lops.addToDag(dag);
 			
 			// generate runtime instructions (incl piggybacking)
 			newInst = dag.getJobs(null, ConfigurationManager.getDMLConfig());
@@ -501,8 +508,8 @@ public class Recompiler
 			for( Hop hopRoot : hops )
 				rClearLops( hopRoot );
 			
-			// construct lops			
-			Dag<Lop> dag = new Dag<Lop>();
+			// construct lops
+			Dag<Lop> dag = new Dag<>();
 			for( Hop hopRoot : hops ){
 				Lop lops = hopRoot.constructLops();
 				lops.addToDag(dag);	
@@ -540,10 +547,10 @@ public class Recompiler
 			hops.resetVisitStatus();
 			rClearLops( hops );	
 
-			// construct lops			
-			Dag<Lop> dag = new Dag<Lop>();
+			// construct lops
+			Dag<Lop> dag = new Dag<>();
 			Lop lops = hops.constructLops();
-			lops.addToDag(dag);		
+			lops.addToDag(dag);
 			
 			// generate runtime instructions (incl piggybacking)
 			newInst = dag.getJobs(null, ConfigurationManager.getDMLConfig());
@@ -558,7 +565,7 @@ public class Recompiler
 		return newInst;
 	}
 
-	public static void recompileProgramBlockHierarchy( ArrayList<ProgramBlock> pbs, LocalVariableMap vars, long tid, boolean resetRecompile ) 
+	public static void recompileProgramBlockHierarchy( ArrayList<ProgramBlock> pbs, LocalVariableMap vars, long tid, ResetType resetRecompile )
 		throws DMLRuntimeException
 	{
 		try 
@@ -705,12 +712,12 @@ public class Recompiler
 	public static ArrayList<Hop> deepCopyHopsDag( ArrayList<Hop> hops ) 
 		throws HopsException 
 	{
-		ArrayList<Hop> ret = new ArrayList<Hop>();
+		ArrayList<Hop> ret = new ArrayList<>();
 		
 		try {
 			//note: need memo table over all independent DAGs in order to 
 			//account for shared transient reads (otherwise more instructions generated)
-			HashMap<Long, Hop> memo = new HashMap<Long, Hop>(); //orig ID, new clone
+			HashMap<Long, Hop> memo = new HashMap<>(); //orig ID, new clone
 			for( Hop hopRoot : hops )
 				ret.add(rDeepCopyHopsDag(hopRoot, memo));
 		}
@@ -735,7 +742,7 @@ public class Recompiler
 		Hop ret = null;
 		
 		try {
-			HashMap<Long, Hop> memo = new HashMap<Long, Hop>(); //orig ID, new clone
+			HashMap<Long, Hop> memo = new HashMap<>(); //orig ID, new clone
 			ret = rDeepCopyHopsDag(hops, memo);
 		}
 		catch(Exception ex)
@@ -755,7 +762,7 @@ public class Recompiler
 		if( ret == null ) 
 		{
 			ret = (Hop) hops.clone();
-			ArrayList<Hop> tmp = new ArrayList<Hop>();
+			ArrayList<Hop> tmp = new ArrayList<>();
 			
 			//create new childs
 			for( Hop in : hops.getInput() )
@@ -808,7 +815,8 @@ public class Recompiler
 	// private helper functions //
 	//////////////////////////////
 	
-	private static void rRecompileProgramBlock( ProgramBlock pb, LocalVariableMap vars, RecompileStatus status, long tid, boolean resetRecompile ) 
+	private static void rRecompileProgramBlock( ProgramBlock pb, LocalVariableMap vars,
+		RecompileStatus status, long tid, ResetType resetRecompile )
 		throws HopsException, DMLRuntimeException, LopsException, IOException
 	{
 		if (pb instanceof WhileProgramBlock)
@@ -895,11 +903,11 @@ public class Recompiler
 				Recompiler.extractDAGOutputStatistics(sb.get_hops(), vars);
 				
 				//reset recompilation flags (w/ special handling functions)
-				if(    ParForProgramBlock.RESET_RECOMPILATION_FLAGs 
+				if( ParForProgramBlock.RESET_RECOMPILATION_FLAGs
 					&& !containsRootFunctionOp(sb.get_hops())  
-					&& resetRecompile ) 
+					&& resetRecompile.isReset() )
 				{
-					Hop.resetRecompilationFlag(sb.get_hops(), ExecType.CP);
+					Hop.resetRecompilationFlag(sb.get_hops(), ExecType.CP, resetRecompile);
 					sb.updateRecompilationFlag();
 				}
 			}
@@ -1134,45 +1142,45 @@ public class Recompiler
 	
 	//helper functions for predicate recompile
 	
-	private static void recompileIfPredicate( IfProgramBlock ipb, IfStatementBlock isb, LocalVariableMap vars, RecompileStatus status, long tid, boolean resetRecompile ) 
+	private static void recompileIfPredicate( IfProgramBlock ipb, IfStatementBlock isb, LocalVariableMap vars, RecompileStatus status, long tid, ResetType resetRecompile )
 		throws DMLRuntimeException, HopsException, LopsException, IOException
 	{
 		if( isb == null )
 			return;
-
+		
 		Hop hops = isb.getPredicateHops();
 		if( hops != null ) {
 			ArrayList<Instruction> tmp = recompileHopsDag(
 				hops, vars, status, true, false, tid);
 			ipb.setPredicate( tmp );
 			if( ParForProgramBlock.RESET_RECOMPILATION_FLAGs
-				&& resetRecompile ) {
-				Hop.resetRecompilationFlag(hops, ExecType.CP);
+				&& resetRecompile.isReset() ) {
+				Hop.resetRecompilationFlag(hops, ExecType.CP, resetRecompile);
 				isb.updatePredicateRecompilationFlag();
 			}
 		}
 	}
 	
-	private static void recompileWhilePredicate( WhileProgramBlock wpb, WhileStatementBlock wsb, LocalVariableMap vars, RecompileStatus status, long tid, boolean resetRecompile ) 
+	private static void recompileWhilePredicate( WhileProgramBlock wpb, WhileStatementBlock wsb, LocalVariableMap vars, RecompileStatus status, long tid, ResetType resetRecompile )
 		throws DMLRuntimeException, HopsException, LopsException, IOException
 	{
 		if( wsb == null )
 			return;
-
+		
 		Hop hops = wsb.getPredicateHops();
 		if( hops != null ) {
 			ArrayList<Instruction> tmp = recompileHopsDag(
 				hops, vars, status, true, false, tid);
 			wpb.setPredicate( tmp );
-			if( ParForProgramBlock.RESET_RECOMPILATION_FLAGs
-				&& resetRecompile ) {
-				Hop.resetRecompilationFlag(hops, ExecType.CP);
+			if( ParForProgramBlock.RESET_RECOMPILATION_FLAGs 
+				&& resetRecompile.isReset() ) {
+				Hop.resetRecompilationFlag(hops, ExecType.CP, resetRecompile);
 				wsb.updatePredicateRecompilationFlag();
 			}
 		}
 	}
 	
-	private static void recompileForPredicates( ForProgramBlock fpb, ForStatementBlock fsb, LocalVariableMap vars, RecompileStatus status, long tid, boolean resetRecompile ) 
+	private static void recompileForPredicates( ForProgramBlock fpb, ForStatementBlock fsb, LocalVariableMap vars, RecompileStatus status, long tid, ResetType resetRecompile )
 		throws DMLRuntimeException, HopsException, LopsException, IOException
 	{
 		if( fsb != null )
@@ -1183,25 +1191,25 @@ public class Recompiler
 			
 			//handle recompilation flags
 			if( ParForProgramBlock.RESET_RECOMPILATION_FLAGs 
-				&& resetRecompile ) 
+				&& resetRecompile.isReset() )
 			{
 				if( fromHops != null ) {
 					ArrayList<Instruction> tmp = recompileHopsDag(
 						fromHops, vars, status, true, false, tid);
 					fpb.setFromInstructions(tmp);
-					Hop.resetRecompilationFlag(fromHops,ExecType.CP);
+					Hop.resetRecompilationFlag(fromHops,ExecType.CP, resetRecompile);
 				}
 				if( toHops != null ) {
 					ArrayList<Instruction> tmp = recompileHopsDag(
 						toHops, vars, status, true, false, tid);
 					fpb.setToInstructions(tmp);
-					Hop.resetRecompilationFlag(toHops,ExecType.CP);
+					Hop.resetRecompilationFlag(toHops,ExecType.CP, resetRecompile);
 				}
 				if( incrHops != null ) {
 					ArrayList<Instruction> tmp = recompileHopsDag(
 						incrHops, vars, status, true, false, tid);
 					fpb.setIncrementInstructions(tmp);
-					Hop.resetRecompilationFlag(incrHops,ExecType.CP);
+					Hop.resetRecompilationFlag(incrHops,ExecType.CP, resetRecompile);
 				}
 				fsb.updatePredicateRecompilationFlags();
 			}

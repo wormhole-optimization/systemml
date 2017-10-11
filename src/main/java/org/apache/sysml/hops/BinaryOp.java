@@ -82,7 +82,7 @@ public class BinaryOp extends Hop
 		MR_RAPPEND, //reduce-only append (output must have at most one column block)
 		MR_GAPPEND, //map-reduce general case append (map-extend, aggregate)
 		SP_GAlignedAppend // special case for general case in Spark where left.getCols() % left.getColsPerBlock() == 0
-	};
+	}
 	
 	private enum MMBinaryMethod {
 		CP_BINARY, //(implicitly selected for CP) 
@@ -91,7 +91,7 @@ public class BinaryOp extends Hop
 		MR_BINARY_OUTER_M,
 		MR_BINARY_OUTER_R, //only vv 
 		MR_BINARY_UAGG_CHAIN, //(mr/spark)
-	};
+	}
 	
 	private BinaryOp() {
 		//default constructor for clone
@@ -1384,7 +1384,7 @@ public class BinaryOp extends Hop
 				||(left.getDim1() > 1 && right.getDim1()==1 && left.getDim1()>=left.getRowsInBlock() )); //row MV and more than 1 block
 	}
 
-	private MMBinaryMethod optFindMMBinaryMethodSpark(Hop left, Hop right) {
+	private static MMBinaryMethod optFindMMBinaryMethodSpark(Hop left, Hop right) {
 		long m1_dim1 = left.getDim1();
 		long m1_dim2 = left.getDim2();
 		long m2_dim1 =  right.getDim1();

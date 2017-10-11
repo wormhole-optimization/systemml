@@ -2208,7 +2208,7 @@ public class LibMatrixCUDA {
 	//******************* End of Re-org Functions ************************/
 	//********************************************************************/
 
-	protected static int toInt(long num) throws DMLRuntimeException {
+	static int toInt(long num) throws DMLRuntimeException {
 		if(num >= Integer.MAX_VALUE || num <= Integer.MIN_VALUE) {
 			throw new DMLRuntimeException("GPU : Exceeded supported size " + num);
 		}
@@ -2249,14 +2249,13 @@ public class LibMatrixCUDA {
 					+ (cl + 1) + ":" + (cu + 1) + "] " + "must be within matrix dimensions [" + in1.getNumRows() + ","
 					+ in1.getNumColumns() + "]");
 		}
-
-		
+		int len1 = toInt(in1.getNumColumns());
 		if(isInSparseFormat(gCtx, in1)) {
 			// Input in1 is in sparse format and output is in dense format
 			MatrixObject out = getDenseMatrixOutputForGPUInstruction(ec, instName, outputName, ru - rl + 1, cu - cl + 1);
 			CSRPointer inPointer = getSparsePointer(gCtx, in1, instName);
 			Pointer outPointer = getDensePointer(gCtx, out, instName);
-			sliceSparseDense(gCtx, instName, inPointer, outPointer, rl, ru, cl, cu);
+			sliceSparseDense(gCtx, instName, inPointer, outPointer, rl, ru, cl, cu, len1);
 		}
 		else {
 			// Input in1 is in dense format (see inPointer)
@@ -2264,9 +2263,7 @@ public class LibMatrixCUDA {
 
 			Pointer inPointer = getDensePointer(gCtx, in1, instName);
 			Pointer outPointer = getDensePointer(gCtx, out, instName);
-			int len1 = toInt(in1.getNumColumns());
-			int len2 = toInt(ec.getMatrixObject(outputName).getNumColumns());
-			sliceDenseDense(gCtx, instName, inPointer, outPointer, rl, ru, cl, cu, len1, len2);
+			sliceDenseDense(gCtx, instName, inPointer, outPointer, rl, ru, cl, cu, len1);
 		}
 	}
 	
@@ -2282,19 +2279,19 @@ public class LibMatrixCUDA {
 	 * @param cl column lower
 	 * @param cu column upper
 	 * @param inClen input number of columns
-	 * @param retClen output number of columns
 	 * @throws DMLRuntimeException if error occurs
 	 */
 	protected static void sliceDenseDense(GPUContext gCtx, String instName, Pointer inPointer, Pointer outPointer, 
-			int rl, int ru, int cl, int cu, int inClen, int retClen) throws DMLRuntimeException {
+			int rl, int ru, int cl, int cu, int inClen) throws DMLRuntimeException {
 		long t0 = GPUStatistics.DISPLAY_STATISTICS ? System.nanoTime() : 0;
+		long retClen = cu - cl + 1;
 		if (inClen == retClen) {
 			cudaMemcpy(outPointer, inPointer.withByteOffset(rl * inClen * Sizeof.DOUBLE), (ru - rl + 1) * inClen
 					* Sizeof.DOUBLE, cudaMemcpyDeviceToDevice);
 		} else {
-			int size = ru - rl + 1;
-			getCudaKernels(gCtx).launchKernel("slice_dense_dense", ExecutionConfig.getConfigForSimpleVectorOperations(size),
-					inPointer, outPointer, rl, ru, cl, cu, inClen, retClen);
+			long retRlen = ru - rl + 1;
+			getCudaKernels(gCtx).launchKernel("slice_dense_dense", ExecutionConfig.getConfigForSimpleVectorOperations(toInt(retRlen*retClen)),
+					inPointer, outPointer, rl, ru, cl, cu, inClen,  retRlen, retClen);
 		}
 		if (GPUStatistics.DISPLAY_STATISTICS) GPUStatistics.maintainCPMiscTimes(instName, GPUInstruction.MISC_TIMER_RIX_DENSE_OP, System.nanoTime() - t0);
 	}
@@ -2310,18 +2307,52 @@ public class LibMatrixCUDA {
 	 * @param ru row upper
 	 * @param cl column lower
 	 * @param cu column upper
+	 * @param inClen number of columns of input matrix
 	 * @throws DMLRuntimeException if error
 	 */
-	protected static void sliceSparseDense(GPUContext gCtx, String instName, CSRPointer inPointer, Pointer outPointer, int rl, int ru, int cl, int cu) throws DMLRuntimeException {
-		int size = ru - rl + 1;
+	protected static void sliceSparseDense(GPUContext gCtx, String instName, CSRPointer inPointer, Pointer outPointer, 
+			int rl, int ru, int cl, int cu, int inClen) throws DMLRuntimeException {
+		int retRlen = ru - rl + 1;
 		long t0 = GPUStatistics.DISPLAY_STATISTICS ? System.nanoTime() : 0;
 		int retClen = cu - cl + 1;
+		
+		int size = -1; String kernel = null; String timer = null;
+		
+		// Note: row-wise parallelization scheme iterates over input rows in single thread 
+		// whereas nnz parallelization scheme iterates over number of output rows in single thread.
+		if(inClen > 10 && retClen > 2*retRlen) {
+			// Perform nnz parallelization for wide and short matrices
+			size = getNnz(inPointer, rl, ru);
+			timer = GPUInstruction.MISC_TIMER_RIX_SPARSE_DENSE_OP_NNZ;
+			kernel = "slice_sparse_dense_nnz";
+		}
+		else {
+			size = retRlen;
+			timer = GPUInstruction.MISC_TIMER_RIX_SPARSE_DENSE_OP_ROWWISE;
+			kernel = "slice_sparse_dense_row";
+		}
+		
 		// Performs a slice operation where the input matrix is sparse and the output matrix is dense.
 		// This function avoids unnecessary sparse to dense conversion of the input matrix.
 		// We can generalize this later to output sparse matrix.
-		getCudaKernels(gCtx).launchKernel("slice_sparse_dense", ExecutionConfig.getConfigForSimpleVectorOperations(size),
+		getCudaKernels(gCtx).launchKernel(kernel, ExecutionConfig.getConfigForSimpleVectorOperations(size),
 				inPointer.val, inPointer.rowPtr, inPointer.colInd, outPointer, rl, ru, cl, cu, retClen);
-		if (GPUStatistics.DISPLAY_STATISTICS) GPUStatistics.maintainCPMiscTimes(instName, GPUInstruction.MISC_TIMER_RIX_SPARSE_DENSE_OP, System.nanoTime() - t0);
+		if (GPUStatistics.DISPLAY_STATISTICS) GPUStatistics.maintainCPMiscTimes(instName, timer, System.nanoTime() - t0);
+	}
+	
+	/**
+	 * Returns the number of non-zeroes in the given range of rows
+	 * 
+	 * @param inPointer input CSR pointer
+	 * @param rl lower row index (inclusive and zero-based)
+	 * @param ru upper row index (inclusive and zero-based)
+	 * @return number of non-zeroes
+	 */
+	private static int getNnz(CSRPointer inPointer, int rl, int ru) {
+		int[] rlPtr = { -1 }; int[] ruPtr = { -1 };
+		cudaMemcpy(Pointer.to(rlPtr), inPointer.rowPtr.withByteOffset(rl*Sizeof.INT), Sizeof.INT, cudaMemcpyDeviceToHost);
+		cudaMemcpy(Pointer.to(ruPtr), inPointer.rowPtr.withByteOffset((ru+1)*Sizeof.INT), Sizeof.INT, cudaMemcpyDeviceToHost);
+		return ruPtr[0] - rlPtr[0];
 	}
 
 	public static void cbind(ExecutionContext ec, GPUContext gCtx, String instName, MatrixObject in1, MatrixObject in2, String outputName) throws DMLRuntimeException {
@@ -2572,6 +2603,57 @@ public class LibMatrixCUDA {
 		}
 		// tan(0) = 0
 		unaryOp(ec, gCtx, in1, "matrix_tan", 0, outputName, instName, GPUInstruction.MISC_TIMER_TAN_KERNEL);
+	}
+	
+	/**
+	 * Performs an "sinh" operation on a matrix on the GPU
+	 * @param ec	execution context
+	 * @param gCtx a valid {@link GPUContext}
+	 * @param instName the invoking instruction's name for record {@link Statistics}.
+	 * @param in1	input matrix
+	 * @param outputName	output matrix name
+	 * @throws DMLRuntimeException	if DMLRuntimeException occurs
+	 */
+	public static void sinh(ExecutionContext ec, GPUContext gCtx, String instName, MatrixObject in1, String outputName) throws DMLRuntimeException {
+		if(LOG.isTraceEnabled()) {
+			LOG.trace("GPU : sinh" + ", GPUContext=" + gCtx);
+		}
+		// sin(0) = 0
+		unaryOp(ec, gCtx, in1, "matrix_sinh", 0, outputName, instName, GPUInstruction.MISC_TIMER_SINH_KERNEL);
+	}
+
+	/**
+	 * Performs an "cosh" operation on a matrix on the GPU
+	 * @param ec	execution context
+	 * @param gCtx a valid {@link GPUContext}
+	 * @param instName the invoking instruction's name for record {@link Statistics}.
+	 * @param in1	input matrix
+	 * @param outputName	output matrix name
+	 * @throws DMLRuntimeException	if DMLRuntimeException occurs
+	 */
+	public static void cosh(ExecutionContext ec, GPUContext gCtx, String instName, MatrixObject in1, String outputName) throws DMLRuntimeException {
+		if(LOG.isTraceEnabled()) {
+			LOG.trace("GPU : cosh" + ", GPUContext=" + gCtx);
+		}
+		// cos(0) = 1
+		unaryOp(ec, gCtx, in1, "matrix_cosh", 1, outputName, instName, GPUInstruction.MISC_TIMER_COSH_KERNEL);
+	}
+
+	/**
+	 * Performs an "tanh" operation on a matrix on the GPU
+	 * @param ec	execution context
+	 * @param gCtx a valid {@link GPUContext}
+	 * @param instName the invoking instruction's name for record {@link Statistics}.
+	 * @param in1	input matrix
+	 * @param outputName	output matrix name
+	 * @throws DMLRuntimeException	if DMLRuntimeException occurs
+	 */
+	public static void tanh(ExecutionContext ec, GPUContext gCtx, String instName, MatrixObject in1, String outputName) throws DMLRuntimeException {
+		if(LOG.isTraceEnabled()) {
+			LOG.trace("GPU : tanh" + ", GPUContext=" + gCtx);
+		}
+		// tan(0) = 0
+		unaryOp(ec, gCtx, in1, "matrix_tanh", 0, outputName, instName, GPUInstruction.MISC_TIMER_TANH_KERNEL);
 	}
 
 	/**

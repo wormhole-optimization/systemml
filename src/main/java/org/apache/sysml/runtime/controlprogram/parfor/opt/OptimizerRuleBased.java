@@ -729,24 +729,24 @@ public class OptimizerRuleBased extends Optimizer
 		return ret;
 	}
 
-	private double estimateSizeSparseRowBlock( long rows ) {
+	private static double estimateSizeSparseRowBlock( long rows ) {
 		//see MatrixBlock.estimateSizeSparseInMemory
 		return 44 + rows * 8;
 	}
 
-	private double estimateSizeSparseRow( long cols, long nnz ) {
+	private static double estimateSizeSparseRow( long cols, long nnz ) {
 		//see MatrixBlock.estimateSizeSparseInMemory
 		long cnnz = Math.max(SparseRowVector.initialCapacity, Math.max(cols, nnz));
 		return ( 116 + 12 * cnnz ); //sparse row
 	}
 
-	private double estimateSizeSparseRowMin( long cols ) {
+	private static  double estimateSizeSparseRowMin( long cols ) {
 		//see MatrixBlock.estimateSizeSparseInMemory
 		long cnnz = Math.min(SparseRowVector.initialCapacity, cols);
 		return ( 116 + 12 * cnnz ); //sparse row
 	}
 
-	private int estimateNumTasksSparseCol( double budget, long rows ) {
+	private static int estimateNumTasksSparseCol( double budget, long rows ) {
 		//see MatrixBlock.estimateSizeSparseInMemory
 		double lbudget = budget - rows * 116;
 		return (int) Math.floor( lbudget / 12 );
@@ -1258,7 +1258,7 @@ public class OptimizerRuleBased extends Optimizer
 			//distribute remaining parallelism 
 			int remainParforK = getRemainingParallelismParFor(kMax, parforK);
 			int remainOpsK = getRemainingParallelismOps(_lkmaxCP, parforK);
-			rAssignRemainingParallelism( n, remainParforK, remainOpsK ); 
+			rAssignRemainingParallelism( n, remainParforK, remainOpsK );
 		}
 		else // ExecType.MR/ExecType.SPARK
 		{
@@ -1373,12 +1373,12 @@ public class OptimizerRuleBased extends Optimizer
 		}
 	}
 	
-	private static int getRemainingParallelismParFor(int parforK, int tmpK) {
+	protected static int getRemainingParallelismParFor(int parforK, int tmpK) {
 		//compute max remaining parfor parallelism k such that k * tmpK <= parforK
 		return (int)Math.ceil((double)(parforK-tmpK+1) / tmpK);
 	}
 	
-	private static int getRemainingParallelismOps(int opsK, int tmpK) {
+	protected static int getRemainingParallelismOps(int opsK, int tmpK) {
 		//compute max remaining operations parallelism k with slight over-provisioning 
 		//such that k * tmpK <= 1.5 * opsK; note that if parfor already exploits the
 		//maximum parallelism, this will not introduce any over-provisioning.
@@ -1740,7 +1740,7 @@ public class OptimizerRuleBased extends Optimizer
 		return ret;
 	}
 
-	private double computeTotalSizeResultVariables(ArrayList<String> retVars, LocalVariableMap vars, int k) {
+	private static double computeTotalSizeResultVariables(ArrayList<String> retVars, LocalVariableMap vars, int k) {
 		double sum = 1;
 		for( String var : retVars ) {
 			Data dat = vars.get(var);
@@ -1909,8 +1909,8 @@ public class OptimizerRuleBased extends Optimizer
 			RewriteInjectSparkLoopCheckpointing rewrite = new RewriteInjectSparkLoopCheckpointing(false);
 			ProgramRewriter rewriter = new ProgramRewriter(rewrite);
 			ProgramRewriteStatus state = new ProgramRewriteStatus();
-			rewriter.rewriteStatementBlockHopDAGs( pfsb, state );
-			fs.setBody(rewriter.rewriteStatementBlocks(fs.getBody(), state));
+			rewriter.rRewriteStatementBlockHopDAGs( pfsb, state );
+			fs.setBody(rewriter.rRewriteStatementBlocks(fs.getBody(), state));
 			
 			//recompile if additional checkpoints introduced
 			if( state.getInjectedCheckpoints() ) {

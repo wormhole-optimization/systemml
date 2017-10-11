@@ -19,39 +19,14 @@
 #
 #-------------------------------------------------------------
 
-
-args <- commandArgs(TRUE)
+args<-commandArgs(TRUE)
 options(digits=22)
 library("Matrix")
+library("matrixStats")
 
-X = readMM(paste(args[1], "X.mtx", sep=""))
-y = readMM(paste(args[1], "y.mtx", sep=""))
+X = matrix(seq(1,1500), 150, 10, byrow=TRUE);
+v = seq(1, ncol(X));
+R = cbind((X %*% v), matrix (7, nrow(X), 1))
+R = R - rowMaxs(R) %*% matrix(1, 1, ncol(R));
 
-intercept = as.integer(args[2]);
-eps = as.double(args[3]);
-maxiter = as.double(args[4]);
-
-if( intercept == 1 ){
-   ones = matrix(1, nrow(X), 1); 
-   X = cbind(X, ones);
-}
-
-r = -(t(X) %*% y);
-p = -r;
-norm_r2 = sum(r * r);
-w = matrix(0, ncol(X), 1);
-
-i = 0;
-while(i < maxiter) {
-	q = ((t(X) %*% (X %*% p)) + eps  * p);
-	alpha = norm_r2 / ((t(p) %*% q)[1:1]);
-	w = w + alpha * p;
-	old_norm_r2 = norm_r2;
-	r = r + alpha * q;
-	norm_r2 = sum(r * r);
-	beta = norm_r2 / old_norm_r2;
-	p = -r + beta * p;
-	i = i + 1;
-}
-
-writeMM(as(w,"CsparseMatrix"), paste(args[5], "w", sep=""))
+writeMM(as(R, "CsparseMatrix"), paste(args[2], "S", sep="")); 

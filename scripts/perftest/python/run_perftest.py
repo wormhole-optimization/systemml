@@ -141,7 +141,7 @@ def algorithm_workflow(algo, exec_type, config_path, dml_file_name, action_mode,
     return exit_flag_success
 
 
-def perf_test_entry(family, algo, exec_type, mat_type, mat_shape, config_dir, mode, temp_dir):
+def perf_test_entry(family, algo, exec_type, mat_type, mat_shape, config_dir, mode, temp_dir, file_system_type):
     """
     This function is the entry point for performance testing
 
@@ -168,6 +168,9 @@ def perf_test_entry(family, algo, exec_type, mat_type, mat_shape, config_dir, mo
 
     temp_dir: String
     Location to store all output files created during perf test
+
+    file_system_type: String
+
     """
     # algos to run is a list of tuples with
     # [(m-svm, binomial), (m-svm, multinomial)...]
@@ -275,11 +278,12 @@ if __name__ == '__main__':
     mat_type = ['dense', 'sparse', 'all']
     workload = ['data-gen', 'train', 'predict']
     execution_mode = ['hybrid_spark', 'singlenode']
+    file_system_type = ['hdfs', 'local']
     # Default Arguments
     default_mat_shape = ['10k_100']
 
     # Default temp directory, contains everything generated in perftest
-    default_config_dir = join(systemml_home, 'scripts', 'perftest', 'temp')
+    default_config_dir = join(systemml_home, 'temp_perftest')
 
     # Initialize time
     start_time = time.time()
@@ -295,7 +299,6 @@ if __name__ == '__main__':
 
     # Default Conf
     default_conf = 'spark.driver.maxResultSize=0 ' \
-                   'spark.akka.frameSize=128 ' \
                    'spark.network.timeout=6000s ' \
                    'spark.rpc.askTimeout=6000s ' \
                    'spark.memory.useLegacyMode=true ' \
@@ -306,7 +309,6 @@ if __name__ == '__main__':
                            'spark.executor.memory=\"-Xms50g\" ' \
                            'spark.yarn.executor.memoryOverhead=8250 ' \
                            'spark.driver.extraJavaOptions=\"-Xms20g -Xmn2g\"'
-
 
 
     # Argparse Module
@@ -335,8 +337,12 @@ if __name__ == '__main__':
     cparser.add_argument('--mode', default=workload,
                          help='space separated list of types of workloads to run (available: data-gen, train, predict)',
                          metavar='', choices=workload, nargs='+')
-    # Change this to temp-dir
-    cparser.add_argument('--temp-dir', help='define the file system to work on', metavar='')
+    cparser.add_argument('--temp-dir', help='the path on the file system to place the working temporary directory at',
+                         metavar='')
+    cparser.add_argument('--file-system-type', choices=file_system_type, metavar='',
+                         help='file system for temp directory, '
+                              'supported types are \'hdfs\' for hybrid_spark and \'local\' for standalone;'
+                              'default for hybrid_spark is \'hdfs\' and for standalone is \'local\'')
 
     # Configuration Options
     cparser.add_argument('-stats', help='Monitor and report caching/recompilation statistics, '
@@ -347,9 +353,10 @@ if __name__ == '__main__':
     cparser.add_argument('-config', help='System-ML configuration file (e.g SystemML-config.xml)', metavar='')
     cparser.add_argument('-gpu', help='uses CUDA instructions when reasonable, '
                                       'set <force> option to skip conservative memory estimates '
-                                      'and use GPU wherever possible', nargs='?')
+                                      'and use GPU wherever possible', nargs='?', const='no_option')
     # Spark Configuration Option
-    cparser.add_argument('--master', help='local, yarn-client, yarn-cluster', metavar='')
+    cparser.add_argument('--master', help='local, yarn', metavar='')
+    cparser.add_argument('--deploy-mode', help='client, cluster', metavar='')
     cparser.add_argument('--driver-memory', help='Memory for driver (e.g. 512M)', metavar='')
     cparser.add_argument('--num-executors', help='Number of executors to launch', metavar='')
     cparser.add_argument('--executor-memory', help='Memory per executor', metavar='')
@@ -371,7 +378,13 @@ if __name__ == '__main__':
     perftest_args_dict, systemml_args_dict, backend_args_dict = split_config_args(all_arg_dict)
 
     # temp_dir hdfs / local path check
-    perftest_args_dict['temp_dir'] = get_default_dir(args.temp_dir, args.exec_type, default_config_dir)
+    if args.file_system_type is None:
+        if args.exec_type == 'hybrid_spark':
+            args.file_system_type = 'hdfs'
+        else:
+            args.file_system_type = 'local'
+            
+    perftest_args_dict['temp_dir'] = get_default_dir(args.file_system_type, args.temp_dir, args.exec_type, default_config_dir)
 
     # default_mat_type validity
     if len(args.mat_type) > 2:

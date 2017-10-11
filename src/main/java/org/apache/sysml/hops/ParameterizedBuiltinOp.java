@@ -74,7 +74,7 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 	 * i.e., getInput().get(_paramIndexMap.get(parameterName)) refers to the Hop
 	 * that is associated with parameterName.
 	 */
-	private HashMap<String, Integer> _paramIndexMap = new HashMap<String, Integer>();
+	private HashMap<String, Integer> _paramIndexMap = new HashMap<>();
 
 	private ParameterizedBuiltinOp() {
 		//default constructor for clone
@@ -170,7 +170,7 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 			return getLops();
 		
 		// construct lops for all input parameters
-		HashMap<String, Lop> inputlops = new HashMap<String, Lop>();
+		HashMap<String, Lop> inputlops = new HashMap<>();
 		for (Entry<String, Integer> cur : _paramIndexMap.entrySet())
 			inputlops.put(cur.getKey(), getInput().get(cur.getValue()).constructLops());
 
@@ -194,9 +194,10 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 			case CDF:
 			case INVCDF: 
 			case REPLACE:
-			case TRANSFORMAPPLY: 
-			case TRANSFORMDECODE: 
-			case TRANSFORMMETA: 
+			case TRANSFORMAPPLY:
+			case TRANSFORMDECODE:
+			case TRANSFORMCOLMAP:
+			case TRANSFORMMETA:
 			case TOSTRING: {
 				ExecType et = optFindExecType();
 				ParameterizedBuiltin pbilop = new ParameterizedBuiltin(inputlops,
@@ -640,7 +641,7 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 					setLineNumbers(group2);
 					group2.getOutputParameters().setDimensions(rlen, clen, brlen, bclen, nnz);
 				
-					HashMap<String, Lop> inMap = new HashMap<String, Lop>();
+					HashMap<String, Lop> inMap = new HashMap<>();
 					inMap.put("target", group1);
 					inMap.put("offset", group2);
 					inMap.put("maxdim", lmaxdim);
@@ -725,7 +726,7 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 			Lop loffset = offsets.constructLops();
 			Lop lmaxdim = maxDim.constructLops();
 			
-			HashMap<String, Lop> inMap = new HashMap<String, Lop>();
+			HashMap<String, Lop> inMap = new HashMap<>();
 			inMap.put("target", linput);
 			inMap.put("offset", loffset);
 			inMap.put("maxdim", lmaxdim);
@@ -1070,6 +1071,7 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 		//force CP for in-memory only transform builtins
 		if( (_op == ParamBuiltinOp.TRANSFORMAPPLY && REMOTE==ExecType.MR)
 			|| _op == ParamBuiltinOp.TRANSFORMDECODE && REMOTE==ExecType.MR
+			|| _op == ParamBuiltinOp.TRANSFORMCOLMAP 
 			|| _op == ParamBuiltinOp.TRANSFORMMETA 
 			|| _op == ParamBuiltinOp.TOSTRING 
 			|| _op == ParamBuiltinOp.CDF 
@@ -1162,11 +1164,16 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 				//TODO parse json spec
 				break;
 			}
-			
 			case TRANSFORMAPPLY: {
 				//rows remain unchanged only if no omitting
 				//cols remain unchanged of no dummy coding 
 				//TODO parse json spec
+				break;
+			}
+			case TRANSFORMCOLMAP: {
+				Hop target = getTargetHop();
+				setDim1( target.getDim2() );
+				setDim2( 3 ); //fixed schema
 				break;
 			}
 			default:

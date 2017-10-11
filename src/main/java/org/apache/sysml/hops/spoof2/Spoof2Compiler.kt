@@ -132,7 +132,7 @@ object Spoof2Compiler {
 //        LOG.trace("Call ProgramRewriter with static=${!recompile} dynamic=$doDynamicProgramRewriter")
         val rewriter2 = ProgramRewriter(!recompile, doDynamicProgramRewriter)
         // todo - some fix with handling literals in predicates, as exposed by CSE in static rewrites during recompile - need fix from master
-        rewriter2.rewriteHopDAGs(roots, ProgramRewriteStatus())
+        rewriter2.rewriteHopDAG(roots, ProgramRewriteStatus())
         Hop.resetVisitStatus(roots)
         return roots
     }
@@ -207,7 +207,7 @@ object Spoof2Compiler {
             return programRewriteHops(roots, recompile, doDynamicProgramRewriter)
         }
 
-        ProgramRewriter(RewriteCommonSubexpressionElimination()).rewriteHopDAGs(roots, ProgramRewriteStatus())
+        ProgramRewriter(RewriteCommonSubexpressionElimination()).rewriteHopDAG(roots, ProgramRewriteStatus())
 
         if (LOG.isTraceEnabled) {
             LOG.trace("Spoof2Compiler called for HOP DAG${if(recompile) " at RECOMPILE" else ""}: \n" + Explain.explainHops(roots))
@@ -386,7 +386,7 @@ object Spoof2Compiler {
         HopDagValidator.validateHopDag(roots2)
 
         //rewrite after applied sum-product optimizer
-        ProgramRewriter(RewriteCommonSubexpressionElimination()).rewriteHopDAGs(roots, ProgramRewriteStatus())
+        ProgramRewriter(RewriteCommonSubexpressionElimination()).rewriteHopDAG(roots, ProgramRewriteStatus())
         programRewriteHops(roots2, recompile, doDynamicProgramRewriter)
 //        if( doDynamicProgramRewriter )
 //            RewriteAlgebraicSimplificationDynamic().rewriteHopDAGs(roots2, ProgramRewriteStatus())

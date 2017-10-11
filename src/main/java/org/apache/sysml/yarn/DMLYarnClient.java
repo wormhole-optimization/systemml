@@ -313,7 +313,7 @@ public class DMLYarnClient
 	 * 
 	 * @return null if the constant does not exists
 	 */
-	private String getLocalJarFileNameFromEnvConst()
+	private static String getLocalJarFileNameFromEnvConst()
 	{
 		String fname = null;
 		
@@ -353,7 +353,7 @@ public class DMLYarnClient
 	 * @throws IOException if IOException occurs
 	 * @throws InterruptedException if InterruptedException occurs
 	 */
-	private String createJar( String dir ) 
+	private static String createJar( String dir ) 
 		throws IOException, InterruptedException
 	{
 		//construct jar command
@@ -448,7 +448,7 @@ public class DMLYarnClient
 	private Map<String, LocalResource> constructLocalResourceMap(YarnConfiguration yconf) 
 		throws IOException 
 	{
-		Map<String, LocalResource> rMap = new HashMap<String, LocalResource>();
+		Map<String, LocalResource> rMap = new HashMap<>();
 		Path path = new Path(_hdfsJarFile); 
 		
 		LocalResource resource = Records.newRecord(LocalResource.class);
@@ -464,10 +464,10 @@ public class DMLYarnClient
 		return rMap;
 	}
 
-	private Map<String, String> constructEnvionmentMap(YarnConfiguration yconf) 
+	private static Map<String, String> constructEnvionmentMap(YarnConfiguration yconf) 
 		throws IOException
 	{
-		Map<String, String> eMap = new HashMap<String, String>();
+		Map<String, String> eMap = new HashMap<>();
 		
 		//setup default app master environment
 		StringBuilder classpath = new StringBuilder();
@@ -510,7 +510,7 @@ public class DMLYarnClient
 		return eMap;
 	}	
 
-	private String readMessageToHDFSWorkingDir(DMLConfig conf, YarnConfiguration yconf, ApplicationId appId)
+	private static String readMessageToHDFSWorkingDir(DMLConfig conf, YarnConfiguration yconf, ApplicationId appId)
 	{
 		String ret = null;
 		

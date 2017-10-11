@@ -110,7 +110,7 @@ public class ReaderBinaryBlock extends MatrixReader
 		MatrixBlock value = new MatrixBlock(brlen, bclen, sparse);
 		if( sparse ) {
 			value.allocateAndResetSparseRowsBlock(true, SparseBlock.Type.CSR);
-			value.getSparseBlock().allocate(0, 1024);
+			value.getSparseBlock().allocate(0, brlen*bclen);
 		}
 		return value;
 	}
@@ -208,7 +208,7 @@ public class ReaderBinaryBlock extends MatrixReader
 		}
 	}
 	
-	private void readBinaryBlockMatrixBlocksFromHDFS( Path path, JobConf job, FileSystem fs, Collection<IndexedMatrixValue> dest, long rlen, long clen, int brlen, int bclen )
+	private static void readBinaryBlockMatrixBlocksFromHDFS( Path path, JobConf job, FileSystem fs, Collection<IndexedMatrixValue> dest, long rlen, long clen, int brlen, int bclen )
 		throws IOException
 	{
 		MatrixIndexes key = new MatrixIndexes(); 

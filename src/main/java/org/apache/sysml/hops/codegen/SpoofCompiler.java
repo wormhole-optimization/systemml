@@ -108,13 +108,13 @@ public class SpoofCompiler
 	//internal configuration flags
 	public static boolean LDEBUG                      = false;
 	public static CompilerType JAVA_COMPILER          = CompilerType.JANINO; 
+	public static PlanSelector PLAN_SEL_POLICY        = PlanSelector.FUSE_COST_BASED_V2; 
 	public static IntegrationType INTEGRATION         = IntegrationType.RUNTIME;
 	public static final boolean RECOMPILE_CODEGEN     = true;
 	public static final boolean PRUNE_REDUNDANT_PLANS = true;
 	public static PlanCachePolicy PLAN_CACHE_POLICY   = PlanCachePolicy.CSLH;
 	public static final int PLAN_CACHE_SIZE           = 1024; //max 1K classes 
-	public static final PlanSelector PLAN_SEL_POLICY  = PlanSelector.FUSE_COST_BASED_V2; 
-
+	
 	public enum CompilerType {
 		AUTO,
 		JAVAC,
@@ -331,8 +331,7 @@ public class SpoofCompiler
 	public static Hop optimize( Hop root, boolean recompile ) throws DMLRuntimeException {
 		if( root == null )
 			return root;
-		
-		return optimize(new ArrayList<Hop>(
+		return optimize(new ArrayList<>(
 			Collections.singleton(root)), recompile).get(0);
 	}
 	
@@ -370,7 +369,7 @@ public class SpoofCompiler
 			//note: we do not use the hop visit status due to jumps over fused operators which would
 			//corrupt subsequent resets, leaving partial hops dags in visited status
 			HashMap<Long, Pair<Hop[],CNodeTpl>> cplans = new LinkedHashMap<>();
-			HashSet<Long> visited = new HashSet<Long>();
+			HashSet<Long> visited = new HashSet<>();
 			for( Hop hop : roots )
 				rConstructCPlans(hop, memo, cplans, compileLiterals, visited);
 			
@@ -385,7 +384,7 @@ public class SpoofCompiler
 			}
 			
 			//source code generation for all cplans
-			HashMap<Long, Pair<Hop[],Class<?>>> clas = new HashMap<Long, Pair<Hop[],Class<?>>>();
+			HashMap<Long, Pair<Hop[],Class<?>>> clas = new HashMap<>();
 			for( Entry<Long, Pair<Hop[],CNodeTpl>> cplan : cplans.entrySet() ) 
 			{
 				Pair<Hop[],CNodeTpl> tmp = cplan.getValue();
@@ -434,7 +433,7 @@ public class SpoofCompiler
 				ret = constructModifiedHopDag(roots, cplans, clas);
 				
 				//run common subexpression elimination and other rewrites
-				ret = rewriteCSE.rewriteHopDAGs(ret, new ProgramRewriteStatus());	
+				ret = rewriteCSE.rewriteHopDAG(ret, new ProgramRewriteStatus());	
 				
 				//explain after modification
 				if( LOG.isTraceEnabled() ) {
@@ -484,6 +483,13 @@ public class SpoofCompiler
 				throw new RuntimeException("Unsupported "
 					+ "plan selector: "+PLAN_SEL_POLICY);
 		}
+	}
+	
+	public static void setConfiguredPlanSelector() {
+		DMLConfig conf = ConfigurationManager.getDMLConfig();
+		String optimizer = conf.getTextValue(DMLConfig.CODEGEN_OPTIMIZER);
+		PlanSelector type = PlanSelector.valueOf(optimizer.toUpperCase());
+		PLAN_SEL_POLICY = type;
 	}
 	
 	public static void setExecTypeSpecificJavaCompiler() {
@@ -590,7 +596,7 @@ public class SpoofCompiler
 	private static ArrayList<Hop> constructModifiedHopDag(ArrayList<Hop> orig, 
 			HashMap<Long, Pair<Hop[],CNodeTpl>> cplans, HashMap<Long, Pair<Hop[],Class<?>>> cla)
 	{
-		HashSet<Long> memo = new HashSet<Long>();
+		HashSet<Long> memo = new HashSet<>();
 		for( int i=0; i<orig.size(); i++ ) {
 			Hop hop = orig.get(i); //w/o iterator because modified
 			rConstructModifiedHopDag(hop, cplans, cla, memo);
@@ -645,6 +651,8 @@ public class SpoofCompiler
 				HopRewriteUtils.setOutputParametersForScalar(hnew);
 				hnew = HopRewriteUtils.createUnary(hnew, OpOp1.CAST_AS_MATRIX);
 			}
+			else if( tmpCNode instanceof CNodeRow && ((CNodeRow)tmpCNode).getRowType()==RowType.NO_AGG_CONST )
+				((SpoofFusedOp)hnew).setConstDim2(((CNodeRow)tmpCNode).getConstDim2());
 			
 			if( !(tmpCNode instanceof CNodeMultiAgg) )
 				HopRewriteUtils.rewireAllParentChildReferences(hop, hnew);
@@ -669,7 +677,7 @@ public class SpoofCompiler
 	 */
 	private static HashMap<Long, Pair<Hop[],CNodeTpl>> cleanupCPlans(CPlanMemoTable memo, HashMap<Long, Pair<Hop[],CNodeTpl>> cplans) 
 	{
-		HashMap<Long, Pair<Hop[],CNodeTpl>> cplans2 = new HashMap<Long, Pair<Hop[],CNodeTpl>>();
+		HashMap<Long, Pair<Hop[],CNodeTpl>> cplans2 = new HashMap<>();
 		CPlanCSERewriter cse = new CPlanCSERewriter();
 		
 		for( Entry<Long, Pair<Hop[],CNodeTpl>> e : cplans.entrySet() ) {
@@ -684,12 +692,13 @@ public class SpoofCompiler
 			inHops = Arrays.stream(inHops)
 				.filter(p -> inputHopIDs.contains(p.getHopID()))
 				.toArray(Hop[]::new);
-			cplans2.put(e.getKey(), new Pair<Hop[],CNodeTpl>(inHops, tpl));
+			cplans2.put(e.getKey(), new Pair<>(inHops, tpl));
 			
 			//remove invalid plans with column indexing on main input
 			if( tpl instanceof CNodeCell || tpl instanceof CNodeRow ) {
 				CNodeData in1 = (CNodeData)tpl.getInput().get(0);
-				if( rHasLookupRC1(tpl.getOutput(), in1) || isLookupRC1(tpl.getOutput(), in1) ) {
+				boolean inclRC1 = !(tpl instanceof CNodeRow);
+				if( rHasLookupRC1(tpl.getOutput(), in1, inclRC1) || isLookupRC1(tpl.getOutput(), in1, inclRC1) ) {
 					cplans2.remove(e.getKey());
 					if( LOG.isTraceEnabled() )
 						LOG.trace("Removed cplan due to invalid rc1 indexing on main input.");
@@ -698,7 +707,7 @@ public class SpoofCompiler
 			else if( tpl instanceof CNodeMultiAgg ) {
 				CNodeData in1 = (CNodeData)tpl.getInput().get(0);
 				for( CNode output : ((CNodeMultiAgg)tpl).getOutputs() )
-					if( rHasLookupRC1(output, in1) || isLookupRC1(output, in1) ) {
+					if( rHasLookupRC1(output, in1, true) || isLookupRC1(output, in1, true) ) {
 						cplans2.remove(e.getKey());
 						if( LOG.isTraceEnabled() )
 							LOG.trace("Removed cplan due to invalid rc1 indexing on main input.");
@@ -710,13 +719,12 @@ public class SpoofCompiler
 			if( tpl instanceof CNodeMultiAgg )
 				rFindAndRemoveLookupMultiAgg((CNodeMultiAgg)tpl, in1);
 			else
-				rFindAndRemoveLookup(tpl.getOutput(), in1);
+				rFindAndRemoveLookup(tpl.getOutput(), in1, !(tpl instanceof CNodeRow));
 			
 			//remove invalid row templates (e.g., unsatisfied blocksize constraint)
 			if( tpl instanceof CNodeRow ) {
 				//check for invalid row cplan over column vector
-				if(in1.getNumCols() == 1 || (((CNodeRow)tpl).getRowType()==RowType.NO_AGG
-					&& tpl.getOutput().getDataType().isScalar()) ) {
+				if( ((CNodeRow)tpl).getRowType()==RowType.NO_AGG && tpl.getOutput().getDataType().isScalar() ) {
 					cplans2.remove(e.getKey());
 					if( LOG.isTraceEnabled() )
 						LOG.trace("Removed invalid row cplan w/o agg on column vector.");
@@ -768,44 +776,44 @@ public class SpoofCompiler
 	private static void rFindAndRemoveLookupMultiAgg(CNodeMultiAgg node, CNodeData mainInput) {
 		//process all outputs individually
 		for( CNode output : node.getOutputs() )
-			rFindAndRemoveLookup(output, mainInput);
+			rFindAndRemoveLookup(output, mainInput, true);
 		
 		//handle special case, of lookup being itself the output node
 		for( int i=0; i < node.getOutputs().size(); i++) {
 			CNode tmp = node.getOutputs().get(i);
-			if( TemplateUtils.isLookup(tmp) && tmp.getInput().get(0) instanceof CNodeData
+			if( TemplateUtils.isLookup(tmp, true) && tmp.getInput().get(0) instanceof CNodeData
 				&& ((CNodeData)tmp.getInput().get(0)).getHopID()==mainInput.getHopID() )
 				node.getOutputs().set(i, tmp.getInput().get(0));
 		}
 	}
 	
-	private static void rFindAndRemoveLookup(CNode node, CNodeData mainInput) {
+	private static void rFindAndRemoveLookup(CNode node, CNodeData mainInput, boolean includeRC1) {
 		for( int i=0; i<node.getInput().size(); i++ ) {
 			CNode tmp = node.getInput().get(i);
-			if( TemplateUtils.isLookup(tmp) && tmp.getInput().get(0) instanceof CNodeData
+			if( TemplateUtils.isLookup(tmp, includeRC1) && tmp.getInput().get(0) instanceof CNodeData
 				&& ((CNodeData)tmp.getInput().get(0)).getHopID()==mainInput.getHopID() )
 			{
 				node.getInput().set(i, tmp.getInput().get(0));
 			}
 			else
-				rFindAndRemoveLookup(tmp, mainInput);
+				rFindAndRemoveLookup(tmp, mainInput, includeRC1);
 		}
 	}
 	
-	private static boolean rHasLookupRC1(CNode node, CNodeData mainInput) {
+	private static boolean rHasLookupRC1(CNode node, CNodeData mainInput, boolean includeRC1) {
 		boolean ret = false;
 		for( int i=0; i<node.getInput().size() && !ret; i++ ) {
 			CNode tmp = node.getInput().get(i);
-			if( isLookupRC1(tmp, mainInput) )
+			if( isLookupRC1(tmp, mainInput, includeRC1) )
 				ret = true;
 			else
-				ret |= rHasLookupRC1(tmp, mainInput);
+				ret |= rHasLookupRC1(tmp, mainInput, includeRC1);
 		}
 		return ret;
 	}
 	
-	private static boolean isLookupRC1(CNode node, CNodeData mainInput) {
-		return (node instanceof CNodeTernary && (((CNodeTernary)node).getType()==TernaryType.LOOKUP_RC1 
+	private static boolean isLookupRC1(CNode node, CNodeData mainInput, boolean includeRC1) {
+		return (node instanceof CNodeTernary && ((((CNodeTernary)node).getType()==TernaryType.LOOKUP_RC1 && includeRC1)
 				|| ((CNodeTernary)node).getType()==TernaryType.LOOKUP_RVECT1 )
 				&& node.getInput().get(0) instanceof CNodeData
 				&& ((CNodeData)node.getInput().get(0)).getHopID() == mainInput.getHopID());
@@ -827,7 +835,7 @@ public class SpoofCompiler
 		private final int _maxSize;
 		
 		public PlanCache(int maxSize) {
-			 _plans = new LinkedHashMap<CNode, Class<?>>();	
+			 _plans = new LinkedHashMap<>();
 			 _maxSize = maxSize;
 		}
 		

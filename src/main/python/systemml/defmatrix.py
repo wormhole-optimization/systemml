@@ -356,7 +356,7 @@ class matrix(object):
     
     1. transpose
     2. Aggregation functions: sum, mean, var, sd, max, min, argmin, argmax, cumsum
-    3. Global statistical built-In functions: exp, log, abs, sqrt, round, floor, ceil, sin, cos, tan, asin, acos, atan, sign, solve
+    3. Global statistical built-In functions: exp, log, abs, sqrt, round, floor, ceil, ceiling, sin, cos, tan, asin, acos, atan, sign, solve
     
     For all the above functions, we always return a two dimensional matrix, especially for aggregation functions with axis. 
     For example: Assuming m1 is a matrix of (3, n), NumPy returns a 1d vector of dimension (3,) for operation m1.sum(axis=1)
@@ -822,6 +822,9 @@ class matrix(object):
     def ceil(self):
         return unaryMatrixFunction(self, 'ceil')
 
+    def ceiling(self):
+        return unaryMatrixFunction(self, 'ceiling')
+
     def sin(self):
         return unaryMatrixFunction(self, 'sin')
 
@@ -830,7 +833,16 @@ class matrix(object):
 
     def tan(self):
         return unaryMatrixFunction(self, 'tan')
+    
+    def sinh(self):
+        return unaryMatrixFunction(self, 'sinh')
 
+    def cosh(self):
+        return unaryMatrixFunction(self, 'cosh')
+
+    def tanh(self):
+        return unaryMatrixFunction(self, 'tanh')
+    
     def arcsin(self):
         return self.asin()
 

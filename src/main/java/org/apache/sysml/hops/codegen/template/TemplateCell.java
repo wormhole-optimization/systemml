@@ -115,8 +115,8 @@ public class TemplateCell extends TemplateBase
 	public Pair<Hop[], CNodeTpl> constructCplan(Hop hop, CPlanMemoTable memo, boolean compileLiterals) 
 	{
 		//recursively process required cplan output
-		HashSet<Hop> inHops = new HashSet<Hop>();
-		HashMap<Long, CNode> tmp = new HashMap<Long, CNode>();
+		HashSet<Hop> inHops = new HashSet<>();
+		HashMap<Long, CNode> tmp = new HashMap<>();
 		hop.resetVisitStatus();
 		rConstructCplan(hop, memo, tmp, inHops, compileLiterals);
 		hop.resetVisitStatus();
@@ -129,7 +129,7 @@ public class TemplateCell extends TemplateBase
 			.sorted(new HopInputComparator()).toArray(Hop[]::new);
 		
 		//construct template node
-		ArrayList<CNode> inputs = new ArrayList<CNode>();
+		ArrayList<CNode> inputs = new ArrayList<>();
 		for( Hop in : sinHops )
 			inputs.add(tmp.get(in.getHopID()));
 		CNode output = tmp.get(hop.getHopID());
@@ -142,7 +142,7 @@ public class TemplateCell extends TemplateBase
 		tpl.setBeginLine(hop.getBeginLine());
 		
 		// return cplan instance
-		return new Pair<Hop[],CNodeTpl>(sinHops, tpl);
+		return new Pair<>(sinHops, tpl);
 	}
 	
 	protected void rConstructCplan(Hop hop, CPlanMemoTable memo, HashMap<Long, CNode> tmp, HashSet<Hop> inHops, boolean compileLiterals) 
@@ -327,7 +327,7 @@ public class TemplateCell extends TemplateBase
 					&& roots.get(i).getInput().contains(mainInput))
 				|| (HopRewriteUtils.isBinary(roots.get(i), OpOp2.DIV) 
 					&& roots.get(i).getInput().get(0) == mainInput)
-				|| (TemplateUtils.rIsBinaryOnly(outputs.get(i), BinType.MULT)
+				|| (TemplateUtils.rIsSparseSafeOnly(outputs.get(i), BinType.MULT)
 					&& TemplateUtils.rContainsInput(outputs.get(i), mainInput.getHopID()));
 			if( onlySum )
 				ret &= (aggOps.get(i)==AggOp.SUM || aggOps.get(i)==AggOp.SUM_SQ);
@@ -366,7 +366,7 @@ public class TemplateCell extends TemplateBase
 			if( h1.isScalar() && h2.isScalar() )
 				return Long.compare(h1.getHopID(), h2.getHopID());
 			return (h1.dimsKnown(true) && h2.dimsKnown(true) && h1.getNnz() != h2.getNnz()
-				&& (HopRewriteUtils.isSparse(h1) || HopRewriteUtils.isSparse(h2))) ?
+				&& (HopRewriteUtils.isSparse(h1, 1.0) || HopRewriteUtils.isSparse(h2, 1.0))) ?
 				Long.compare(h1.getNnz(), h2.getNnz()) :
 				Long.compare(h1.getHopID(), h2.getHopID());
 		}

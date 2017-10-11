@@ -67,9 +67,9 @@ public class MRBaseForCommonInstructions extends MapReduceBase
 	
 	//distributed cache data handling
 	public static boolean isJobLocal = false; //set from MapperBase
-	public static HashMap<Byte, DistributedCacheInput> dcValues = new HashMap<Byte, DistributedCacheInput>();
+	public static HashMap<Byte, DistributedCacheInput> dcValues = new HashMap<>();
  	
-	protected HashMap<Byte, MatrixCharacteristics> dimensions=new HashMap<Byte, MatrixCharacteristics>();
+	protected HashMap<Byte, MatrixCharacteristics> dimensions=new HashMap<>();
 	
 	//temporary variables
 	protected IndexedMatrixValue tempValue=null;
@@ -305,7 +305,7 @@ public class MRBaseForCommonInstructions extends MapReduceBase
 	 * @param row if true return row dimension, else return column dimension
 	 * @return maximum row or column dimension, or 0 if MatrixValue not MatrixCell or MatrixBlock
 	 */
-	private long getMaxDimension( MatrixIndexes key, MatrixValue value, boolean row ) {
+	private static long getMaxDimension( MatrixIndexes key, MatrixValue value, boolean row ) {
 		if( value instanceof MatrixCell )
 			return row ? key.getRowIndex() : key.getColumnIndex();
 		else if( value instanceof MatrixBlock )

@@ -61,7 +61,7 @@ public class RewriteMarkLoopVariablesUpdateInPlace extends StatementBlockRewrite
 		
 		if( sb instanceof WhileStatementBlock || sb instanceof ForStatementBlock ) //incl parfor 
 		{
-			ArrayList<String> candidates = new ArrayList<String>(); 
+			ArrayList<String> candidates = new ArrayList<>();
 			VariableSet updated = sb.variablesUpdated();
 			VariableSet liveout = sb.liveOut();
 			
@@ -126,7 +126,7 @@ public class RewriteMarkLoopVariablesUpdateInPlace extends StatementBlockRewrite
 		return ret;
 	}
 	
-	private boolean isApplicableForUpdateInPlace( Hop hop, String varname )
+	private static boolean isApplicableForUpdateInPlace( Hop hop, String varname )
 	{
 		if( !hop.getName().equals(varname) )
 			return true;
@@ -134,6 +134,7 @@ public class RewriteMarkLoopVariablesUpdateInPlace extends StatementBlockRewrite
 		//valid if read/updated by leftindexing 
 		//CP exec type not evaluated here as no lops generated yet 
 		boolean validLix = hop instanceof DataOp 
+			&& hop.isMatrix() && hop.getInput().get(0).isMatrix()
 			&& hop.getInput().get(0) instanceof LeftIndexingOp
 			&& hop.getInput().get(0).getInput().get(0) instanceof DataOp
 			&& hop.getInput().get(0).getInput().get(0).getName().equals(varname);

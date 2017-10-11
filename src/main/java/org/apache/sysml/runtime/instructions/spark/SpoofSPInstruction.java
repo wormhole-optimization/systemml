@@ -88,7 +88,7 @@ public class SpoofSPInstruction extends SPInstruction {
 		String[] parts = InstructionUtils.getInstructionPartsWithValueType(str);
 		
 		//String opcode = parts[0];
-		ArrayList<CPOperand> inlist = new ArrayList<CPOperand>();
+		ArrayList<CPOperand> inlist = new ArrayList<>();
 		Class<?> cls = CodegenUtils.getClass(parts[1]);
 		byte[] classBytes = CodegenUtils.getClassData(parts[1]);
 		String opcode =  parts[0] + CodegenUtils.createInstance(cls).getSpoofType();
@@ -354,7 +354,7 @@ public class SpoofSPInstruction extends SPInstruction {
 			if( type == RowType.NO_AGG )
 				mcOut.set(mcIn);
 			else if( type == RowType.ROW_AGG )
-				mcOut.set(mcIn.getRows(), ((SpoofRowwise)op).isCBind0()? 2:1, 
+				mcOut.set(mcIn.getRows(), 1, 
 					mcIn.getRowsPerBlock(), mcIn.getColsPerBlock());
 			else if( type == RowType.COL_AGG )
 				mcOut.set(1, mcIn.getCols(), mcIn.getRowsPerBlock(), mcIn.getColsPerBlock());
@@ -410,7 +410,7 @@ public class SpoofSPInstruction extends SPInstruction {
 		protected ArrayList<MatrixBlock> getAllMatrixInputs(MatrixIndexes ixIn, MatrixBlock[] blkIn, boolean outer) 
 			throws DMLRuntimeException 
 		{
-			ArrayList<MatrixBlock> ret = new ArrayList<MatrixBlock>();
+			ArrayList<MatrixBlock> ret = new ArrayList<>();
 			//add all rdd/broadcast inputs (main and side inputs)
 			for( int i=0, posRdd=0, posBc=0; i<_bcInd.length; i++ ) {
 				if( _bcInd[i] ) {
@@ -454,10 +454,11 @@ public class SpoofSPInstruction extends SPInstruction {
 			}
 			
 			//setup local memory for reuse
-			int clen2 = (int) (_op.getRowType().isRowTypeB1() ? _inputs.get(0).getNumCols() : -1);
+			int clen2 = (int) ((_op.getRowType()==RowType.NO_AGG_CONST) ? _op.getConstDim2() :
+				_op.getRowType().isRowTypeB1() ? _inputs.get(0).getNumCols() : -1);
 			LibSpoofPrimitives.setupThreadLocalMemory(_op.getNumIntermediates(), _clen, clen2);
 			
-			ArrayList<Tuple2<MatrixIndexes,MatrixBlock>> ret = new ArrayList<Tuple2<MatrixIndexes,MatrixBlock>>();
+			ArrayList<Tuple2<MatrixIndexes,MatrixBlock>> ret = new ArrayList<>();
 			boolean aggIncr = (_op.getRowType().isColumnAgg() //aggregate entire partition
 				|| _op.getRowType() == RowType.FULL_AGG); 
 			MatrixBlock blkOut = aggIncr ? new MatrixBlock() : null;
@@ -475,14 +476,14 @@ public class SpoofSPInstruction extends SPInstruction {
 				if( !aggIncr ) {
 					MatrixIndexes ixOut = new MatrixIndexes(ixIn.getRowIndex(),
 						_op.getRowType()!=RowType.NO_AGG ? 1 : ixIn.getColumnIndex());
-					ret.add(new Tuple2<MatrixIndexes, MatrixBlock>(ixOut, blkOut));
+					ret.add(new Tuple2<>(ixOut, blkOut));
 				}
 			}
 			
 			//cleanup and final result preparations
 			LibSpoofPrimitives.cleanupThreadLocalMemory();
 			if( aggIncr )
-				ret.add(new Tuple2<MatrixIndexes, MatrixBlock>(new MatrixIndexes(1,1), blkOut));
+				ret.add(new Tuple2<>(new MatrixIndexes(1,1), blkOut));
 			
 			return ret.iterator();
 		}
@@ -511,7 +512,7 @@ public class SpoofSPInstruction extends SPInstruction {
 				_op = (SpoofOperator) CodegenUtils.createInstance(loadedClass); 
 			}
 			
-			List<Tuple2<MatrixIndexes, MatrixBlock>> ret = new ArrayList<Tuple2<MatrixIndexes,MatrixBlock>>();
+			List<Tuple2<MatrixIndexes, MatrixBlock>> ret = new ArrayList<>();
 			while(arg.hasNext()) 
 			{
 				Tuple2<MatrixIndexes,MatrixBlock[]> tmp = arg.next();
@@ -534,7 +535,7 @@ public class SpoofSPInstruction extends SPInstruction {
 						ixOut = new MatrixIndexes(1, ixOut.getColumnIndex());
 					blkOut = _op.execute(inputs, _scalars, blkOut);
 				}
-				ret.add(new Tuple2<MatrixIndexes,MatrixBlock>(ixOut, blkOut));
+				ret.add(new Tuple2<>(ixOut, blkOut));
 			}
 			return ret.iterator();
 		}
@@ -568,7 +569,7 @@ public class SpoofSPInstruction extends SPInstruction {
 			MatrixBlock blkOut = new MatrixBlock();
 			blkOut = _op.execute(inputs, _scalars, blkOut);
 			
-			return new Tuple2<MatrixIndexes,MatrixBlock>(arg._1(), blkOut);
+			return new Tuple2<>(arg._1(), blkOut);
 		}
 	}
 	
@@ -625,7 +626,7 @@ public class SpoofSPInstruction extends SPInstruction {
 				_op = (SpoofOperator) CodegenUtils.createInstance(loadedClass); 
 			}
 			
-			List<Tuple2<MatrixIndexes, MatrixBlock>> ret = new ArrayList<Tuple2<MatrixIndexes,MatrixBlock>>();
+			List<Tuple2<MatrixIndexes, MatrixBlock>> ret = new ArrayList<>();
 			while(arg.hasNext())
 			{
 				Tuple2<MatrixIndexes,MatrixBlock[]> tmp = arg.next();
@@ -644,20 +645,20 @@ public class SpoofSPInstruction extends SPInstruction {
 					blkOut = _op.execute(inputs, _scalars, blkOut);
 				}
 				
-				ret.add(new Tuple2<MatrixIndexes,MatrixBlock>(createOutputIndexes(ixIn,_op), blkOut));				
+				ret.add(new Tuple2<>(createOutputIndexes(ixIn,_op), blkOut));
 			}
 			
 			return ret.iterator();
 		}
 		
-		private MatrixIndexes createOutputIndexes(MatrixIndexes in, SpoofOperator spoofOp) {
+		private static MatrixIndexes createOutputIndexes(MatrixIndexes in, SpoofOperator spoofOp) {
 			if( ((SpoofOuterProduct)spoofOp).getOuterProdType() == OutProdType.LEFT_OUTER_PRODUCT ) 
 				return new MatrixIndexes(in.getColumnIndex(), 1);
 			else if ( ((SpoofOuterProduct)spoofOp).getOuterProdType() == OutProdType.RIGHT_OUTER_PRODUCT)
 				return new MatrixIndexes(in.getRowIndex(), 1);
 			else 
 				return in;
-		}		
+		}
 	}
 	
 	public static class ReplicateRightFactorFunction implements PairFlatMapFunction<Tuple2<MatrixIndexes, MatrixBlock>, MatrixIndexes, MatrixBlock> 
@@ -676,7 +677,7 @@ public class SpoofSPInstruction extends SPInstruction {
 		public Iterator<Tuple2<MatrixIndexes, MatrixBlock>> call( Tuple2<MatrixIndexes, MatrixBlock> arg0 ) 
 			throws Exception 
 		{
-			LinkedList<Tuple2<MatrixIndexes, MatrixBlock>> ret = new LinkedList<Tuple2<MatrixIndexes, MatrixBlock>>();
+			LinkedList<Tuple2<MatrixIndexes, MatrixBlock>> ret = new LinkedList<>();
 			MatrixIndexes ixIn = arg0._1();
 			MatrixBlock blkIn = arg0._2();
 			
@@ -687,7 +688,7 @@ public class SpoofSPInstruction extends SPInstruction {
 			for( long i=1; i<=numBlocks; i++ ) {
 				MatrixIndexes tmpix = new MatrixIndexes(i, j);
 				MatrixBlock tmpblk = blkIn;
-				ret.add( new Tuple2<MatrixIndexes, MatrixBlock>(tmpix, tmpblk) );
+				ret.add( new Tuple2<>(tmpix, tmpblk) );
 			}
 			
 			//output list of new tuples

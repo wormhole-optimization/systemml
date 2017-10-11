@@ -41,6 +41,7 @@ import org.apache.sysml.hops.globalopt.gdfresolve.GDFMismatchHeuristic.MismatchH
 import org.apache.sysml.hops.globalopt.gdfresolve.MismatchHeuristicFactory;
 import org.apache.sysml.hops.rewrite.HopRewriteUtils;
 import org.apache.sysml.hops.recompile.Recompiler;
+import org.apache.sysml.hops.recompile.Recompiler.ResetType;
 import org.apache.sysml.lops.LopsException;
 import org.apache.sysml.lops.LopProperties.ExecType;
 import org.apache.sysml.runtime.DMLRuntimeException;
@@ -121,7 +122,7 @@ public class GDFEnumOptimizer extends GlobalOptimizer
 		
 		//Step 2: dynamic programming plan generation
 		//(finally, pick optimal root plans over all interesting property sets)
-		ArrayList<Plan> rootPlans = new ArrayList<Plan>(); 
+		ArrayList<Plan> rootPlans = new ArrayList<>(); 
 		for( GDFNode node : roots ) {
 			PlanSet ps = enumOpt(node, _memo, initCosts);
 			Plan optPlan = ps.getPlanWithMinCosts();
@@ -130,14 +131,15 @@ public class GDFEnumOptimizer extends GlobalOptimizer
 		long enumPlanMismatch = getPlanMismatches();
 		
 		//check for final containment of independent roots and pick optimal
-		HashMap<Long, Plan> memo = new HashMap<Long,Plan>();
+		HashMap<Long, Plan> memo = new HashMap<>();
 		resetPlanMismatches();
 		for( Plan p : rootPlans )
 			rSetRuntimePlanConfig(p, memo);
 		long finalPlanMismatch = getPlanMismatches();
 		
 		//generate final runtime plan (w/ optimal config)
-		Recompiler.recompileProgramBlockHierarchy(prog.getProgramBlocks(), new LocalVariableMap(), 0, false);
+		Recompiler.recompileProgramBlockHierarchy(prog.getProgramBlocks(),
+			new LocalVariableMap(), 0, ResetType.NO_RESET);
 		
 		ec = ExecutionContextFactory.createContext(prog);
 		double optCosts = CostEstimationWrapper.getTimeEstimate(prog, ec);
@@ -206,7 +208,7 @@ public class GDFEnumOptimizer extends GlobalOptimizer
 	private static PlanSet enumNodePlans( GDFNode node, MemoStructure memo, double maxCosts ) 
 		throws DMLRuntimeException
 	{
-		ArrayList<Plan> plans = new ArrayList<Plan>();
+		ArrayList<Plan> plans = new ArrayList<>();
 		ExecType CLUSTER = OptimizerUtils.isSparkExecutionMode() ? ExecType.SPARK : ExecType.MR;
 		
 		//ENUMERATE HOP PLANS
@@ -329,7 +331,7 @@ public class GDFEnumOptimizer extends GlobalOptimizer
 	
 	private static void pruneInvalidPlans( PlanSet plans )
 	{
-		ArrayList<Plan> valid = new ArrayList<Plan>();
+		ArrayList<Plan> valid = new ArrayList<>();
 		
 		//check each plan in planset for validity
 		for( Plan plan : plans.getPlans() )
@@ -379,7 +381,7 @@ public class GDFEnumOptimizer extends GlobalOptimizer
 		}
 		
 		//build and probe for optimal plans (hash-groupby on IPC, min costs) 
-		HashMap<InterestingProperties, Plan> probeMap = new HashMap<InterestingProperties, Plan>();
+		HashMap<InterestingProperties, Plan> probeMap = new HashMap<>();
 		for( Plan p : plans.getPlans() )
 		{
 			//max cost pruning filter (branch-and-bound)
@@ -405,7 +407,7 @@ public class GDFEnumOptimizer extends GlobalOptimizer
 		}
 		
 		//copy over plans per IPC into one plan set
-		ArrayList<Plan> optimal = new ArrayList<Plan>(probeMap.values());
+		ArrayList<Plan> optimal = new ArrayList<>(probeMap.values());
 		
 		int sizeBefore = plans.size();
 		int sizeAfter = optimal.size();
@@ -430,7 +432,8 @@ public class GDFEnumOptimizer extends GlobalOptimizer
 		   (p.getNode().getHop()==null || p.getNode().getProgramBlock()==null) )
 		{
 			//recompile entire runtime program
-			Recompiler.recompileProgramBlockHierarchy(prog.getProgramBlocks(), new LocalVariableMap(), 0, false);
+			Recompiler.recompileProgramBlockHierarchy(prog.getProgramBlocks(),
+				new LocalVariableMap(), 0, ResetType.NO_RESET);
 			_compiledPlans++;
 			
 			//cost entire runtime program
@@ -448,7 +451,7 @@ public class GDFEnumOptimizer extends GlobalOptimizer
 				ArrayList<Hop> oldRoots = pb.getStatementBlock().get_hops();
 				Hop tmpHop = null;
 				if( !(currentHop instanceof DataOp && ((DataOp)currentHop).isWrite()) ){
-					ArrayList<Hop> newRoots = new ArrayList<Hop>();
+					ArrayList<Hop> newRoots = new ArrayList<>();
 					tmpHop = new DataOp("_tmp", currentHop.getDataType(), currentHop.getValueType(), currentHop, DataOpTypes.TRANSIENTWRITE, "tmp");
 					tmpHop.setVisited(); //ensure recursive visitstatus reset on recompile
 					newRoots.add(tmpHop);
@@ -456,7 +459,8 @@ public class GDFEnumOptimizer extends GlobalOptimizer
 				}
 				
 				//recompile modified runtime program
-				Recompiler.recompileProgramBlockHierarchy(prog.getProgramBlocks(), new LocalVariableMap(), 0, false);
+				Recompiler.recompileProgramBlockHierarchy(prog.getProgramBlocks(),
+					new LocalVariableMap(), 0, ResetType.NO_RESET);
 				_compiledPlans++;
 				
 				//cost partial runtime program up to current hop

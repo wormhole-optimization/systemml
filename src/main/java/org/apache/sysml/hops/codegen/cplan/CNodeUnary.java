@@ -19,6 +19,7 @@
 
 package org.apache.sysml.hops.codegen.cplan;
 
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.sysml.hops.codegen.template.TemplateUtils;
 import org.apache.sysml.parser.Expression.DataType;
@@ -28,14 +29,16 @@ import org.apache.sysml.runtime.util.UtilFunctions;
 public class CNodeUnary extends CNode
 {
 	public enum UnaryType {
-		LOOKUP_R, LOOKUP_C, LOOKUP_RC, LOOKUP0, CBIND0, //codegen specific
+		LOOKUP_R, LOOKUP_C, LOOKUP_RC, LOOKUP0, //codegen specific
 		ROW_SUMS, ROW_MINS, ROW_MAXS, //codegen specific
 		VECT_EXP, VECT_POW2, VECT_MULT2, VECT_SQRT, VECT_LOG,
 		VECT_ABS, VECT_ROUND, VECT_CEIL, VECT_FLOOR, VECT_SIGN, 
+		VECT_SIN, VECT_COS, VECT_TAN, VECT_ASIN, VECT_ACOS, VECT_ATAN, 
+		VECT_SINH, VECT_COSH, VECT_TANH,
 		VECT_CUMSUM, VECT_CUMMIN, VECT_CUMMAX,
 		EXP, POW2, MULT2, SQRT, LOG, LOG_NZ,
 		ABS, ROUND, CEIL, FLOOR, SIGN, 
-		SIN, COS, TAN, ASIN, ACOS, ATAN,
+		SIN, COS, TAN, ASIN, ACOS, ATAN, SINH, COSH, TANH,
 		SELP, SPROP, SIGMOID; 
 		
 		public static boolean contains(String value) {
@@ -65,6 +68,15 @@ public class CNodeUnary extends CNode
 				case VECT_CEIL:
 				case VECT_FLOOR:
 				case VECT_SIGN:
+				case VECT_SIN:
+				case VECT_COS:
+				case VECT_TAN:
+				case VECT_ASIN:
+				case VECT_ACOS:
+				case VECT_ATAN:
+				case VECT_SINH:
+				case VECT_COSH:
+				case VECT_TANH:
 				case VECT_CUMSUM:
 				case VECT_CUMMIN:
 				case VECT_CUMMAX:{
@@ -76,15 +88,15 @@ public class CNodeUnary extends CNode
 				case EXP:
 					return "    double %TMP% = FastMath.exp(%IN1%);\n";
 			    case LOOKUP_R:
-			    	return "    double %TMP% = getValue(%IN1%, rowIndex);\n";
+			    	return sparse ?
+			    		"    double %TMP% = getValue(%IN1v%, %IN1i%, ai, alen, 0);\n" :
+			    		"    double %TMP% = getValue(%IN1%, rix);\n";
 			    case LOOKUP_C:
-			    	return "    double %TMP% = getValue(%IN1%, n, 0, colIndex);\n";
+			    	return "    double %TMP% = getValue(%IN1%, n, 0, cix);\n";
 			    case LOOKUP_RC:
-			    	return "    double %TMP% = getValue(%IN1%, n, rowIndex, colIndex);\n";	
+			    	return "    double %TMP% = getValue(%IN1%, n, rix, cix);\n";	
 				case LOOKUP0:
 					return "    double %TMP% = %IN1%[0];\n" ;
-				case CBIND0:
-					return "    double %TMP% = %IN1%; rowIndex *= 2;\n" ;
 				case POW2:
 					return "    double %TMP% = %IN1% * %IN1%;\n" ;
 				case MULT2:
@@ -103,6 +115,12 @@ public class CNodeUnary extends CNode
 					return "    double %TMP% = FastMath.acos(%IN1%);\n";
 				case ATAN:
 					return "    double %TMP% = Math.atan(%IN1%);\n";
+				case SINH:
+					return "    double %TMP% = FastMath.sinh(%IN1%);\n";
+				case COSH: 
+					return "    double %TMP% = FastMath.cosh(%IN1%);\n";
+				case TANH:
+					return "    double %TMP% = FastMath.tanh(%IN1%);\n";
 				case SIGN:
 					return "    double %TMP% = FastMath.signum(%IN1%);\n";
 				case SQRT:
@@ -134,6 +152,9 @@ public class CNodeUnary extends CNode
 				|| this == VECT_LOG || this == VECT_ABS
 				|| this == VECT_ROUND || this == VECT_CEIL
 				|| this == VECT_FLOOR || this == VECT_SIGN
+				|| this == VECT_SIN || this == VECT_COS || this == VECT_TAN
+				|| this == VECT_ASIN || this == VECT_ACOS || this == VECT_ATAN
+				|| this == VECT_SINH || this == VECT_COSH || this == VECT_TANH
 				|| this == VECT_CUMSUM || this == VECT_CUMMIN
 				|| this == VECT_CUMMAX;
 		}
@@ -145,10 +166,13 @@ public class CNodeUnary extends CNode
 			return StringUtils.capitalize(tmp[1].toLowerCase());
 		}
 		public boolean isScalarLookup() {
-			return this == LOOKUP0 
-				|| this == UnaryType.LOOKUP_R
-				|| this == UnaryType.LOOKUP_C
-				|| this == UnaryType.LOOKUP_RC;
+			return ArrayUtils.contains(new UnaryType[]{
+				LOOKUP0, LOOKUP_R, LOOKUP_C, LOOKUP_RC}, this);
+		}
+		public boolean isSparseSafeScalar() {
+			return ArrayUtils.contains(new UnaryType[]{
+				POW2, MULT2, ABS, ROUND, CEIL, FLOOR, SIGN, 
+				SIN, TAN, SELP, SPROP}, this);
 		}
 	}
 	
@@ -180,7 +204,7 @@ public class CNodeUnary extends CNode
 		
 		//generate unary operation
 		boolean lsparse = sparse && (_inputs.get(0) instanceof CNodeData
-			&& !_inputs.get(0).getVarname().startsWith("b")
+			&& _inputs.get(0).getVarname().startsWith("a")
 			&& !_inputs.get(0).isLiteral());
 		String var = createVarname();
 		String tmp = _type.getTemplate(lsparse);
@@ -192,12 +216,12 @@ public class CNodeUnary extends CNode
 		tmp = tmp.replace("%IN1v%", varj+"vals");
 		tmp = tmp.replace("%IN1i%", varj+"ix");
 		tmp = tmp.replace("%IN1%", varj.startsWith("b") && !_type.isScalarLookup()
-			&& TemplateUtils.isMatrix(_inputs.get(0)) ? varj + ".ddat" : varj );
+			&& TemplateUtils.isMatrix(_inputs.get(0)) ? varj + ".values(rix)" : varj );
 		
 		//replace start position of main input
 		String spos = (_inputs.get(0) instanceof CNodeData 
 			&& _inputs.get(0).getDataType().isMatrix()) ? !varj.startsWith("b") ? 
-			varj+"i" : TemplateUtils.isMatrix(_inputs.get(0)) ? "rowIndex*%LEN%" : "0" : "0";
+			varj+"i" : TemplateUtils.isMatrix(_inputs.get(0)) ? varj + ".pos(rix)" : "0" : "0";
 		
 		tmp = tmp.replace("%POS1%", spos);
 		tmp = tmp.replace("%POS2%", spos);
@@ -222,12 +246,21 @@ public class CNodeUnary extends CNode
 			case ROW_MAXS:  return "u(Rmax)";
 			case VECT_EXP:
 			case VECT_POW2:
-			case VECT_MULT2: 
-			case VECT_SQRT: 
+			case VECT_MULT2:
+			case VECT_SQRT:
 			case VECT_LOG:
 			case VECT_ABS:
 			case VECT_ROUND:
 			case VECT_CEIL:
+			case VECT_SIN:
+			case VECT_COS:
+			case VECT_TAN:
+			case VECT_ASIN:
+			case VECT_ACOS:
+			case VECT_ATAN:
+			case VECT_SINH:
+			case VECT_COSH:
+			case VECT_TANH:
 			case VECT_FLOOR:
 			case VECT_CUMSUM:
 			case VECT_CUMMIN:
@@ -235,11 +268,10 @@ public class CNodeUnary extends CNode
 			case VECT_SIGN: return "u(v"+_type.name().toLowerCase()+")";
 			case LOOKUP_R:  return "u(ixr)";
 			case LOOKUP_C:  return "u(ixc)";
-			case LOOKUP_RC:	return "u(ixrc)";
+			case LOOKUP_RC: return "u(ixrc)";
 			case LOOKUP0:   return "u(ix0)";
-			case CBIND0:    return "u(cbind0)";
 			case POW2:      return "^2";
-			default:		return "u("+_type.name().toLowerCase()+")";
+			default:        return "u("+_type.name().toLowerCase()+")";
 		}
 	}
 
@@ -256,6 +288,15 @@ public class CNodeUnary extends CNode
 			case VECT_CEIL:
 			case VECT_FLOOR:
 			case VECT_SIGN:
+			case VECT_SIN:
+			case VECT_COS:
+			case VECT_TAN:
+			case VECT_ASIN:
+			case VECT_ACOS:
+			case VECT_ATAN:
+			case VECT_SINH:
+			case VECT_COSH:
+			case VECT_TANH:
 			case VECT_CUMSUM:
 			case VECT_CUMMIN:
 			case VECT_CUMMAX:
@@ -271,10 +312,9 @@ public class CNodeUnary extends CNode
 			case LOOKUP_R:
 			case LOOKUP_C:
 			case LOOKUP_RC:
-			case LOOKUP0:	
-			case CBIND0:
+			case LOOKUP0:
 			case POW2:
-			case MULT2:	
+			case MULT2:
 			case ABS:  
 			case SIN:
 			case COS: 
@@ -282,13 +322,16 @@ public class CNodeUnary extends CNode
 			case ASIN:
 			case ACOS:
 			case ATAN:
+			case SINH:
+			case COSH:
+			case TANH:
 			case SIGN:
 			case SQRT:
 			case LOG:
-			case ROUND: 
+			case ROUND:
 			case CEIL:
 			case FLOOR:
-			case SELP:	
+			case SELP:
 			case SPROP:
 			case SIGMOID:
 			case LOG_NZ:

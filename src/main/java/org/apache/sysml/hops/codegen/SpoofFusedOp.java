@@ -38,10 +38,11 @@ public class SpoofFusedOp extends Hop implements MultiThreadedHop
 {
 	public enum SpoofOutputDimsType {
 		INPUT_DIMS,
+		INPUT_DIMS_CONST2,
 		ROW_DIMS,
-		ROW_DIMS2,
 		COLUMN_DIMS_ROWS,
 		COLUMN_DIMS_COLS,
+		RANK_DIMS_COLS,
 		SCALAR,
 		MULTI_SCALAR,
 		ROW_RANK_DIMS, // right wdivmm, row mm
@@ -52,6 +53,7 @@ public class SpoofFusedOp extends Hop implements MultiThreadedHop
 	private Class<?> _class = null;
 	private boolean _distSupported = false;
 	private int _numThreads = -1;
+	private long _constDim2 = -1;
 	private SpoofOutputDimsType _dimsType;
 	
 	public SpoofFusedOp ( ) {
@@ -82,6 +84,10 @@ public class SpoofFusedOp extends Hop implements MultiThreadedHop
 	public boolean allowsAllExecTypes() {
 		return _distSupported;
 	}
+	
+	public void setConstDim2(long constDim2) {
+		_constDim2 = constDim2;
+	}
 
 	@Override
 	protected double computeOutputMemEstimate(long dim1, long dim2, long nnz) {
@@ -100,7 +106,7 @@ public class SpoofFusedOp extends Hop implements MultiThreadedHop
 		
 		ExecType et = optFindExecType();
 		
-		ArrayList<Lop> inputs = new ArrayList<Lop>();
+		ArrayList<Lop> inputs = new ArrayList<>();
 		for( Hop c : getInput() )
 			inputs.add(c.constructLops());
 		
@@ -152,17 +158,23 @@ public class SpoofFusedOp extends Hop implements MultiThreadedHop
 				case ROW_DIMS:
 					ret = new long[]{mc.getRows(), 1, -1};
 					break;
-				case ROW_DIMS2:
-					ret = new long[]{mc.getRows(), 2, -1};
-					break;
 				case COLUMN_DIMS_ROWS:
 					ret = new long[]{mc.getCols(), 1, -1};
 					break;
 				case COLUMN_DIMS_COLS:
 					ret = new long[]{1, mc.getCols(), -1};
 					break;
+				case RANK_DIMS_COLS: {
+					MatrixCharacteristics mc2 = memo.getAllInputStats(getInput().get(1));
+					if( mc2.dimsKnown() )
+						ret = new long[]{1, mc2.getCols(), -1};
+					break;
+				}
 				case INPUT_DIMS:
 					ret = new long[]{mc.getRows(), mc.getCols(), -1};
+					break;
+				case INPUT_DIMS_CONST2:
+					ret = new long[]{mc.getRows(), _constDim2, -1};
 					break;
 				case SCALAR:
 					ret = new long[]{0, 0, -1};
@@ -206,10 +218,6 @@ public class SpoofFusedOp extends Hop implements MultiThreadedHop
 				setDim1(getInput().get(0).getDim1());
 				setDim2(1);
 				break;
-			case ROW_DIMS2:
-				setDim1(getInput().get(0).getDim1());
-				setDim2(2);
-				break;
 			case COLUMN_DIMS_ROWS:
 				setDim1(getInput().get(0).getDim2());
 				setDim2(1);
@@ -218,9 +226,17 @@ public class SpoofFusedOp extends Hop implements MultiThreadedHop
 				setDim1(1);
 				setDim2(getInput().get(0).getDim2());
 				break;
+			case RANK_DIMS_COLS:
+				setDim1(1);
+				setDim2(getInput().get(1).getDim2());
+				break;
 			case INPUT_DIMS:
 				setDim1(getInput().get(0).getDim1());
 				setDim2(getInput().get(0).getDim2());
+				break;
+			case INPUT_DIMS_CONST2:
+				setDim1(getInput().get(0).getDim1());
+				setDim2(_constDim2);
 				break;
 			case SCALAR:
 				setDim1(0);

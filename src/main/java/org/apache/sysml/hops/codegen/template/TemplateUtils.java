@@ -32,7 +32,6 @@ import org.apache.sysml.hops.ParameterizedBuiltinOp;
 import org.apache.sysml.hops.TernaryOp;
 import org.apache.sysml.hops.Hop.AggOp;
 import org.apache.sysml.hops.Hop.Direction;
-import org.apache.sysml.hops.Hop.OpOp2;
 import org.apache.sysml.hops.IndexingOp;
 import org.apache.sysml.hops.UnaryOp;
 import org.apache.sysml.hops.codegen.cplan.CNode;
@@ -190,8 +189,7 @@ public class TemplateUtils
 			|| (output instanceof IndexingOp && HopRewriteUtils.isColumnRangeIndexing((IndexingOp)output)))
 			&& !(output instanceof AggBinaryOp && HopRewriteUtils.isTransposeOfItself(output.getInput().get(0),X)) )
 			return RowType.NO_AGG_B1;
-		else if( output.getDim1()==X.getDim1() && (output.getDim2()==1 
-				|| HopRewriteUtils.isBinary(output, OpOp2.CBIND))
+		else if( output.getDim1()==X.getDim1() && (output.getDim2()==1)
 			&& !(output instanceof AggBinaryOp && HopRewriteUtils
 				.isTransposeOfItself(output.getInput().get(0),X)))
 			return RowType.ROW_AGG;
@@ -206,6 +204,10 @@ public class TemplateUtils
 			return RowType.COL_AGG_B1_T;
 		else if( B1 != null && output.getDim1()==B1.getDim2() && output.getDim2()==X.getDim2())
 			return RowType.COL_AGG_B1;
+		else if( B1 != null && output.getDim1()==1 && B1.getDim2() == output.getDim2() )
+			return RowType.COL_AGG_B1R;
+		else if( X.getDim1() == output.getDim1() && X.getDim2() != output.getDim2() )
+			return RowType.NO_AGG_CONST;
 		else
 			throw new RuntimeException("Unknown row type for hop "+output.getHopID()+".");
 	}
@@ -234,9 +236,10 @@ public class TemplateUtils
 		throw new RuntimeException("Undefined outer product type for hop "+out.getHopID());
 	}
 	
-	public static boolean isLookup(CNode node) {
-		return isUnary(node, UnaryType.LOOKUP_R, UnaryType.LOOKUP_C, UnaryType.LOOKUP_RC)
-			|| isTernary(node, TernaryType.LOOKUP_RC1);
+	public static boolean isLookup(CNode node, boolean includeRC1) {
+		return isUnary(node, UnaryType.LOOKUP_C, UnaryType.LOOKUP_RC)
+			|| (includeRC1 && isUnary(node, UnaryType.LOOKUP_R))
+			|| (includeRC1 && isTernary(node, TernaryType.LOOKUP_RC1));
 	}
 	
 	public static boolean isUnary(CNode node, UnaryType...types) {
@@ -249,13 +252,14 @@ public class TemplateUtils
 			&& ArrayUtils.contains(types, ((CNodeBinary)node).getType());
 	}
 	
-	public static boolean rIsBinaryOnly(CNode node, BinType...types) {
+	public static boolean rIsSparseSafeOnly(CNode node, BinType...types) {
 		if( !(isBinary(node, types) || node instanceof CNodeData 
-			|| (node instanceof CNodeUnary && ((CNodeUnary)node).getType().isScalarLookup())) )
+			|| (node instanceof CNodeUnary && ((CNodeUnary)node).getType().isScalarLookup())
+			|| (node instanceof CNodeUnary && ((CNodeUnary)node).getType().isSparseSafeScalar())) )
 			return false;
 		boolean ret = true;
 		for( CNode c : node.getInput() )
-			ret &= rIsBinaryOnly(c, types);
+			ret &= rIsSparseSafeOnly(c, types);
 		return ret;
 	}
 	
@@ -315,7 +319,7 @@ public class TemplateUtils
 	
 	public static boolean hasNoOperation(CNodeTpl tpl) {
 		return tpl.getOutput() instanceof CNodeData 
-			|| isLookup(tpl.getOutput());
+			|| isLookup(tpl.getOutput(), true);
 	}
 	
 	public static boolean hasOnlyDataNodeOrLookupInputs(CNode node) {

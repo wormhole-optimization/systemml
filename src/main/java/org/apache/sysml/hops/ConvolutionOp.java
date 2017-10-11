@@ -29,6 +29,7 @@ import org.apache.sysml.lops.LopsException;
 import org.apache.sysml.parser.Expression.DataType;
 import org.apache.sysml.parser.Expression.ValueType;
 import org.apache.sysml.runtime.DMLRuntimeException;
+import org.apache.sysml.runtime.instructions.gpu.context.GPUContextPool;
 import org.apache.sysml.runtime.matrix.MatrixCharacteristics;
 import org.apache.sysml.runtime.matrix.data.ConvolutionParameters;
 
@@ -74,8 +75,7 @@ public class ConvolutionOp extends Hop  implements MultiThreadedHop
 		return "" + HopsConv2Lops.get(op);
 	}
 
-	private boolean isEligibleForSpark() {
-		// return (op == ConvOp.DIRECT_CONV2D || op == ConvOp.MAX_POOLING) ? true : false;
+	private static boolean isEligibleForSpark() {
 		return false;
 	}
 	
@@ -145,11 +145,11 @@ public class ConvolutionOp extends Hop  implements MultiThreadedHop
 		}
 	}
 	
-	private boolean isInputReLU(Hop input) {
+	private static boolean isInputReLU(Hop input) {
 		return input instanceof UnaryOp && ((UnaryOp) input).getOp() == OpOp1.SELP;
 	}
 	
-	private boolean isInputConv2d(Hop input) {
+	private static boolean isInputConv2d(Hop input) {
 		return input instanceof ConvolutionOp && ((ConvolutionOp) input).getOp() == ConvOp.DIRECT_CONV2D;
 	}
 	
@@ -191,7 +191,18 @@ public class ConvolutionOp extends Hop  implements MultiThreadedHop
 //		// TODO: Inserting reblock requires knowing columns apriori
 //		ConvolutionTransform transform1 = new ConvolutionTransform(addReblockIfNecessary(et, lopOp, in), lopOp, getDataType(), getValueType(), et, k);
 //		setReblockedOutputDimension(et, transform1);
-		ConvolutionTransform transform1 = new ConvolutionTransform(in, lopOp, getDataType(), getValueType(), et, k, computeIntermediateMemEstimate(-1, -1, -1 ));
+		double cpIntermediateMemEstimate = computeIntermediateMemEstimate(-1, -1, -1 );
+		if(et == ExecType.GPU && _dim1 > 0 && _dim2 > 0) {
+			// This enables us to compile more efficient matrix-matrix CuDNN operation instead of 
+			// row-by-row invocation of multiple vector-matrix CuDNN operations.
+			// This is possible as the operations on GPU are single-threaded
+			double optimisticIntermediateMemEstimate = GPUContextPool.initialGPUMemBudget() - getOutputMemEstimate() - inputs.get(0).getOutputMemEstimate();
+			if(in2 != null) {
+				optimisticIntermediateMemEstimate -= inputs.get(1).getOutputMemEstimate();
+			}
+			cpIntermediateMemEstimate = Math.max(cpIntermediateMemEstimate, optimisticIntermediateMemEstimate);
+		}
+		ConvolutionTransform transform1 = new ConvolutionTransform(in, lopOp, getDataType(), getValueType(), et, k, cpIntermediateMemEstimate);
 		setOutputDimensions(transform1);
 		
 		setLineNumbers(transform1);
@@ -331,8 +342,8 @@ public class ConvolutionOp extends Hop  implements MultiThreadedHop
 	@Override
 	protected double computeIntermediateMemEstimate( long ignoreDim1, long ignoreDim2, long ignoreNnz )
 	{	
-		ArrayList<IntermediateDimensions> gpuIntermediates = new ArrayList<IntermediateDimensions>();
-		ArrayList<IntermediateDimensions> cpIntermediates = new ArrayList<IntermediateDimensions>();
+		ArrayList<IntermediateDimensions> gpuIntermediates = new ArrayList<>();
+		ArrayList<IntermediateDimensions> cpIntermediates = new ArrayList<>();
 		if(getOp() == ConvOp.DIRECT_CONV2D) {
 			// Assumption: To compile a GPU conv2d operator, following should fit on the GPU:
 			// 1. output in dense format (i.e. computeOutputMemEstimate) 
@@ -700,19 +711,19 @@ public class ConvolutionOp extends Hop  implements MultiThreadedHop
 		return ret;
 	}
 	
-	private long nonNegativeMultiply(long val1, long val2, long val3) {
+	private static long nonNegativeMultiply(long val1, long val2, long val3) {
 		if(val1 >= 0 && val2 >= 0 && val3 >= 0) {
 			return val1 * val2 * val3;
 		}
 		else return -1;
 	}
-	private long nonNegativeMultiply(long val1, long val2) {
+	private static long nonNegativeMultiply(long val1, long val2) {
 		if(val1 >= 0 && val2 >= 0) {
 			return val1 * val2;
 		}
 		else return -1;
 	}
-	private long getNonNegative(long val1, long val2) {
+	private static long getNonNegative(long val1, long val2) {
 		if(val1 >= 0 && val2 >= 0) {
 			if(val1 == val2) return val1;
 			else throw new RuntimeException("Incorrect dimensions in Convolution Hop: " + val1 + " != " + val2);

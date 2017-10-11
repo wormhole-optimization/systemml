@@ -244,9 +244,9 @@ public class BuiltinFunctionExpression extends DataIdentifier
 		}
 	}
 	
-	private ArrayList<ParameterExpression> orderConvolutionParams(ArrayList<ParameterExpression> paramExpression, 
+	private static ArrayList<ParameterExpression> orderConvolutionParams(ArrayList<ParameterExpression> paramExpression, 
 			int skip) throws LanguageException {
-		ArrayList<ParameterExpression> newParams = new ArrayList<ParameterExpression>();
+		ArrayList<ParameterExpression> newParams = new ArrayList<>();
 
 		for(int i = 0; i < skip; i++)
 			newParams.add(paramExpression.get(i));
@@ -272,9 +272,9 @@ public class BuiltinFunctionExpression extends DataIdentifier
 		return newParams;
 	}
 
-	private ArrayList<ParameterExpression> replaceListParams(ArrayList<ParameterExpression> paramExpression,
+	private static ArrayList<ParameterExpression> replaceListParams(ArrayList<ParameterExpression> paramExpression,
 			String inputVarName, String outputVarName, int startIndex) throws LanguageException {
-		ArrayList<ParameterExpression> newParamExpression = new ArrayList<ParameterExpression>();
+		ArrayList<ParameterExpression> newParamExpression = new ArrayList<>();
 		int i = startIndex;
 		int j = 1; // Assumption: sequential ordering pool_size1, pool_size2 
 		for (ParameterExpression expr : paramExpression) {
@@ -289,9 +289,9 @@ public class BuiltinFunctionExpression extends DataIdentifier
 		return newParamExpression;
 	}
 
-	private ArrayList<ParameterExpression> expandListParams(ArrayList<ParameterExpression> paramExpression, 
+	private static ArrayList<ParameterExpression> expandListParams(ArrayList<ParameterExpression> paramExpression, 
 			HashSet<String> paramsToExpand) throws LanguageException {
-		ArrayList<ParameterExpression> newParamExpressions = new ArrayList<ParameterExpression>();
+		ArrayList<ParameterExpression> newParamExpressions = new ArrayList<>();
 		for(ParameterExpression expr : paramExpression) {
 			if(paramsToExpand.contains(expr.getName())) {
 				if(expr.getExpr() instanceof ExpressionList) {
@@ -316,14 +316,14 @@ public class BuiltinFunctionExpression extends DataIdentifier
 		try {
 			if(_opcode == BuiltinFunctionOp.CONV2D || _opcode == BuiltinFunctionOp.CONV2D_BACKWARD_FILTER 
 					|| _opcode == BuiltinFunctionOp.CONV2D_BACKWARD_DATA) {
-				HashSet<String> expand = new HashSet<String>();
+				HashSet<String> expand = new HashSet<>();
 				expand.add("input_shape"); expand.add("filter_shape"); expand.add("stride"); expand.add("padding");
 				paramExpression = expandListParams(paramExpression, expand);
 				paramExpression = orderConvolutionParams(paramExpression, 2);
 			}
 			else if(_opcode == BuiltinFunctionOp.MAX_POOL || 
 					_opcode == BuiltinFunctionOp.MAX_POOL_BACKWARD) {
-				HashSet<String> expand = new HashSet<String>();
+				HashSet<String> expand = new HashSet<>();
 				expand.add("input_shape"); expand.add("pool_size"); expand.add("stride"); expand.add("padding");
 				paramExpression = expandListParams(paramExpression, expand);
 				paramExpression.add(new ParameterExpression("filter_shape1", new IntIdentifier(1, this)));
@@ -1299,11 +1299,11 @@ public class BuiltinFunctionExpression extends DataIdentifier
 		}
 	}
 
-	private boolean isConstant(Expression expr) {
+	private static boolean isConstant(Expression expr) {
 		return ( expr != null && expr instanceof ConstIdentifier );
 	}
 	
-	private double getDoubleValue(Expression expr) 
+	private static double getDoubleValue(Expression expr) 
 		throws LanguageException 
 	{
 		if ( expr instanceof DoubleIdentifier )
@@ -1322,6 +1322,9 @@ public class BuiltinFunctionExpression extends DataIdentifier
 		case ACOS:
 		case ASIN:
 		case ATAN:
+		case COSH:
+		case SINH:
+		case TANH:
 		case SIGN:
 		case SQRT:
 		case ABS:
@@ -1345,6 +1348,9 @@ public class BuiltinFunctionExpression extends DataIdentifier
 		case ACOS:
 		case ASIN:
 		case ATAN:
+		case COSH:
+		case SINH:
+		case TANH:
 		case SIGN:	
 		case SQRT:
 		case ABS:
@@ -1469,11 +1475,11 @@ public class BuiltinFunctionExpression extends DataIdentifier
 		}
 	}
 	
-	private boolean is1DMatrix(Expression e) {
+	private static boolean is1DMatrix(Expression e) {
 		return (e.getOutput().getDim1() == 1 || e.getOutput().getDim2() == 1 );
 	}
 	
-	private boolean dimsKnown(Expression e) {
+	private static boolean dimsKnown(Expression e) {
 		return (e.getOutput().getDim1() != -1 && e.getOutput().getDim2() != -1);
 	}
 	
@@ -1552,6 +1558,12 @@ public class BuiltinFunctionExpression extends DataIdentifier
 			bifop = Expression.BuiltinFunctionOp.ASIN;
 		else if (functionName.equals("atan"))
 			bifop = Expression.BuiltinFunctionOp.ATAN;
+		else if (functionName.equals("cosh"))
+			bifop = Expression.BuiltinFunctionOp.COSH;
+		else if (functionName.equals("sinh"))
+			bifop = Expression.BuiltinFunctionOp.SINH;
+		else if (functionName.equals("tanh"))
+			bifop = Expression.BuiltinFunctionOp.TANH;
 		else if (functionName.equals("diag"))
 			bifop = Expression.BuiltinFunctionOp.DIAG;
 		else if (functionName.equals("exp"))
@@ -1696,7 +1708,7 @@ public class BuiltinFunctionExpression extends DataIdentifier
 			 bifop = Expression.BuiltinFunctionOp.AVG_POOL;
 		else if (functionName.equals("solve"))
 			bifop = Expression.BuiltinFunctionOp.SOLVE;
-		else if (functionName.equals("ceil"))
+		else if (functionName.equals("ceil") || functionName.equals("ceiling"))
 			bifop = Expression.BuiltinFunctionOp.CEIL;
 		else if (functionName.equals("floor"))
 			bifop = Expression.BuiltinFunctionOp.FLOOR;

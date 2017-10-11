@@ -19,38 +19,20 @@
 #
 #-------------------------------------------------------------
 
+F1 = read($DATA);
+jspec = read($TFSPEC, data_type="scalar", value_type="string");
 
-X = read($1);
-y = read($2);
-intercept = $3;
-eps = $4;
-maxiter = $5;
+[X, M] = transformencode(target=F1, spec=jspec);
+map = transformcolmap(target=M, spec=jspec);
 
-if( intercept == 1 ){
-   ones = matrix(1, nrow(X), 1); 
-   X = cbind(X, ones);
+F2 = F1;
+for(i in 1:nrow(map)) {
+   T = X[, as.scalar(map[i,2]):as.scalar(map[i,3])];
+   if( ncol(T)==1 )
+      Tf = as.frame(T);
+   else
+      Tf = transformdecode(target=T, meta=M[,i], spec="{ids:true, dummycode:[1]}");
+   F2[,i] = Tf;
 }
 
-r = -(t(X) %*% y);
-p = -r;
-norm_r2 = sum(r * r);
-w = matrix(0, rows = ncol(X), cols = 1);
-
-i = 0;
-while(i < maxiter) {
-	q = ((t(X) %*% (X %*% p)) + eps  * p);
-	alpha = norm_r2 / castAsScalar(t(p) %*% q);
-	w = w + alpha * p;
-	old_norm_r2 = norm_r2;
-	r = r + alpha * q;
-	norm_r2 = sum(r * r);
-	beta = norm_r2 / old_norm_r2;
-	p = -r + beta * p;
-	i = i + 1;
-}
-
-write(w, $6);
-
-
-
-
+write(F2, $TFDATA, format=$OFMT);

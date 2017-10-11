@@ -683,7 +683,7 @@ as.double(), <br/> as.integer(), <br/> as.logical() | A variable is cast as the 
 Function | Description | Parameters | Example
 -------- | ----------- | ---------- | -------
 mean() <br/> avg() | Return the mean value of all cells in matrix | Input: matrix <br/> Output: scalar | mean(X)
-var() <br/> sd() | Return the variance/stdDev value of all cells in matrix | Input: matrix <br/> Output: scalar | var(X) <br/> sd(X)
+var() <br/> sd() | Return the variance/stdDev value of all cells in matrix. Both use unbiased estimators with (n-1) denominator. | Input: matrix <br/> Output: scalar | var(X) <br/> sd(X)
 moment() | Returns the kth central moment of values in a column matrix V, where k = 2, 3, or 4. It can be used to compute statistical measures like Variance, Kurtosis, and Skewness. This function also takes an optional weights parameter W. | Input: (X &lt;(n x 1) matrix&gt;, [W &lt;(n x 1) matrix&gt;),] k &lt;scalar&gt;) <br/> Output: &lt;scalar&gt; | A = rand(rows=100000,cols=1, pdf="normal") <br/> print("Variance from our (standard normal) random generator is approximately " + moment(A,2))
 colSums() <br/> colMeans() <br/> colVars() <br/> colSds() <br/> colMaxs() <br/> colMins() | Column-wise computations -- for each column, compute the sum/mean/variance/stdDev/max/min of cell values | Input: matrix <br/> Output: (1 x n) matrix | colSums(X) <br/> colMeans(X) <br/> colVars(X) <br/> colSds(X) <br/> colMaxs(X) <br/>colMins(X)
 cov() | Returns the covariance between two 1-dimensional column matrices X and Y. The function takes an optional weights parameter W. All column matrices X, Y, and W (when specified) must have the exact same dimension. | Input: (X &lt;(n x 1) matrix&gt;, Y &lt;(n x 1) matrix&gt; [, W &lt;(n x 1) matrix&gt;)]) <br/> Output: &lt;scalar&gt; | cov(X,Y) <br/> cov(X,Y,W)
@@ -821,8 +821,8 @@ is same as
 
 Function | Description | Parameters | Example
 -------- | ----------- | ---------- | -------
-exp(), log(), abs(), sqrt(), round(), floor(), ceil() | Apply mathematical function on input (cell wise if input is matrix) | Input: (&lt;matrix&gt;), or (&lt;scalar&gt;) <br/> Output: &lt;matrix&gt;, or &lt;scalar&gt; | sqrt(X) <br/> log(X,y) <br/> round(X) <br/> floor(X) <br/> ceil(X)
-sin(), cos(), tan(), asin(), acos(), atan() | Apply trigonometric function on input (cell wise if input is matrix) | Input: (&lt;matrix&gt;), or (&lt;scalar&gt;) <br/> Output: &lt;matrix&gt;, or &lt;scalar&gt; | sin(X)
+exp(), log(), abs(), sqrt(), round(), floor(), ceil(), ceiling() | Apply mathematical function on input (cell wise if input is matrix) | Input: (&lt;matrix&gt;), or (&lt;scalar&gt;) <br/> Output: &lt;matrix&gt;, or &lt;scalar&gt; | sqrt(X) <br/> log(X,y) <br/> round(X) <br/> floor(X) <br/> ceil(X) <br/> ceiling(X)
+sin(), cos(), tan(), sinh(), cosh(), tanh(), asin(), acos(), atan() | Apply trigonometric function on input (cell wise if input is matrix) | Input: (&lt;matrix&gt;), or (&lt;scalar&gt;) <br/> Output: &lt;matrix&gt;, or &lt;scalar&gt; | sin(X)
 sign() | Returns a matrix representing the signs of the input matrix elements, where 1 represents positive, 0 represents zero, and -1 represents negative | Input : (A &lt;matrix&gt;) <br/> Output : &lt;matrix&gt; | <span style="white-space: nowrap;">A = matrix("-5 0 3 -3",</span> rows=2, cols=2) <br/>signA = sign(A)<br/>Matrix signA: [[-1, 0], [1, -1]]
 
 
@@ -1642,6 +1642,7 @@ Function | Description | Parameters | Example
 transformencode() | Transforms a frame into a matrix using specification. <br/> Builds and applies frame metadata. | Input:<br/> target = &lt;frame&gt; <br/> spec = &lt;json specification&gt; <br/> Outputs: &lt;matrix&gt;, &lt;frame&gt;|[transformencode](dml-language-reference.html#transformencode)
 transformdecode() | Transforms a matrix into a frame using specification. <br/> Valid only for specific transformation types. | Input:<br/> target = &lt;matrix&gt; <br/> spec = &lt;json specification&gt; <br/> meta = &lt;frame&gt; <br/> Output: &lt;frame&gt; |[transformdecode](dml-language-reference.html#transformdecode)
 transformapply() | Transforms a frame into a matrix using specification. <br/> Applies existing frame metadata. |  Input:<br/> target = &lt;frame&gt; <br/> spec = &lt;json specification&gt; <br/> meta = &lt;frame&gt; <br/> Output: &lt;matrix&gt; | [transformapply](dml-language-reference.html#transformapply)
+transformcolmap() | Obtains the column mapping of a transformed frame using the given specification. The input frame is assumed to be the meta data frame returned from a transformencode call. <br/> The output has a row per encoded input attribute, indicating the source column position, as well as the start and end positions in the encode output. | Input:<br/> target = &lt;frame&gt; <br/> spec = &lt;json specification&gt; <br/> Output: &lt;matrix&gt; |[transformcolmap](dml-language-reference.html#transformdecode)
 
 The following table summarizes the supported transformations for <code>transformencode(), transformdecode(), transformapply()</code>.  Note only recoding, dummy coding and pass-through are reversible, i.e., subject to <code>transformdecode()</code>, whereas binning, missing value imputation, and omit are not.
 

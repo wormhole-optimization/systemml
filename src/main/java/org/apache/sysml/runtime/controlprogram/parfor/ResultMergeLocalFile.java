@@ -104,7 +104,7 @@ public class ResultMergeLocalFile extends ResultMerge
 			
 			
 			//collect all relevant inputs
-			ArrayList<MatrixObject> inMO = new ArrayList<MatrixObject>();
+			ArrayList<MatrixObject> inMO = new ArrayList<>();
 			for( MatrixObject in : _inputs )
 			{
 				//check for empty inputs (no iterations executed)
@@ -205,7 +205,7 @@ public class ResultMergeLocalFile extends ResultMerge
 		}
 	}
 
-	private void mergeTextCellWithoutComp( String fnameNew, MatrixObject outMo, ArrayList<MatrixObject> inMO ) 
+	private static void mergeTextCellWithoutComp( String fnameNew, MatrixObject outMo, ArrayList<MatrixObject> inMO ) 
 		throws DMLRuntimeException
 	{
 		try
@@ -307,7 +307,7 @@ public class ResultMergeLocalFile extends ResultMerge
 	}
 
 	@SuppressWarnings("deprecation")
-	private void mergeBinaryCellWithoutComp( String fnameNew, MatrixObject outMo, ArrayList<MatrixObject> inMO ) 
+	private static void mergeBinaryCellWithoutComp( String fnameNew, MatrixObject outMo, ArrayList<MatrixObject> inMO ) 
 		throws DMLRuntimeException
 	{
 		try
@@ -498,7 +498,7 @@ public class ResultMergeLocalFile extends ResultMerge
 		}
 	}
 
-	private void createTextCellStagingFile( String fnameStaging, MatrixObject mo, long ID ) 
+	private static void createTextCellStagingFile( String fnameStaging, MatrixObject mo, long ID ) 
 		throws IOException, DMLRuntimeException
 	{		
 		JobConf job = new JobConf(ConfigurationManager.getCachedJobConf());
@@ -508,7 +508,7 @@ public class ResultMergeLocalFile extends ResultMerge
 		informat.configure(job);
 		InputSplit[] splits = informat.getSplits(job, 1);
 		
-		LinkedList<Cell> buffer = new LinkedList<Cell>();
+		LinkedList<Cell> buffer = new LinkedList<>();
 		LongWritable key = new LongWritable();
 		Text value = new Text();
 
@@ -560,14 +560,14 @@ public class ResultMergeLocalFile extends ResultMerge
 	}
 
 	@SuppressWarnings("deprecation")
-	private void createBinaryCellStagingFile( String fnameStaging, MatrixObject mo, long ID ) 
+	private static void createBinaryCellStagingFile( String fnameStaging, MatrixObject mo, long ID ) 
 		throws IOException, DMLRuntimeException
 	{		
 		JobConf job = new JobConf(ConfigurationManager.getCachedJobConf());
 		Path path = new Path(mo.getFileName());
 		FileSystem fs = IOUtilFunctions.getFileSystem(path, job);
 		
-		LinkedList<Cell> buffer = new LinkedList<Cell>();
+		LinkedList<Cell> buffer = new LinkedList<>();
 		MatrixIndexes key = new MatrixIndexes();
 		MatrixCell value = new MatrixCell();
 	
@@ -605,10 +605,10 @@ public class ResultMergeLocalFile extends ResultMerge
 		}
 	}
 
-	private void appendCellBufferToStagingArea( String fnameStaging, long ID, LinkedList<Cell> buffer, int brlen, int bclen ) 
+	private static void appendCellBufferToStagingArea( String fnameStaging, long ID, LinkedList<Cell> buffer, int brlen, int bclen ) 
 		throws DMLRuntimeException, IOException
 	{
-		HashMap<Long,HashMap<Long,LinkedList<Cell>>> sortedBuffer = new HashMap<Long, HashMap<Long,LinkedList<Cell>>>();
+		HashMap<Long,HashMap<Long,LinkedList<Cell>>> sortedBuffer = new HashMap<>();
 		long brow, bcol, row_offset, col_offset;
 		
 		for( Cell c : buffer )
@@ -1004,7 +1004,7 @@ public class ResultMergeLocalFile extends ResultMerge
 		}
 	}
 
-	private void copyAllFiles( String fnameNew, ArrayList<MatrixObject> inMO ) 
+	private static void copyAllFiles( String fnameNew, ArrayList<MatrixObject> inMO ) 
 		throws CacheException, IOException
 	{
 		JobConf job = new JobConf(ConfigurationManager.getCachedJobConf());

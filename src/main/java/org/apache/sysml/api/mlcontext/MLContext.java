@@ -161,7 +161,7 @@ public class MLContext {
 				return ExplainType.HOPS;
 			}
 		}
-	};
+	}
 
 	/**
 	 * The different types of execution environments supported by SystemML. The
@@ -291,7 +291,7 @@ public class MLContext {
 
 	/**
 	 * Set configuration property, such as
-	 * {@code setConfigProperty("localtmpdir", "/tmp/systemml")}.
+	 * {@code setConfigProperty("sysml.localtmpdir", "/tmp/systemml")}.
 	 *
 	 * @param propertyName
 	 *            property name

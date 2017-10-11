@@ -175,6 +175,11 @@ public class ExecutionContext {
 	{
 		return _variables.get(varname).getMetaData();
 	}
+	
+	public boolean isMatrixObject(String varname) {
+		Data dat = getVariable(varname);
+		return (dat!= null && dat instanceof MatrixObject);
+	}
 
 	public MatrixObject getMatrixObject(String varname) 
 		throws DMLRuntimeException
@@ -294,7 +299,7 @@ public class ExecutionContext {
 	 * @return valid d1 or d2
 	 * @throws DMLRuntimeException if error occurs
 	 */
-	private long validateDimensions(long d1, long d2) throws DMLRuntimeException {
+	private static long validateDimensions(long d1, long d2) throws DMLRuntimeException {
 		if(d1 >= 0 && d2 >= 0 && d1 != d2) {
 			throw new DMLRuntimeException("Incorrect dimensions:" + d1 + " != " + d2);
 		}
@@ -484,8 +489,8 @@ public class ExecutionContext {
 	{
 		MatrixObject mo = getMatrixObject(varName);
 		mo.acquireModify(outputData, opcode);
-	    mo.release(opcode);
-	    setVariable(varName, mo);
+		mo.release(opcode);
+		setVariable(varName, mo);
 	}
 
 	public void setMatrixOutput(String varName, MatrixBlock outputData, UpdateType flag, String opcode) 

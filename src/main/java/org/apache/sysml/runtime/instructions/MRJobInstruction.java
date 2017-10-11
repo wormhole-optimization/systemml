@@ -690,7 +690,7 @@ public class MRJobInstruction extends Instruction
 		LOG.debug("\nMRInstructions: \n" + this.toString());
 	}
 
-	private String getOps(String inst) {
+	private static String getOps(String inst) {
 		StringBuilder sb = new StringBuilder();
 		for ( String i : inst.split(Lop.INSTRUCTION_DELIMITOR)) {
 			sb.append(",");
@@ -804,7 +804,7 @@ public class MRJobInstruction extends Instruction
 	 * @return array of matrix objects
 	 */
 	public MatrixObject[] extractInputMatrices(ExecutionContext ec) {
-		ArrayList<MatrixObject> inputmat = new ArrayList<MatrixObject>();
+		ArrayList<MatrixObject> inputmat = new ArrayList<>();
 		inputDataTypes = new DataType[inputVars.length];
 		for ( int i=0; i < inputVars.length; i++ ) {
 			Data d = ec.getVariable(inputVars[i]);
@@ -1094,7 +1094,7 @@ public class MRJobInstruction extends Instruction
 		byte sharedIx = 0;
 		
 		//compute input index map (based on distinct filenames)
-		HashMap<String, Byte> inMap = new HashMap<String, Byte>();
+		HashMap<String, Byte> inMap = new HashMap<>();
 		for( int i=0; i<inputs.length; i++ )
 			inMap.put(inputs[i], (byte) i);
 		
@@ -1106,7 +1106,7 @@ public class MRJobInstruction extends Instruction
 		byte lenInputs = (byte)(inputs.length + that.inputs.length - sharedIx);
 		
 		//compute transition index map for instruction 1
-		HashMap<Byte, Byte> transMap1 = new HashMap<Byte,Byte>();
+		HashMap<Byte, Byte> transMap1 = new HashMap<>();
 		for( int i=0; i<inputs.length; i++ )
 			transMap1.put((byte)i, (byte)i);
 		for( int i=inputs.length; i<=maxIxInst1; i++ ) //remap intermediates and 
@@ -1115,7 +1115,7 @@ public class MRJobInstruction extends Instruction
 		}
 			
 		//compute transition index max for instruction 2
-		HashMap<Byte, Byte> transMap2 = new HashMap<Byte,Byte>();
+		HashMap<Byte, Byte> transMap2 = new HashMap<>();
 		byte nextIX = (byte)inputs.length;
 		for( int i=0; i<that.inputs.length; i++ ) {
 			if( !inMap.containsKey(that.inputs[i]) )
@@ -1216,7 +1216,7 @@ public class MRJobInstruction extends Instruction
 	 * @param transMap transition map
 	 * @return result string
 	 */
-	private String replaceInstructionStringWithTransMap( String inst, HashMap<Byte,Byte> transMap )
+	private static String replaceInstructionStringWithTransMap( String inst, HashMap<Byte,Byte> transMap )
 	{
 		//prevent unnecessary parsing and reconstruction
 		if( inst == null || inst.isEmpty() || transMap.isEmpty() )
@@ -1253,7 +1253,7 @@ public class MRJobInstruction extends Instruction
 		return instOut.toString();
 	}
 
-	private String concatenateInstructions(String inst1, String inst2)
+	private static String concatenateInstructions(String inst1, String inst2)
 	{
 		boolean emptyInst1 = (inst1 == null || inst1.length()==0);
 		boolean emptyInst2 = (inst2 == null || inst2.length()==0);

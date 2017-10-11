@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-#-------------------------------------------------------------
+# -------------------------------------------------------------
 #
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -18,7 +18,7 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-#-------------------------------------------------------------
+# -------------------------------------------------------------
 
 import sys
 from os.path import join
@@ -26,7 +26,7 @@ from utils_misc import config_writer, mat_type_check
 from utils_fs import relevant_folders
 
 # Contains configuration setting for predicting
-DATA_FORMAT = 'csv'
+DATA_FORMAT = 'binary'
 
 
 def m_svm_predict(save_folder_name, datagen_dir, train_dir, predict_dir, config_dir):

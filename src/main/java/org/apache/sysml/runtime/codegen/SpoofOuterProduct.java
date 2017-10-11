@@ -130,7 +130,7 @@ public abstract class SpoofOuterProduct extends SpoofOperator
 		try 
 		{
 			ExecutorService pool = Executors.newFixedThreadPool(k);
-			ArrayList<ParOuterProdAggTask> tasks = new ArrayList<ParOuterProdAggTask>();
+			ArrayList<ParOuterProdAggTask> tasks = new ArrayList<>();
 			int numThreads2 = getPreferredNumberOfTasks(m, n, nnz, k, numThreads);
 			int blklen = (int)(Math.ceil((double)m/numThreads2));
 			for( int i=0; i<numThreads2 & i*blklen<m; i++ )
@@ -180,7 +180,7 @@ public abstract class SpoofOuterProduct extends SpoofOperator
 		//check for empty inputs; otherwise allocate result
 		if( inputs.get(0).isEmptyBlock(false) )
 			return out;
-		out.allocateDenseOrSparseBlock();
+		out.allocateBlock();
 		
 		//input preparation
 		double[][] ab = getDenseMatrices(prepInputMatrices(inputs, 1, 2, true, false));
@@ -249,7 +249,7 @@ public abstract class SpoofOuterProduct extends SpoofOperator
 		{
 			//assign it to the time and sparse representation of the major input matrix
 			out.reset(inputs.get(0).getNumRows(), inputs.get(0).getNumColumns(), inputs.get(0).isInSparseFormat());
-			out.allocateDenseOrSparseBlock();
+			out.allocateBlock();
 		}
 		else
 		{
@@ -280,7 +280,7 @@ public abstract class SpoofOuterProduct extends SpoofOperator
 		try 
 		{			
 			ExecutorService pool = Executors.newFixedThreadPool(numThreads);
-			ArrayList<ParExecTask> tasks = new ArrayList<ParExecTask>();
+			ArrayList<ParExecTask> tasks = new ArrayList<>();
 			//create tasks (for wdivmm-left, parallelization over columns;
 			//for wdivmm-right, parallelization over rows; both ensure disjoint results)
 			

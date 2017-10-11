@@ -114,7 +114,7 @@ public class PlanSelectionFuseCostBased extends PlanSelection
 	private static void createAndAddMultiAggPlans(CPlanMemoTable memo, HashSet<Long> partition, HashSet<Long> R)
 	{
 		//create index of plans that reference full aggregates to avoid circular dependencies
-		HashSet<Long> refHops = new HashSet<Long>();
+		HashSet<Long> refHops = new HashSet<>();
 		for( Entry<Long, List<MemoTableEntry>> e : memo.getPlans().entrySet() )
 			if( !e.getValue().isEmpty() ) {
 				Hop hop = memo.getHopRefs().get(e.getKey());
@@ -124,7 +124,7 @@ public class PlanSelectionFuseCostBased extends PlanSelection
 		
 		//find all full aggregations (the fact that they are in the same partition guarantees 
 		//that they also have common subexpressions, also full aggregations are by def root nodes)
-		ArrayList<Long> fullAggs = new ArrayList<Long>();
+		ArrayList<Long> fullAggs = new ArrayList<>();
 		for( Long hopID : R ) {
 			Hop root = memo.getHopRefs().get(hopID);
 			if( !refHops.contains(hopID) && isMultiAggregateRoot(root) )
@@ -159,7 +159,7 @@ public class PlanSelectionFuseCostBased extends PlanSelection
 	private void createAndAddMultiAggPlans(CPlanMemoTable memo, ArrayList<Hop> roots)
 	{
 		//collect full aggregations as initial set of candidates
-		HashSet<Long> fullAggs = new HashSet<Long>();
+		HashSet<Long> fullAggs = new HashSet<>();
 		Hop.resetVisitStatus(roots);
 		for( Hop hop : roots )
 			rCollectFullAggregates(hop, fullAggs);
@@ -179,7 +179,7 @@ public class PlanSelectionFuseCostBased extends PlanSelection
 		
 		//collect information for all candidates 
 		//(subsumed aggregations, and inputs to fused operators) 
-		List<AggregateInfo> aggInfos = new ArrayList<AggregateInfo>();
+		List<AggregateInfo> aggInfos = new ArrayList<>();
 		for( Long hopID : fullAggs ) {
 			Hop aggHop = memo.getHopRefs().get(hopID);
 			AggregateInfo tmp = new AggregateInfo(aggHop);
@@ -272,7 +272,7 @@ public class PlanSelectionFuseCostBased extends PlanSelection
 		//they to not have potentially transitive parent child references
 		for( int i=0; ret && i<3; i++ ) 
 			if( me.isPlanRef(i) ) {
-				HashSet<Long> probe = new HashSet<Long>();
+				HashSet<Long> probe = new HashSet<>();
 				for( int j=0; j<3; j++ )
 					if( i != j )
 						probe.add(me.input(j));
@@ -331,7 +331,7 @@ public class PlanSelectionFuseCostBased extends PlanSelection
 			if( me.type == TemplateType.ROW && memo.contains(hopID, TemplateType.CELL)
 				&& isRowTemplateWithoutAgg(memo, memo.getHopRefs().get(hopID), new HashSet<Long>())) {
 				List<MemoTableEntry> blacklist = memo.get(hopID, TemplateType.ROW); 
-				memo.remove(memo.getHopRefs().get(hopID), new HashSet<MemoTableEntry>(blacklist));
+				memo.remove(memo.getHopRefs().get(hopID), new HashSet<>(blacklist));
 				if( LOG.isTraceEnabled() ) {
 					LOG.trace("Removed row memo table entries w/o aggregation: "
 						+ Arrays.toString(blacklist.toArray(new MemoTableEntry[0])));
@@ -368,7 +368,7 @@ public class PlanSelectionFuseCostBased extends PlanSelection
 			//via skip ahead in below enumeration algorithm
 			
 			//obtain hop compute costs per cell once
-			HashMap<Long, Double> computeCosts = new HashMap<Long, Double>();
+			HashMap<Long, Double> computeCosts = new HashMap<>();
 			for( Long hopID : R )
 				rGetComputeCosts(memo.getHopRefs().get(hopID), partition, computeCosts);
 			
@@ -401,11 +401,11 @@ public class PlanSelectionFuseCostBased extends PlanSelection
 			}
 			
 			//prune memo table wrt best plan and select plans
-			HashSet<Long> visited = new HashSet<Long>();
+			HashSet<Long> visited = new HashSet<>();
 			for( Long hopID : R )
 				rPruneSuboptimalPlans(memo, memo.getHopRefs().get(hopID), 
 					visited, partition, M, bestPlan);
-			HashSet<Long> visited2 = new HashSet<Long>();
+			HashSet<Long> visited2 = new HashSet<>();
 			for( Long hopID : R )
 				rPruneInvalidPlans(memo, memo.getHopRefs().get(hopID), 
 					visited2, partition, M, bestPlan);
@@ -507,51 +507,8 @@ public class PlanSelectionFuseCostBased extends PlanSelection
 			}
 		}
 		
-		visited.add(current.getHopID());		
+		visited.add(current.getHopID());
 	}
-	
-	private void rSelectPlansFuseAll(CPlanMemoTable memo, Hop current, TemplateType currentType, HashSet<Long> partition) 
-	{	
-		if( isVisited(current.getHopID(), currentType) 
-			|| !partition.contains(current.getHopID()) )
-			return;
-		
-		//step 1: prune subsumed plans of same type
-		if( memo.contains(current.getHopID()) ) {
-			HashSet<MemoTableEntry> rmSet = new HashSet<MemoTableEntry>();
-			List<MemoTableEntry> hopP = memo.get(current.getHopID());
-			for( MemoTableEntry e1 : hopP )
-				for( MemoTableEntry e2 : hopP )
-					if( e1 != e2 && e1.subsumes(e2) )
-						rmSet.add(e2);
-			memo.remove(current, rmSet);
-		}
-		
-		//step 2: select plan for current path
-		MemoTableEntry best = null;
-		if( memo.contains(current.getHopID()) ) {
-			if( currentType == null ) {
-				best = memo.get(current.getHopID()).stream()
-					.filter(p -> isValid(p, current))
-					.min(new BasicPlanComparator()).orElse(null);
-			}
-			else {
-				best = memo.get(current.getHopID()).stream()
-					.filter(p -> p.type==currentType || p.type==TemplateType.CELL)
-					.min(Comparator.comparing(p -> 7-((p.type==currentType)?4:0)-p.countPlanRefs()))
-					.orElse(null);
-			}
-			addBestPlan(current.getHopID(), best);
-		}
-		
-		//step 3: recursively process children
-		for( int i=0; i< current.getInput().size(); i++ ) {
-			TemplateType pref = (best!=null && best.isPlanRef(i))? best.type : null;
-			rSelectPlansFuseAll(memo, current.getInput().get(i), pref, partition);
-		}
-		
-		setVisited(current.getHopID(), currentType);
-	}	
 	
 	private static boolean[] createAssignment(int len, int pos) {
 		boolean[] ret = new boolean[len]; 
@@ -575,7 +532,7 @@ public class PlanSelectionFuseCostBased extends PlanSelection
 		//READ costs by the input sizes, and COMPUTE by operation specific FLOP
 		//counts times number of cells of main input, disregarding sparsity for now.
 		
-		HashSet<Pair<Long,Long>> visited = new HashSet<Pair<Long,Long>>();
+		HashSet<Pair<Long,Long>> visited = new HashSet<>();
 		double costs = 0;
 		for( Long hopID : R )
 			costs += rGetPlanCosts(memo, memo.getHopRefs().get(hopID), 
@@ -701,6 +658,9 @@ public class PlanSelectionFuseCostBased extends PlanSelection
 				case ASIN:    costs = 93; break;
 				case ACOS:    costs = 103; break;
 				case ATAN:    costs = 40; break;
+				case SINH:    costs = 93; break; // TODO:
+				case COSH:    costs = 103; break;
+				case TANH:    costs = 40; break;
 				case CUMSUM:
 				case CUMMIN:
 				case CUMMAX:
@@ -828,7 +788,7 @@ public class PlanSelectionFuseCostBased extends PlanSelection
 		public final long ID;
 		public final double outSize; 
 		public double computeCosts = 0;
-		public final HashMap<Long, Double> inSizes = new HashMap<Long, Double>();
+		public final HashMap<Long, Double> inSizes = new HashMap<>();
 		
 		public CostVector(double outputSize) {
 			ID = COST_ID.getNextID();
@@ -856,10 +816,10 @@ public class PlanSelectionFuseCostBased extends PlanSelection
 	
 	private static class AggregateInfo {
 		public final HashMap<Long,Hop> _aggregates;
-		public final HashSet<Long> _inputAggs = new HashSet<Long>();
-		public final HashSet<Long> _fusedInputs = new HashSet<Long>();
+		public final HashSet<Long> _inputAggs = new HashSet<>();
+		public final HashSet<Long> _fusedInputs = new HashSet<>();
 		public AggregateInfo(Hop aggregate) {
-			_aggregates = new HashMap<Long, Hop>();
+			_aggregates = new HashMap<>();
 			_aggregates.put(aggregate.getHopID(), aggregate);
 		}
 		public void addInputAggregate(long hopID) {

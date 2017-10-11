@@ -40,6 +40,8 @@ import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
 
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.sysml.api.DMLScript;
 import org.apache.sysml.hops.codegen.SpoofCompiler;
 import org.apache.sysml.hops.codegen.SpoofCompiler.CompilerType;
@@ -51,11 +53,13 @@ import org.codehaus.janino.SimpleCompiler;
 
 public class CodegenUtils 
 {
+	private static final Log LOG = LogFactory.getLog(CodegenUtils.class.getName());
+	
 	//cache to reuse compiled and loaded classes 
-	private static ConcurrentHashMap<String, Class<?>> _cache = new ConcurrentHashMap<String,Class<?>>();
+	private static ConcurrentHashMap<String, Class<?>> _cache = new ConcurrentHashMap<>();
 	
 	//janino-specific map of source code transfer/recompile on-demand
-	private static ConcurrentHashMap<String, String> _src = new ConcurrentHashMap<String,String>();
+	private static ConcurrentHashMap<String, String> _src = new ConcurrentHashMap<>();
 	
 	//javac-specific working directory for src/class files
 	private static String _workingDir = null;
@@ -167,6 +171,7 @@ public class CodegenUtils
 				.loadClass(name);
 		}
 		catch(Exception ex) {
+			LOG.error("Failed to compile class "+name+": \n"+src);
 			throw new DMLRuntimeException("Failed to compile class "+name+".", ex);
 		}
 	}	
@@ -195,7 +200,7 @@ public class CodegenUtils
 				throw new RuntimeException("Unable to obtain system java compiler.");
 		
 			//prepare file manager
-			DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<JavaFileObject>(); 
+			DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>(); 
 			StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, null, null);
 			
 			//prepare input source code
@@ -232,7 +237,8 @@ public class CodegenUtils
 			}
 		}
 		catch(Exception ex) {
-			throw new DMLRuntimeException(ex);
+			LOG.error("Failed to compile class "+name+": \n"+src);
+			throw new DMLRuntimeException("Failed to compile class "+name+".", ex);
 		}
 	}
 	

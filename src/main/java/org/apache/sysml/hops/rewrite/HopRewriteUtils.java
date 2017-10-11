@@ -303,7 +303,7 @@ public class HopRewriteUtils
 			       new UnaryOp("tmpcols", DataType.SCALAR, ValueType.INT, OpOp1.NCOL, input);
 		Hop val = new LiteralOp(value);
 		
-		HashMap<String, Hop> params = new HashMap<String, Hop>();
+		HashMap<String, Hop> params = new HashMap<>();
 		params.put(DataExpression.RAND_ROWS, rows);
 		params.put(DataExpression.RAND_COLS, cols);
 		params.put(DataExpression.RAND_MIN, val);
@@ -359,14 +359,14 @@ public class HopRewriteUtils
 		Hop sminHop = new LiteralOp(smin);
 		Hop smaxHop = new LiteralOp(smax);
 		
-		HashMap<String, Hop> params2 = new HashMap<String, Hop>();
+		HashMap<String, Hop> params2 = new HashMap<>();
 		params2.put(DataExpression.RAND_ROWS, rows);
 		params2.put(DataExpression.RAND_COLS, cols);
 		params2.put(DataExpression.RAND_MIN, sminHop);
 		params2.put(DataExpression.RAND_MAX, smaxHop);
 		params2.put(DataExpression.RAND_PDF, pdf);
 		params2.put(DataExpression.RAND_LAMBDA, mean);
-		params2.put(DataExpression.RAND_SPARSITY, sparsity);		
+		params2.put(DataExpression.RAND_SPARSITY, sparsity);
 		params2.put(DataExpression.RAND_SEED, seed );
 		
 		//note internal refresh size information
@@ -389,7 +389,7 @@ public class HopRewriteUtils
 			       new UnaryOp("tmpcols", DataType.SCALAR, ValueType.INT, OpOp1.NCOL, colInput);
 		Hop val = new LiteralOp(value);
 		
-		HashMap<String, Hop> params = new HashMap<String, Hop>();
+		HashMap<String, Hop> params = new HashMap<>();
 		params.put(DataExpression.RAND_ROWS, rows);
 		params.put(DataExpression.RAND_COLS, cols);
 		params.put(DataExpression.RAND_MIN, val);
@@ -422,7 +422,7 @@ public class HopRewriteUtils
 			       new UnaryOp("tmpcols", DataType.SCALAR, ValueType.INT, tColInput?OpOp1.NROW:OpOp1.NCOL, colInput);
 		Hop val = new LiteralOp(value);
 		
-		HashMap<String, Hop> params = new HashMap<String, Hop>();
+		HashMap<String, Hop> params = new HashMap<>();
 		params.put(DataExpression.RAND_ROWS, rows);
 		params.put(DataExpression.RAND_COLS, cols);
 		params.put(DataExpression.RAND_MIN, val);
@@ -448,7 +448,7 @@ public class HopRewriteUtils
 	{		
 		Hop val = new LiteralOp(value);
 		
-		HashMap<String, Hop> params = new HashMap<String, Hop>();
+		HashMap<String, Hop> params = new HashMap<>();
 		params.put(DataExpression.RAND_ROWS, rowInput);
 		params.put(DataExpression.RAND_COLS, colInput);
 		params.put(DataExpression.RAND_MIN, val);
@@ -470,14 +470,24 @@ public class HopRewriteUtils
 	}
 	
 	public static boolean isDataGenOp(Hop hop, DataGenMethod... ops) {
-		return (hop instanceof DataGenOp
+		return (hop instanceof DataGenOp 
 			&& ArrayUtils.contains(ops, ((DataGenOp)hop).getOp()));
+	}
+
+	public static boolean isDataGenOpWithConstantValue(Hop hop) {
+		return hop instanceof DataGenOp
+			&& ((DataGenOp)hop).getOp()==DataGenMethod.RAND
+			&& ((DataGenOp)hop).hasConstantValue();
 	}
 
 	public static boolean isDataGenOpWithConstantValue(Hop hop, double value) {
 		return hop instanceof DataGenOp
 			&& ((DataGenOp)hop).getOp()==DataGenMethod.RAND
 			&& ((DataGenOp)hop).hasConstantValue(value);
+	}
+
+	public static Hop getDataGenOpConstantValue(Hop hop) {
+		return ((DataGenOp) hop).getConstantValue();
 	}
 
 	public static ReorgOp createTranspose(Hop input) {
@@ -517,12 +527,11 @@ public class HopRewriteUtils
 		return createBinary(new LiteralOp(0), input, OpOp2.MINUS);
 	}
 	
-	public static BinaryOp createBinary(Hop input1, Hop input2, OpOp2 op)
-	{
+	public static BinaryOp createBinary(Hop input1, Hop input2, OpOp2 op) {
 		return createBinary(input1, input2, op, false);
 	}
-
-	public static BinaryOp createBinary(Hop input1, Hop input2, OpOp2 op, boolean outer){
+	
+	public static BinaryOp createBinary(Hop input1, Hop input2, OpOp2 op, boolean outer) {
 		Hop mainInput = input1.getDataType().isMatrix() ? input1 : 
 			input2.getDataType().isMatrix() ? input2 : input1;
 		BinaryOp bop = new BinaryOp(mainInput.getName(), mainInput.getDataType(), 
@@ -629,7 +638,7 @@ public class HopRewriteUtils
 		Hop to = (input.getDim1()>0) ? new LiteralOp(input.getDim1()) : 
 			       new UnaryOp("tmprows", DataType.SCALAR, ValueType.INT, OpOp1.NROW, input);
 		
-		HashMap<String, Hop> params = new HashMap<String, Hop>();
+		HashMap<String, Hop> params = new HashMap<>();
 		if( asc ) {
 			params.put(Statement.SEQ_FROM, new LiteralOp(1));
 			params.put(Statement.SEQ_TO, to);
@@ -664,7 +673,7 @@ public class HopRewriteUtils
 		dop.refreshSizeInformation();
 		return dop;
 	}
-
+	
 	public static void setOutputParameters( Hop hop, long rlen, long clen, long brlen, long bclen, long nnz ) {
 		hop.setDim1( rlen );
 		hop.setDim2( clen );
@@ -773,13 +782,17 @@ public class HopRewriteUtils
 		String opcode = Hop.getBinaryOpCode(op);
 		return (Hop.getOpOp2ForOuterVectorOperation(opcode) == op);
 	}
-
+	
 	public static boolean isSparse( Hop hop ) {
 		return hop.dimsKnown(true) //dims and nnz known
 			&& MatrixBlock.evalSparseFormatInMemory(hop.getDim1(), hop.getDim2(), hop.getNnz());
 	}
 	
-	public static boolean isEqualValue( LiteralOp hop1, LiteralOp hop2 ) 
+	public static boolean isSparse( Hop hop, double threshold ) {
+		return hop.getSparsity() < threshold;
+	}
+
+	public static boolean isEqualValue( LiteralOp hop1, LiteralOp hop2 )
 		throws HopsException
 	{
 		//check for string (no defined double value)
@@ -865,7 +878,7 @@ public class HopRewriteUtils
 		return lit != null && OptimizerUtils
 			.isBinaryOpSparsityConditionalSparseSafe(bop.getOp(), (LiteralOp)lit);
 	}
-
+	
 	public static boolean isBinaryMatrixScalarOperation(Hop hop) {
 		return hop instanceof BinaryOp && 
 			((hop.getInput().get(0).getDataType().isMatrix() && hop.getInput().get(1).getDataType().isScalar())
@@ -887,9 +900,9 @@ public class HopRewriteUtils
 	}
 	
 	public static boolean containsInput(Hop current, Hop probe) {
-		return rContainsInput(current, probe, new HashSet<Long>());
+		return rContainsInput(current, probe, new HashSet<Long>());	
 	}
-
+	
 	private static boolean rContainsInput(Hop current, Hop probe, HashSet<Long> memo) {
 		if( memo.contains(current.getHopID()) )
 			return false;
@@ -905,7 +918,7 @@ public class HopRewriteUtils
 		return hop instanceof DataOp
 			&& ((DataOp)hop).getDataOpType()==type;
 	}
-
+	
 	public static boolean isBinaryMatrixColVectorOperation(Hop hop) {
 		return hop instanceof BinaryOp 
 			&& hop.getInput().get(0).getDataType().isMatrix() && hop.getInput().get(1).getDataType().isMatrix()
@@ -971,7 +984,7 @@ public class HopRewriteUtils
 		//TODO extend by input/output size conditions, which are currently
 		//invalid due to temporarily incorrect size information
 	}
-
+	
 	public static boolean isFullRowIndexing(LeftIndexingOp hop) {
 		return hop.isRowLowerEqualsUpper()
 			&& isLiteralOfValue(hop.getInput().get(4), 1)
@@ -1036,7 +1049,7 @@ public class HopRewriteUtils
 		return ret;
 	}
 
-	public static Hop getBasic1NSequenceMax(Hop hop)
+	public static Hop getBasic1NSequenceMax(Hop hop) 
 		throws HopsException
 	{
 		if( isDataGenOp(hop, DataGenMethod.SEQ) ) {
@@ -1082,7 +1095,7 @@ public class HopRewriteUtils
 					return true;
 		return false;
 	}
-
+	
 	public static boolean rHasSimpleReadChain(Hop root, String var)
 	{
 		if( root.isVisited() )

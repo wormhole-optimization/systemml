@@ -175,7 +175,10 @@ public class DMLScript
 	
 	public static boolean           USE_ACCELERATOR     = DMLOptions.defaultOptions.gpu;
 	public static boolean           FORCE_ACCELERATOR   = DMLOptions.defaultOptions.forceGPU;
-	public static boolean           SYNCHRONIZE_GPU  	= true;   									// whether to synchronize GPU after every instruction
+	// whether to synchronize GPU after every instruction
+	public static boolean           SYNCHRONIZE_GPU  	= true;
+	// whether to perform eager CUDA free on rmvar
+	public static boolean           EAGER_CUDA_FREE  	= false;
 
 
 	public static boolean _suppressPrint2Stdout = false;  // flag that indicates whether or not to suppress any prints to stdout
@@ -859,7 +862,7 @@ public class DMLScript
 	{
 		//analyze local configuration
 		String userName = System.getProperty( "user.name" );
-		HashSet<String> groupNames = new HashSet<String>();
+		HashSet<String> groupNames = new HashSet<>();
 		try{
 			//check existence, for backwards compatibility to < hadoop 0.21
 			if( UserGroupInformation.class.getMethod("getCurrentUser") != null ){

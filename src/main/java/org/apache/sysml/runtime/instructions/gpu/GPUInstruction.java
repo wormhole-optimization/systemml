@@ -48,7 +48,7 @@ public abstract class GPUInstruction extends Instruction {
 		BuiltinBinary,
 		Builtin,
 		MatrixIndexing
-	};
+	}
 	
 	private static final Log LOG = LogFactory.getLog(GPUInstruction.class.getName());
 
@@ -61,7 +61,8 @@ public abstract class GPUInstruction extends Instruction {
 	public final static String MISC_TIMER_ROW_TO_COLUMN_MAJOR =     "r2c";	// time spent in converting data from row major to column major
 	public final static String MISC_TIMER_COLUMN_TO_ROW_MAJOR =     "c2r";	// time spent in converting data from column major to row major
 	public final static String MISC_TIMER_OBJECT_CLONE =            "clone";// time spent in cloning (deep copying) a GPUObject instance
-
+	public final static String MISC_TIMER_CUDA_SYNC =            	"sync"; // time spent in device sync
+	
 	public final static String MISC_TIMER_CUDA_FREE =               "f";		// time spent in calling cudaFree
 	public final static String MISC_TIMER_ALLOCATE =                "a";		// time spent to allocate memory on gpu
 	public final static String MISC_TIMER_ALLOCATE_DENSE_OUTPUT =   "ad";		// time spent to allocate dense output (recorded differently than MISC_TIMER_ALLOCATE)
@@ -104,6 +105,9 @@ public abstract class GPUInstruction extends Instruction {
 	public final static String MISC_TIMER_SIN_KERNEL =                       "sink";   // time spent in the sin kernel
 	public final static String MISC_TIMER_COS_KERNEL =                       "cosk";   // time spent in the cos kernel
 	public final static String MISC_TIMER_TAN_KERNEL =                       "tank";   // time spent in the tan kernel
+	public final static String MISC_TIMER_SINH_KERNEL =                       "sinhk";   // time spent in the sinh kernel
+	public final static String MISC_TIMER_COSH_KERNEL =                       "coshk";   // time spent in the cosh kernel
+	public final static String MISC_TIMER_TANH_KERNEL =                       "tanhk";   // time spent in the tanh kernel
 	public final static String MISC_TIMER_ASIN_KERNEL =                      "asink";   // time spent in the asin kernel
 	public final static String MISC_TIMER_ACOS_KERNEL =                      "acosk";   // time spent in the acos kernel
 	public final static String MISC_TIMER_ATAN_KERNEL =                      "atank";   // time spent in the atan kernel
@@ -120,7 +124,8 @@ public abstract class GPUInstruction extends Instruction {
 	public final static String MISC_TIMER_REDUCE_COL_KERNEL =                "rcolk";  // time spent in reduce column kernel
 	
 	public final static String MISC_TIMER_RIX_DENSE_OP =                     "drix";    // time spent in the right indexing dense kernel
-	public final static String MISC_TIMER_RIX_SPARSE_DENSE_OP =              "sdrix";   // time spent in the right indexing sparse dense kernel
+	public final static String MISC_TIMER_RIX_SPARSE_DENSE_OP_ROWWISE =      "sdrixr";   // time spent in the right indexing sparse dense kernel (row-wise parallelism)
+	public final static String MISC_TIMER_RIX_SPARSE_DENSE_OP_NNZ =      	 "sdrixn";   // time spent in the right indexing sparse dense kernel (nnz parallelism)
 
 	// Deep learning operators
 	public final static String MISC_TIMER_ACTIVATION_FORWARD_LIB =         "nnaf";  // time spent in cudnnActivationForward
@@ -194,7 +199,11 @@ public abstract class GPUInstruction extends Instruction {
 					throws DMLRuntimeException
 	{
 		if(DMLScript.SYNCHRONIZE_GPU) {
+			long t0 = GPUStatistics.DISPLAY_STATISTICS ? System.nanoTime() : 0;
 			jcuda.runtime.JCuda.cudaDeviceSynchronize();
+			if(GPUStatistics.DISPLAY_STATISTICS) {
+				GPUStatistics.maintainCPMiscTimes(getExtendedOpcode(), GPUInstruction.MISC_TIMER_CUDA_SYNC, System.nanoTime() - t0);
+			}
 		}
 		if(LOG.isDebugEnabled()) {
 			for(GPUContext gpuCtx : ec.getGPUContexts()) {

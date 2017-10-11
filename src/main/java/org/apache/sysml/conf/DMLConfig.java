@@ -41,6 +41,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.hops.codegen.SpoofCompiler.CompilerType;
+import org.apache.sysml.hops.codegen.SpoofCompiler.PlanSelector;
 import org.apache.sysml.lops.Compression;
 import org.apache.sysml.parser.ParseException;
 import org.apache.sysml.runtime.DMLRuntimeException;
@@ -61,36 +62,37 @@ public class DMLConfig
 	
 	// external names of configuration properties 
 	// (single point of change for all internal refs)
-	public static final String LOCAL_TMP_DIR        = "localtmpdir";
-	public static final String SCRATCH_SPACE        = "scratch";
-	public static final String OPTIMIZATION_LEVEL   = "optlevel";	
-	public static final String NUM_REDUCERS         = "numreducers";
-	public static final String JVM_REUSE            = "jvmreuse";
-	public static final String DEFAULT_BLOCK_SIZE   = "defaultblocksize"; 	
-	public static final String YARN_APPMASTER       = "dml.yarn.appmaster"; 	
-	public static final String YARN_APPMASTERMEM    = "dml.yarn.appmaster.mem"; 
-	public static final String YARN_MAPREDUCEMEM    = "dml.yarn.mapreduce.mem"; 
-	public static final String YARN_APPQUEUE        = "dml.yarn.app.queue"; 
-	public static final String CP_PARALLEL_OPS      = "cp.parallel.ops";
-	public static final String CP_PARALLEL_IO       = "cp.parallel.io";
-	public static final String COMPRESSED_LINALG    = "compressed.linalg"; //auto, true, false
-	public static final String NATIVE_BLAS          = "native.blas";
-	public static final String SPOOF                = "spoof.enabled"; //boolean
-	public static final String CODEGEN              = "codegen.enabled"; //boolean
-	public static final String CODEGEN_COMPILER     = "codegen.compiler"; //see SpoofCompiler.CompilerType
-	public static final String CODEGEN_PLANCACHE    = "codegen.plancache"; //boolean
-	public static final String CODEGEN_LITERALS     = "codegen.literals"; //1..heuristic, 2..always
+	public static final String LOCAL_TMP_DIR        = "sysml.localtmpdir";
+	public static final String SCRATCH_SPACE        = "sysml.scratch";
+	public static final String OPTIMIZATION_LEVEL   = "sysml.optlevel";
+	public static final String NUM_REDUCERS         = "sysml.numreducers";
+	public static final String JVM_REUSE            = "sysml.jvmreuse";
+	public static final String DEFAULT_BLOCK_SIZE   = "sysml.defaultblocksize";
+	public static final String YARN_APPMASTER       = "sysml.yarn.appmaster";
+	public static final String YARN_APPMASTERMEM    = "sysml.yarn.appmaster.mem";
+	public static final String YARN_MAPREDUCEMEM    = "sysml.yarn.mapreduce.mem";
+	public static final String YARN_APPQUEUE        = "sysml.yarn.app.queue";
+	public static final String CP_PARALLEL_OPS      = "sysml.cp.parallel.ops";
+	public static final String CP_PARALLEL_IO       = "sysml.cp.parallel.io";
+	public static final String COMPRESSED_LINALG    = "sysml.compressed.linalg"; //auto, true, false
+	public static final String NATIVE_BLAS          = "sysml.native.blas";
+    public static final String SPOOF                = "spoof.enabled"; //boolean
+	public static final String CODEGEN              = "sysml.codegen.enabled"; //boolean
+	public static final String CODEGEN_COMPILER     = "sysml.codegen.compiler"; //see SpoofCompiler.CompilerType
+	public static final String CODEGEN_OPTIMIZER    = "sysml.codegen.optimizer"; //see SpoofCompiler.PlanSelector
+	public static final String CODEGEN_PLANCACHE    = "sysml.codegen.plancache"; //boolean
+	public static final String CODEGEN_LITERALS     = "sysml.codegen.literals"; //1..heuristic, 2..always
 
-	public static final String EXTRA_FINEGRAINED_STATS = "systemml.stats.finegrained"; //boolean
-	public static final String STATS_MAX_WRAP_LEN = "systemml.stats.maxWrapLength"; //int
-	public static final String EXTRA_GPU_STATS      = "systemml.stats.extraGPU"; //boolean
-	public static final String EXTRA_DNN_STATS      = "systemml.stats.extraDNN"; //boolean
-	public static final String AVAILABLE_GPUS       = "systemml.gpu.availableGPUs"; // String to specify which GPUs to use (a range, all GPUs, comma separated list or a specific GPU)
-	public static final String SYNCHRONIZE_GPU       = "systemml.gpu.sync.postProcess"; // boolean: whether to synchronize GPUs after every instruction
-
+	public static final String EXTRA_FINEGRAINED_STATS = "sysml.stats.finegrained"; //boolean
+	public static final String STATS_MAX_WRAP_LEN   = "sysml.stats.maxWrapLength"; //int
+	public static final String EXTRA_GPU_STATS      = "sysml.stats.extraGPU"; //boolean
+	public static final String EXTRA_DNN_STATS      = "sysml.stats.extraDNN"; //boolean
+	public static final String AVAILABLE_GPUS       = "sysml.gpu.availableGPUs"; // String to specify which GPUs to use (a range, all GPUs, comma separated list or a specific GPU)
+	public static final String SYNCHRONIZE_GPU      = "sysml.gpu.sync.postProcess"; // boolean: whether to synchronize GPUs after every instruction
+	public static final String EAGER_CUDA_FREE		= "sysml.gpu.eager.cudaFree"; // boolean: whether to perform eager CUDA free on rmvar
 	// Fraction of available memory to use. The available memory is computer when the GPUContext is created
 	// to handle the tradeoff on calling cudaMemGetInfo too often.
-	public static final String GPU_MEMORY_UTILIZATION_FACTOR    = "gpu.memory.util.factor";
+	public static final String GPU_MEMORY_UTILIZATION_FACTOR = "sysml.gpu.memory.util.factor";
 
 	// supported prefixes for custom map/reduce configurations
 	public static final String PREFIX_MAPRED = "mapred";
@@ -107,10 +109,10 @@ public class DMLConfig
 	private Element _xmlRoot = null;
 	private DocumentBuilder _documentBuilder = null;
 	private Document _document = null;
-
+	
 	static
 	{
-		_defaultVals = new HashMap<String, String>();
+		_defaultVals = new HashMap<>();
 		_defaultVals.put(LOCAL_TMP_DIR,          "/tmp/systemml" );
 		_defaultVals.put(SCRATCH_SPACE,          "scratch_space" );
 		_defaultVals.put(OPTIMIZATION_LEVEL,     String.valueOf(OptimizerUtils.DEFAULT_OPTLEVEL.ordinal()) );
@@ -127,6 +129,7 @@ public class DMLConfig
 		_defaultVals.put(SPOOF,                  "true" );  // hehe
 		_defaultVals.put(CODEGEN,                "false" );
 		_defaultVals.put(CODEGEN_COMPILER,       CompilerType.AUTO.name() );
+		_defaultVals.put(CODEGEN_OPTIMIZER,      PlanSelector.FUSE_COST_BASED_V2.name() );
 		_defaultVals.put(CODEGEN_PLANCACHE,      "true" );
 		_defaultVals.put(CODEGEN_LITERALS,       "1" );
 		_defaultVals.put(NATIVE_BLAS,            "none" );
@@ -136,7 +139,8 @@ public class DMLConfig
 		_defaultVals.put(EXTRA_DNN_STATS,        "false" );
 		_defaultVals.put(GPU_MEMORY_UTILIZATION_FACTOR,      "0.9" );
 		_defaultVals.put(AVAILABLE_GPUS,         "-1");
-		_defaultVals.put(SYNCHRONIZE_GPU,        "false" );
+		_defaultVals.put(SYNCHRONIZE_GPU,        "true" );
+		_defaultVals.put(EAGER_CUDA_FREE,        "false" );
 	}
 	
 	public DMLConfig()
@@ -301,7 +305,7 @@ public class DMLConfig
 	 */
 	public Map<String, String> getCustomMRConfig()
 	{
-		HashMap<String, String> ret = new HashMap<String, String>();
+		HashMap<String, String> ret = new HashMap<>();
 	
 		//check for non-existing config xml tree
 		if( _xmlRoot == null )
@@ -416,10 +420,10 @@ public class DMLConfig
 				NUM_REDUCERS, DEFAULT_BLOCK_SIZE,
 				YARN_APPMASTER, YARN_APPMASTERMEM, YARN_MAPREDUCEMEM, 
 				CP_PARALLEL_OPS, CP_PARALLEL_IO, NATIVE_BLAS,
-				COMPRESSED_LINALG,
-				CODEGEN, CODEGEN_COMPILER, CODEGEN_PLANCACHE, CODEGEN_LITERALS,
+				COMPRESSED_LINALG, 
+				CODEGEN, CODEGEN_COMPILER, CODEGEN_OPTIMIZER, CODEGEN_PLANCACHE, CODEGEN_LITERALS,
 				EXTRA_GPU_STATS, EXTRA_DNN_STATS, EXTRA_FINEGRAINED_STATS, STATS_MAX_WRAP_LEN,
-				AVAILABLE_GPUS, SYNCHRONIZE_GPU
+				AVAILABLE_GPUS, SYNCHRONIZE_GPU, EAGER_CUDA_FREE
 		}; 
 		
 		StringBuilder sb = new StringBuilder();

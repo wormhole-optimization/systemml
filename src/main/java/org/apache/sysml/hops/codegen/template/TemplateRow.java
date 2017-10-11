@@ -50,6 +50,7 @@ import org.apache.sysml.hops.Hop.Direction;
 import org.apache.sysml.hops.Hop.OpOp1;
 import org.apache.sysml.hops.Hop.OpOp2;
 import org.apache.sysml.parser.Expression.DataType;
+import org.apache.sysml.runtime.codegen.SpoofRowwise.RowType;
 import org.apache.sysml.runtime.matrix.data.LibMatrixMult;
 import org.apache.sysml.runtime.matrix.data.Pair;
 
@@ -58,6 +59,7 @@ public class TemplateRow extends TemplateBase
 	private static final Hop.AggOp[] SUPPORTED_ROW_AGG = new AggOp[]{AggOp.SUM, AggOp.MIN, AggOp.MAX};
 	private static final Hop.OpOp1[] SUPPORTED_VECT_UNARY = new OpOp1[]{
 			OpOp1.EXP, OpOp1.SQRT, OpOp1.LOG, OpOp1.ABS, OpOp1.ROUND, OpOp1.CEIL, OpOp1.FLOOR, OpOp1.SIGN,
+			OpOp1.SIN, OpOp1.COS, OpOp1.TAN, OpOp1.ASIN, OpOp1.ACOS, OpOp1.ATAN, OpOp1.SINH, OpOp1.COSH, OpOp1.TANH,
 			OpOp1.CUMSUM, OpOp1.CUMMIN, OpOp1.CUMMAX};
 	private static final Hop.OpOp2[] SUPPORTED_VECT_BINARY = new OpOp2[]{
 			OpOp2.MULT, OpOp2.DIV, OpOp2.MINUS, OpOp2.PLUS, OpOp2.POW, OpOp2.MIN, OpOp2.MAX,
@@ -75,6 +77,8 @@ public class TemplateRow extends TemplateBase
 	public boolean open(Hop hop) {
 		return (hop instanceof BinaryOp && hop.dimsKnown() && isValidBinaryOperation(hop)
 				&& hop.getInput().get(0).getDim1()>1 && hop.getInput().get(0).getDim2()>1)
+			|| (HopRewriteUtils.isBinary(hop, OpOp2.CBIND) && hop.getInput().get(0).isMatrix()
+				&& hop.dimsKnown() && TemplateUtils.isColVector(hop.getInput().get(1)))
 			|| (hop instanceof AggBinaryOp && hop.dimsKnown() && hop.getDim2()==1 //MV
 				&& hop.getInput().get(0).getDim1()>1 && hop.getInput().get(0).getDim2()>1)
 			|| (hop instanceof AggBinaryOp && hop.dimsKnown() && LibMatrixMult.isSkinnyRightHandSide(
@@ -97,10 +101,9 @@ public class TemplateRow extends TemplateBase
 		return !isClosed() && 
 			(  (hop instanceof BinaryOp && isValidBinaryOperation(hop) ) 
 			|| (HopRewriteUtils.isBinary(hop, OpOp2.CBIND) && hop.getInput().indexOf(input)==0
-				&& input.getDim2()==1 && hop.getInput().get(1).getDim2()==1
-				&& HopRewriteUtils.isEmpty(hop.getInput().get(1)))
+				&& hop.dimsKnown() && TemplateUtils.isColVector(hop.getInput().get(1)))
 			|| ((hop instanceof UnaryOp || hop instanceof ParameterizedBuiltinOp) 
-					&& TemplateCell.isValidOperation(hop))
+				&& TemplateCell.isValidOperation(hop))
 			|| (hop instanceof AggUnaryOp && ((AggUnaryOp)hop).getDirection()!=Direction.RowCol
 				&& HopRewriteUtils.isAggUnaryOp(hop, SUPPORTED_ROW_AGG))
 			|| (hop instanceof AggUnaryOp && ((AggUnaryOp)hop).getDirection() == Direction.RowCol 
@@ -118,7 +121,9 @@ public class TemplateRow extends TemplateBase
 		//merge rowagg tpl with cell tpl if input is a vector
 		return !isClosed() &&
 			((hop instanceof BinaryOp && isValidBinaryOperation(hop)
-				&& hop.getDim1() > 1 && input.getDim1()>1) 
+				&& hop.getDim1() > 1 && input.getDim1()>1)
+			|| (HopRewriteUtils.isBinary(hop, OpOp2.CBIND) && hop.getInput().get(0).isMatrix()
+				&& hop.dimsKnown() && TemplateUtils.isColVector(hop.getInput().get(1)))
 			 ||(hop instanceof AggBinaryOp
 				&& HopRewriteUtils.isTransposeOperation(hop.getInput().get(0))
 			 	&& (input.getDim2()==1 || (input==hop.getInput().get(1) 
@@ -129,8 +134,7 @@ public class TemplateRow extends TemplateBase
 	public CloseType close(Hop hop) {
 		//close on column or full aggregate (e.g., colSums, t(X)%*%y)
 		if(    (hop instanceof AggUnaryOp && ((AggUnaryOp)hop).getDirection()!=Direction.Row)
-			|| (hop instanceof AggBinaryOp && HopRewriteUtils.isTransposeOperation(hop.getInput().get(0)))
-			|| HopRewriteUtils.isBinary(hop, OpOp2.CBIND) )
+			|| (hop instanceof AggBinaryOp && HopRewriteUtils.isTransposeOperation(hop.getInput().get(0))))
 			return CloseType.CLOSED_VALID;
 		else
 			return CloseType.OPEN;
@@ -171,9 +175,9 @@ public class TemplateRow extends TemplateBase
 	@Override
 	public Pair<Hop[], CNodeTpl> constructCplan(Hop hop, CPlanMemoTable memo, boolean compileLiterals) {
 		//recursively process required cplan output
-		HashSet<Hop> inHops = new HashSet<Hop>();
-		HashMap<String, Hop> inHops2 = new HashMap<String,Hop>();
-		HashMap<Long, CNode> tmp = new HashMap<Long, CNode>();
+		HashSet<Hop> inHops = new HashSet<>();
+		HashMap<String, Hop> inHops2 = new HashMap<>();
+		HashMap<Long, CNode> tmp = new HashMap<>();
 		hop.resetVisitStatus();
 		rConstructCplan(hop, memo, tmp, inHops, inHops2, compileLiterals);
 		hop.resetVisitStatus();
@@ -182,15 +186,18 @@ public class TemplateRow extends TemplateBase
 		Hop[] sinHops = inHops.stream()
 			.filter(h -> !(h.getDataType().isScalar() && tmp.get(h.getHopID()).isLiteral()))
 			.sorted(new HopInputComparator(inHops2.get("X"),inHops2.get("B1"))).toArray(Hop[]::new);
+		inHops2.putIfAbsent("X", sinHops[0]); //robustness special cases
 		
 		//construct template node
-		ArrayList<CNode> inputs = new ArrayList<CNode>();
+		ArrayList<CNode> inputs = new ArrayList<>();
 		for( Hop in : sinHops )
 			inputs.add(tmp.get(in.getHopID()));
 		CNode output = tmp.get(hop.getHopID());
 		CNodeRow tpl = new CNodeRow(inputs, output);
 		tpl.setRowType(TemplateUtils.getRowType(hop, 
 			inHops2.get("X"), inHops2.get("B1")));
+		if( tpl.getRowType()==RowType.NO_AGG_CONST )
+			tpl.setConstDim2(hop.getDim2());
 		tpl.setNumVectorIntermediates(TemplateUtils
 			.determineMinVectorIntermediates(output));
 		tpl.getOutput().resetVisitStatus();
@@ -198,7 +205,7 @@ public class TemplateRow extends TemplateBase
 		tpl.setBeginLine(hop.getBeginLine());
 		
 		// return cplan instance
-		return new Pair<Hop[],CNodeTpl>(sinHops, tpl);
+		return new Pair<>(sinHops, tpl);
 	}
 
 	private void rConstructCplan(Hop hop, CPlanMemoTable memo, HashMap<Long, CNode> tmp, HashSet<Hop> inHops, HashMap<String, Hop> inHops2, boolean compileLiterals) 
@@ -322,8 +329,19 @@ public class TemplateRow extends TemplateBase
 		{
 			//special case for cbind with zeros
 			CNode cdata1 = tmp.get(hop.getInput().get(0).getHopID());
-			out = new CNodeUnary(cdata1, UnaryType.CBIND0);
-			inHops.remove(hop.getInput().get(1)); //rm 0-matrix
+			CNode cdata2 = null;
+			if( HopRewriteUtils.isDataGenOpWithConstantValue(hop.getInput().get(1)) ) {
+				cdata2 = TemplateUtils.createCNodeData(HopRewriteUtils
+					.getDataGenOpConstantValue(hop.getInput().get(1)), true);
+				inHops.remove(hop.getInput().get(1)); //rm 0-matrix
+			}
+			else {
+				cdata2 = tmp.get(hop.getInput().get(1).getHopID());
+				cdata2 = TemplateUtils.wrapLookupIfNecessary(cdata2, hop.getInput().get(1));
+			}
+			out = new CNodeBinary(cdata1, cdata2, BinType.VECT_CBIND);
+			if( cdata1 instanceof CNodeData )
+				inHops2.put("X", hop.getInput().get(0));
 		}
 		else if(hop instanceof BinaryOp)
 		{

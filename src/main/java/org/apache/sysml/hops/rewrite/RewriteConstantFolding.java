@@ -108,15 +108,14 @@ public class RewriteConstantFolding extends HopRewriteRule
 		LiteralOp literal = null;
 		
 		//fold binary op if both are literals / unary op if literal
-		if(    root.getDataType() == DataType.SCALAR //scalar ouput
+		if( root.getDataType() == DataType.SCALAR //scalar output
 			&& ( isApplicableBinaryOp(root) || isApplicableUnaryOp(root) ) )
 		{ 
 			//core constant folding via runtime instructions
 			try {
 				literal = evalScalarOperation(root); 
 			}
-			catch(Exception ex)
-			{
+			catch(Exception ex) {
 				LOG.error("Failed to execute constant folding instructions. No abort.", ex);
 			}
 			
@@ -189,7 +188,7 @@ public class RewriteConstantFolding extends HopRewriteRule
 		DataOp tmpWrite = new DataOp(TMP_VARNAME, bop.getDataType(), bop.getValueType(), bop, DataOpTypes.TRANSIENTWRITE, TMP_VARNAME);
 		
 		//generate runtime instruction
-		Dag<Lop> dag = new Dag<Lop>();
+		Dag<Lop> dag = new Dag<>();
 		Recompiler.rClearLops(tmpWrite); //prevent lops reuse
 		Lop lops = tmpWrite.constructLops(); //reconstruct lops
 		lops.addToDag( dag );
@@ -244,7 +243,7 @@ public class RewriteConstantFolding extends HopRewriteRule
 		return _tmpEC;
 	}
 	
-	private boolean isApplicableBinaryOp( Hop hop )
+	private static boolean isApplicableBinaryOp( Hop hop )
 	{
 		ArrayList<Hop> in = hop.getInput();
 		return (   hop instanceof BinaryOp 
@@ -257,8 +256,7 @@ public class RewriteConstantFolding extends HopRewriteRule
 		//messes up the explain runtime output due to introduced \n 
 	}
 	
-	private boolean isApplicableUnaryOp( Hop hop )
-	{
+	private static boolean isApplicableUnaryOp( Hop hop ) {
 		ArrayList<Hop> in = hop.getInput();
 		return (   hop instanceof UnaryOp 
 				&& in.get(0) instanceof LiteralOp 
@@ -267,21 +265,17 @@ public class RewriteConstantFolding extends HopRewriteRule
 				&& hop.getDataType() == DataType.SCALAR);
 	}
 	
-	private boolean isApplicableFalseConjunctivePredicate( Hop hop ) 
-		throws HopsException
-	{
+	private static boolean isApplicableFalseConjunctivePredicate( Hop hop ) throws HopsException {
 		ArrayList<Hop> in = hop.getInput();
 		return (   HopRewriteUtils.isBinary(hop, OpOp2.AND)
-				&& ( (in.get(0) instanceof LiteralOp && !((LiteralOp)in.get(0)).getBooleanValue())   
-				   ||(in.get(1) instanceof LiteralOp && !((LiteralOp)in.get(1)).getBooleanValue())) );			
+				&& ( (in.get(0) instanceof LiteralOp && !((LiteralOp)in.get(0)).getBooleanValue())
+				   ||(in.get(1) instanceof LiteralOp && !((LiteralOp)in.get(1)).getBooleanValue())) );
 	}
 	
-	private boolean isApplicableTrueDisjunctivePredicate( Hop hop ) 
-		throws HopsException
-	{
+	private static boolean isApplicableTrueDisjunctivePredicate( Hop hop ) throws HopsException {
 		ArrayList<Hop> in = hop.getInput();
 		return (   HopRewriteUtils.isBinary(hop, OpOp2.OR)
-				&& ( (in.get(0) instanceof LiteralOp && ((LiteralOp)in.get(0)).getBooleanValue())   
-				   ||(in.get(1) instanceof LiteralOp && ((LiteralOp)in.get(1)).getBooleanValue())) );			
+				&& ( (in.get(0) instanceof LiteralOp && ((LiteralOp)in.get(0)).getBooleanValue())
+				   ||(in.get(1) instanceof LiteralOp && ((LiteralOp)in.get(1)).getBooleanValue())) );
 	}
 }

@@ -19,7 +19,7 @@
 #
 #-------------------------------------------------------------
 
-__all__ = ['LinearRegression', 'LogisticRegression', 'SVM', 'NaiveBayes', 'Caffe2DML']
+__all__ = ['LinearRegression', 'LogisticRegression', 'SVM', 'NaiveBayes', 'Caffe2DML', 'Keras2DML']
 
 import numpy as np
 from pyspark.ml import Estimator
@@ -45,7 +45,6 @@ def assemble(sparkSession, pdf, inputCols, outputCol):
 class BaseSystemMLEstimator(Estimator):
     features_col = 'features'
     label_col = 'label'
-    do_visualize = False
     
     def set_features_col(self, colName):
         """
@@ -138,7 +137,7 @@ class BaseSystemMLEstimator(Estimator):
         
     def setConfigProperty(self, propertyName, propertyValue):
         """
-        Set configuration property, such as setConfigProperty("localtmpdir", "/tmp/systemml").
+        Set configuration property, such as setConfigProperty("sysml.localtmpdir", "/tmp/systemml").
 
         Parameters
         ----------
@@ -756,7 +755,7 @@ class Caffe2DML(BaseSystemMLClassifier):
     >>> caffe2DML = Caffe2DML(spark, 'lenet_solver.proto').set(max_iter=500)
     >>> caffe2DML.fit(X, y)
     """
-    def __init__(self, sparkSession, solver, input_shape, transferUsingDF=False, tensorboard_log_dir=None):
+    def __init__(self, sparkSession, solver, input_shape, transferUsingDF=False):
         """
         Performs training/prediction for a given caffe network. 
 
@@ -766,7 +765,6 @@ class Caffe2DML(BaseSystemMLClassifier):
         solver: caffe solver file path
         input_shape: 3-element list (number of channels, input height, input width)
         transferUsingDF: whether to pass the input dataset via PySpark DataFrame (default: False)
-        tensorboard_log_dir: directory to store the event logs (default: None, we use a temporary directory)
         """
         self.sparkSession = sparkSession
         self.sc = sparkSession._sc
@@ -779,9 +777,6 @@ class Caffe2DML(BaseSystemMLClassifier):
         self.estimator = self.sc._jvm.org.apache.sysml.api.dl.Caffe2DML(self.sc._jsc.sc(), solver, str(input_shape[0]), str(input_shape[1]), str(input_shape[2]))
         self.transferUsingDF = transferUsingDF
         self.setOutputRawPredictionsToFalse = False
-        self.visualize_called = False
-        if tensorboard_log_dir is not None:
-            self.estimator.setTensorBoardLogDir(tensorboard_log_dir)
 
     def load(self, weights=None, sep='/', ignore_weights=None, eager=False):
         """
@@ -831,31 +826,36 @@ class Caffe2DML(BaseSystemMLClassifier):
         else:
             raise TypeError('Please use spark session of type pyspark.sql.session.SparkSession in the constructor')
     
-    def visualize(self, layerName=None, varType='weight', aggFn='mean'):
+    
+class Keras2DML(Caffe2DML):
+    """
+    Peforms training/prediction for a given keras model.
+
+
+    """
+
+    def __init__(self, sparkSession, keras_model, input_shape, transferUsingDF=False,
+                 tensorboard_log_dir=None):
         """
-        Use this to visualize the training procedure (requires validation_percentage to be non-zero).
-        When one provides no argument to this method, we visualize training and validation loss.
-        
+        Performs training/prediction for a given keras model.
+
         Parameters
         ----------
-        layerName: Name of the layer in the Caffe prototype
-        varType: should be either 'weight', 'bias', 'dweight', 'dbias', 'output' or 'doutput'
-        aggFn: should be either 'sum', 'mean', 'var' or 'sd'
+        parkSession: PySpark SparkSession
+        model: keras hdf5 model file path
+        input_shape: 3-element list (number of channels, input height, input width)
+        transferUsingDF: whether to pass the input dataset via PySpark DataFrame (default: False)
+        tensorboard_log_dir: directory to store the event logs (default: None,
+        we use a temporary directory)
         """
-        valid_vis_var_types = ['weight', 'bias', 'dweight', 'dbias', 'output', 'doutput']
-        valid_vis_aggFn = [ 'sum', 'mean', 'var', 'sd' ]
-        if layerName is not None and varType is not None and aggFn is not None:
-            # Visualize other values
-            if varType not in valid_vis_var_types:
-                raise ValueError('The second argument should be either weight, bias, dweight, dbias, output or doutput')
-            if aggFn not in valid_vis_aggFn:
-                raise ValueError('The third argument should be either sum, mean, var, sd.')
-            if self.visualize_called:
-                self.estimator.visualizeLoss()
-            self.estimator.visualizeLayer(layerName, varType, aggFn)
-        else:
-            self.estimator.visualizeLoss()
-        self.visualize_called = True
-        return self
-    
-    
+        #NOTE Lazily imported until the Caffe Dependency issue is resolved
+        from . import keras2caffe
+        self.name = keras_model.name
+        #Convert keras model into caffe net and weights
+        caffenet, caffemodel = keras2caffe.generate_caffe_model(keras_model,self.name + ".proto",self.name + ".caffemodel")
+        #Create solver from network file
+        caffesolver = keras2caffe.CaffeSolver(self.name + ".proto",keras_model).write(self.name + "_solver.proto")
+        #Generate caffe2DML object
+        super(Keras2DML,self).__init__(sparkSession, self.name+ "_solver.proto",input_shape, transferUsingDF, tensorboard_log_dir)
+        #Create and Load weights into caffe2DML
+        convert_caffemodel(sparkSession.sparkContext,self.name + ".proto", self.name + ".caffemodel", self.name + "_C2DML_weights")

@@ -122,7 +122,7 @@ public class VariableCPInstruction extends CPInstruction {
 		super(sopcode, istr);
 		_cptype = CPINSTRUCTION_TYPE.Variable;
 		opcode = op;
-		inputs = new ArrayList<CPOperand>();
+		inputs = new ArrayList<>();
 		addInput(in1);
 		addInput(in2);
 		addInput(in3);
@@ -905,8 +905,8 @@ public class VariableCPInstruction extends CPInstruction {
 			MatrixCharacteristics mc = mo.getMatrixCharacteristics();
 			if(oi == OutputInfo.TextCellOutputInfo) {
 				try {
-					WriterMatrixMarket writer = new WriterMatrixMarket();
-					writer.mergeTextcellToMatrixMarket(mo.getFileName(), fname, mc.getRows(), mc.getCols(), mc.getNonZeros());
+					WriterMatrixMarket.mergeTextcellToMatrixMarket(mo.getFileName(), 
+						fname, mc.getRows(), mc.getCols(), mc.getNonZeros());
 				} catch (IOException e) {
 					throw new DMLRuntimeException(e);
 				}
