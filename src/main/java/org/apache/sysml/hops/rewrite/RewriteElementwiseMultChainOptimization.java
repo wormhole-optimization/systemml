@@ -19,15 +19,7 @@
 
 package org.apache.sysml.hops.rewrite;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Set;
-import java.util.SortedSet;
-import java.util.TreeSet;
+import java.util.*;
 
 import org.apache.sysml.hops.BinaryOp;
 import org.apache.sysml.hops.Hop;
@@ -310,7 +302,7 @@ public class RewriteElementwiseMultChainOptimization extends HopRewriteRule {
 		final ArrayList<Hop> parents = child.getParent();
 		if (parents.size() > 1)
 			for (final Hop parent : parents)
-				if (parent instanceof BinaryOp && !emults.contains(parent))
+				if (!(parent instanceof BinaryOp) || !emults.contains(parent))
 					return false;
 		// child does not have foreign parents
 

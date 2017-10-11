@@ -535,7 +535,8 @@ class NormalFormExploreEq : SPlanRewriter {
                             // only types of factors we can handle now are those whose snode is SNodeBind
                             fim.filterInPlace { it.snode is SNodeBind } // todo check necessary
                             fjm.filterInPlace { it.snode is SNodeBind }
-                            LOG.info("factorOut: $factorOut; fim and fjm: $fim, $fjm")
+                            if( LOG.isTraceEnabled )
+                                LOG.info("factorOut: $factorOut; fim and fjm: $fim, $fjm")
                             if( fim.isNotEmpty() && fjm.isNotEmpty() && (pi is SPB && pj is SPB) ) {
                                 val iaggs = pi.aggNames()
                                 val jaggs = pj.aggNames()
