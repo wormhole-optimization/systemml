@@ -23,6 +23,7 @@ args<-commandArgs(TRUE)
 options(digits=22)
 library(Matrix)
 X = matrix(  c(1,2,3,4,5,6,7,8,9), nrow=3, ncol=3, byrow = TRUE)
-A =  (X + (matrix(1, nrow=3, ncol=1, byrow=TRUE) %*% colSums(X)))
-R = t(A) %*% A
+Y = matrix(  c(8,2,3,4,5,6,7,8,9), nrow=3, ncol=3, byrow = TRUE)
+C = (matrix(1, nrow=3, ncol=1, byrow=TRUE) %*% colSums(X))
+R = (X + C) %*% Y
 writeMM(as(R, "CsparseMatrix"), paste(args[2], "S", sep=""));

@@ -92,7 +92,7 @@ class Spoof2Test(
         //	TEST_NAME+50;  //ABC + DBE
         //	TEST_NAME+51;  // B=B1%*%B2; (A+B) / (rowSums(A+B) %*% C)
         //	TEST_NAME+52;  //X + X * (r %*% M %*% c) // + above a partition-able problem (test case 26)
-        //	TEST_NAME+53;  //AB + AC + A // todo need to rename
+        //	TEST_NAME+53;  //AB + AC + A // we can factor A from the first two terms thanks to RewriteSplitBU_ExtendNormalForm
         //	TEST_NAME+54;  //A*B + A*C + A
         //	TEST_NAME+55;  //A*B + A + C*D + C
         //	TEST_NAME+56;  //A%*%B + A
@@ -105,9 +105,13 @@ class Spoof2Test(
         //	TEST_NAME+63;  //A - A*B
         //	TEST_NAME+64;  //A*b*A*C*A*d
         //	TEST_NAME+65;  //t(A) %*% (B + v)
-        //	TEST_NAME+66;  //t(X - 3 * colSums(X)) %*% (X - 3 * colSums(X)) //todo
+        //	TEST_NAME+66;  //t(X + colSums(X)) %*% (X + colSums(X))
         //	TEST_NAME+67;  //t(X) %*% (P * (X %*% V) - P * rowSums(P * (X %*% V)))
-        private const val NUM_TESTS = 67
+        //	TEST_NAME+68;  //t(colSums(X)) %*% (colSums(X))
+        //	TEST_NAME+69;  //X - colSums(X)
+        //	TEST_NAME+70;  //(X + colSums(X)) %*% Y
+        //	TEST_NAME+71;  //t(X)%*%X + 2*t(colSums(X))%*%colSums(X) + 3*t(colSums(X))%*%colSums(X) // expanded form of 66
+        private const val NUM_TESTS = 71
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"

@@ -11,7 +11,9 @@ import java.util.*
 /**
  * Apply rewrites from the leaves up to the roots.
  */
-class SPlanBottomUpRewriter : SPlanRewriter {
+class SPlanBottomUpRewriter(
+        val doElimCSE: Boolean = true
+) : SPlanRewriter {
     val _rules: List<SPlanRewriteRuleBottomUp> = listOf(
             RewriteBindUnify()
     )
@@ -53,8 +55,8 @@ class SPlanBottomUpRewriter : SPlanRewriter {
     }
 
     override fun rewriteSPlan(roots: ArrayList<SNode>): RewriterResult {
-        val cseElim = SPlanCSEElimRewriter(true, true)
-        val (rr0,leaves) = cseElim.rewriteSPlanAndGetLeaves(roots)
+        val cseElim = SPlanCSEElimRewriter(true, doElimCSE)
+        val (rr0,leaves) = if(true) cseElim.rewriteSPlanAndGetLeaves(roots) else RewriterResult.NoChange to getLeaves(roots)
         var rr = rr0
 
         if( CHECK ) SPlanValidator.validateSPlan(roots)
@@ -75,9 +77,10 @@ class SPlanBottomUpRewriter : SPlanRewriter {
         }
         SNode.resetVisited(roots)
 
-        val cseElimNoLeaves = SPlanCSEElimRewriter(false, true)
-        rr = rr.map(cseElimNoLeaves.rewriteSPlan(roots))
-
+        if(doElimCSE) {
+            val cseElimNoLeaves = SPlanCSEElimRewriter(false, true)
+            rr = rr.map(cseElimNoLeaves.rewriteSPlan(roots))
+        }
         if( CHECK ) SPlanValidator.validateSPlan(roots)
 //        if( LOG.isTraceEnabled )
 //            LOG.trace("After bottom up rewrites:"+ Explain.explainSPlan(collectedRoots))

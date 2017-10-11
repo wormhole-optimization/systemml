@@ -297,14 +297,21 @@ object Spoof2Compiler {
                     val biu = bi.map { it.asMap().mapValues { (_,v) -> v.distinct() }.toList().distinct() }
                     if( biu[0] != biu[1] ) {
                         val biu2 = bi2.map { it.asMap().mapValues { (_,v) -> v.distinct() }.toList().distinct() }
-                        if( biu[0] == biu2[0] ) { // need better method?
-                            root2
-                        } else if( biu[0] == biu2[1] ) {
-                            if( LOG.isTraceEnabled )
-                                LOG.trace("create root transpose at root $idx based on data flow; unique inputs differ case")
-                            transposeRoot(root2)
-                        } else {
-                            throw SNodeException(sroots[idx], "Failed to distinguish orientation for old Hop root ${roots[idx].hopID} and new Hop root ${root2.hopID}; " +
+                        when {
+                            biu[0] == biu2[0] -> // need better method?
+                                root2
+                            biu[0] == biu2[1] -> {
+                                if( LOG.isTraceEnabled )
+                                    LOG.trace("create root transpose at root $idx based on data flow; unique inputs differ case")
+                                transposeRoot(root2)
+                            }
+                            biu[0].toSet() == biu2[0].toSet() -> root2
+                            biu[0].toSet() == biu2[1].toSet() -> {
+                                if( LOG.isTraceEnabled )
+                                    LOG.trace("create root transpose at root $idx based on data flow; unique inputs differ case (by set)")
+                                transposeRoot(root2)
+                            }
+                            else -> throw SNodeException(sroots[idx], "Failed to distinguish orientation for old Hop root ${roots[idx].hopID} and new Hop root ${root2.hopID}; " +
                                     "baseInputs have different unique inputs but neither equal to base inputs 2:" +
                                     "\n\t0: ${biu[0].map { (k,_) -> k }.toSet().joinToString { "(${it.id})$it" }}" +
                                     "\n\t1: ${biu[1].map { (k,_) -> k }.toSet().joinToString { "(${it.id})$it" }}" +
@@ -861,11 +868,23 @@ object Spoof2Compiler {
                 && nary.inputs[0].schema.names.first() != nary.inputs[1].schema.names.first() ) {
             when( hopInputs[0].classify() ) {
                 HopClass.ROW_VECTOR -> {
+                    if( hopInputs[1].classify() == HopClass.ROW_VECTOR ) {
+                        if( LOG.isTraceEnabled )
+                            LOG.trace("transposing 2nd input (${hopInputs[1].hopID}) to outer product (${nary.id}) $nary ${nary.schema} - both are ROW; transpose second and swap")
+                        hopInputs[1] = HopRewriteUtils.createTranspose(hopInputs[1])
+                    }
                     nary.check(hopInputs[1].classify() == HopClass.COL_VECTOR) {"expected outer product but is not: $hopInputs with dims ${hopInputs.map { it.dim1 to it.dim2 }}"}
                     hopInputs.swap(0,1)
                     nary.inputs.swap(0,1)
                 }
-                HopClass.COL_VECTOR -> {nary.check(hopInputs[1].classify() == HopClass.ROW_VECTOR){"expected outer product but is not: $hopInputs with dims ${hopInputs.map { it.dim1 to it.dim2 }}"}}
+                HopClass.COL_VECTOR -> {
+                    if( hopInputs[1].classify() == HopClass.COL_VECTOR ) {
+                        if( LOG.isTraceEnabled )
+                            LOG.trace("transposing 2nd input (${hopInputs[1].hopID}) to outer product (${nary.id}) $nary ${nary.schema} - both are COL; transpose second")
+                        hopInputs[1] = HopRewriteUtils.createTranspose(hopInputs[1])
+                    }
+                    nary.check(hopInputs[1].classify() == HopClass.ROW_VECTOR){"expected outer product but is not: $hopInputs with dims ${hopInputs.map { it.dim1 to it.dim2 }}"}
+                }
                 else -> throw SNodeException(nary, "expected outer product but is not: $hopInputs with dims ${hopInputs.map { it.dim1 to it.dim2 }}")
             }
             HopRewriteUtils.createMatrixMultiply(hopInputs[0], hopInputs[1]) to

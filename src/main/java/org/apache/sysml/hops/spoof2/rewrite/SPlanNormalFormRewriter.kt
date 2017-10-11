@@ -1,12 +1,13 @@
 package org.apache.sysml.hops.spoof2.rewrite
 
 import org.apache.sysml.hops.spoof2.enu.NormalFormExploreEq
-import java.util.ArrayList
+import org.apache.sysml.hops.spoof2.enu.RewriteSplitBU_ExtendNormalForm
 
 import org.apache.sysml.hops.spoof2.plan.SNode
 import org.apache.sysml.hops.spoof2.plan.SPlanValidator
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter.RewriterResult
 import org.apache.sysml.utils.Explain
+import java.util.*
 
 /**
  * 1. Apply the rewrite rules that get us into a normal form first, repeatedly until convergence.
@@ -31,6 +32,7 @@ class SPlanNormalFormRewriter : SPlanRewriter {
 //            RewritePullAggAbovePlus()
     )
     private val _rulesNormalFormPrior = listOf<SPlanRewriteRule>(
+            RewriteSplitBU_ExtendNormalForm()
 //            RewritePushAggIntoPlus(),
 //            RewriteSplitCSE(),
 //            RewriteAggregateElim(),     // req. SplitCSE
@@ -51,10 +53,12 @@ class SPlanNormalFormRewriter : SPlanRewriter {
         /** Whether to invoke the SPlanValidator after every rewrite pass. */
         private const val CHECK = true
         private const val CHECK_DURING_RECUSION = false
+        private const val EXPLAIN_DURING_RECURSION = false
 
         val bottomUp = SPlanBottomUpRewriter()
-        fun bottomUpRewrite(roots: ArrayList<SNode>): RewriterResult {
-            val rr0 = bottomUp.rewriteSPlan(roots)
+        val bottomUpNoElim = SPlanBottomUpRewriter(false)
+        fun bottomUpRewrite(roots: ArrayList<SNode>, doElimCSE: Boolean = true): RewriterResult {
+            val rr0 = if(doElimCSE) bottomUp.rewriteSPlan(roots) else bottomUpNoElim.rewriteSPlan(roots)
             if( rr0 is RewriterResult.NewRoots && rr0.newRoots !== roots ) {
                 roots.clear()
                 roots += rr0.newRoots
@@ -100,11 +104,22 @@ class SPlanNormalFormRewriter : SPlanRewriter {
         if( CHECK ) SPlanValidator.validateSPlan(roots)
 
 
+        count = 0
+        do {
+            val startCount = count
+            rewriteDown(roots, _rulesNormalFormPrior)
+            if( SPlanRewriteRule.LOG.isTraceEnabled )
+                SPlanRewriteRule.LOG.trace("after before normal form: "+Explain.explainSPlan(roots))
+            do {
+                count++
+                val changed = rewriteDown(roots, _rulesToNormalForm)
+            } while (changed)
+//            bottomUpRewrite(roots, false) // dangerous! Do not put a bind-unbind in the middle of a block via BindUnify // todo iron out a minimal version
+        } while( count != startCount+1 )
+        if( SPlanRewriteRule.LOG.isTraceEnabled )
+            SPlanRewriteRule.LOG.trace("Ran 'right before normal form' rewrites $count times")
 
-        rewriteDown(roots, _rulesNormalFormPrior)
-        bottomUpRewrite(roots)
         _normalFormRewrite(roots)
-
 
         if( SPlanRewriteRule.LOG.isTraceEnabled )
             SPlanRewriteRule.LOG.trace("After processing normal form: "+Explain.explainSPlan(roots))
@@ -124,7 +139,8 @@ class SPlanNormalFormRewriter : SPlanRewriter {
         return RewriterResult.NewRoots(roots)
     }
 
-    private fun rewriteDown(roots: ArrayList<SNode>, rules: List<SPlanRewriteRule>): Boolean {
+    fun rewriteDown(roots: ArrayList<SNode>, vararg rules: SPlanRewriteRule): Boolean = rewriteDown(roots, rules.asList())
+    fun rewriteDown(roots: ArrayList<SNode>, rules: List<SPlanRewriteRule>): Boolean {
         SNode.resetVisited(roots)
         val changed = roots.fold(false) { changed, root -> rRewriteSPlan(root, rules, roots) || changed }
         SNode.resetVisited(roots)
@@ -149,6 +165,8 @@ class SPlanNormalFormRewriter : SPlanRewriter {
                         changed = true
                         if( CHECK_DURING_RECUSION )
                             SPlanValidator.validateSPlan(allRoots, false)
+                        if( EXPLAIN_DURING_RECURSION && SPlanRewriteRule.LOG.isTraceEnabled )
+                            SPlanRewriteRule.LOG.trace(Explain.explainSPlan(allRoots, true))
                     }
                 }
             }

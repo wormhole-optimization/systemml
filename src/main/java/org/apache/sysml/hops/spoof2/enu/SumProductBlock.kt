@@ -62,11 +62,11 @@ sealed class SumProduct {
         private val ALLOWED_SUMS = setOf(Hop.AggOp.SUM)
         private val ALLOWED_PRODUCTS = setOf(SNodeNary.NaryOp.MULT, SNodeNary.NaryOp.PLUS)
 
-        private fun COND_PRODUCT(top: SNode, acceptNoSchema: Boolean = false) = top is SNodeNary && top.op in ALLOWED_PRODUCTS
+        internal fun COND_PRODUCT(top: SNode, acceptNoSchema: Boolean = false) = top is SNodeNary && top.op in ALLOWED_PRODUCTS
 //                    && top.parents.size == 1 // foreign parent
                 && (acceptNoSchema || top.schema.isNotEmpty()) // all-scalar case
 
-        private tailrec fun COND_AGG(top: SNode, numAggsBefore: Int = 0): Boolean {
+        internal tailrec fun COND_AGG(top: SNode, numAggsBefore: Int = 0): Boolean {
             return if( top is SNodeAggregate ) {
                 if(top.op in ALLOWED_SUMS
                         && numAggsBefore == 0) // currently no support for >1 aggregate type
@@ -84,11 +84,11 @@ sealed class SumProduct {
             return constructBlock(_top, initialParentForSplitCse, true)
         }
 
+        // requires that RewriteSplitBU_ExtendNormalForm ran previously,
+        // or else the normal form will not be as large as it could be due to binds blocking the way
         fun constructBlock(_top: SNode, initialParentForSplitCse: SNode, first: Boolean, collectedInputs: MutableSet<SNode> = hashSetOf()): SumProduct {
             var top = _top
             var topTemp = initialParentForSplitCse
-            if( SPLIT_BU_SPBLOCK )
-                top = splitBindBelowAgg(top, topTemp, collectedInputs) // if a bind-unbind is in the way of extending a SumProduct block, split it below
             if( !COND_PRODUCT(getBelowAgg(top)) ) {
                 top.parents -= topTemp
                 collectedInputs += top
@@ -140,9 +140,9 @@ sealed class SumProduct {
             return top
         }
 
-        private tailrec fun getBelowAgg(node: SNode): SNode =
+        internal tailrec fun getBelowAgg(node: SNode): SNode =
                 if( node is SNodeAggregate && node.op in ALLOWED_SUMS ) getBelowAgg(node.input) else node
-        private tailrec fun getBelowAgg(node: SNode, aboveNode: SNode): Pair<SNode,SNode> =
+        internal tailrec fun getBelowAgg(node: SNode, aboveNode: SNode): Pair<SNode,SNode> =
                 if( node is SNodeAggregate && node.op in ALLOWED_SUMS ) getBelowAgg(node.input, node) else node to aboveNode
         internal fun getBelowAggPlusMult(node: SNode): Set<SNode> {
             val set = mutableSetOf<SNode>()

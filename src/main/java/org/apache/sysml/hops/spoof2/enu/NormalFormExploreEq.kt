@@ -343,7 +343,7 @@ class NormalFormExploreEq : SPlanRewriter {
     }
 
     private fun rewriteNode(parent: SNode, node: SNode, skip: HashSet<Long>): RewriteResult {
-        if( !SumProduct.isSumProductBlock(node))
+        if( !SumProduct.isSumProductBlock(node) )
             return RewriteResult.NoChange
 //        val origSchema = Schema(node.schema)
         val spb = SumProduct.constructBlock(node, parent) as SPB
@@ -433,7 +433,7 @@ class NormalFormExploreEq : SPlanRewriter {
     private fun factorCommonTermsFromPlus(spb: SumProduct.Block): SumProduct {
         if( spb.product != SNodeNary.NaryOp.PLUS || spb.edges.size <= 1 )
             return factor(spb)!!
-        return factorCommonTermsFromPlus(spb, 0, 1)
+        return factorCommonTermsFromPlus(spb, 0, 1)!!
     }
     /*
     val msintersect = msi.intersect(msj)
@@ -462,15 +462,31 @@ class NormalFormExploreEq : SPlanRewriter {
      */
 
     @Suppress("UNCHECKED_CAST")
-    private fun factorCommonTermsFromPlus(_spb: SPB, i: Int, j: Int): SP {
+    private fun factorCommonTermsFromPlus(_spb: SPB, i: Int, j: Int): SP? {
         val msi = getMultiplyTerms(_spb.edges[i])
         val msj = getMultiplyTerms(_spb.edges[j])
         val groupByFun: (SP) -> Any = { when(it) {
-            is SPI -> it.snode//.baseInput // TODO switch back to baseInput when ready to actually do this
+            is SPI -> it.snode //.baseInput // TODO switch back to baseInput when ready to actually do this
             is SPB -> it
             is ESP -> throw AssertionError("unexpected EBlock")
         } }
-        val groupByBase = msi.groupBy(groupByFun).zipIntersect(msj.groupBy(groupByFun)).entries.toList() // grouper -> Pair<list of sps, list of sps>
+        val groupByBase = msi.groupBy(groupByFun).zipIntersect(msj.groupBy(groupByFun)).filter { (_,p) ->
+            val (a,_) = p
+            val x = a.first()
+            val pi = _spb.edges[i]
+            val iNamesToAgged = when (pi) {
+                is SPI -> x.schema.names.map { it to false }
+                is SPB -> x.schema.names.map { it to (it in pi.aggNames()) }
+                is ESP -> throw AssertionError("unexpected EBlock")
+            }.toMap()
+            val pj = _spb.edges[j]
+            val jNamesToAgged = when (pj) {
+                is SPI -> x.schema.names.map { it to false }
+                is SPB -> x.schema.names.map { it to (it in pj.aggNames()) }
+                is ESP -> throw AssertionError("unexpected EBlock")
+            }.toMap()
+            iNamesToAgged == jNamesToAgged
+        }.entries.toList() // grouper -> Pair<list of sps, list of sps>
 
         // temp statistics
         run {
@@ -519,7 +535,7 @@ class NormalFormExploreEq : SPlanRewriter {
                             // only types of factors we can handle now are those whose snode is SNodeBind
                             fim.filterInPlace { it.snode is SNodeBind } // todo check necessary
                             fjm.filterInPlace { it.snode is SNodeBind }
-                            LOG.info("fim and fjm: $fim, $fjm")
+                            LOG.info("factorOut: $factorOut; fim and fjm: $fim, $fjm")
                             if( fim.isNotEmpty() && fjm.isNotEmpty() && (pi is SPB && pj is SPB) ) {
                                 val iaggs = pi.aggNames()
                                 val jaggs = pj.aggNames()
@@ -614,11 +630,16 @@ class NormalFormExploreEq : SPlanRewriter {
         else rejectExplore++
         stats.rejectExplore += rejectExplore
 
-        return if( alternatives.size == 1 ) alternatives.first()
-        else ESP(alternatives.flatMap { when(it) {
-            is SPB, is SPI -> listOf(it)
-            is ESP -> it.blocks
-        } })
+        return when( alternatives.size ) {
+            0 -> null
+            1 -> alternatives.first()
+            else -> ESP(alternatives.flatMap {
+                when (it) {
+                    is SPB, is SPI -> listOf(it)
+                    is ESP -> it.blocks
+                }
+            })
+        }
     }
 
     private fun getCommonMultiplyTerms(spi: SP, spj: SP): List<Pair<SP, Int>> {
@@ -638,11 +659,9 @@ class NormalFormExploreEq : SPlanRewriter {
             is SPI -> LITERAL_ONE
             is SPB -> {
                 factorOut.forEach { p.edges -= it }
-                when(p.edges.size) {
-                    0 -> LITERAL_ONE
-                    1 -> p.edges[0]
-                    else -> p
-                }
+                if (p.edges.isEmpty()) LITERAL_ONE
+                else if (p.edges.size == 1 && p.sumBlocks.isEmpty()) p.edges[0]
+                else p
             }
             is ESP -> throw AssertionError("unexpected EBlock")
         }

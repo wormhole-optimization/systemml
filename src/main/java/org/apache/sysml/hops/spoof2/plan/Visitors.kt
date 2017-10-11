@@ -68,9 +68,9 @@ fun SNodeAggregate.copyAggRenameDown(): SNodeAggregate {
 }
 
 
-fun SNode.renameCopyDown(renaming: Map<AB, AB>, memo: HashMap<Long, SNode> = HashMap()): SNode {
+fun SNode.renameCopyDown(renaming: Map<AB, AB>, memo: HashMap<Long, SNode>? = HashMap()): SNode {
     check( this.schema.names.containsAll(renaming.keys) ) {"renameCopyDown should only touch SNodes that have a schema to rename; saw id=${this.id} $this ${this.schema}"}
-    if( this.id in memo )
+    if( memo != null && this.id in memo )
         return memo[this.id]!!
     val newNode = when( this ) {
         is SNodeBind -> {
@@ -87,7 +87,7 @@ fun SNode.renameCopyDown(renaming: Map<AB, AB>, memo: HashMap<Long, SNode> = Has
                 val addRenaming = overlap.map { it to it.deriveFresh() }.toMap()
                 (renaming+addRenaming) to this.aggs.mapKeys { n, _ -> addRenaming.getOrDefault(n, n) }
             } else renaming to this.aggs
-            SNodeAggregate(this.op, this.inputs[0].renameCopyDown(newRenaming, memo), newAggs)
+            SNodeAggregate(this.op, this.input.renameCopyDown(newRenaming, memo), newAggs)
         }
         is SNodeNary -> {
             SNodeNary(this.op, this.inputs.map { input ->
@@ -102,7 +102,8 @@ fun SNode.renameCopyDown(renaming: Map<AB, AB>, memo: HashMap<Long, SNode> = Has
         is SNodeExt -> SNodeExt(Recompiler.deepCopyHopsDag(this.hop), this.inputs.map { it.renameCopyDown(renaming, memo) })
         else -> throw AssertionError("unknown SNode $this")
     }
-    memo[this.id] = newNode
+    if( memo != null )
+        memo[this.id] = newNode
     return newNode
 }
 
