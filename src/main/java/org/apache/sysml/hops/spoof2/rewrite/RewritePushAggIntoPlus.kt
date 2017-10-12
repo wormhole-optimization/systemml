@@ -4,17 +4,16 @@ import org.apache.sysml.hops.Hop.AggOp
 import org.apache.sysml.hops.LiteralOp
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
-import org.apache.sysml.parser.Expression
 
 class RewritePushAggIntoPlus(
         val constantAggToMultiply: Boolean = false
 ) : SPlanRewriteRule() {
-
+    // currently visiting parent. Will visit return result (or node) next.
     override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
         if (node is SNodeAggregate && node.op == AggOp.SUM
                 && node.inputs[0] is SNodeNary
                 && (node.inputs[0] as SNodeNary).op == NaryOp.PLUS) {
-            val agg = node
+            val agg = node // not visited, or else this rule would not be called
             var plus = node.inputs[0] as SNodeNary
 
             // split CSE
@@ -23,6 +22,7 @@ class RewritePushAggIntoPlus(
                 plus.parents -= agg
                 agg.input = copy
                 copy.parents += agg
+                copy.visited = agg.visited
                 plus = copy
             }
 
@@ -31,6 +31,7 @@ class RewritePushAggIntoPlus(
                 agg.input = plusInput
                 val copy = agg.shallowCopyNoParentsYesInputs()
                 copy.parents += plus
+                copy.visited = plus.visited
                 copy
             }
             plus.parents -= agg

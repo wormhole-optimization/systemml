@@ -446,8 +446,8 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                     }
                 } else {
                     val au = node.schema.leastFreeUnbound()
-                    val unbindOld = SNodeUnbind(node, mapOf(au to oldName))
-                    val bindNew = SNodeBind(unbindOld, mapOf(au to newName))
+                    val unbindOld = SNodeUnbind(node, mapOf(au to oldName)).apply { this.visited = node.visited }
+                    val bindNew = SNodeBind(unbindOld, mapOf(au to newName)).apply { this.visited = node.visited }
                     fromNode.inputs.mapInPlace {
                         if (it == node) {
                             node.parents -= fromNode
