@@ -66,7 +66,7 @@ object SPlanValidator {
             return
         state.seen += node.id
         if( node.parents.isEmpty() )
-            node.check(node in roots) {"A no-parent node is reachable from the leaves but is not a root. Children: ${node.inputs}"}
+            node.check(node in roots) {"A no-parent node is reachable from the leaves but is not a root. Children: ${node.inputs} ${node.inputs.map(SNode::id)}"}
         else {
             node.parents.forEach { rCheckAllRootsAreReal(roots, state, it) }
         }

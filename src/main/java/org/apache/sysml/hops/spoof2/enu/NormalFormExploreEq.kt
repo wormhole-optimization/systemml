@@ -358,6 +358,7 @@ class NormalFormExploreEq : SPlanRewriter {
         val CCnames = findConnectedNames(spb, spb.allSchema().names.first())
         if( CCnames != spb.allSchema().names.toSet() ) {
             val NCnames = spb.allSchema().names - CCnames
+            val edgesNoNames = spb.edges.filter { it.schema.isEmpty() }.map(SP::deepCopy)
             val CCspb = SumProduct.Block(
                     spb.sumBlocks.map { SumBlock(it.op, it.names.filter { n,_ -> n in CCnames }) }
                             .filter { it.names.isNotEmpty() },
@@ -370,17 +371,20 @@ class NormalFormExploreEq : SPlanRewriter {
                             .filter { it.names.isNotEmpty() },
                     spb.product,
                     spb.edges.filter { it.schema.names.any { it in NCnames } }
+
                             .map { it.deepCopy() }
             )
             spb.sumBlocks.clear()
             spb.edges.clear()
             spb.edges += CCspb
             spb.edges += NCspb
+            if( edgesNoNames.isNotEmpty() )
+                spb.edges += SPB(spb.product, edgesNoNames)
             spb.refresh()
             if( LOG.isDebugEnabled && !isTrivialBlock )
                 LOG.debug("Partition Sum-Product block into disjoint components:\n" +
                         "Component 1: $CCspb\n" +
-                        "Component 2: $NCspb")
+                        "Component 2: $NCspb" + if(edgesNoNames.isNotEmpty()) "\nConstant component: ${spb.edges[2]}" else "")
             return RewriteResult.NewNode(spb.applyToNormalForm(node, false, false)!!) // these will be handled as disjoint sub-problems in SPlanNormalFormRewriter at next recursion
         }
 
