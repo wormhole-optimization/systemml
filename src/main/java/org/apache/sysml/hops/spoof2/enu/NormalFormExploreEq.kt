@@ -1016,18 +1016,16 @@ class NormalFormExploreEq : SPlanRewriter {
             recContingent += last
             do {
                 newContingent = (newContingent.flatMap { it.getContingentENodes() }.toSet() - newContingent)
-                // we may reach eNodes that were already partitioned, since this is a directed graph
-                // if we do, union those eNodes into the same CC
-                val alreadyInserted = newContingent - newContingent.intersect(eNs)
-                if( alreadyInserted.isNotEmpty() ) {
-                    val takeoutCCs = CCs.filter { !it.disjoint(alreadyInserted) }
-                    takeoutCCs.forEach {
-                        CCs.remove(it)
-                        recContingent.addAll(it)
-                    }
-                }
                 recContingent.addAll(newContingent)
             } while (newContingent.isNotEmpty())
+
+            // we may reach eNodes that were already partitioned, since this is a directed graph
+            // if we do, union those eNodes into the same CC
+            val takeoutCCs =  CCs.filter { !recContingent.disjoint(it) }
+            takeoutCCs.forEach {
+                CCs.remove(it)
+                recContingent.addAll(it)
+            }
             eNs.removeAll(recContingent)
             CCs += recContingent.sortedBy { it.id }
         } while( eNs.isNotEmpty() )
