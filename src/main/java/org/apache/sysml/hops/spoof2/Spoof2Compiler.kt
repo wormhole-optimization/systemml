@@ -812,6 +812,13 @@ object Spoof2Compiler {
             rReconstructHopDag(input, hopMemo)
         }.unzip().let { it.first.toMutableList() to it.second.toMutableList() }
 
+        when( nary.op ) {
+            NaryOp.MULT, NaryOp.PLUS ->
+                    if(hopInputs.size == 1)
+                        return hopInputs[0] to mis[0]
+            else -> {}
+        }
+
         if( nary.inputs.size == 2 ) {
             // if joining on two names and both matrices, ensure that they align by possibly transposing one of them
             if (nary.inputs[0].schema.size == 2 && nary.inputs[1].schema.size == 2) {
