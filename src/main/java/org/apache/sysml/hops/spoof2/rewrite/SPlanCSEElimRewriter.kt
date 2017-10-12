@@ -326,6 +326,8 @@ class SPlanCSEElimRewriter(
                         SNodeNary::class.java -> {
                             val n1 = r1.ra as SNodeNary
                             val n2 = r2.ra as SNodeNary
+                            if( n1.op != n2.op )
+                                continue@inner
                             if( n1.inputs.size == 1 ) { // we should never have a unary mult, but in case we do...
                                 val mi1 = r1.schemaMapping.invert()
                                 val map21 = r2.schemaMapping.mapValues { (_, baseAtt) ->
@@ -334,6 +336,7 @@ class SPlanCSEElimRewriter(
                                 doElim(n1, n2, map21)
                                 iter.remove()
                                 changed = true
+                                continue@inner
                             }
                             assert(n1.inputs.size == 2)
                             // ensure there is a common input, and get the schema mappings from the common input to the multiply nodes
