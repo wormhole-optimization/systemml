@@ -3,6 +3,7 @@ package org.apache.sysml.hops.spoof2.rewrite
 import org.apache.commons.logging.LogFactory
 import org.apache.log4j.Level
 import org.apache.log4j.Logger
+import org.apache.sysml.conf.DMLConfig
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter.RewriterResult
 import org.apache.sysml.utils.Explain
@@ -25,7 +26,7 @@ class SPlanBottomUpRewriter(
         internal val LOG = LogFactory.getLog(SPlanBottomUpRewriter::class.java)!!
 
         //internal configuration flags
-        private const val LDEBUG = true
+        private const val LDEBUG = DMLConfig.SPOOF_DEBUG
         init {
             if (LDEBUG) Logger.getLogger(SPlanBottomUpRewriter::class.java).level = Level.TRACE
         }

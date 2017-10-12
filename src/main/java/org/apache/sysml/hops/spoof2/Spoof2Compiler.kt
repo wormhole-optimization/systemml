@@ -5,6 +5,7 @@ import com.google.common.collect.ListMultimap
 import org.apache.commons.logging.LogFactory
 import org.apache.log4j.Level
 import org.apache.log4j.Logger
+import org.apache.sysml.conf.DMLConfig
 import org.apache.sysml.hops.*
 import org.apache.sysml.hops.Hop.*
 import org.apache.sysml.hops.rewrite.*
@@ -21,7 +22,7 @@ object Spoof2Compiler {
     private val LOG = LogFactory.getLog(Spoof2Compiler::class.java.name)
 
     //internal configuration flags
-    const val LDEBUG = true
+    const val LDEBUG = DMLConfig.SPOOF_DEBUG
     // for internal debugging only
     init {
         if (LDEBUG) Logger.getLogger("org.apache.sysml.hops.spoof2").level = Level.TRACE

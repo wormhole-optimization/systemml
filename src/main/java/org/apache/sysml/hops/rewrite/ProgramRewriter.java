@@ -26,6 +26,7 @@ import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.sysml.conf.CompilerConfig.ConfigType;
 import org.apache.sysml.conf.ConfigurationManager;
+import org.apache.sysml.conf.DMLConfig;
 import org.apache.sysml.hops.Hop;
 import org.apache.sysml.hops.HopsException;
 import org.apache.sysml.hops.OptimizerUtils;
@@ -51,7 +52,7 @@ import org.apache.sysml.parser.WhileStatementBlock;
 public class ProgramRewriter
 {
 	//internal local debug level
-	private static final boolean LDEBUG = true;
+	private static final boolean LDEBUG = DMLConfig.SPOOF_DEBUG;
 	private static final boolean CHECK = false;
 	
 	private ArrayList<HopRewriteRule> _dagRuleSet = null;
