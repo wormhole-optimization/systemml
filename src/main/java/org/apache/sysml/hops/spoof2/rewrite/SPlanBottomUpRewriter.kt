@@ -15,7 +15,7 @@ import java.util.*
 class SPlanBottomUpRewriter(
         val doElimCSE: Boolean = true
 ) : SPlanRewriter {
-    val _rules: List<SPlanRewriteRuleBottomUp> = listOf(
+    private val _rules: List<SPlanRewriteRuleBottomUp> = listOf(
             RewriteBindUnify()
     )
 

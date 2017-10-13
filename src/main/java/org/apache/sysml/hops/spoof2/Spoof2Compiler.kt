@@ -35,6 +35,12 @@ object Spoof2Compiler {
         return hop.input.all { allKnownSizes(it) }
     }
 
+    fun allKnownSizesAndNoPermuteMultiply(hop: Hop): Boolean {
+        if (!hop.dimsKnown() || hop is AggBinaryOp && hop.hasLeftPMInput())
+            return false
+        return hop.input.all { allKnownSizesAndNoPermuteMultiply(it) }
+    }
+
     @JvmStatic
     @Throws(LanguageException::class, HopsException::class, DMLRuntimeException::class)
     fun generateCode(dmlprog: DMLProgram) {
@@ -201,18 +207,16 @@ object Spoof2Compiler {
         }
 
         // if any sizes unknown, don't do Spoof2
-        if( roots.any { !allKnownSizes(it)} ) {
-            if (LOG.isTraceEnabled) {
-                LOG.trace("Skipping Spoof2 due to unknown sizes")
-            }
+        if( roots.any { !allKnownSizesAndNoPermuteMultiply(it)} ) {
+            if (LOG.isTraceEnabled)
+                LOG.trace("Skipping Spoof2 due to unknown sizes or a permutation MxM")
             return programRewriteHops(roots, recompile, doDynamicProgramRewriter)
         }
 
         ProgramRewriter(RewriteCommonSubexpressionElimination()).rewriteHopDAG(roots, ProgramRewriteStatus())
 
-        if (LOG.isTraceEnabled) {
+        if (LOG.isTraceEnabled)
             LOG.trace("Spoof2Compiler called for HOP DAG${if(recompile) " at RECOMPILE" else ""}: \n" + Explain.explainHops(roots))
-        }
 
         // remember top-level orientations
         val rootClasses = roots.map(Hop::classify)
