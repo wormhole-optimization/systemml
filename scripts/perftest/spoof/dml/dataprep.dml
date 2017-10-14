@@ -1,0 +1,8 @@
+X = read("compress/rdata/mnist8m.bin");
+
+y = X %*% rand(rows=ncol(X),cols=1);
+y = (y > max(y)-(max(y)-min(y))/2) +1; #just for GLM +1
+
+
+write(X, "mboehm/spoof/X3_mnist8m", format="binary");
+write(y, "mboehm/spoof/y3_mnist8m", format="binary");
