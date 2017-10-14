@@ -1,6 +1,8 @@
 package org.apache.sysml.hops.spoof2.enu
 
 import org.apache.commons.logging.LogFactory
+import org.apache.sysml.api.DMLScript
+import org.apache.sysml.conf.DMLConfig
 import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.LiteralOp
 import org.apache.sysml.hops.spoof2.enu.SumProduct.Companion.getBelowAggPlusMult
@@ -11,6 +13,7 @@ import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter.RewriterResult
 import org.apache.sysml.runtime.controlprogram.parfor.util.IDSequence
 import org.apache.sysml.utils.Explain
+import org.apache.sysml.utils.Statistics
 import java.io.File
 import java.io.FileWriter
 import java.util.*
@@ -107,7 +110,7 @@ class NormalFormExploreEq : SPlanRewriter {
         private val statsAll = mutableListOf<Stats>()
         private val _addedHook = AtomicBoolean(false)
         private fun addHook() {
-            if( !_addedHook.getAndSet(true) )
+            if( !_addedHook.getAndSet(true) && DMLScript.STATISTICS )
                 Runtime.getRuntime().addShutdownHook(object : Thread() {
                     override fun run() {
                         if( LOG.isInfoEnabled ) {
@@ -271,7 +274,7 @@ class NormalFormExploreEq : SPlanRewriter {
 //        } while( changed && eNodes.isEmpty() )
 
         if( eNodes.isEmpty() ) {
-            if( stats.renameInputToFactorOut != 0L )
+            if( stats.renameInputToFactorOut != 0L && DMLScript.STATISTICS )
                 statsAll += stats
             return RewriterResult.NoChange
         }
