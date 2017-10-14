@@ -105,6 +105,8 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 	public static final SparseBlock.Type DEFAULT_INPLACE_SPARSEBLOCK = SparseBlock.Type.CSR;
 	//allowed overhead for shallow serialize in terms of in-memory-size/x <= serialized-size 
 	public static final double MAX_SHALLOW_SERIALIZE_OVERHEAD = 1.3;
+	//flag if MCSR blocks that do not qualify for shallow serialize should be converted to CSR
+	public static final boolean CONVERT_MCSR_TO_CSR_ON_DEEP_SERIALIZE = true;
 	//basic header (int rlen, int clen, byte type)
 	public static final int HEADER_SIZE = 9;
 	
@@ -112,7 +114,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		EMPTY_BLOCK,  
 		ULTRA_SPARSE_BLOCK, //ultra sparse representation, in-mem same as sparse
 		SPARSE_BLOCK, //sparse representation, see sparseRows 
-		DENSE_BLOCK, //dense representation, see denseBlock			
+		DENSE_BLOCK, //dense representation, see denseBlock
 	}
 	
 	//matrix meta data
@@ -437,6 +439,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 	////////
 	// Metadata information 
 	
+	@Override
 	public int getNumRows() {
 		return rlen;
 	}
@@ -451,6 +454,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		rlen = r;
 	}
 	
+	@Override
 	public int getNumColumns() {
 		return clen;
 	}
@@ -459,12 +463,17 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		clen = c;
 	}
 	
+	@Override
 	public long getNonZeros() {
 		return nonZeros;
 	}
 	
-	public void setNonZeros(long nnz) {
-		nonZeros = nnz;
+	public long setNonZeros(long nnz) {
+		return (nonZeros = nnz);
+	}
+	
+	public double getSparsity() {
+		return OptimizerUtils.getSparsity(rlen, clen, nonZeros);
 	}
 	
 	public boolean isVector() {
@@ -773,7 +782,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 	 */
 	public void sortSparseRows() {
 		if( !sparse || sparseBlock==null )
-			return;		
+			return;
 		sparseBlock.sort();
 	}
 	
@@ -916,16 +925,33 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 	 * 
 	 * @return true if sparse
 	 */
-	public boolean isInSparseFormat()
-	{
+	@Override
+	public boolean isInSparseFormat() {
 		return sparse;
 	}
+	
+	public boolean isUltraSparse() {
+		return isUltraSparse(true);
+	}
 
-	public boolean isUltraSparse()
-	{
+	public boolean isUltraSparse(boolean checkNnz) {
 		double sp = ((double)nonZeros/rlen)/clen;
 		//check for sparse representation in order to account for vectors in dense
-		return sparse && sp<ULTRA_SPARSITY_TURN_POINT && nonZeros<40;
+		return sparse && sp<ULTRA_SPARSITY_TURN_POINT && (!checkNnz || nonZeros<40);
+	}
+	
+	public boolean isUltraSparsePermutationMatrix() {
+		if( !isUltraSparse(false) )
+			return false;
+		boolean isPM = true;
+		SparseBlock sblock = getSparseBlock();
+		for( int i=0; i<rlen & isPM; i++ )
+			isPM &= sblock.isEmpty(i) || sblock.size(i) == 1;
+		return isPM;
+	}
+	
+	private boolean isUltraSparseSerialize(boolean sparseDst) {
+		return nonZeros<rlen && sparseDst;
 	}
 
 	/**
@@ -984,7 +1010,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		//ensure exact size estimates for write
 		if( nonZeros <= 0 ) {
 			recomputeNonZeros();
-		}	
+		}
 		
 		//decide on in-memory representation
 		return evalSparseFormatOnDisk(lrlen, lclen, nonZeros);
@@ -1203,6 +1229,10 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 			GPUStatistics.maintainCPMiscTimes(opcode, CPInstruction.MISC_TIMER_RECOMPUTE_NNZ, t2-t1);
 		}
 		return nonZeros;
+	}
+	
+	public long recomputeNonZeros(int rl, int ru) {
+		return recomputeNonZeros(rl, ru, 0, clen-1);
 	}
 	
 	/**
@@ -1650,8 +1680,8 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 				if( !a.isEmpty(i) ) {
 					boolean update = a.set(i, cl, 0);
 					if( updateNNZ )
-						nonZeros -= update ? 1 : 0;							
-				}			
+						nonZeros -= update ? 1 : 0;
+				}
 		}
 		else
 		{
@@ -1661,7 +1691,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 					a.deleteIndexRange(i, cl, cu+1);
 					if( updateNNZ )
 						nonZeros += (a.size(i)-lnnz);
-				}	
+				}
 		}
 	}
 	
@@ -2004,7 +2034,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 			for(long i=0; i<nonZeros; i++) {
 				int r = in.readInt();
 				int c = in.readInt();
-				double val = in.readDouble();			
+				double val = in.readDouble();
 				denseBlock[r*clen+c] = val;
 			}
 		}
@@ -2013,7 +2043,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 			//col: read iv-pairs
 			for(long i=0; i<nonZeros; i++) {
 				int r = in.readInt();
-				double val = in.readDouble();			
+				double val = in.readDouble();
 				denseBlock[r] = val;
 			}
 		}
@@ -2036,7 +2066,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 			//write sparse to *
 			if( sparseBlock==null || nonZeros==0 ) 
 				writeEmptyBlock(out);
-			else if( nonZeros<rlen && sparseDst ) 
+			else if( isUltraSparseSerialize(sparseDst) ) 
 				writeSparseToUltraSparse(out); 
 			else if( sparseDst ) 
 				writeSparseBlock(out);
@@ -2048,7 +2078,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 			//write dense to *
 			if( denseBlock==null || nonZeros==0 ) 
 				writeEmptyBlock(out);
-			else if( nonZeros<rlen && sparseDst )
+			else if( isUltraSparseSerialize(sparseDst) )
 				writeDenseToUltraSparse(out);
 			else if( sparseDst )
 				writeDenseToSparse(out);
@@ -2103,8 +2133,8 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 					for(int j=pos; j<pos+nr; j++) {
 						out.writeInt(cols[j]);
 						out.writeDouble(values[j]);
-					}					
-				}	
+					}
+				}
 			}
 			for(;r<rlen; r++)
 				out.writeInt(0);
@@ -2182,14 +2212,14 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 						for( ; j<aix[apos+j2]; j++ )
 							out.writeDouble( 0 );
 						out.writeDouble( avals[apos+j2] );
-					}					
+					}
 					//remaining 0 values in row
 					for( int j=aix[apos+alen-1]+1; j<clen; j++)
 						out.writeDouble( 0 );
 				}
 				else //empty row
 					for( int j=0; j<clen; j++ )
-						out.writeDouble( 0 );	
+						out.writeDouble( 0 );
 			}
 		}
 	}
@@ -2337,7 +2367,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		}
 		else {
 			//default serialize (general case)
-			write(os);	
+			write(os);
 		}
 	}
 	
@@ -2393,10 +2423,8 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 	////////
 	// Estimates size and sparsity
 
-	public long estimateSizeInMemory() 
-	{
-		double sp = OptimizerUtils.getSparsity(rlen, clen, nonZeros);
-		return estimateSizeInMemory(rlen, clen, sp);
+	public long estimateSizeInMemory() {
+		return estimateSizeInMemory(rlen, clen, getSparsity());
 	}
 
 	public static long estimateSizeInMemory(long nrows, long ncols, double sparsity)
@@ -2587,9 +2615,8 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		if( !isAllocated() ) 
 			return 44;
 		//in-memory size of dense/sparse representation
-		double sp = OptimizerUtils.getSparsity(rlen, clen, nonZeros);
 		return !sparse ? estimateSizeDenseInMemory(rlen, clen) :
-			estimateSizeSparseInMemory(rlen, clen, sp,
+			estimateSizeSparseInMemory(rlen, clen, getSparsity(),
 			SparseBlockFactory.getSparseBlockType(sparseBlock));
 	}
 	
@@ -2600,12 +2627,30 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 	
 	@Override
 	public boolean isShallowSerialize() {
+		return isShallowSerialize(false);
+	}
+	
+	@Override
+	public boolean isShallowSerialize(boolean inclConvert) {
 		//shallow serialize if dense, dense in serialized form or already in CSR
-		return !sparse || !evalSparseFormatOnDisk()
+		boolean sparseDst = evalSparseFormatOnDisk();
+		return !sparse || !sparseDst
 			|| (sparse && sparseBlock instanceof SparseBlockCSR)
 			|| (sparse && sparseBlock instanceof SparseBlockMCSR
-				&& getInMemorySize()/MAX_SHALLOW_SERIALIZE_OVERHEAD 
-				<= getExactSerializedSize());
+				&& getInMemorySize() / MAX_SHALLOW_SERIALIZE_OVERHEAD 
+				<= getExactSerializedSize())
+			|| (sparse && sparseBlock instanceof SparseBlockMCSR
+				&& nonZeros < Integer.MAX_VALUE //CSR constraint
+				&& inclConvert && CONVERT_MCSR_TO_CSR_ON_DEEP_SERIALIZE
+				&& !isUltraSparseSerialize(sparseDst));
+	}
+	
+	@Override 
+	public void toShallowSerializeBlock() {
+		if( isShallowSerialize() || !isShallowSerialize(true) )
+			return;
+		sparseBlock = SparseBlockFactory.copySparseBlock(
+			SparseBlock.Type.CSR, sparseBlock, false);
 	}
 	
 	@Override
@@ -2882,6 +2927,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		}
 	}
 
+	@Override
 	public MatrixValue binaryOperations(BinaryOperator op, MatrixValue thatValue, MatrixValue result) 
 		throws DMLRuntimeException
 	{
@@ -2911,6 +2957,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		return ret;
 	}
 
+	@Override
 	public void binaryOperationsInPlace(BinaryOperator op, MatrixValue thatValue) 
 		throws DMLRuntimeException
 	{
@@ -2930,9 +2977,8 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		//core binary cell operation
 		LibMatrixBincell.bincellOpInPlace(this, that, op);
 	}
-
-
 	
+	@Override
 	public void incrementalAggregate(AggregateOperator aggOp, MatrixValue correction, 
 			MatrixValue newWithCorrection)
 	throws DMLRuntimeException
@@ -3177,6 +3223,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 			throw new DMLRuntimeException("unrecognized correctionLocation: "+aggOp.correctionLocation);
 	}
 	
+	@Override
 	public void incrementalAggregate(AggregateOperator aggOp, MatrixValue newWithCorrection)
 		throws DMLRuntimeException
 	{
@@ -3786,10 +3833,15 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		return ret;
 	}
 
-	public final MatrixBlock sliceOperations(IndexRange ixrange, MatrixBlock ret) throws DMLRuntimeException {
+	public MatrixBlock sliceOperations(IndexRange ixrange, MatrixBlock ret) throws DMLRuntimeException {
 		return sliceOperations(
-				(int)ixrange.rowStart, (int)ixrange.rowEnd, 
-				(int)ixrange.colStart, (int)ixrange.colEnd, ret);
+			(int)ixrange.rowStart, (int)ixrange.rowEnd, 
+			(int)ixrange.colStart, (int)ixrange.colEnd, true, ret);
+	}
+	
+	@Override
+	public MatrixBlock sliceOperations(int rl, int ru, int cl, int cu, CacheBlock ret) throws DMLRuntimeException {
+		return sliceOperations(rl, ru, cl, cu, true, ret);
 	}
 	
 	/**
@@ -3804,7 +3856,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 	 * @return matrix block
 	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public MatrixBlock sliceOperations(int rl, int ru, int cl, int cu, CacheBlock ret) 
+	public MatrixBlock sliceOperations(int rl, int ru, int cl, int cu, boolean deep, CacheBlock ret) 
 		throws DMLRuntimeException 
 	{	
 		// check the validity of bounds
@@ -3833,7 +3885,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		{
 			//core slicing operation (nnz maintained internally)
 			if (sparse) 
-				sliceSparse(rl, ru, cl, cu, result);
+				sliceSparse(rl, ru, cl, cu, deep, result);
 			else 
 				sliceDense(rl, ru, cl, cu, result);
 		}
@@ -3841,7 +3893,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		return result;
 	}
 
-	private void sliceSparse(int rl, int ru, int cl, int cu, MatrixBlock dest) 
+	private void sliceSparse(int rl, int ru, int cl, int cu, boolean deep, MatrixBlock dest) 
 		throws DMLRuntimeException
 	{
 		//check for early abort
@@ -3862,10 +3914,12 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 				}
 			}
 		}
-		else if( rl==ru && cl==0 && cu==clen-1 ) //ROW VECTOR 
+		else if( cl==0 && cu==clen-1 ) //ROW batch
 		{
 			//note: always sparse dest, but also works for dense
-			dest.appendRow(0, sparseBlock.get(rl));
+			boolean ldeep = (deep && sparseBlock instanceof SparseBlockMCSR);
+			for(int i = rl; i <= ru; i++)
+				dest.appendRow(i-rl, sparseBlock.get(i), ldeep);
 		}
 		else //general case (sparse/dense dest)
 		{
@@ -3879,7 +3933,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 					int astart = (cl>0)?sparseBlock.posFIndexGTE(i, cl) : apos;
 					if( astart != -1 )
 						for( int j=astart; j<apos+alen && aix[j] <= cu; j++ )
-							dest.appendValue(i-rl, aix[j]-cl, avals[j]);	
+							dest.appendValue(i-rl, aix[j]-cl, avals[j]);
 				}
 		}
 	}
@@ -3924,6 +3978,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		dest.recomputeNonZeros();
 	}
 	
+	@Override
 	public void sliceOperations(ArrayList<IndexedMatrixValue> outlist, IndexRange range, int rowCut, int colCut, 
 			int normalBlockRowFactor, int normalBlockColFactor, int boundaryRlen, int boundaryClen)
 	{
@@ -4079,6 +4134,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		}
 	}
 
+	@Override
 	public MatrixValue zeroOutOperations(MatrixValue result, IndexRange range, boolean complementary)
 			throws DMLRuntimeException 
 	{
@@ -4187,6 +4243,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		return result;
 	}
 	
+	@Override
 	public MatrixValue aggregateUnaryOperations(AggregateUnaryOperator op, MatrixValue result, 
 			int blockingFactorRow, int blockingFactorCol, MatrixIndexes indexesIn)
 		throws DMLRuntimeException
@@ -4195,7 +4252,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 				blockingFactorRow, blockingFactorCol, indexesIn, false);
 	}
 	
-	
+	@Override
 	public MatrixValue aggregateUnaryOperations(AggregateUnaryOperator op, MatrixValue result, 
 			int blockingFactorRow, int blockingFactorCol, MatrixIndexes indexesIn, boolean inCP) 
 		throws DMLRuntimeException
@@ -4798,7 +4855,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 	 * This function computes the total weight
 	 * 
 	 * @return sum weight for quantile
-	 * @throws DMLRuntimeException
+	 * @throws DMLRuntimeException on error
 	 */
 	public double sumWeightForQuantile() 
 		throws DMLRuntimeException 
@@ -4819,12 +4876,14 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		return sum_wt;
 	}
 	
+	@Override
 	public MatrixValue aggregateBinaryOperations(MatrixIndexes m1Index, MatrixValue m1Value, MatrixIndexes m2Index, MatrixValue m2Value, 
 			MatrixValue result, AggregateBinaryOperator op ) throws DMLRuntimeException
 	{
 		return aggregateBinaryOperations(m1Value, m2Value, result, op);
 	}
 
+	@Override
 	public MatrixValue aggregateBinaryOperations(MatrixValue m1Value, MatrixValue m2Value, MatrixValue result, AggregateBinaryOperator op) 
 		throws DMLRuntimeException
 	{
