@@ -77,7 +77,7 @@ public class DMLConfig
 	public static final String CP_PARALLEL_IO       = "sysml.cp.parallel.io";
 	public static final String COMPRESSED_LINALG    = "sysml.compressed.linalg"; //auto, true, false
 	public static final String NATIVE_BLAS          = "sysml.native.blas";
-    public static final String SPOOF                = "spoof.enabled"; //boolean
+    public static final String SPOOF                = "sysml.spoof.enabled"; //boolean
 	public static final String CODEGEN              = "sysml.codegen.enabled"; //boolean
 	public static final String CODEGEN_COMPILER     = "sysml.codegen.compiler"; //see SpoofCompiler.CompilerType
 	public static final String CODEGEN_OPTIMIZER    = "sysml.codegen.optimizer"; //see SpoofCompiler.PlanSelector
