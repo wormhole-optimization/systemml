@@ -133,9 +133,12 @@ while(continue == 1 & iter < maxiterations)  {
       	g = wd + step_sz*dd - sum(out * Y * Xd)
       	h = dd + sum(Xd * sv * Xd)
       	step_sz = step_sz - g/h
-      	if (g*g/h < 0.0000000001){
-        	continue1 = 0
-      	}
+      	#if (g*g/h < 0.0000000001){
+        #	continue1 = 0
+        #}
+        continue1 = g*g/h >= 0.0000000001
+        #x = g*g/h
+        #print("g*g/h= "+x+" and continue1 "+continue1)
     }
 
     #update weights
