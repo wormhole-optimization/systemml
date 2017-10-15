@@ -10,6 +10,7 @@ import java.util.ArrayList
 import java.util.HashMap
 import org.apache.sysml.hops.spoof2.rewrite.RewriteBindUnify.Companion.isBindOrUnbind
 import org.apache.sysml.hops.spoof2.plan.stripDead
+import org.apache.sysml.utils.Explain
 
 /**
  * Eliminate Common Sub-Expressions.
@@ -39,6 +40,7 @@ class SPlanCSEElimRewriter(
     companion object {
         /** Whether to invoke the SPlanValidator after every rewrite pass. */
         private const val CHECK = true
+        private const val LOG_ALL_CSE_ELIM = false
         internal val LOG = LogFactory.getLog(SPlanCSEElimRewriter::class.java)!!
 
         //internal configuration flags
@@ -82,6 +84,8 @@ class SPlanCSEElimRewriter(
 
         val leaves = dataops.values + literalops.values
         var changed = 0
+        if( LOG.isTraceEnabled )
+            LOG.trace("Before CSE Elim:"+ Explain.explainSPlan(roots))
         for (leaf in leaves)
             changed += rCSEElim(leaf)
         SNode.resetVisited(roots)
@@ -136,6 +140,8 @@ class SPlanCSEElimRewriter(
                     val h1 = node.parents[i]
                     val h2 = node.parents[j]
                     if( h1 !== h2 && h1.compare(h2) ) {
+                        if( LOG_ALL_CSE_ELIM && LOG.isTraceEnabled )
+                            LOG.trace("CSE merge (${h2.id}) $h2 ${h2.schema} into (${h1.id}) $h1 ${h1.schema}")
                         h2.parents.forEach {
                             it.inputs[it.inputs.indexOf(h2)] = h1
                             h1.parents += it

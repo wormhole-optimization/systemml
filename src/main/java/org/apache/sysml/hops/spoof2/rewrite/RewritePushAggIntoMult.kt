@@ -25,6 +25,15 @@ class RewritePushAggIntoMult : SPlanRewriteRule() {
                 // find indices that are neither in the output nor in the join condition
                 val preAggAttrs = input.schema.filter { it,_ -> it !in agg.schema && it !in joinAttrs }
                 if (preAggAttrs.isNotEmpty()) {
+                    // if the mult has multiple parents, split cse
+                    if( mult.parents.size > 1 ) {
+                        val otherParents = mult.parents - agg
+                        mult.parents.clear()
+                        mult.parents += agg
+                        val copy = mult.shallowCopyNoParentsYesInputs()
+                        otherParents.forEach { it.inputs[it.inputs.indexOf(mult)] = copy; copy.parents += it }
+                        copy.visited = mult.visited
+                    }
                     // pre-aggregate these indices!
                     val preAgg = SNodeAggregate(AggOp.SUM, input, preAggAttrs)
                     SNodeRewriteUtils.replaceChildReference(mult, input, preAgg)
@@ -38,7 +47,7 @@ class RewritePushAggIntoMult : SPlanRewriteRule() {
                 val fullyPushed = agg.aggs.names.filter { it !in mult.schema }
                 agg.aggs -= fullyPushed
                 if( SPlanRewriteRule.LOG.isDebugEnabled )
-                    SPlanRewriteRule.LOG.debug("RewritePushAggIntoMult (num=$numApplied). Fully pushed: $fullyPushed."+(if(agg.aggs.isEmpty())" Eliminate agg." else ""))
+                    SPlanRewriteRule.LOG.debug("RewritePushAggIntoMult (num=$numApplied) on agg (${agg.id}). Fully pushed: $fullyPushed."+(if(agg.aggs.isEmpty())" Eliminate agg." else ""))
                 if( agg.aggs.isEmpty() ) { // eliminate agg
                     SNodeRewriteUtils.removeAllChildReferences(agg) // clear node.inputs, child.parents
                     SNodeRewriteUtils.rewireAllParentChildReferences(agg, mult) // for each parent of node, change its input from node to child and add the parent to child
