@@ -3,6 +3,7 @@
 if [ -f "all_times.tsv" ]; then
     rm all_times.tsv
 fi
+tmpfile=$(mktemp)
 for f in $(ls -1 times_*.txt); do
     t=${f#*_}
     conf=${t%.txt}
@@ -16,8 +17,10 @@ for f in $(ls -1 times_*.txt); do
             split(key, keyarr, SUBSEP)
             printf(\"%s\t%s\t${conf}\t%s\n\", keyarr[1], keyarr[2], arr[key] / cnt[key])
         }
-    }" "$f" >> all_times.tsv #| sort +0n -1
+    }" "$f" >> "${tmpfile}" #| sort +0n -1
 #    while IFS= read -r line; do
 #
 #    done < "$f"
 done
+
+sort "${tmpfile}" > "all_times.tsv"
