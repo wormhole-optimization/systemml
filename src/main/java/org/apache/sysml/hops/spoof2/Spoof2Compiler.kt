@@ -239,7 +239,7 @@ object Spoof2Compiler {
             return programRewriteHops(roots, recompile, doDynamicProgramRewriter)
         }
 
-        // for each root, a map from input dimensions (acutally a list) to the base inputs and input dimensions
+        // for each root, a map from input dimensions (actually a list) to the base inputs and input dimensions
         val baseInputs = sroots.map { sroot ->
             dimsToInputDims(sroot)
         }
@@ -385,9 +385,8 @@ object Spoof2Compiler {
             roots2 = roots
         }
 
-        if (LOG.isTraceEnabled) {
+        if (LOG.isTraceEnabled)
             LOG.trace("Spoof2Compiler created modified HOP DAG: \n" + Explain.explainHops(roots2))
-        }
         HopDagValidator.validateHopDag(roots2)
 
         //rewrite after applied sum-product optimizer
@@ -397,10 +396,8 @@ object Spoof2Compiler {
 //            RewriteAlgebraicSimplificationDynamic().rewriteHopDAGs(roots2, ProgramRewriteStatus())
 
         HopDagValidator.validateHopDag(roots2)
-
-        if (LOG.isTraceEnabled) {
+        if (LOG.isTraceEnabled)
             LOG.trace("Spoof2Compiler rewritten modified HOP DAG: \n" + Explain.explainHops(roots2))
-        }
 
         return roots2
     }

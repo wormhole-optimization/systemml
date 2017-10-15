@@ -16,7 +16,8 @@ do
       for conf in "base" "base_spoof" "fused" "fused_spoof" "gen" "gen_spoof" "fused_gen" "fused_gen_spoof"
       do
          tstart=$SECONDS
-         ./sparkDML.sh -f ./dml/l2-svm.dml --config ./SystemML-config_${conf}.xml --stats --nvargs X=spoof/X_${num_rows} Y=spoof/y_${num_rows} icpt=0 tol=0.000000000001 reg=0.001 maxiter=20 model=spoof/w fmt="binary"
+         ./sparkDML.sh -f ./dml/l2-svm.dml --config ./SystemML-config_${conf}.xml --nvargs \
+         X=spoof/X_${num_rows} Y=spoof/y_${num_rows} icpt=0 tol=0.000000000001 reg=0.001 maxiter=20 model=spoof/w fmt="binary"
          echo "l2svm "${num_rows}" "$(($SECONDS - $tstart - 3)) >> times_${conf}.txt
       done
    done

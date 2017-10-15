@@ -180,7 +180,8 @@ public class Recompiler
 		//however, we create deep copies for most dags to allow for concurrent recompile
 		synchronized( hops ) 
 		{
-			LOG.debug ("\n**************** Optimizer (Recompile) *************\nMemory Budget = " + 
+			if( LOG.isDebugEnabled() )
+				LOG.debug ("\n**************** Optimizer (Recompile) *************\nMemory Budget = " +
 					OptimizerUtils.toMB(OptimizerUtils.getLocalMemBudget()) + " MB");
 
 			// prepare hops dag for recompile
