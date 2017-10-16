@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
-if [ -f "all_times.tsv" ]; then
+AllTimesFile="all_times.tsv"
+
+if [ -f ${AllTimesFile} ]; then
     rm all_times.tsv
 fi
 tmpfile=$(mktemp)
@@ -23,4 +25,5 @@ for f in $(ls -1 times_*.txt); do
 #    done < "$f"
 done
 
-sort "${tmpfile}" > "all_times.tsv"
+printf "alg\trows\ttype\tavgTime\n" > ${AllTimesFile}
+sort "${tmpfile}" >> ${AllTimesFile}

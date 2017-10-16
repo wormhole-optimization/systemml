@@ -4,12 +4,14 @@ num_cols=10
 sparsity=1.0
 stats=1
 genData=1
+reps=3
 
 user=$(whoami)
 num_cols=$1
 sparsity=$2
 stats=$3
 genData=$4
+reps=$5
 if [ "${stats}" == 1 ]; then
     stats="--stats"
 else
@@ -25,10 +27,10 @@ do
    fi
 
    #for all repetitions
-   for rep in {1..3}
+   for rep in `seq 1 ${reps}`
    do
       #for all baselines
-      for conf in "base" "base_spoof" "fused" "fused_spoof" "gen" "gen_spoof" "fused_gen" "fused_gen_spoof"
+      for conf in "base" "base_spoof" "fused" "fused_spoof" "gen" "gen_spoof" "gen__fused" "gen__fused_spoof"
       do
          echo mlogeg ${num_rows} ${conf}
          tstart=$SECONDS
@@ -37,4 +39,9 @@ do
          echo "mlogreg "${num_rows}" "$(($SECONDS - $tstart - 3)) >> times_${conf}.txt
       done
    done
+         if [ "${stats}" == 1 ]; then
+            mkdir -p stats
+            cp stats.tsv stats/mlogreg-stats.tsv
+            cp stats-inputs.tsv stats/mlogreg-stats-inputs.tsv
+         fi
 done
