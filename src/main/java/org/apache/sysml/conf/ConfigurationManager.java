@@ -193,6 +193,10 @@ public class ConfigurationManager
 		return getDMLConfig().getBooleanValue(DMLConfig.CODEGEN)
 			|| getCompilerConfigFlag(ConfigType.CODEGEN_ENABLED);
 	}
+
+	public static boolean isSpoofEnabled() {
+		return getDMLConfig().getBooleanValue(DMLConfig.SPOOF);
+	}
 	
 	
 	///////////////////////////////////////

@@ -228,10 +228,12 @@ public class Recompiler
 			for( Hop hopRoot : hops )
 				hopRoot.refreshMemEstimates(memo); 
 			memo.extract(hops, status);
-// Todo call Spoof2Compiler
-			Hop.resetVisitStatus(hops);
-			Spoof2Compiler.generateCodeFromHopDAGs(hops, true, !inplace);
-			Hop.resetVisitStatus(hops);
+
+			if (ConfigurationManager.isSpoofEnabled()) {
+				Hop.resetVisitStatus(hops);
+				Spoof2Compiler.generateCodeFromHopDAGs(hops, true, !inplace);
+				Hop.resetVisitStatus(hops);
+			}
 			//// codegen if enabled
 //			if( ConfigurationManager.isCodegenEnabled()
 	//				&& SpoofCompiler.RECOMPILE_CODEGEN ) {
@@ -347,10 +349,11 @@ public class Recompiler
 			hops.resetVisitStatus();
 			hops.refreshMemEstimates(memo);
 			
-			// Todo call Spoof2Compiler
-			hops.resetVisitStatus();
-			hops = Spoof2Compiler.optimize(hops, true, !inplace);
-			hops.resetVisitStatus();
+			if (ConfigurationManager.isSpoofEnabled()) {
+				hops.resetVisitStatus();
+				hops = Spoof2Compiler.optimize(hops, true, !inplace);
+				hops.resetVisitStatus();
+			}
 
 
 
