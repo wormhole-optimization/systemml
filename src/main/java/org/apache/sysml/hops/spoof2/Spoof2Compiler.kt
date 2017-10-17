@@ -561,7 +561,19 @@ object Spoof2Compiler {
                     val boundNames = mutableMapOf<AU,AB>()
                     val aggName: AB?
                     when (current.input[0].classify()) {
-                        HopClass.SCALAR -> throw HopsException("AggBinaryOp id=${current.hopID} should not act on scalars but input SNodes are $inputs")
+                        HopClass.SCALAR -> {
+                            // possibility of 1x1 times 1xk -- in this case we should use a regular multiply
+                            when( current.input[1].classify() ) {
+                                HopClass.ROW_VECTOR -> {
+                                    val bs0 = inputs[1].schema.genAllBindings()
+                                    inputs[1] = SNodeBind(inputs[1], bs0)
+                                    boundNames += AU.U0 to bs0[AU.U0]!!
+                                }
+                                HopClass.SCALAR -> {}
+                                else -> throw HopsException("AggBinaryOp id=${current.hopID} on scalar and ${current.input[1].classify()}; inputs are $inputs")
+                            }
+                            aggName = null
+                        }
                         HopClass.COL_VECTOR -> {
                             HopsException.check(current.input[1].classify() == HopClass.ROW_VECTOR
                                     || current.input[1].classify() == HopClass.SCALAR, current,
@@ -597,7 +609,7 @@ object Spoof2Compiler {
                     if( aggName != null ) {
                         ret = SNodeAggregate(current.outerOp, ret, aggName)
                     }
-                    SNodeUnbind(ret, boundNames)
+                    if( boundNames.isNotEmpty() ) SNodeUnbind(ret, boundNames) else ret
                 }
                 else
                     SNodeExt(current, inputs)
@@ -899,13 +911,19 @@ object Spoof2Compiler {
             HopRewriteUtils.createMatrixMultiply(hopInputs[0], hopInputs[1]) to
                     mapOf(AU.U0 to (nary.inputs[0].schema.names.first() as AB), AU.U1 to (nary.inputs[1].schema.names.first() as AB))
         }
-        else
+        else {
+            hopInputs.mapInPlace {
+                if( it.dim1 == 1L && it.dim2 == 1L )
+                    HopRewriteUtils.createUnary(it, OpOp1.CAST_AS_SCALAR)
+                else it
+            }
             when( nary.inputs.size ) {
                 1 -> HopRewriteUtils.createUnary(hopInputs[0], OpOp1.valueOf(nary.op.name)) to mis[0]
                 2 -> HopRewriteUtils.createBinary(hopInputs[0], hopInputs[1], OpOp2.valueOf(nary.op.name)) to if(mis[0].size >= mis[1].size) mis[0] else mis[1]
                 3 -> HopRewriteUtils.createTernary(hopInputs[0], hopInputs[1], hopInputs[2], OpOp3.valueOf(nary.op.name)) to mis[0] // ?
                 else -> throw SNodeException(nary, "don't know how to reconstruct a Hop from an nary with ${nary.inputs.size} inputs $nary")
             }
+        }
     }
 
 

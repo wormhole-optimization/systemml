@@ -19,8 +19,8 @@
 #
 #-------------------------------------------------------------
 
-x= matrix( "9 1 8 2 7 3 6 4 5", rows=1, cols=9)
-y= matrix( "1 2 3 4 5 6 7 8 9", rows=9, cols=1)
+C= matrix( "9 1 8 2 7 3 6 4 5", rows=9, cols=1)
+S= matrix( "2", rows=1, cols=1)
 while (FALSE) {}
-S = x%*%y
-write(S,$1)
+R = C %*% S
+write(R,$1)

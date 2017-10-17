@@ -20,6 +20,7 @@
 package org.apache.sysml.test.integration.functions.spoof2
 
 import org.apache.sysml.api.DMLScript
+import org.apache.sysml.hops.OptimizerUtils
 import org.apache.sysml.lops.LopProperties
 import org.apache.sysml.lops.LopProperties.ExecType
 import org.apache.sysml.lops.LopProperties.ExecType.*
@@ -111,7 +112,9 @@ class Spoof2Test(
         //	TEST_NAME+69;  //X - colSums(X)
         //	TEST_NAME+70;  //(X + colSums(X)) %*% Y
         //	TEST_NAME+71;  //t(X)%*%X + 2*t(colSums(X))%*%colSums(X) + 3*t(colSums(X))%*%colSums(X) // expanded form of 66
-        private const val NUM_TESTS = 71
+        //	TEST_NAME+72;  //C %*% S #C is a col vector; S is a scalar; no algebraic rewrites
+        //	TEST_NAME+73;  //S %*% R #R is a row vector; S is a scalar; no algebraic rewrites
+        private const val NUM_TESTS = 73
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
@@ -151,7 +154,6 @@ class Spoof2Test(
 
 
     private fun testIt(testname: String, rewrites: Boolean, instType: LopProperties.ExecType) {
-//        val oldFlag = OptimizerUtils.ALLOW_ALGEBRAIC_SIMPLIFICATION
         val platformOld = AutomatedTestBase.rtplatform
         when (instType) {
             MR -> AutomatedTestBase.rtplatform = DMLScript.RUNTIME_PLATFORM.HADOOP
@@ -162,6 +164,11 @@ class Spoof2Test(
         val sparkConfigOld = DMLScript.USE_LOCAL_SPARK_CONFIG
         if (AutomatedTestBase.rtplatform == DMLScript.RUNTIME_PLATFORM.SPARK || AutomatedTestBase.rtplatform == DMLScript.RUNTIME_PLATFORM.HYBRID_SPARK)
             DMLScript.USE_LOCAL_SPARK_CONFIG = true
+
+        val oldAlgebraicSimplify = OptimizerUtils.ALLOW_ALGEBRAIC_SIMPLIFICATION
+        if( testname in setOf(TEST_NAME+72, TEST_NAME+73) ) {
+            OptimizerUtils.ALLOW_ALGEBRAIC_SIMPLIFICATION = false
+        }
 
         try {
             val config = getTestConfiguration(testname)
@@ -195,7 +202,7 @@ class Spoof2Test(
         } finally {
             AutomatedTestBase.rtplatform = platformOld
             DMLScript.USE_LOCAL_SPARK_CONFIG = sparkConfigOld
-//            OptimizerUtils.ALLOW_ALGEBRAIC_SIMPLIFICATION = oldFlag
+            OptimizerUtils.ALLOW_ALGEBRAIC_SIMPLIFICATION = oldAlgebraicSimplify
         }
     }
 

@@ -19,8 +19,10 @@
 #
 #-------------------------------------------------------------
 
-x= matrix( "9 1 8 2 7 3 6 4 5", rows=1, cols=9)
-y= matrix( "1 2 3 4 5 6 7 8 9", rows=9, cols=1)
-while (FALSE) {}
-S = x%*%y
-write(S,$1)
+args<-commandArgs(TRUE)
+options(digits=22)
+library(Matrix)
+R = matrix(  c(9,1,8,2,7,3,6,4,5), nrow=1, ncol=9, byrow = TRUE)
+S = matrix(  c(2), nrow=1, ncol=1, byrow = TRUE)
+O = S %*% R
+writeMM(as(O, "CsparseMatrix"), paste(args[2], "S", sep=""));
