@@ -30,18 +30,22 @@ do
    for rep in `seq 1 ${reps}`
    do
       #for all baselines
-      for conf in "base" "base_spoof" "fused" "fused_spoof" "gen" "gen_spoof" "gen__fused" "gen__fused_spoof"
+      arr=( "base" "base_spoof" "fused" "fused_spoof" "gen" "gen_spoof" "gen__fused" "gen__fused_spoof" )
+      if [ "${stats}" == "--stats" ]; then
+         arr=( "base_spoof" "fused_spoof" "gen_spoof" "gen__fused_spoof" )
+      fi
+      for conf in "${arr[@]}"
       do
          echo glm-binomial-probit ${num_rows} ${conf}
          tstart=$SECONDS
          ./sparkDML.sh -f ./dml/GLM.dml --config ./SystemML-config_${conf}.xml ${stats} --nvargs \
          dfam=2 vpow=0.0 link=3 yneg=2 X=spoof/X3_${num_rows} Y=spoof/y3_${num_rows} icpt=0 tol=0.000000000001 reg=0.001 moi=20 mii=10 B=spoof/w3 fmt="binary"
          echo "glm-binomial-probit "${num_rows}" "$(($SECONDS - $tstart - 3)) >> times_${conf}.txt
+         if [ "${stats}" == "--stats" ]; then
+            mkdir -p stats
+            cp stats.tsv stats/glm-binomial-probit-${conf}-stats.tsv
+            cp stats-inputs.tsv stats/glm-binomial-probit-${conf}-stats-inputs.tsv
+         fi
       done
    done
-         if [ "${stats}" == 1 ]; then
-            mkdir -p stats
-            cp stats.tsv stats/glm-binomial-probit-stats.tsv
-            cp stats-inputs.tsv stats/glm-binomial-probit-stats-inputs.tsv
-         fi
 done

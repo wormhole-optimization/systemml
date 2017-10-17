@@ -30,18 +30,22 @@ do
    for rep in `seq 1 ${reps}`
    do
       #for all baselines
-      for conf in "base" "base_spoof" "fused" "fused_spoof" "gen" "gen_spoof" "gen__fused" "gen__fused_spoof"
+      arr=( "base" "base_spoof" "fused" "fused_spoof" "gen" "gen_spoof" "gen__fused" "gen__fused_spoof" )
+      if [ "${stats}" == "--stats" ]; then
+         arr=( "base_spoof" "fused_spoof" "gen_spoof" "gen__fused_spoof" )
+      fi
+      for conf in "${arr[@]}"
       do
          echo l2svm ${num_rows} ${conf}
          tstart=$SECONDS
          ./sparkDML.sh -f ./dml/l2-svm.dml --config ./SystemML-config_${conf}.xml ${stats} --nvargs \
          X=spoof/X_${num_rows} Y=spoof/y_${num_rows} icpt=0 tol=0.000000000001 reg=0.001 maxiter=20 model=spoof/w fmt="binary"
          echo "l2svm "${num_rows}" "$(($SECONDS - $tstart - 3)) >> times_${conf}.txt
+         if [ "${stats}" == "--stats" ]; then
+            mkdir -p stats
+            cp stats.tsv stats/l2svm-${conf}-stats.tsv
+            cp stats-inputs.tsv stats/l2svm-${conf}-stats-inputs.tsv
+         fi
       done
    done
-         if [ "${stats}" == 1 ]; then
-            mkdir -p stats
-            cp stats.tsv stats/l2svm-stats.tsv
-            cp stats-inputs.tsv stats/l2svm-stats-inputs.tsv
-         fi
 done

@@ -30,18 +30,22 @@ do
    for rep in `seq 1 ${reps}`
    do
       #for all baselines
-      for conf in "base" "base_spoof" "fused" "fused_spoof" "gen" "gen_spoof" "gen__fused" "gen__fused_spoof"
+      arr=( "base" "base_spoof" "fused" "fused_spoof" "gen" "gen_spoof" "gen__fused" "gen__fused_spoof" )
+      if [ "${stats}" == "--stats" ]; then
+         arr=( "base_spoof" "fused_spoof" "gen_spoof" "gen__fused_spoof" )
+      fi
+      for conf in "${arr[@]}"
       do
          echo mlogeg ${num_rows} ${conf}
          tstart=$SECONDS
          ./sparkDML.sh -f ./dml/MultiLogReg.dml --config ./SystemML-config_${conf}.xml ${stats} --nvargs \
          X=spoof/X2_${num_rows} Y=spoof/y2_${num_rows} icpt=0 tol=0.000000000001 reg=0.001 moi=20 mii=10 B=spoof/w2 fmt="binary"
          echo "mlogreg "${num_rows}" "$(($SECONDS - $tstart - 3)) >> times_${conf}.txt
+         if [ "${stats}" == "--stats" ]; then
+            mkdir -p stats
+            cp stats.tsv stats/mlogreg-${conf}-stats.tsv
+            cp stats-inputs.tsv stats/mlogreg-${conf}-stats-inputs.tsv
+         fi
       done
    done
-         if [ "${stats}" == 1 ]; then
-            mkdir -p stats
-            cp stats.tsv stats/mlogreg-stats.tsv
-            cp stats-inputs.tsv stats/mlogreg-stats-inputs.tsv
-         fi
 done

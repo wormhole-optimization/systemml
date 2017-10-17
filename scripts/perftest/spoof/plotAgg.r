@@ -1,11 +1,13 @@
 require(graphics)
 require(Matrix)
 require(lattice)
+require(data.table)
+#source("plotAgg.r")
 
-pdf(file="Experiment1.pdf",
-  width=4.6, height=4, family="serif", pointsize=14)
+# pdf(file="Experiment1.pdf",
+#   width=4.6, height=4, family="serif", pointsize=14)
 
-T = read.table("all_times.tsv.20171015", sep="\t", header=TRUE)
+T = read.table("all_times.tsv", sep="\t", header=TRUE)
 T2 = data.table(alg=T$alg, type=T$type, avgTime=T$avgTime)
 
 barchart(avgTime ~ alg, groups=type, T2, auto.key=list(space="right"))

@@ -31,18 +31,22 @@ do
    for rep in `seq 1 ${reps}`
    do
       #for all baselines
-      for conf in "base" "base_spoof" "fused" "fused_spoof" "gen" "gen_spoof" "gen__fused" "gen__fused_spoof"
+      arr=( "base" "base_spoof" "fused" "fused_spoof" "gen" "gen_spoof" "gen__fused" "gen__fused_spoof" )
+      if [ "${stats}" == "--stats" ]; then
+         arr=( "base_spoof" "fused_spoof" "gen_spoof" "gen__fused_spoof" )
+      fi
+      for conf in "${arr[@]}"
       do
          echo kmeans ${num_rows} ${conf}
          tstart=$SECONDS
          ./sparkDML.sh -f ./dml/Kmeans.dml --config ./SystemML-config_${conf}.xml ${stats} --nvargs \
          X=spoof/X5_${num_rows} k=5 runs=1 C=spoof/C_centroids.mtx maxi=20 tol=0.000000000001 fmt="binary"
          echo "kmeans "${num_rows}" "$(($SECONDS - $tstart - 3)) >> times_${conf}.txt
+      if [ "${stats}" == "--stats" ]; then
+         mkdir -p stats
+         cp stats.tsv stats/kmeans-${conf}-stats.tsv
+         cp stats-inputs.tsv stats/kmeans-${conf}-stats-inputs.tsv
+      fi
       done
    done
-      if [ "${stats}" == 1 ]; then
-         mkdir -p stats
-         cp stats.tsv stats/kmeans-stats.tsv
-         cp stats-inputs.tsv stats/kmeans-stats-inputs.tsv
-      fi
 done

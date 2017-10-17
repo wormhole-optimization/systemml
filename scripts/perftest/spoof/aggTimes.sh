@@ -27,3 +27,4 @@ done
 
 printf "alg\trows\ttype\tavgTime\n" > ${AllTimesFile}
 sort "${tmpfile}" >> ${AllTimesFile}
+rm "${tmpfile}"
