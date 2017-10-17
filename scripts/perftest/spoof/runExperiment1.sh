@@ -11,7 +11,7 @@ genData=0
 reps=1
 runner="./sparkDML.sh"
 
-algs=( mlogreg ) #kmeans l2svm  linregcg ) #glm-binomial-probit )
+algs=( mlogreg ) #kmeans mlogreg l2svm ) #glm-binomial-probit )
 confs=( "none_spoof" ) #"default" "none" "none_spoof" )
 
 num_rowsArr=( 10000000 )
@@ -35,7 +35,7 @@ do
                 envsubst < queries/alg_${alg}.txt)
             cmd="--config ./SystemML-config-${conf}.xml ${addOpts} ${cmd}"
             tstart=$SECONDS
-            echo "${runner} ${cmd}"
+#            echo "${runner} ${cmd}"
             echo "${cmd}" | xargs "${runner}"
             echo "${alg} ${num_rows} $(($SECONDS - $tstart - 3))" >> times_${conf}.txt
 

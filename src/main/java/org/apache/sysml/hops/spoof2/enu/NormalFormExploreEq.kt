@@ -109,6 +109,14 @@ class NormalFormExploreEq : SPlanRewriter {
         private val LOG = LogFactory.getLog(NormalFormExploreEq::class.java)!!
         private val statsAll = mutableListOf<Stats>()
         private val _addedHook = AtomicBoolean(false)
+        private fun nodeToStatInputString(it: SNode): String = when( it ) {
+            is SNodeAggregate -> "agg(${it.op}[${it.aggs.size}]) [${it.schema.size}]"
+            is SNodeExt -> "ext(${it.hop.javaClass.simpleName}) [${it.schema.size}]"
+            is SNodeBind -> "bind[${it.bindings.size}] "+nodeToStatInputString(it.input)
+            is SNodeUnbind -> "unbind[${it.unbindings.size}] "+nodeToStatInputString(it.input)
+            is SNodeData -> "data(${it.hop.opString}) [${it.schema.size}]"
+            else -> it.toString()
+        }
         private fun addHook() {
             if( !_addedHook.getAndSet(true) && DMLScript.STATISTICS )
                 Runtime.getRuntime().addShutdownHook(object : Thread() {
@@ -136,16 +144,10 @@ class NormalFormExploreEq : SPlanRewriter {
                             @Suppress("NAME_SHADOWING")
                             val inputFreqs = statsAll.fold(mutableMapOf<String,Int>()) { acc, stat ->
                                 stat.spbs.fold(acc) { acc, spb ->
-                                    spb.getAllInputs().groupBy {
-                                        when( it ) {
-                                            is SNodeAggregate -> "agg(${it.op}[${it.aggs.size}])"
-                                            is SNodeExt -> "ext(${it.hop.javaClass.simpleName})"
-                                            is SNodeBind -> "bi[${it.bindings.size}]"
-                                            else -> it.toString()
-                                        }
-                                    }.mapValues { (_, l) -> l.count() }.forEach { s, c ->
-                                        acc.put(s, acc.getOrDefault(s, 0) + c)
-                                    }
+                                    spb.getAllInputs()
+                                            .groupBy(this@Companion::nodeToStatInputString)
+                                            .mapValues { (_, l) -> l.count() }
+                                            .forEach { s, c -> acc.put(s, acc.getOrDefault(s, 0) + c) }
                                     acc
                                 }
                                 acc
