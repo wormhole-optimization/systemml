@@ -22,7 +22,8 @@ object Spoof2Compiler {
     private val LOG = LogFactory.getLog(Spoof2Compiler::class.java.name)
 
     //internal configuration flags
-    const val LDEBUG = DMLConfig.SPOOF_DEBUG
+    private const val LDEBUG = DMLConfig.SPOOF_DEBUG
+    private const val PRINT_SNODE_CONSTRUCTION = false
     // for internal debugging only
     init {
         if (LDEBUG) Logger.getLogger("org.apache.sysml.hops.spoof2").level = Level.TRACE
@@ -532,9 +533,18 @@ object Spoof2Compiler {
                         inputs[0] // skip the AggUnaryOp
                     }
                     1 -> { // aggregate a vector to a scalar
-                        val bs = inputs[0].schema.genAllBindings()
-                        inputs[0] = SNodeBind(inputs[0], bs)
-                        SNodeAggregate(current.op, inputs[0], bs[AU.U0]!!)
+                        // Hold up! We might have a trivial aggregate.
+                        val nontrivial = when( current.direction ) {
+                            Direction.RowCol -> true
+                            Direction.Row -> current.input[0].dim2 != 1L
+                            Direction.Col -> current.input[0].dim1 != 1L
+                            else -> throw HopsException("bad direction ${current.direction} on (${current.hopID}) $current")
+                        }
+                        if( nontrivial ) {
+                            val bs = inputs[0].schema.genAllBindings()
+                            inputs[0] = SNodeBind(inputs[0], bs)
+                            SNodeAggregate(current.op, inputs[0], bs[AU.U0]!!)
+                        } else inputs[0]
                     }
                     2 -> { // aggregate a matrix; check direction
                         val bs = inputs[0].schema.genAllBindings()
@@ -580,8 +590,9 @@ object Spoof2Compiler {
                                     "Column vector on left must multiply with row vector on right")
                             // outer product
                             val bs0 = inputs[0].schema.genAllBindings()
+                            //LOG.warn("bs0 is $bs0; current.inputs[0] is ${current.input[0]} ${inputs[0]} ${inputs[0].schema} dim1=${current.input[0].dim1} dim2=${current.input[0].dim2}")
                             inputs[0] = SNodeBind(inputs[0], bs0)
-                            boundNames += AU.U0 to bs0[AU.U0]!!
+                            boundNames += AU.U0 to bs0[AU.U0]!! //(inputs[0].schema.names.first() as AB)
                             if( inputs[1].schema.isNotEmpty() ) { // check for multiply with scalar
                                 val bs1 = inputs[1].schema.genAllBindings()
                                 inputs[1] = SNodeBind(inputs[1], bs1)
@@ -622,7 +633,8 @@ object Spoof2Compiler {
 
         current.setVisited()
         snodeMemo.put(current, node)
-
+        if( PRINT_SNODE_CONSTRUCTION && LOG.isInfoEnabled )
+            LOG.info("compile (${current.hopID}) $current dim1=${current.dim1} dim2=${current.dim2} as (${node.id}) $node ${node.schema} ${node.inputs}")
         return node
     }
 
