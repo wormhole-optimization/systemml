@@ -20,7 +20,11 @@ class RewriteMultiplyPlusSimplify : SPlanRewriteRule() {
             if (zero != null) {
                 when(node.op) {
                     SNodeNary.NaryOp.MULT -> { // multiply by 0
-                        node.inputs.removeIf { it != zero && it.schema.isEmpty() }
+                        node.inputs.removeIf {
+                            if( it != zero && it.schema.isEmpty() ) {
+                                it.parents -= node; true
+                            } else false
+                        }
                         // Disabled because it is bad to turn vectors/matrices into scalar 0
                         // todo replace with constant zero matrix with appropriate shape
 //                        zero.parents.removeIf { it == node }

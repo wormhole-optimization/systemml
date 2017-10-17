@@ -28,12 +28,7 @@ import java.io.InputStreamReader;
 import java.net.URI;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Scanner;
+import java.util.*;
 
 import org.apache.commons.cli.AlreadySelectedException;
 import org.apache.commons.cli.CommandLine;
@@ -232,6 +227,7 @@ public class DMLScript
 	public static void main(String[] args)
 		throws IOException, DMLException
 	{
+		System.err.println("Arguments to SystemML: "+ Arrays.toString(args));
 		Configuration conf = new Configuration(ConfigurationManager.getCachedJobConf());
 		String[] otherArgs = new GenericOptionsParser(conf, args).getRemainingArgs();
 
@@ -765,12 +761,12 @@ public class DMLScript
 ////				spoof2NormalFormTestName = fullDMLScriptName;
 //				spoof2NormalFormChanged.set(false);
 //			}
-			System.out.format("Spoof2 largest sum-product block on %s\n"
-							+ "weight: %d\t all-schema: %s\tnumForks: %d\n"
-							+ "%s\n",
-					spoof2NormalFormTestName,
-					spoof2NormalFormNameLength.get(), Statistics.spoof2NormalFormAggs,
-					Statistics.spoof2NormalFormNumForks, Statistics.spoof2NormalFormFactoredSpb);
+//			System.out.format("Spoof2 largest sum-product block on %s\n"
+//							+ "weight: %d\t all-schema: %s\tnumForks: %d\n"
+//							+ "%s\n",
+//					spoof2NormalFormTestName,
+//					spoof2NormalFormNameLength.get(), Statistics.spoof2NormalFormAggs,
+//					Statistics.spoof2NormalFormNumForks, Statistics.spoof2NormalFormFactoredSpb);
 		}
 	}		
 	

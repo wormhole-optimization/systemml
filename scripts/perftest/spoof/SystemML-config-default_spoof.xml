@@ -58,7 +58,7 @@
    <sysml.compressed.linalg>auto</sysml.compressed.linalg>
    
    <!-- enables operator fusion via code generation, experimental feature -->
-   <sysml.codegen.enabled>true</sysml.codegen.enabled>
+   <sysml.codegen.enabled>false</sysml.codegen.enabled>
    
    <!-- set the codegen java compiler (auto, janino, javac) -->
    <sysml.codegen.compiler>auto</sysml.codegen.compiler>
@@ -93,5 +93,5 @@
    <!-- maximum wrap length for instruction and miscellaneous timer column of statistics -->
    <sysml.stats.maxWrapLength>30</sysml.stats.maxWrapLength>
 
-   <sysml.spoof.enabled>false</sysml.spoof.enabled>
+   <sysml.spoof.enabled>true</sysml.spoof.enabled>
 </root>

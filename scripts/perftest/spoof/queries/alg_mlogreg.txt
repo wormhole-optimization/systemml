@@ -1,0 +1,1 @@
+-f ./dml/MultiLogReg.dml --nvargs X=spoof/X2_${num_rows} Y=spoof/y2_${num_rows} icpt=0 tol=0.000000000001 reg=0.001 moi=20 mii=10 B=spoof/w2 fmt="binary"

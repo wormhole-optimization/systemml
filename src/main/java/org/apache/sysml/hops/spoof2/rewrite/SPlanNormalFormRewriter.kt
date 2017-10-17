@@ -15,14 +15,15 @@ import java.util.*
  * 3. Apply the rewrite rules that get us back to Hop-ready form, repeatedly until convergence.
  */
 class SPlanNormalFormRewriter : SPlanRewriter {
-    private val _rulesFirstOnce = listOf<SPlanRewriteRule>(
+    private val _rulesFirstOnce: List<SPlanRewriteRule> = listOf(
             RewriteDecompose()          // Subtract  + and *(-1);   ^2  Self-*
     )
-    private val _ruleBindElim = listOf(
+    private val _ruleBindElim: List<SPlanRewriteRule> = listOf(
             RewriteBindElim(),
             RewriteMultiplyPlusSimplify()
     )
     private val _rulesToNormalForm: List<SPlanRewriteRule> = listOf(
+            RewriteMultiplyPlusSimplify(),
             RewriteSplitCSE(),          // split CSEs when they would block a sum-product rearrangement
             RewritePullAggAboveMult(),
             RewriteAggregateElim(),

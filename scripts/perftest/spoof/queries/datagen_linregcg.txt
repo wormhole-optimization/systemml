@@ -1,0 +1,1 @@
+-f ./dml/DatagenReg.dml --args ${num_rows} ${num_cols} 5 5 spoof/w4_${num_rows} spoof/X4_${num_rows} spoof/y4_${num_rows} 1 0 ${sparsity} binary

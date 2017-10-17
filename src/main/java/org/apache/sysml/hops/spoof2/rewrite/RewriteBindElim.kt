@@ -17,7 +17,6 @@ import org.apache.sysml.hops.spoof2.plan.*
  */
 class RewriteBindElim : SPlanRewriteRule() {
     companion object {
-
         private fun canEliminateEmpty(node: SNode) =
                 node is SNodeBind && node.bindings.isEmpty()
                         || node is SNodeUnbind && node.unbindings.isEmpty()

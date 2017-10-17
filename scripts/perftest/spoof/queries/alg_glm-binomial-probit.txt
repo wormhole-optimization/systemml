@@ -1,0 +1,1 @@
+-f ./dml/GLM.dml --nvargs dfam=2 vpow=0.0 link=3 yneg=2 X=spoof/X3_${num_rows} Y=spoof/y3_${num_rows} icpt=0 tol=0.000000000001 reg=0.001 moi=20 mii=10 B=spoof/w3 fmt="binary"

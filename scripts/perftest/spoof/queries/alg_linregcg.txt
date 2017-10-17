@@ -1,0 +1,1 @@
+-f ./dml/LinearRegCG.dml --nvargs X=spoof/X4_${num_rows} Y=spoof/y4_${num_rows} icpt=0 tol=0.000000000001 reg=0.001 maxi=20 B=spoof/w4 fmt="binary"

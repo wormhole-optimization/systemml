@@ -1,0 +1,1 @@
+-f ./dml/DatagenClass.dml --args ${num_rows} ${num_cols} 5 5 spoof/w3_${num_rows} spoof/X3_${num_rows} spoof/y3_${num_rows} 1 0 ${sparsity} binary 1

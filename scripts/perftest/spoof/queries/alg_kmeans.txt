@@ -1,0 +1,1 @@
+-f ./dml/Kmeans.dml --nvargs X=spoof/X5_${num_rows} k=5 runs=1 C=spoof/C_centroids.mtx maxi=20 tol=0.000000000001 fmt="binary"

@@ -25,7 +25,7 @@
    <sysml.scratch>scratch_space</sysml.scratch> 
 
    <!-- compiler optimization level, valid values: 0 | 1 | 2 | 3 | 4, default: 2 -->
-   <sysml.optlevel>7</sysml.optlevel>  
+   <sysml.optlevel>1</sysml.optlevel>
 
    <!-- default number of reduce tasks per MR job, default: 2 x number of nodes -->
    <sysml.numreducers>10</sysml.numreducers> 
@@ -58,7 +58,7 @@
    <sysml.compressed.linalg>auto</sysml.compressed.linalg>
    
    <!-- enables operator fusion via code generation, experimental feature -->
-   <sysml.codegen.enabled>true</sysml.codegen.enabled>
+   <sysml.codegen.enabled>false</sysml.codegen.enabled>
    
    <!-- set the codegen java compiler (auto, janino, javac) -->
    <sysml.codegen.compiler>auto</sysml.codegen.compiler>
@@ -93,5 +93,5 @@
    <!-- maximum wrap length for instruction and miscellaneous timer column of statistics -->
    <sysml.stats.maxWrapLength>30</sysml.stats.maxWrapLength>
 
-   <sysml.spoof.enabled>false</sysml.spoof.enabled>
+   <sysml.spoof.enabled>true</sysml.spoof.enabled>
 </root>
