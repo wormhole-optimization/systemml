@@ -115,7 +115,7 @@ class NormalFormExploreEq : SPlanRewriter {
             is SNodeBind -> "bind[${it.bindings.size}] "+nodeToStatInputString(it.input)
             is SNodeUnbind -> "unbind[${it.unbindings.size}] "+nodeToStatInputString(it.input)
             is SNodeData -> "data(${it.hop.opString}) [${it.schema.size}]"
-            else -> it.toString()
+            else -> it.toString() + " [${it.schema.size}]"
         }
         private fun addHook() {
             if( !_addedHook.getAndSet(true) && DMLScript.STATISTICS )

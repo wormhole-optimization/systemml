@@ -9,8 +9,12 @@ require(data.table)
 
 T = read.table("all_times.tsv", sep="\t", header=TRUE)
 T2 = data.table(alg=T$alg, type=T$type, avgTime=T$avgTime)
+T2$type <- factor(T2$type, levels=c("none", "none_spoof", "default", "default_spoof"))
+T2[order(alg, type)]
 
-barchart(avgTime ~ alg, groups=type, T2, auto.key=list(space="right"))
+colors=c("lightblue", "blue", "green", "darkgreen")
+barchart(avgTime ~ alg, groups=type, T2, par.settings=list(superpose.polygon=list(col=colors)), auto.key=list(space="right"))
+
 #, col=rainbow(length(unique(T2$type)))
 #scales=list(y=list(log=10))
 #main="Runtime with & without Spoof"
