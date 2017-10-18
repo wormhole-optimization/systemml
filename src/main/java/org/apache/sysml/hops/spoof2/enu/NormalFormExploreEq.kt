@@ -117,6 +117,17 @@ class NormalFormExploreEq : SPlanRewriter {
             is SNodeData -> "data(${it.hop.opString}) [${it.schema.size}]"
             else -> it.toString() + " [${it.schema.size}]"
         }
+
+        private fun SumProduct.addInputMapToString(map: MutableMap<SPI, String>) {
+            when( this ) {
+                is SPB -> this.edges.forEach { it.addInputMapToString(map) }
+                is ESP -> this.blocks.forEach { it.addInputMapToString(map) }
+                is SPI -> {
+                    map.put(this, nodeToStatInputString(this.snode))
+                }
+            }
+        }
+
         private fun addHook() {
             if( !_addedHook.getAndSet(true) && DMLScript.STATISTICS )
                 Runtime.getRuntime().addShutdownHook(object : Thread() {
@@ -144,8 +155,8 @@ class NormalFormExploreEq : SPlanRewriter {
                             @Suppress("NAME_SHADOWING")
                             val inputFreqs = statsAll.fold(mutableMapOf<String,Int>()) { acc, stat ->
                                 stat.spbs.fold(acc) { acc, spb ->
-                                    spb.getAllInputs()
-                                            .groupBy(this@Companion::nodeToStatInputString)
+                                    spb.getAllInputBlocks()
+                                            .groupBy { stat.spbsStrings[it]!! }
                                             .mapValues { (_, l) -> l.count() }
                                             .forEach { s, c -> acc.put(s, acc.getOrDefault(s, 0) + c) }
                                     acc
@@ -183,7 +194,8 @@ class NormalFormExploreEq : SPlanRewriter {
             var numContingencies: Long = 0L,
             var maxCC: Int = 0,
             var considerPlan: Long = 0L,
-            val spbs: MutableList<SumProduct.Block> = mutableListOf() // after partitioning by connected components, before factoring
+            val spbs: MutableList<SumProduct.Block> = mutableListOf(), // after partitioning by connected components, before factoring
+            val spbsStrings: MutableMap<SPI, String> = hashMapOf()
     ) {
         val id = _idSeq.nextID
         operator fun plusAssign(s: Stats) {
@@ -394,8 +406,11 @@ class NormalFormExploreEq : SPlanRewriter {
         }
 
         // We will factor this spb.
-        if( !isTrivialBlock )
-            stats.spbs += spb.deepCopy()
+        if( !isTrivialBlock ) {
+            val copy = spb.deepCopy()
+            stats.spbs += copy
+            copy.addInputMapToString(stats.spbsStrings)
+        }
         normalSpb_Verify(spb)
 
         // Create ENode
@@ -1280,3 +1295,4 @@ class NormalFormExploreEq : SPlanRewriter {
 
 
 }
+

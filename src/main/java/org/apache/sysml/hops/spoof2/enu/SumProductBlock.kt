@@ -225,7 +225,6 @@ sealed class SumProduct {
             val product: SNodeNary.NaryOp,
             val edges: ArrayList<SumProduct>
     ) : SumProduct() {
-
         override val nnz: Long? = null // todo compute nnz estimate
 
         private var _allSchema: Schema? = null
@@ -633,13 +632,19 @@ sealed class SumProduct {
             is Block -> this.edges.forEach { it.getAllInputs(inputs) }
         }
     }
+    fun getAllInputBlocks(): List<SPI> = mutableListOf<SPI>().let { getAllInputBlocks(it); it }
+    private fun getAllInputBlocks(inputs: MutableList<SPI>) {
+        when(this) {
+            is Input -> inputs += this
+            is Block -> this.edges.forEach { it.getAllInputBlocks(inputs) }
+        }
+    }
 
     fun countAggsAndInternalBlocks(): Int = when(this) {
         is Input -> 0
         is Block -> this.sumBlocks.size + 1 + this.edges.sumBy { it.countAggsAndInternalBlocks() }
         is ESP -> throw IllegalStateException("unexpected EBlock")
     }
-
 }
 
 

@@ -8,28 +8,24 @@ num_cols=10
 sparsity=1.0
 addOpts="--stats"
 genData=0
-reps=1
+reps=3
 runner="./sparkDML.sh"
 
-algs=( mlogreg ) #kmeans mlogreg l2svm ) #glm-binomial-probit )
-confs=( "none_spoof" ) #"default" "none" "none_spoof" )
+algs=( linregcg kmeans mlogreg l2svm ) #glm-binomial-probit )
+confs=( "default_spoof" "default" "none" "none_spoof" )
 
 num_rowsArr=( 10000000 )
-for num_rows in "${num_rowsArr[@]}"
-do
-for alg in "${algs[@]}"
-do
+for num_rows in "${num_rowsArr[@]}"; do
+for alg in "${algs[@]}"; do
     #if ! hdfs dfs -test -f "${fA}" || ! hdfs dfs -test -f "${fA}.mtd"; then
     if [ "${genData}" == 1 ]; then
         cmd=$(num_cols=${num_cols} num_rows=${num_rows} sparsity=${sparsity} \
                 envsubst < queries/datagen_${alg}.txt)
-        cmd="${runner} --config SystemML-config-default.xml ${cmd}"
-#        eval "${cmd}"
+        cmd="--config SystemML-config-default.xml ${cmd}"
+        echo "${cmd}" | xargs "${runner}"
     fi
-    for conf in "${confs[@]}"
-    do
-        for rep in `seq 1 ${reps}`
-        do
+    for conf in "${confs[@]}"; do
+        for rep in `seq 1 ${reps}`; do
             echo ${num_rows} ${alg} ${conf} \#${rep}
             cmd=$(num_cols=${num_cols} num_rows=${num_rows} sparsity=${sparsity} \
                 envsubst < queries/alg_${alg}.txt)
@@ -38,6 +34,7 @@ do
 #            echo "${runner} ${cmd}"
             echo "${cmd}" | xargs "${runner}"
             echo "${alg} ${num_rows} $(($SECONDS - $tstart - 3))" >> times_${conf}.txt
+            # Todo: > log and parse the log for compile and execution time. Plot in stacked R barchart.
 
             if [[ "${addOpts}" == *"--stats"* ]] && [[ "${conf}" == *"_spoof" ]]; then 
                 mkdir -p stats
