@@ -457,7 +457,7 @@ class NormalFormExploreEq : SPlanRewriter {
     private fun factorCommonTermsFromPlus(spb: SumProduct.Block): SumProduct {
         if( spb.product != SNodeNary.NaryOp.PLUS || spb.edges.size <= 1 )
             return factor(spb)!!
-        return factorCommonTermsFromPlus(spb, 0, 1)!!
+        return factorCommonTermsFromPlus(spb, 0, 1, 1)!!
     }
     /*
     val msintersect = msi.intersect(msj)
@@ -486,7 +486,7 @@ class NormalFormExploreEq : SPlanRewriter {
      */
 
     @Suppress("UNCHECKED_CAST")
-    private fun factorCommonTermsFromPlus(_spb: SPB, i: Int, j: Int): SP? {
+    private fun factorCommonTermsFromPlus(_spb: SPB, i: Int, j: Int, recNo: Long): SP? {
         val msi = getMultiplyTerms(_spb.edges[i])
         val msj = getMultiplyTerms(_spb.edges[j])
         val groupByFun: (SP) -> Any = { when(it) {
@@ -529,6 +529,15 @@ class NormalFormExploreEq : SPlanRewriter {
         var rejectExplore = 0
 
         for (k in 1L until (1L shl groupByBase.size)) {
+            if( recNo+k >= 20 ) {
+                LOG.warn("Cut off factorization after depth $recNo (groupByBase.size = ${groupByBase.size})")
+                val spb = _spb
+                val newSpb = factorCommonTermsFromPlus_next(spb, i, j, recNo)
+//            if( LOG.isTraceEnabled )
+//                LOG.trace("Common factor pull from + choice $i $j $k /${spb.edges.size}:\n$newSpb")
+                return newSpb
+            }
+
             val spb = _spb.deepCopy()
             var pi = spb.edges[i]
             var pj = spb.edges[j]
@@ -639,8 +648,8 @@ class NormalFormExploreEq : SPlanRewriter {
             val pnew = SPB(SNodeNary.NaryOp.PLUS, pi, pj)
             val mnew = SPB(sbs, SNodeNary.NaryOp.MULT, factorOut + pnew)
             spb.edges[i] = mnew
-            val newSpb = if(j < spb.edges.size) factorCommonTermsFromPlus(spb, i, j)
-                    else factorCommonTermsFromPlus_next(spb, i, j)
+            val newSpb = if(j < spb.edges.size) factorCommonTermsFromPlus(spb, i, j, recNo+(1L shl groupByBase.size))
+                    else factorCommonTermsFromPlus_next(spb, i, j, recNo+(1L shl groupByBase.size))
 //            if( LOG.isTraceEnabled )
 //                LOG.trace("Common factor pull from + choice $i $j $k /${spb.edges.size}:\n$newSpb")
             if (newSpb != null)
@@ -649,7 +658,7 @@ class NormalFormExploreEq : SPlanRewriter {
         }
 
         // option to factor nothing
-        val newSpb = factorCommonTermsFromPlus_next(_spb, i, j)
+        val newSpb = factorCommonTermsFromPlus_next(_spb, i, j, recNo+(1L shl groupByBase.size))
         if( newSpb != null )
             alternatives += newSpb
         else rejectExplore++
@@ -692,10 +701,10 @@ class NormalFormExploreEq : SPlanRewriter {
         }
     }
 
-    private fun factorCommonTermsFromPlus_next(spb: SPB, i: Int, j: Int): SP? {
+    private fun factorCommonTermsFromPlus_next(spb: SPB, i: Int, j: Int, recNo: Long): SP? {
         return when {
-            j < spb.edges.size-1 -> factorCommonTermsFromPlus(spb, i, j+1)
-            i < spb.edges.size-2 -> factorCommonTermsFromPlus(spb, i+1, i+2)
+            j < spb.edges.size-1 -> factorCommonTermsFromPlus(spb, i, j+1, recNo)
+            i < spb.edges.size-2 -> factorCommonTermsFromPlus(spb, i+1, i+2, recNo)
             else -> factor(spb)
         }
     }

@@ -114,6 +114,7 @@ class Spoof2Test(
         //	TEST_NAME+71;  //t(X)%*%X + 2*t(colSums(X))%*%colSums(X) + 3*t(colSums(X))%*%colSums(X) // expanded form of 66
         //	TEST_NAME+72;  //C %*% S #C is a col vector; S is a scalar; no algebraic rewrites
         //	TEST_NAME+73;  //S %*% R #R is a row vector; S is a scalar; no algebraic rewrites
+        //	TEST_NAME+74;  //complex from GLM.dml
         private const val NUM_TESTS = 73
 
         private const val TEST_DIR = "functions/spoof2/"
