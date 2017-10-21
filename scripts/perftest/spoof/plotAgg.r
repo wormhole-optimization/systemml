@@ -8,12 +8,12 @@ require(data.table)
 #   width=4.6, height=4, family="serif", pointsize=14)
 
 T = read.table("all_times.tsv", sep="\t", header=TRUE)
-T2 = data.table(alg=T$alg, type=T$type, avgTime=T$avgTime)
+T2 = data.table(alg=T$alg, type=T$type, compile=T$compile, execute=T$execute)
 T2$type <- factor(T2$type, levels=c("none", "none_spoof", "default", "default_spoof"))
 T2[order(alg, type)]
 
 colors=c("lightblue", "blue", "green", "darkgreen")
-barchart(avgTime ~ alg, groups=type, T2, par.settings=list(superpose.polygon=list(col=colors)), auto.key=list(space="right"))
+barchart(compile + execute ~ alg, groups=type, T2, auto.key=list(space="right"), outer=TRUE, par.settings=list(superpose.polygon=list(col=colors)))
 
 #, col=rainbow(length(unique(T2$type)))
 #scales=list(y=list(log=10))

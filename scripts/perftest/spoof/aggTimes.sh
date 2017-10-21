@@ -11,13 +11,14 @@ for f in $(ls -1 times_*.txt); do
     conf=${t%.txt}
     #echo $conf
     awk "{
-        arr[\$1, \$2]+=\$3
+        carr[\$1, \$2]+=\$3
+        earr[\$1, \$2]+=\$4
         cnt[\$1, \$2]+=1
     }
     END {
-        for (key in arr) {
+        for (key in carr) {
             split(key, keyarr, SUBSEP)
-            printf(\"%s\t%s\t${conf}\t%s\n\", keyarr[1], keyarr[2], arr[key] / cnt[key])
+            printf(\"%s\t%s\t${conf}\t%s\t%s\n\", keyarr[1], keyarr[2], carr[key] / cnt[key], earr[key] / cnt[key])
         }
     }" "$f" >> "${tmpfile}" #| sort +0n -1
 #    while IFS= read -r line; do
@@ -25,6 +26,6 @@ for f in $(ls -1 times_*.txt); do
 #    done < "$f"
 done
 
-printf "alg\trows\ttype\tavgTime\n" > ${AllTimesFile}
+printf "alg\trows\ttype\tcompile\texecute\n" > ${AllTimesFile}
 sort "${tmpfile}" >> ${AllTimesFile}
 rm "${tmpfile}"
