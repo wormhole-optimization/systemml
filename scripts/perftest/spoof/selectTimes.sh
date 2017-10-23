@@ -6,8 +6,8 @@ set -o nounset
 
 script_start=$(cat logs/script_start)
 script_end=$(cat logs/script_end)
-algs=( kmeans ) #mlogreg linregcg kmeans mlogreg l2svm ) #glm-binomial-probit )
-confs=( "default" ) #"default" "none" "none_spoof" )
+algs=( linregcg kmeans mlogreg l2svm ) #glm-binomial-probit )
+confs=( "default_spoof" "default" "none" "none_spoof" )
 
 
 function get_log_time() {
@@ -29,11 +29,9 @@ done
 for alg in "${algs[@]}"; do
 for conf in "${confs[@]}"; do
   for f in $(ls -1 "logs/${alg}_${conf}."*); do
-    # echo $f
     [[ "${f}" =~ ^logs/${alg}_${conf}\.log\.([0-9]{8}\.[0-9]{6})$ ]] && t=${BASH_REMATCH[1]} || continue
-    echo $f $t
     if $(leq "${script_start}" "$t") && $(leq "$t" "${script_end}"); then
-      echo ok
+      echo $f
       ctime=$(get_log_time "Total compilation time:" "${f}")
       etime=$(get_log_time "Total execution time:" "${f}")
       num_rows=$(get_log_time "Number of rows: " "${f}")

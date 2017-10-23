@@ -5,4 +5,4 @@ logs/
 stats/
 times_*
 SystemML.jar
-stats-*
+stats*

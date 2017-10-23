@@ -12,8 +12,8 @@ addOpts="--stats"
 genData=0
 reps=3
 
-algs=( mlogreg linregcg kmeans mlogreg l2svm ) #glm-binomial-probit )
-confs=( "default" "default" "none" "none_spoof" )
+algs=( linregcg kmeans mlogreg l2svm ) #glm-binomial-probit )
+confs=( "default_spoof" "default" "none" "none_spoof" )
 
 num_rowsArr=( 10000000 )
 for num_rows in "${num_rowsArr[@]}"; do
