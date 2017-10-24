@@ -2,6 +2,7 @@ package org.apache.sysml.test.integration.functions.spoof2
 
 import org.apache.sysml.hops.DataOp
 import org.apache.sysml.hops.Hop
+import org.apache.sysml.hops.spoof2.SPlanCseEliminator
 import org.apache.sysml.hops.spoof2.enu.RewriteSplitBU_ExtendNormalForm
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.*
@@ -62,10 +63,9 @@ class HandTest {
         System.out.print("Before:")
         System.out.println(Explain.explainSPlan(roots))
 
-        val cseElim = SPlanCSEElimRewriter(true, true)
         var cnt = 0
         do {
-            val result = cseElim.rewriteSPlan(roots)
+            val result = SPlanCseEliminator.rewriteSPlan(roots, SPlanCseEliminator.Params())
             cnt++
         } while( result != SPlanRewriter.RewriterResult.NoChange )
         System.out.print("After (count=$cnt):")
@@ -109,10 +109,9 @@ class HandTest {
         System.out.print("Before:")
         System.out.println(Explain.explainSPlan(roots))
 
-        val cseElim = SPlanCSEElimRewriter(true, true)
         var cnt = 0
         do {
-            val result = cseElim.rewriteSPlan(roots)
+            val result = SPlanCseEliminator.rewriteSPlan(roots, SPlanCseEliminator.Params())
             cnt++
         } while( result != SPlanRewriter.RewriterResult.NoChange )
         System.out.print("After (count=$cnt):")
@@ -165,7 +164,7 @@ class HandTest {
 //                RewritePushAggIntoPlus()
 //            RewritePullAggAbovePlus()
         )
-        val rsbu = RewriteSplitBU_ExtendNormalForm()
+//        val rsbu = RewriteSplitBU_ExtendNormalForm()
 
         rewriter.rewriteDown(roots, toNF)
 //        rewriter.rewriteDown(roots, rsbu)

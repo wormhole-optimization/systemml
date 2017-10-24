@@ -1,25 +1,25 @@
-package org.apache.sysml.hops.spoof2.rewrite
+package org.apache.sysml.hops.spoof2
 
 import org.apache.commons.logging.LogFactory
 import org.apache.log4j.Level
 import org.apache.log4j.Logger
 import org.apache.sysml.conf.DMLConfig
 import org.apache.sysml.hops.spoof2.plan.*
-import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter.RewriterResult
+import org.apache.sysml.hops.spoof2.rewrite.RewriteBindUnify.Companion.isBindOrUnbind
+import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter
+import org.apache.sysml.utils.Explain
 import java.util.ArrayList
 import java.util.HashMap
-import org.apache.sysml.hops.spoof2.rewrite.RewriteBindUnify.Companion.isBindOrUnbind
-import org.apache.sysml.hops.spoof2.plan.stripDead
-import org.apache.sysml.utils.Explain
 
 /**
  * Eliminate Common Sub-Expressions.
+ * Use the parameter object [Params] to configure how aggressive the eliminator is.
  *
- * If mergeLeaves is true, SNodes with no input are merged according to type:
+ * SNodes with no input are merged according to type:
  * literal SNodeDatas are merged if they have the same data type and value;
- * SNodeData reads and SNodeExr are merged if they have the same hop id.
+ * SNodeData reads and SNodeExt are merged if they have the same hop id.
  *
- * Two parents of the same type and same children are merged into one, as follows:
+ * Basic CSE elimination merges 2 parents of the same type and same children into one, as follows:
  * ```
  *  X  Y  ->  X   Y
  *  |  |  ->   \ /
@@ -28,75 +28,55 @@ import org.apache.sysml.utils.Explain
  * | /\ | ->  A   B
  *  A  B  ->
  * ```
- *
- * @param mergeLeaves Whether to do an additional pass to merge leaf nodes (reads, literals, ext)
- * @param structural Whether to rewrite by share equivalence / structure.
  */
-class SPlanCSEElimRewriter(
-        val mergeLeaves: Boolean = true,
-        val structural: Boolean = false
-) : SPlanRewriter {
+object SPlanCseEliminator {
+    /** Whether to invoke the SPlanValidator after every rewrite pass. */
+    private const val CHECK = true
+    private const val LOG_ALL_CSE_ELIM = false
+    private val LOG = LogFactory.getLog(SPlanCseEliminator::class.java)!!
 
-    companion object {
-        /** Whether to invoke the SPlanValidator after every rewrite pass. */
-        private const val CHECK = true
-        private const val LOG_ALL_CSE_ELIM = false
-        internal val LOG = LogFactory.getLog(SPlanCSEElimRewriter::class.java)!!
-
-        //internal configuration flags
-        private const val LDEBUG = DMLConfig.SPOOF_DEBUG
-        init {
-            if (LDEBUG) Logger.getLogger(SPlanCSEElimRewriter::class.java).level = Level.TRACE
-        }
-
-        private fun SNode.getHopId() = when(this) {
-            is SNodeData -> this.hop.hopID
-            is SNodeExt -> this.hop.hopID
-            else -> throw SNodeException(this, "does not have a hop id")
-        }
-
-        private fun replaceWithReal(node: SNode, real: SNode): Int {
-            node.parents.forEach {
-                it.inputs[it.inputs.indexOf(node)] = real
-                real.parents += it
-            }
-            return node.parents.size
-        }
-
-        private fun SNodeData.getLiteralKey() = this.hop.valueType.toString()+'_'+this.hop.name
+    //internal configuration flags
+    private const val LDEBUG = DMLConfig.SPOOF_DEBUG
+    init {
+        if (LDEBUG) Logger.getLogger(SPlanCseEliminator::class.java).level = Level.TRACE
+    }
+    
+    data class Params(
+//            /** Whether to do an additional pass to merge leaf nodes (reads, literals, ext) */
+//            val mergeLeaves: Boolean = true,
+            /** Whether to rewrite by share equivalence / structure. */
+            val structural: Boolean = false,
+            /** Whether to identify commutative operators with the same inputs in different orders as equivalent. */
+            val commutative: Boolean = true
+    )
+    
+    fun rewriteSPlan(roots: ArrayList<SNode>, params: Params): SPlanRewriter.RewriterResult {
+        return rewriteSPlanAndGetLeaves(roots, params).first
     }
 
-    override fun rewriteSPlan(roots: ArrayList<SNode>): RewriterResult {
-        return rewriteSPlanAndGetLeaves(roots).first
-    }
-
-    fun rewriteSPlanAndGetLeaves(roots: ArrayList<SNode>): Pair<RewriterResult, MutableList<SNode>> {
+    fun rewriteSPlanAndGetLeaves(roots: ArrayList<SNode>, params: Params): Pair<SPlanRewriter.RewriterResult, MutableList<SNode>> {
         val dataops = HashMap<Long, SNode>()
         val literalops = HashMap<String, SNode>() //key: <VALUETYPE>_<LITERAL>
 
-        var changedLeaves = 0
         SNode.resetVisited(roots)
 //        if( mergeLeaves ) {
-            for (root in roots)
-                changedLeaves += rCSEElim_Leaves(root, dataops, literalops)
-            SNode.resetVisited(roots)
+        val changedLeaves = roots.sumBy { rCSEElim_Leaves(it, dataops, literalops) }
+        SNode.resetVisited(roots)
 //        }
 
         val leaves = dataops.values + literalops.values
-        var changed = 0
         if( LOG.isTraceEnabled )
             LOG.trace("Before CSE Elim:"+ Explain.explainSPlan(roots))
-        for (leaf in leaves)
-            changed += rCSEElim(leaf)
+        val changed = leaves.sumBy { rCSEElim(it, params) }
         SNode.resetVisited(roots)
-        if( CHECK )
+        if(CHECK)
             SPlanValidator.validateSPlan(roots)
 
         val rr = if( changed + changedLeaves > 0 ) {
             if( LOG.isTraceEnabled )
                 LOG.trace("Eliminate $changedLeaves leaf and $changed internal node CSEs.")
-            RewriterResult.NewRoots(roots)
-        } else RewriterResult.NoChange
+            SPlanRewriter.RewriterResult.NewRoots(roots)
+        } else SPlanRewriter.RewriterResult.NoChange
         return rr to leaves.toMutableList()
     }
 
@@ -122,7 +102,7 @@ class SPlanCSEElimRewriter(
         return changed
     }
 
-    private fun rCSEElim(node: SNode): Int {
+    private fun rCSEElim(node: SNode, params: Params): Int {
         if( node.visited )
             return 0
         var changed = 0
@@ -150,12 +130,12 @@ class SPlanCSEElimRewriter(
                             it.parents -= h2
                         }
                         changed++
-                    } else if( h1 !== h2 && h1 is SNodeNary && h1.compareCommutative(h2) ) {
+                    } else if( params.commutative && h1 !== h2 && h1 is SNodeNary && h1.compareCommutative(h2) ) {
                         if( LOG.isTraceEnabled )
                             LOG.trace("Commutative CSE merge (${h2.id}) $h2 ${h2.schema} into (${h1.id}) $h1 ${h1.schema}")
                         doElim(h1, h2, mapOf())
                         changed++
-                    } else if( structural && h1 !== h2 && tryStructuralElim(node, h1, h2) )
+                    } else if( params.structural && h1 !== h2 && tryStructuralElim(node, h1, h2) )
                         changed++
                     else
                         j++
@@ -166,7 +146,7 @@ class SPlanCSEElimRewriter(
         // bottom up
         var pidx = 0
         while (pidx < node.parents.size) {
-            changed += rCSEElim(node.parents[pidx])
+            changed += rCSEElim(node.parents[pidx], params)
             pidx++
         }
         node.visited = true
@@ -437,4 +417,33 @@ class SPlanCSEElimRewriter(
         // TODO ^^ Shapes change as a result of the rename. Names seem to be fine.
         h2p.forEach { it.refreshSchemasUpward() }
     }
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+
+    private fun SNode.getHopId() = when(this) {
+        is SNodeData -> this.hop.hopID
+        is SNodeExt -> this.hop.hopID
+        else -> throw SNodeException(this, "does not have a hop id")
+    }
+
+    private fun replaceWithReal(node: SNode, real: SNode): Int {
+        node.parents.forEach {
+            it.inputs[it.inputs.indexOf(node)] = real
+            real.parents += it
+        }
+        return node.parents.size
+    }
+
+    private fun SNodeData.getLiteralKey() = this.hop.valueType.toString()+'_'+this.hop.name
 }

@@ -4,9 +4,9 @@ import org.apache.commons.logging.LogFactory
 import org.apache.log4j.Level
 import org.apache.log4j.Logger
 import org.apache.sysml.conf.DMLConfig
+import org.apache.sysml.hops.spoof2.SPlanCseEliminator
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter.RewriterResult
-import org.apache.sysml.utils.Explain
 import java.util.*
 
 /**
@@ -56,8 +56,8 @@ class SPlanBottomUpRewriter(
     }
 
     override fun rewriteSPlan(roots: ArrayList<SNode>): RewriterResult {
-        val cseElim = SPlanCSEElimRewriter(true, doElimCSE)
-        val (rr0,leaves) = if(true) cseElim.rewriteSPlanAndGetLeaves(roots) else RewriterResult.NoChange to getLeaves(roots)
+        val elimParams = SPlanCseEliminator.Params(doElimCSE)
+        val (rr0,leaves) = if(true) SPlanCseEliminator.rewriteSPlanAndGetLeaves(roots, elimParams) else RewriterResult.NoChange to getLeaves(roots)
         var rr = rr0
 
         if( CHECK ) SPlanValidator.validateSPlan(roots)
@@ -78,11 +78,10 @@ class SPlanBottomUpRewriter(
         }
         SNode.resetVisited(roots)
 
-        if(doElimCSE) {
-            val cseElimNoLeaves = SPlanCSEElimRewriter(false, true)
-            rr = rr.map(cseElimNoLeaves.rewriteSPlan(roots))
-        }
-        if( CHECK ) SPlanValidator.validateSPlan(roots)
+        if(doElimCSE)
+            rr = rr.map(SPlanCseEliminator.rewriteSPlan(roots, elimParams))
+        if( CHECK )
+            SPlanValidator.validateSPlan(roots)
 //        if( LOG.isTraceEnabled )
 //            LOG.trace("After bottom up rewrites:"+ Explain.explainSPlan(collectedRoots))
 
