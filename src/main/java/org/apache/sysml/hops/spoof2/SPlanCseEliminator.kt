@@ -42,8 +42,6 @@ object SPlanCseEliminator {
     }
     
     data class Params(
-//            /** Whether to do an additional pass to merge leaf nodes (reads, literals, ext) */
-//            val mergeLeaves: Boolean = true,
             /** Whether to rewrite by share equivalence / structure. */
             val structural: Boolean = false,
             /** Whether to identify commutative operators with the same inputs in different orders as equivalent. */
@@ -59,10 +57,8 @@ object SPlanCseEliminator {
         val literalops = HashMap<String, SNode>() //key: <VALUETYPE>_<LITERAL>
 
         SNode.resetVisited(roots)
-//        if( mergeLeaves ) {
         val changedLeaves = roots.sumBy { rCSEElim_Leaves(it, dataops, literalops) }
         SNode.resetVisited(roots)
-//        }
 
         val leaves = dataops.values + literalops.values
         if( LOG.isTraceEnabled )
