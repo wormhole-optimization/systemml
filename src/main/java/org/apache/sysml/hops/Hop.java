@@ -22,6 +22,7 @@ package org.apache.sysml.hops;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -914,13 +915,13 @@ public abstract class Hop implements ParseInfo
 				&& (_dim1 > 0 || _dim2 > 0)) );
 	}
 	
-	public static void resetVisitStatus( ArrayList<Hop> hops ) {
+	public static void resetVisitStatus( List<Hop> hops ) {
 		if( hops != null )
 			for( Hop hopRoot : hops )
 				hopRoot.resetVisitStatus();
 	}
 	
-	public static void resetVisitStatus( ArrayList<Hop> hops, boolean force ) {
+	public static void resetVisitStatus( List<Hop> hops, boolean force ) {
 		if( !force )
 			resetVisitStatus(hops);
 		else {
