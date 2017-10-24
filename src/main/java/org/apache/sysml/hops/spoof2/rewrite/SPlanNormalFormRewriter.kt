@@ -52,8 +52,6 @@ class SPlanNormalFormRewriter : SPlanRewriter {
     companion object {
         /** Whether to invoke the SPlanValidator after every rewrite pass. */
         private const val CHECK = true
-        private const val CHECK_DURING_RECUSION = false
-        private const val EXPLAIN_DURING_RECURSION = false
 
         val bottomUp = SPlanBottomUpRewriter()
         val bottomUpNoElim = SPlanBottomUpRewriter(false)
@@ -68,7 +66,7 @@ class SPlanNormalFormRewriter : SPlanRewriter {
     }
 
     override fun rewriteSPlan(roots: ArrayList<SNode>): RewriterResult {
-        rewriteDown(roots, _rulesFirstOnce)
+        SPlanTopDownRewriter.rewriteDown(roots, _rulesFirstOnce)
         val rr0: RewriterResult = RewriterResult.NoChange //bottomUpRewrite(roots)
 
         // first bind elim
@@ -76,7 +74,7 @@ class SPlanNormalFormRewriter : SPlanRewriter {
         do {
             count0++
             if( CHECK ) SPlanValidator.validateSPlan(roots)
-            val changed = rewriteDown(roots, _ruleBindElim)
+            val changed = SPlanTopDownRewriter.rewriteDown(roots, _ruleBindElim)
         } while (changed)
 
         if( SPlanRewriteRule.LOG.isTraceEnabled )
@@ -89,7 +87,7 @@ class SPlanNormalFormRewriter : SPlanRewriter {
             do {
                 count++
                 if (CHECK) SPlanValidator.validateSPlan(roots)
-                changed = rewriteDown(roots, _rulesToNormalForm)
+                changed = SPlanTopDownRewriter.rewriteDown(roots, _rulesToNormalForm)
             } while( changed )
             changed = bottomUpRewrite(roots) is RewriterResult.NewRoots || count > startCount+1
         } while (changed)
@@ -107,18 +105,18 @@ class SPlanNormalFormRewriter : SPlanRewriter {
         count = 0
         do {
             val startCount = count
-            rewriteDown(roots, _rulesNormalFormPrior)
+            SPlanTopDownRewriter.rewriteDown(roots, _rulesNormalFormPrior)
             if( SPlanRewriteRule.LOG.isTraceEnabled )
                 SPlanRewriteRule.LOG.trace("after before normal form: "+Explain.explainSPlan(roots))
             do {
                 count++
-                val changed = rewriteDown(roots, _rulesToNormalForm)
+                val changed = SPlanTopDownRewriter.rewriteDown(roots, _rulesToNormalForm)
             } while (changed)
             // dangerous! Do not put a bind-unbind in the middle of a block via BindUnify
             // avert this problem by doing a final RewriteSplitBU_ExtendNormalForm
             bottomUpRewrite(roots, false)
         } while( count != startCount+1 )
-        rewriteDown(roots, _rulesNormalFormPrior)
+        SPlanTopDownRewriter.rewriteDown(roots, _rulesNormalFormPrior)
         if( SPlanRewriteRule.LOG.isTraceEnabled )
             SPlanRewriteRule.LOG.trace("Ran 'right before normal form' rewrites $count times")
 
@@ -131,7 +129,7 @@ class SPlanNormalFormRewriter : SPlanRewriter {
         do {
             count++
             if( CHECK ) SPlanValidator.validateSPlan(roots)
-            var changed = rewriteDown(roots, _rulesToHopReady)
+            var changed = SPlanTopDownRewriter.rewriteDown(roots, _rulesToHopReady)
             changed = bottomUpRewrite(roots) is RewriterResult.NewRoots || changed
         } while (changed)
 
@@ -140,45 +138,5 @@ class SPlanNormalFormRewriter : SPlanRewriter {
             SPlanRewriteRule.LOG.trace("Ran 'to Hop-ready' rewrites $count times to yield: "+Explain.explainSPlan(roots))
 
         return RewriterResult.NewRoots(roots)
-    }
-
-    fun rewriteDown(roots: ArrayList<SNode>, vararg rules: SPlanRewriteRule): Boolean = rewriteDown(roots, rules.asList())
-    fun rewriteDown(roots: ArrayList<SNode>, rules: List<SPlanRewriteRule>): Boolean {
-        SNode.resetVisited(roots)
-        val changed = roots.fold(false) { changed, root -> rRewriteSPlan(root, rules, roots) || changed }
-        SNode.resetVisited(roots)
-        return changed
-    }
-
-    private fun rRewriteSPlan(node: SNode, rules: List<SPlanRewriteRule>, allRoots: List<SNode>): Boolean {
-        if (node.visited)
-            return false
-        var changed = false
-
-        for (i in node.inputs.indices) {
-            var child = node.inputs[i]
-
-            //apply actual rewrite rules
-            for (r in rules) {
-                val result = r.rewriteNode(node, child, i)
-                when( result ) {
-                    SPlanRewriteRule.RewriteResult.NoChange -> {}
-                    is SPlanRewriteRule.RewriteResult.NewNode -> {
-                        child = result.newNode
-                        changed = true
-                        if( CHECK_DURING_RECUSION )
-                            SPlanValidator.validateSPlan(allRoots, false)
-                        if( EXPLAIN_DURING_RECURSION && SPlanRewriteRule.LOG.isTraceEnabled )
-                            SPlanRewriteRule.LOG.trace(Explain.explainSPlan(allRoots, true))
-                    }
-                }
-            }
-
-            //process children recursively after rewrites
-            changed = rRewriteSPlan(child, rules, allRoots) || changed
-        }
-
-        node.visited = true
-        return changed
     }
 }
