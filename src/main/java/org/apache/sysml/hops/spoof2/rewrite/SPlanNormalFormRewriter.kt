@@ -19,8 +19,7 @@ class SPlanNormalFormRewriter : SPlanRewriter {
             RewriteDecompose()          // Subtract  + and *(-1);   ^2  Self-*
     )
     private val _ruleBindElim: List<SPlanRewriteRule> = listOf(
-            RewriteBindElim(),
-            RewriteMultiplyPlusSimplify()
+            RewriteBindElim()
     )
     private val _rulesToNormalForm: List<SPlanRewriteRule> = listOf(
             RewriteMultiplyPlusSimplify(),
