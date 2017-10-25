@@ -8,13 +8,13 @@ script_start="$(date '+%Y%m%d.%H%M%S')"
 
 num_cols=10
 sparsity=1.0
-addOpts="--stats"
+addOpts="--stats --explain2 hops"
 genData=0
-reps=3
+reps=1
 saveTimes=0
 
-algs=( linregcg kmeans mlogreg l2svm ) #glm-binomial-probit )
-confs=( "default_spoof" "default" "none" "none_spoof" )
+algs=( mlogreg ) #linregcg kmeans mlogreg l2svm ) #glm-binomial-probit )
+confs=(  none none_spoof ) #default_spoof default
 
 num_rowsArr=( 10000000 )
 for num_rows in "${num_rowsArr[@]}"; do
@@ -35,7 +35,7 @@ for alg in "${algs[@]}"; do
             
             logfile="logs/${alg}_${conf}.log.$(date '+%Y%m%d.%H%M%S')"
             tstart=$SECONDS
-            echo "${cmd}" | xargs "${runner}" 2>&1 > "${logfile}"
+            echo "${cmd}" | xargs "${runner}" &> "${logfile}" || echo "${logfile}"
             # maybe do 2>&1
 			tend=$SECONDS
             echo "Experiment Script Execution Time: $(($tend - $tstart - 3))" >> ${logfile}
