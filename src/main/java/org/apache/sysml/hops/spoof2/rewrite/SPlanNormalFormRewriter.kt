@@ -15,12 +15,6 @@ import java.util.*
  * 3. Apply the rewrite rules that get us back to Hop-ready form, repeatedly until convergence.
  */
 class SPlanNormalFormRewriter : SPlanRewriter {
-    private val _rulesFirstOnce: List<SPlanRewriteRule> = listOf(
-            RewriteDecompose()          // Subtract  + and *(-1);   ^2  Self-*
-    )
-    private val _ruleBindElim: List<SPlanRewriteRule> = listOf(
-            RewriteBindElim()
-    )
     private val _rulesToNormalForm: List<SPlanRewriteRule> = listOf(
             RewriteMultiplyPlusSimplify(),
             RewriteSplitCSE(),          // split CSEs when they would block a sum-product rearrangement
@@ -66,20 +60,6 @@ class SPlanNormalFormRewriter : SPlanRewriter {
     }
 
     override fun rewriteSPlan(roots: ArrayList<SNode>): RewriterResult {
-        SPlanTopDownRewriter.rewriteDown(roots, _rulesFirstOnce)
-        val rr0: RewriterResult = RewriterResult.NoChange //bottomUpRewrite(roots)
-
-        // first bind elim
-        var count0 = 0
-        do {
-            count0++
-            if( CHECK ) SPlanValidator.validateSPlan(roots)
-            val changed = SPlanTopDownRewriter.rewriteDown(roots, _ruleBindElim)
-        } while (changed)
-
-        if( SPlanRewriteRule.LOG.isTraceEnabled )
-            SPlanRewriteRule.LOG.trace("After bind elim: (count=$count0) "+Explain.explainSPlan(roots))
-
         var count = 0
         do {
             val startCount = count
@@ -92,10 +72,10 @@ class SPlanNormalFormRewriter : SPlanRewriter {
             changed = bottomUpRewrite(roots) is RewriterResult.NewRoots || count > startCount+1
         } while (changed)
 
-        if( count == 1 && count0 == 1 ) {
+        if( count == 1 ) {
             if( SPlanRewriteRule.LOG.isTraceEnabled )
                 SPlanRewriteRule.LOG.trace("'to normal form' rewrites did not affect SNodePlan; skipping rest")
-            return rr0
+            return RewriterResult.NoChange
         }
         if( SPlanRewriteRule.LOG.isTraceEnabled )
             SPlanRewriteRule.LOG.trace("Ran 'to normal form' rewrites $count times to yield: "+Explain.explainSPlan(roots))

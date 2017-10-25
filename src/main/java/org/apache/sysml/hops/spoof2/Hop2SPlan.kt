@@ -3,22 +3,48 @@ package org.apache.sysml.hops.spoof2
 import org.apache.sysml.hops.*
 import org.apache.sysml.hops.rewrite.HopRewriteUtils
 import org.apache.sysml.hops.spoof2.plan.*
+import org.apache.sysml.hops.spoof2.rewrite.*
+import org.apache.sysml.utils.Explain
 import java.util.ArrayList
 
 /**
  * Construct an SPlan DAG from a Hop DAG.
+ * Performs one-time SPlan Rewrites.
  */
 object Hop2SPlan {
     private val LOG = Spoof2Compiler.LOG
 
     //internal configuration flags
     private const val PRINT_SNODE_CONSTRUCTION = false
+    private const val CHECK = false
+
+    private val _rulesFirstOnce: List<SPlanRewriteRule> = listOf(
+            RewriteDecompose()          // Subtract  + and *(-1);   ^2  Self-*
+    )
+    private val _ruleBindElim: List<SPlanRewriteRule> = listOf(
+            RewriteBindElim()
+    )
 
     fun hop2SPlan(roots: List<Hop>): ArrayList<SNode> {
         Hop.resetVisitStatus(roots)
         val snodeMemo: MutableMap<Hop, SNode> = hashMapOf()
         val sroots = roots.mapTo(ArrayList()) { rConstructSumProductPlan(it, snodeMemo) }
         Hop.resetVisitStatus(roots)
+
+        // perform one-time Hop Rewrites
+        SPlanTopDownRewriter.rewriteDown(sroots, _rulesFirstOnce)
+
+        // one-time bind elim
+        var count0 = 0
+        do {
+            count0++
+            if(CHECK) SPlanValidator.validateSPlan(sroots)
+            val changed = SPlanTopDownRewriter.rewriteDown(sroots, _ruleBindElim)
+        } while (changed)
+
+        if( SPlanRewriteRule.LOG.isTraceEnabled )
+            SPlanRewriteRule.LOG.trace("After bind elim (count=$count0): "+ Explain.explainSPlan(sroots))
+
         return sroots
     }
 

@@ -9,9 +9,9 @@ object SPlanTopDownRewriter {
     private const val CHECK_DURING_RECUSION = false
     private const val EXPLAIN_DURING_RECURSION = false
 
-    fun rewriteDown(roots: ArrayList<SNode>, vararg rules: SPlanRewriteRule): Boolean =
+    fun rewriteDown(roots: List<SNode>, vararg rules: SPlanRewriteRule): Boolean =
             rewriteDown(roots, rules.asList())
-    fun rewriteDown(roots: ArrayList<SNode>, rules: List<SPlanRewriteRule>): Boolean {
+    fun rewriteDown(roots: List<SNode>, rules: List<SPlanRewriteRule>): Boolean {
         SNode.resetVisited(roots)
         val changed = roots.fold(false) { changed, root -> rRewriteSPlan(root, rules, roots) || changed }
         SNode.resetVisited(roots)
