@@ -11,6 +11,7 @@ sparsity=1.0
 addOpts="--stats"
 genData=0
 reps=3
+saveTimes=0
 
 algs=( linregcg kmeans mlogreg l2svm ) #glm-binomial-probit )
 confs=( "default_spoof" "default" "none" "none_spoof" )
@@ -50,5 +51,12 @@ for alg in "${algs[@]}"; do
 done
 done
 script_end="$(date '+%Y%m%d.%H%M%S')"
-echo "${script_start}" > logs/script_start
-echo "${script_end}" > logs/script_end
+if [ -r logs/script_start ] && [ -r logs/script_end ]; then
+    echo "old start-end is $(cat logs/script_start) $(cat logs/script_end)"
+fi
+echo "new start-end is ${script_start} ${script_end}"
+echo "saveTimes is ${saveTimes}"
+if [ "${saveTimes}" == 1 ]; then
+    echo "${script_start}" > logs/script_start
+    echo "${script_end}" > logs/script_end
+fi
