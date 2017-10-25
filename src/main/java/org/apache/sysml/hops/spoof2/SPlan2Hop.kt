@@ -4,16 +4,31 @@ import org.apache.sysml.hops.DataOp
 import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.LiteralOp
 import org.apache.sysml.hops.rewrite.HopRewriteUtils
+import org.apache.sysml.hops.spoof2.enu.NormalFormExploreEq
 import org.apache.sysml.hops.spoof2.plan.*
+import org.apache.sysml.hops.spoof2.rewrite.*
 import org.apache.sysml.parser.Expression
+import org.apache.sysml.utils.Explain
 
 /**
  * Construct a Hop DAG from an SPlan DAG.
  */
 object SPlan2Hop {
+    private val _rulesToHopReady = listOf(
+            RewriteMultiplyCSEToPower(), // RewriteNormalForm factorizes, so we can't get powers >2. Need to reposition. // Obsolete by RewriteElementwiseMultiplyChain?
+            RewriteSplitMultiplyPlus(),
+            RewritePushAggIntoMult(),
+            RewriteClearMxM()
+            // todo RewriteRestoreCompound - subtract
+    )
 
-    fun splan2Hop(sroots: List<SNode>): ArrayList<Hop> {
-        val roots2 = java.util.ArrayList<Hop>()
+    /** Whether to invoke the SPlanValidator after every rewrite pass. */
+    private const val CHECK = true
+
+    fun splan2Hop(sroots: ArrayList<SNode>): ArrayList<Hop> {
+        rewriteToHopReady(sroots)
+        
+        val roots2 = ArrayList<Hop>()
         SNode.resetVisited(sroots)
         val hopMemo: MutableMap<SNode, Pair<Hop, Map<AU,AB>>> = hashMapOf()
         for (sroot in sroots) {
@@ -21,6 +36,20 @@ object SPlan2Hop {
             roots2.add(h)
         }
         return roots2
+    }
+
+    private fun rewriteToHopReady(sroots: ArrayList<SNode>) {
+        var count = 0
+        do {
+            count++
+            if(CHECK) SPlanValidator.validateSPlan(sroots)
+            var changed = SPlanTopDownRewriter.rewriteDown(sroots, _rulesToHopReady)
+            changed = SPlanBottomUpRewriter().rewriteSPlan(sroots) is SPlanRewriter.RewriterResult.NewRoots || changed
+        } while (changed)
+
+        if(CHECK) SPlanValidator.validateSPlan(sroots)
+        if( SPlanRewriteRule.LOG.isTraceEnabled )
+            SPlanRewriteRule.LOG.trace("Ran 'to Hop-ready' rewrites $count times to yield: "+ Explain.explainSPlan(sroots))
     }
 
     private fun reconstructAggregate(agg: SNodeAggregate, hopMemo: MutableMap<SNode, Pair<Hop, Map<AU,AB>>>): Pair<Hop, Map<AU,AB>> {

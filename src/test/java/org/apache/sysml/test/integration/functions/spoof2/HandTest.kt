@@ -154,7 +154,6 @@ class HandTest {
         println(Explain.explainSPlan(roots))
         SPlanValidator.validateSPlan(roots)
 
-        val rewriter = SPlanNormalFormRewriter()
         val toNF = listOf(
                 RewriteSplitCSE(),          // split CSEs when they would block a sum-product rearrangement
 //                RewritePullAggAboveMult(),
@@ -166,7 +165,7 @@ class HandTest {
         )
 //        val rsbu = RewriteSplitBU_ExtendNormalForm()
 
-        rewriter.rewriteDown(roots, toNF)
+        SPlanTopDownRewriter.rewriteDown(roots, toNF)
 //        rewriter.rewriteDown(roots, rsbu)
 
         println("new: ")

@@ -3,7 +3,6 @@ package org.apache.sysml.hops.spoof2.rewrite
 import org.apache.sysml.hops.spoof2.plan.SNode
 import org.apache.sysml.hops.spoof2.plan.SPlanValidator
 import org.apache.sysml.utils.Explain
-import java.util.ArrayList
 
 object SPlanTopDownRewriter {
     private const val CHECK_DURING_RECUSION = false

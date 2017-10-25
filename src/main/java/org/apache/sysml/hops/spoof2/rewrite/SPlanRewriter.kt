@@ -10,13 +10,16 @@ interface SPlanRewriter {
     sealed class RewriterResult {
         data class NewRoots(val newRoots: ArrayList<SNode>) : RewriterResult() {
             override fun map(rr: RewriterResult) = rr as? NewRoots ?: this
+            override fun replace(roots: ArrayList<SNode>) = newRoots
             override fun toString() = "NewRoots($newRoots)"
         }
 
         object NoChange : RewriterResult() {
             override fun map(rr: RewriterResult) = rr
+            override fun replace(roots: ArrayList<SNode>) = roots
         }
 
         abstract fun map(rr: RewriterResult): RewriterResult
+        abstract fun replace(roots: ArrayList<SNode>): ArrayList<SNode>
     }
 }

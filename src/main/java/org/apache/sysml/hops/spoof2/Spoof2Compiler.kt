@@ -8,8 +8,9 @@ import org.apache.log4j.Logger
 import org.apache.sysml.conf.DMLConfig
 import org.apache.sysml.hops.*
 import org.apache.sysml.hops.rewrite.*
+import org.apache.sysml.hops.spoof2.enu.NormalFormExploreEq
 import org.apache.sysml.hops.spoof2.plan.*
-import org.apache.sysml.hops.spoof2.rewrite.SPlanNormalFormRewriter
+import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriteRule
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter
 import org.apache.sysml.parser.*
 import org.apache.sysml.runtime.DMLRuntimeException
@@ -233,22 +234,20 @@ object Spoof2Compiler {
         // for each root, a map from input dimensions (actually a list) to the base inputs and input dimensions
         val baseInputs = sroots.map { sroot -> dimsToInputDims(sroot) }
 
-        if (LOG.isTraceEnabled)
-            LOG.trace("Explain after initial SPlan construction: " + Explain.explainSPlan(sroots))
+//        if (LOG.isTraceEnabled)
+//            LOG.trace("Explain after initial SPlan construction: " + Explain.explainSPlan(sroots))
 
-        //rewrite sum-product plan
-        val rewriter = SPlanNormalFormRewriter()
-        val rewriterResult = rewriter.rewriteSPlan(sroots)
-        when( rewriterResult ) {
-            is SPlanRewriter.RewriterResult.NewRoots -> sroots = rewriterResult.newRoots
-            SPlanRewriter.RewriterResult.NoChange -> {}
+        val result2NormalForm = SPlan2NormalForm.rewriteSPlan(sroots)
+        sroots = result2NormalForm.replace(sroots)
+
+        if( result2NormalForm != SPlanRewriter.RewriterResult.NoChange ) {
+            sroots = NormalFormExploreEq().rewriteSPlan(sroots).replace(sroots)
+            if( SPlanRewriteRule.LOG.isTraceEnabled )
+                SPlanRewriteRule.LOG.trace("After processing normal form: "+Explain.explainSPlan(sroots))
         }
 
-//        if (LOG.isTraceEnabled) {
-//            LOG.trace("Explain after SPlan rewriting: " + Explain.explainSPlan(sroots))
-//        }
-
         //re-construct modified HOP DAG
+//        sroots = SPlan2HopReady.rewriteSPlan(sroots).replace(sroots) // put in SPlan2Hop
         var roots2 = SPlan2Hop.splan2Hop(sroots)
 
         val baseInputs2 = sroots.map { sroot ->
