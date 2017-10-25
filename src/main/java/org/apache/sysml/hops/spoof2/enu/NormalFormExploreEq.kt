@@ -262,7 +262,6 @@ class NormalFormExploreEq : SPlanRewriter {
     private val eNodes: ArrayList<ENode> = arrayListOf()
     private lateinit var LITERAL_ONE: SPI
     private var stats = Stats()
-    private val cseElim = SPlanBottomUpRewriter()
 
 
     override fun rewriteSPlan(roots: ArrayList<SNode>): RewriterResult {
@@ -299,7 +298,7 @@ class NormalFormExploreEq : SPlanRewriter {
 //            LOG.trace("E-DAG before CSE Elim: "+Explain.explainSPlan(roots))
 
         SPlanValidator.validateSPlan(roots)
-        cseElim.rewriteSPlan(roots)
+        SPlanBottomUpRewriter.rewriteSPlan(roots)
 
         // check inputs to ensure that CSE Elim did not change them
         eNodes.forEach { eNode ->

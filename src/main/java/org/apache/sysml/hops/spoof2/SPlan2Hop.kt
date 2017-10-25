@@ -44,7 +44,7 @@ object SPlan2Hop {
             count++
             if(CHECK) SPlanValidator.validateSPlan(sroots)
             var changed = SPlanTopDownRewriter.rewriteDown(sroots, _rulesToHopReady)
-            changed = SPlanBottomUpRewriter().rewriteSPlan(sroots) is SPlanRewriter.RewriterResult.NewRoots || changed
+            changed = SPlanBottomUpRewriter.rewriteSPlan(sroots) is SPlanRewriter.RewriterResult.NewRoots || changed
         } while (changed)
 
         if(CHECK) SPlanValidator.validateSPlan(sroots)

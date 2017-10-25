@@ -74,7 +74,7 @@ class HandTest {
         val aggs = countPred(roots) { it is SNodeAggregate }
         Assert.assertEquals("CSE Elim should reduce the number of aggregate nodes to 2",2, aggs)
 
-        SPlanBottomUpRewriter().rewriteSPlan(roots)
+        SPlanBottomUpRewriter.rewriteSPlan(roots)
         System.out.print("After Bind Unify:")
         System.out.println(Explain.explainSPlan(roots))
     }
@@ -117,8 +117,8 @@ class HandTest {
         System.out.print("After (count=$cnt):")
         System.out.println(Explain.explainSPlan(roots))
 
-        SPlanBottomUpRewriter().rewriteSPlan(roots)
-        SPlanBottomUpRewriter().rewriteSPlan(roots)
+        SPlanBottomUpRewriter.rewriteSPlan(roots)
+        SPlanBottomUpRewriter.rewriteSPlan(roots)
         System.out.print("After Bind Unify:")
         System.out.println(Explain.explainSPlan(roots))
 

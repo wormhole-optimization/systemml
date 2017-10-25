@@ -12,50 +12,45 @@ import java.util.*
 /**
  * Apply rewrites from the leaves up to the roots.
  */
-class SPlanBottomUpRewriter(
-        val doElimCSE: Boolean = true
-) : SPlanRewriter {
-    private val _rules: List<SPlanRewriteRuleBottomUp> = listOf(
-            RewriteBindUnify()
-    )
+object SPlanBottomUpRewriter {
+    /** Whether to invoke the SPlanValidator after every rewrite pass. */
+    private const val CHECK = true
+    private const val CHECK_DURING_RECUSION = false
+    //private val LOG = LogFactory.getLog(SPlanBottomUpRewriter::class.java)!!
 
-    companion object {
-        /** Whether to invoke the SPlanValidator after every rewrite pass. */
-        private const val CHECK = true
-        private const val CHECK_DURING_RECUSION = false
-        internal val LOG = LogFactory.getLog(SPlanBottomUpRewriter::class.java)!!
-
-        //internal configuration flags
-        private const val LDEBUG = DMLConfig.SPOOF_DEBUG
-        init {
-            if (LDEBUG) Logger.getLogger(SPlanBottomUpRewriter::class.java).level = Level.TRACE
-        }
-
-        fun getLeaves(roots: ArrayList<SNode>): MutableList<SNode> {
-            SNode.resetVisited(roots)
-            val dataops = LinkedList<SNode>()
-            val literalops = LinkedList<SNodeData>()
-            roots.forEach { _getLeaves(it, dataops, literalops) }
-            SNode.resetVisited(roots)
-            dataops += literalops
-            return dataops
-        }
-
-        private fun _getLeaves(node: SNode, dataops: MutableList<SNode>, literalops: MutableList<SNodeData>) {
-            if( node.visited )
-                return
-            if( node.inputs.isEmpty() ) {
-                if( node is SNodeData && node.isLiteral )
-                    literalops += node
-                else
-                    dataops += node
-            } else
-                node.inputs.forEach { _getLeaves(it, dataops, literalops) }
-            node.visited = true
-        }
+    //internal configuration flags
+    private const val LDEBUG = DMLConfig.SPOOF_DEBUG
+    init {
+        if (LDEBUG) Logger.getLogger(SPlanBottomUpRewriter::class.java).level = Level.TRACE
     }
 
-    override fun rewriteSPlan(roots: ArrayList<SNode>): RewriterResult {
+    fun getLeaves(roots: ArrayList<SNode>): MutableList<SNode> {
+        SNode.resetVisited(roots)
+        val dataops = LinkedList<SNode>()
+        val literalops = LinkedList<SNodeData>()
+        roots.forEach { _getLeaves(it, dataops, literalops) }
+        SNode.resetVisited(roots)
+        dataops += literalops
+        return dataops
+    }
+
+    private fun _getLeaves(node: SNode, dataops: MutableList<SNode>, literalops: MutableList<SNodeData>) {
+        if( node.visited )
+            return
+        if( node.inputs.isEmpty() ) {
+            if( node is SNodeData && node.isLiteral )
+                literalops += node
+            else
+                dataops += node
+        } else
+            node.inputs.forEach { _getLeaves(it, dataops, literalops) }
+        node.visited = true
+    }
+
+    fun rewriteSPlan(roots: ArrayList<SNode>,
+                     doElimCSE: Boolean = true,
+                     rules: List<SPlanRewriteRuleBottomUp> = listOf(RewriteBindUnify())
+    ): RewriterResult {
         val elimParams = SPlanCseEliminator.Params(doElimCSE)
         val (rr0,leaves) = if(true) SPlanCseEliminator.rewriteSPlanAndGetLeaves(roots, elimParams) else RewriterResult.NoChange to getLeaves(roots)
         var rr = rr0
@@ -67,7 +62,7 @@ class SPlanBottomUpRewriter(
         var changed = false
         val collectedRoots = arrayListOf<SNode>()
         for( i in leaves.indices ) {
-            val result = rRewriteSPlan(leaves[i], _rules, collectedRoots, roots)
+            val result = rRewriteSPlan(leaves[i], rules, collectedRoots, roots)
             when( result ) {
                 SPlanRewriteRule.RewriteResult.NoChange -> {}
                 is SPlanRewriteRule.RewriteResult.NewNode -> {
