@@ -508,7 +508,7 @@ public class HopRewriteUtils
 	{
 		DataType dt = (type==OpOp1.CAST_AS_SCALAR) ? DataType.SCALAR : 
 			(type==OpOp1.CAST_AS_MATRIX) ? DataType.MATRIX : input.getDataType();
-		ValueType vt = (type==OpOp1.CAST_AS_MATRIX) ? ValueType.DOUBLE : input.getValueType();
+		ValueType vt = type.resultType(input.getValueType());
 		UnaryOp unary = new UnaryOp(input.getName(), dt, vt, type, input);
 		unary.setOutputBlocksizes(input.getRowsInBlock(), input.getColsInBlock());
 		if( type == OpOp1.CAST_AS_SCALAR || type == OpOp1.CAST_AS_MATRIX ) {

@@ -1073,7 +1073,19 @@ public abstract class Hop implements ParseInfo
 		SPROP, //sample proportion: P * (1 - P)
 		SIGMOID, //sigmoid function: 1 / (1 + exp(-X)) 
 		SELP, //select positive: X * (X>0)
-		LOG_NZ, //sparse-safe log; ppred(X,0,"!=")*log(X)
+		LOG_NZ; //sparse-safe log; ppred(X,0,"!=")*log(X)
+
+		public ValueType resultType(ValueType in) {
+			switch (this) {
+				case LOG: case LOG_NZ:
+				case SQRT: case SIGMOID:
+				case CAST_AS_MATRIX:
+				case SIN: case ASIN: case COS: case COSH: case TAN: case TANH: case SINH: case ACOS: case ATAN:
+					return ValueType.DOUBLE;
+				default:
+					return in;
+			}
+		}
 	}
 
 	// Operations that require two operands

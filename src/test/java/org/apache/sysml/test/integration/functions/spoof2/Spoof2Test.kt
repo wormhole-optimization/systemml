@@ -116,6 +116,7 @@ class Spoof2Test(
         //	TEST_NAME+73;  //S %*% R #R is a row vector; S is a scalar; no algebraic rewrites
         //	TEST_NAME+74;  //complex from GLM.dml
         //	TEST_NAME+75;  //y + x*(m + y) // a minus prevents the result from factoring as much as it could have otherwise. Change 0-Y to Y*(-1).
+        //	TEST_NAME+76;  //A * log(3) // check correct type on log
         private const val NUM_TESTS = 73
 
         private const val TEST_DIR = "functions/spoof2/"
@@ -140,6 +141,7 @@ class Spoof2Test(
                 params.add(arrayOf(testName, true, CP))
             }
             params.add(arrayOf(TEST_NAME+75, true, CP))
+            params.add(arrayOf(TEST_NAME+76, true, CP))
             return params
         }
     }
@@ -149,6 +151,7 @@ class Spoof2Test(
         for (i in 1..NUM_TESTS)
             addTestConfiguration(TEST_NAME + i, TestConfiguration(TEST_CLASS_DIR, TEST_NAME + i, arrayOf(i.toString())))
         addTestConfiguration(TEST_NAME + 75, TestConfiguration(TEST_CLASS_DIR, TEST_NAME + 75, arrayOf(75.toString())))
+        addTestConfiguration(TEST_NAME + 76, TestConfiguration(TEST_CLASS_DIR, TEST_NAME + 76, arrayOf(76.toString())))
     }
 
     @Test
