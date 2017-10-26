@@ -40,6 +40,7 @@ import org.apache.sysml.hops.globalopt.gdfgraph.GDFLoopNode;
 import org.apache.sysml.hops.globalopt.gdfgraph.GDFNode;
 import org.apache.sysml.hops.globalopt.gdfgraph.GDFNode.NodeType;
 import org.apache.sysml.hops.ipa.FunctionCallGraph;
+import org.apache.sysml.hops.rewrite.HopRewriteUtils;
 import org.apache.sysml.hops.spoof2.enu.ENode;
 import org.apache.sysml.hops.spoof2.enu.EPath;
 import org.apache.sysml.hops.spoof2.enu.SPCost;
@@ -87,6 +88,7 @@ public class Explain
 	private static final boolean SHOW_MEM_ESTIMATES         = true;
 	private static final boolean SHOW_MEM_ABOVE_BUDGET      = false;
 	private static final boolean SHOW_LITERAL_HOPS          = false;
+	private static final boolean INLINE_LITERAL_HOPS        = true;  // write literals in [_]. Use false for SHOW_LITERAL_HOPS when this is true.
 	private static final boolean SHOW_DATA_DEPENDENCIES     = true;
 	private static final boolean SHOW_DATA_FLOW_PROPERTIES  = true;
 	public static boolean SHOW_VISIT_STATUS = false; // modified for SPlans in SNodeValidator, to help debug visit status
@@ -814,7 +816,15 @@ public class Explain
 			childs.append(" (");
 			boolean childAdded = false;
 			for( Hop input : hop.getInput() )
-				if( SHOW_LITERAL_HOPS || !(input instanceof LiteralOp) ){
+				if( INLINE_LITERAL_HOPS && input instanceof LiteralOp) {
+					childs.append(childAdded?",":"");
+					String op = input.getOpString().substring(10);
+					if (op.length() < 10)
+						childs.append('[').append(op).append(']');
+					else
+						childs.append('[').append(op.substring(0, 10)).append("...]");
+					childAdded = true;
+				} else if( SHOW_LITERAL_HOPS || !(input instanceof LiteralOp) ){
 					childs.append(childAdded?",":"");
 					childs.append(input.getHopID());
 					childAdded = true;

@@ -19,45 +19,45 @@
 
 <root>
    <!-- local fs tmp working directory-->
-   <localtmpdir>/tmp/systemml</localtmpdir>
+   <sysml.localtmpdir>/tmp/systemml</sysml.localtmpdir>
 
-   <!-- hdfs tmp working directory--> 
-   <scratch>scratch_space</scratch> 
+   <!-- hdfs tmp working directory-->
+   <sysml.scratch>scratch_space</sysml.scratch>
 
    <!-- compiler optimization level, valid values: 0 | 1 | 2 | 3 | 4, default: 2 -->
-   <optlevel>1</optlevel>
+   <sysml.optlevel>1</sysml.optlevel>
 
    <!-- default number of reduce tasks per MR job, default: 2 x number of nodes -->
-   <numreducers>10</numreducers> 
-   
+   <sysml.numreducers>10</sysml.numreducers>
+
    <!-- override jvm reuse flag for specific MR jobs, valid values: true | false  -->
-   <jvmreuse>false</jvmreuse> 
+   <sysml.jvmreuse>false</sysml.jvmreuse>
 
    <!-- default block dim for binary block files -->
-   <defaultblocksize>1000</defaultblocksize> 
+   <sysml.defaultblocksize>1000</sysml.defaultblocksize>
 
    <!-- run systemml control program as yarn appmaster, in case of MR1 always falls back to client, please disable for debug mode -->
-   <dml.yarn.appmaster>false</dml.yarn.appmaster>
+   <sysml.yarn.appmaster>false</sysml.yarn.appmaster>
 
    <!-- maximum jvm heap size of the dml yarn appmaster in MB, the requested memory is 1.5x this parameter -->
-   <dml.yarn.appmaster.mem>2048</dml.yarn.appmaster.mem>
+   <sysml.yarn.appmaster.mem>2048</sysml.yarn.appmaster.mem>
 
    <!-- maximum jvm heap size of the map/reduce tasks in MB, the requested memory is 1.5x this parameter, negative values ignored  -->
-   <dml.yarn.mapreduce.mem>2048</dml.yarn.mapreduce.mem>
+   <sysml.yarn.mapreduce.mem>2048</sysml.yarn.mapreduce.mem>
 
    <!-- yarn application submission queue, relevant for default capacity scheduler -->
-   <dml.yarn.app.queue>default</dml.yarn.app.queue>
-   
-   <!-- enables multi-threaded matrix multiplications in singlenode control program -->
-   <cp.parallel.matrixmult>true</cp.parallel.matrixmult>
-   
-   <!-- enables multi-threaded read/write of text formats in singlenode control program -->
-   <cp.parallel.textio>true</cp.parallel.textio>
-   
+   <sysml.yarn.app.queue>default</sysml.yarn.app.queue>
+
+   <!-- enables multi-threaded matrix operations in singlenode control program -->
+   <sysml.cp.parallel.ops>true</sysml.cp.parallel.ops>
+
+   <!-- enables multi-threaded read/write in singlenode control program -->
+   <sysml.cp.parallel.io>true</sysml.cp.parallel.io>
+
    <!-- enables automatic code generation -->
-   <codegen.enabled>true</codegen.enabled>
-   <codegen.plancache>true</codegen.plancache>
-   <codegen.literals>1</codegen.literals>
+   <sysml.codegen.enabled>false</sysml.codegen.enabled>
+   <sysml.codegen.plancache>true</sysml.codegen.plancache>
+   <sysml.codegen.literals>1</sysml.codegen.literals>
 
    <sysml.spoof.enabled>false</sysml.spoof.enabled>
 </root>
