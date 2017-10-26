@@ -1096,7 +1096,29 @@ public abstract class Hop implements ParseInfo
 		//fused ML-specific operators for performance
 		MINUS_NZ, //sparse-safe minus: X-(mean*ppred(X,0,!=))
 		LOG_NZ, //sparse-safe log; ppred(X,0,"!=")*log(X,0.5)
-		MINUS1_MULT, //1-X*Y
+		MINUS1_MULT; //1-X*Y
+
+        public ValueType resultType(DataType d1, ValueType v1, DataType d2, ValueType v2) {
+            if( d1 == DataType.MATRIX || d2 == DataType.MATRIX )
+                return ValueType.DOUBLE;
+            if( d1 == DataType.SCALAR && d2 == DataType.SCALAR ) {
+                if( v1 == ValueType.STRING || v2 == ValueType.STRING )
+                    return ValueType.STRING;
+                switch (this) {
+                    case LOG: case LOG_NZ: case DIV:
+                        return ValueType.DOUBLE;
+                    case INTDIV:
+                        return ValueType.INT;
+                    case MODULUS: case POW:
+                        return v1 == ValueType.DOUBLE || v2 == ValueType.DOUBLE ? ValueType.DOUBLE : ValueType.INT;
+                    case LESS: case LESSEQUAL: case GREATER: case GREATEREQUAL: case EQUAL: case NOTEQUAL:
+                        return ValueType.BOOLEAN;
+                    default:
+                        return v1;
+                }
+            }
+            return v1;
+        }
 	}
 
 	// Operations that require 3 operands
@@ -1932,8 +1954,6 @@ public abstract class Hop implements ParseInfo
 	 *            parse information, such as beginning line position, beginning
 	 *            column position, ending line position, ending column position,
 	 *            text, and filename
-	 * @param filename
-	 *            the DML/PYDML filename (if it exists)
 	 */
 	public void setParseInfo(ParseInfo parseInfo) {
 		_beginLine = parseInfo.getBeginLine();

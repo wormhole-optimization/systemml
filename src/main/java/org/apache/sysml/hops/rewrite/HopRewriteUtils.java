@@ -534,16 +534,9 @@ public class HopRewriteUtils
 	public static BinaryOp createBinary(Hop input1, Hop input2, OpOp2 op, boolean outer) {
 		Hop mainInput = input1.getDataType().isMatrix() ? input1 : 
 			input2.getDataType().isMatrix() ? input2 : input1;
-		BinaryOp bop = new BinaryOp(mainInput.getName(), mainInput.getDataType(), 
-			mainInput.getValueType(), op, input1, input2);
-		//cleanup value type for relational operations
-		if( bop.isPPredOperation() && bop.getDataType().isScalar() )
-			bop.setValueType(ValueType.BOOLEAN);
-		// cleanup cbind, rbind
-        if( bop.getDataType() == DataType.SCALAR && bop.getValueType() != ValueType.STRING
-				&& input2.getValueType() == ValueType.STRING ) {
-            bop.setValueType(ValueType.STRING);
-        }
+		ValueType vt = op.resultType(input1.getDataType(), input1.getValueType(), input2.getDataType(), input2.getValueType());
+		BinaryOp bop = new BinaryOp(mainInput.getName(), mainInput.getDataType(), vt, op, input1, input2);
+
         bop.setOuterVectorOperation(outer);
         bop.setOutputBlocksizes(mainInput.getRowsInBlock(), mainInput.getColsInBlock());
 		copyLineNumbers(mainInput, bop);
