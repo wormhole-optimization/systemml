@@ -1109,7 +1109,7 @@ public abstract class Hop implements ParseInfo
                         return ValueType.DOUBLE;
                     case INTDIV:
                         return ValueType.INT;
-                    case MODULUS: case POW:
+					case MODULUS: case POW: case PLUS: case MULT: case MIN: case MAX:
                         return v1 == ValueType.DOUBLE || v2 == ValueType.DOUBLE ? ValueType.DOUBLE : ValueType.INT;
                     case LESS: case LESSEQUAL: case GREATER: case GREATEREQUAL: case EQUAL: case NOTEQUAL:
                         return ValueType.BOOLEAN;
