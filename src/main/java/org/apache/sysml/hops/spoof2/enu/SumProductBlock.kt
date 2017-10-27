@@ -426,6 +426,7 @@ sealed class SumProduct {
                                 this.edges -= edge
                                 this.edges += newBlock
                             }
+                            is EBlock -> throw AssertionError("unexpected EBlock")
                         }
                         refresh()
                     }
@@ -621,6 +622,7 @@ sealed class SumProduct {
         when( this ) {
             is Input -> rSchema += this.schema
             is Block -> this.edges.forEach { it.recUnionSchema(rSchema) }
+            is EBlock -> throw AssertionError("unexpected EBlock")
         }
         return rSchema
     }
@@ -630,6 +632,7 @@ sealed class SumProduct {
         when(this) {
             is Input -> inputs += snode
             is Block -> this.edges.forEach { it.getAllInputs(inputs) }
+            is EBlock -> this.blocks.forEach { it.getAllInputs(inputs) }
         }
     }
     fun getAllInputBlocks(): List<SPI> = mutableListOf<SPI>().let { getAllInputBlocks(it); it }
@@ -637,6 +640,7 @@ sealed class SumProduct {
         when(this) {
             is Input -> inputs += this
             is Block -> this.edges.forEach { it.getAllInputBlocks(inputs) }
+            is EBlock -> this.blocks.forEach { it.getAllInputBlocks(inputs) }
         }
     }
 

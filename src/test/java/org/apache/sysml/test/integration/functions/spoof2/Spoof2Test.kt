@@ -118,8 +118,9 @@ class Spoof2Test(
         //	TEST_NAME+75;  //y + x*(m + y) // a minus prevents the result from factoring as much as it could have otherwise. Change 0-Y to Y*(-1).
         //	TEST_NAME+76;  //A * log(3) // check correct type on log
         //	TEST_NAME+77;  //A * 3 / 4  // check correct type on div
+        //	TEST_NAME+78;  //print(R), print(R^2) // check that commutative CSE elim does not comebine improperly
         private const val NUM_TESTS = 73
-        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..77)
+        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..78)
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"

@@ -49,7 +49,7 @@ class SNodeNary(
         if( o !is SNodeNary || o.op != op)
             return false
         // warning: if the schema is different, need to adjust
-        return op.commutative && o.inputs.toSet() == this.inputs.toSet()
+        return op.commutative && o.inputs.sortedBy { it.id } == this.inputs.sortedBy { it.id }
     }
 
     constructor(op: NaryOp, vararg inputs: SNode) : this(op, inputs.asList())

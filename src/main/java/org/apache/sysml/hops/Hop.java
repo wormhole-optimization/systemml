@@ -1105,11 +1105,11 @@ public abstract class Hop implements ParseInfo
                 if( v1 == ValueType.STRING || v2 == ValueType.STRING )
                     return ValueType.STRING;
                 switch (this) {
-                    case LOG: case LOG_NZ: case DIV:
+                    case LOG: case LOG_NZ: case DIV: case POW:
                         return ValueType.DOUBLE;
                     case INTDIV:
                         return ValueType.INT;
-					case MODULUS: case POW: case PLUS: case MULT: case MIN: case MAX:
+					case MODULUS: case PLUS: case MULT: case MIN: case MAX:
                         return v1 == ValueType.DOUBLE || v2 == ValueType.DOUBLE ? ValueType.DOUBLE : ValueType.INT;
                     case LESS: case LESSEQUAL: case GREATER: case GREATEREQUAL: case EQUAL: case NOTEQUAL:
                         return ValueType.BOOLEAN;

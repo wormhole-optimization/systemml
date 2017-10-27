@@ -53,6 +53,7 @@ class NormalFormExploreEq : SPlanRewriter {
                     if( spb.edges.any { it !is SumProduct.Input } )
                         throw SNodeException("found multiple layers of MULT; one layer expected in normal form")
                 }
+                is SumProduct.EBlock -> throw AssertionError("unexpected EBlock")
             }
         }
 
