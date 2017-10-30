@@ -292,6 +292,8 @@ public abstract class GLMTest extends AutomatedTestBase
 			proArgs.add("-python");
 		}
 		proArgs.add("-stats");
+//		proArgs.add("-explain");
+//		proArgs.add("recompile_hops");
 		proArgs.add("-nvargs");
 		proArgs.add("dfam=" + String.format ("%d", distFamilyType));
 		proArgs.add(((distFamilyType == 2 && distParam != 1.0) ? "yneg=" : "vpow=") + String.format ("%f", distParam));

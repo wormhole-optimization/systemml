@@ -10,11 +10,11 @@ num_cols=10
 sparsity=1.0
 addOpts="--stats --explain2 hops"
 genData=0
-reps=1
-saveTimes=0
+reps=3
+saveTimes=1
 
-algs=( mlogreg ) #linregcg kmeans mlogreg l2svm ) #glm-binomial-probit )
-confs=(  none none_spoof ) #default_spoof default
+algs=( linregcg kmeans l2svm mlogreg ) #linregcg kmeans mlogreg l2svm ) #glm-binomial-probit )
+confs=( none none_spoof default_spoof default )
 
 num_rowsArr=( 10000000 )
 for num_rows in "${num_rowsArr[@]}"; do

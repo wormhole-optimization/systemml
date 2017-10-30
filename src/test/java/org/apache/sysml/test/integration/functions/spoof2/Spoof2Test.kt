@@ -120,8 +120,11 @@ class Spoof2Test(
         //	TEST_NAME+77;  //A * 3 / 4  // check correct type on div
         //	TEST_NAME+78;  //print(R), print(R^2) // check that commutative CSE elim does not comebine improperly
         //	TEST_NAME+79;  //if statement with predicate
+        //	TEST_NAME+80;  //GLM snippet
+        //	TEST_NAME+81;  //sum(A * (u %*% t(v) + a %*% t(y))) ==> t(u) %*% A %*% v + t(x) %*% A %*% y
+                           // interesting idea: do both and test whether they are equal for particular matrices
         private const val NUM_TESTS = 73
-        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79)
+        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..81)
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
