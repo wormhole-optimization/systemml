@@ -119,8 +119,9 @@ class Spoof2Test(
         //	TEST_NAME+76;  //A * log(3) // check correct type on log
         //	TEST_NAME+77;  //A * 3 / 4  // check correct type on div
         //	TEST_NAME+78;  //print(R), print(R^2) // check that commutative CSE elim does not comebine improperly
+        //	TEST_NAME+79;  //if statement with predicate
         private const val NUM_TESTS = 73
-        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..78)
+        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79)
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
@@ -183,7 +184,8 @@ class Spoof2Test(
             val HOME = AutomatedTestBase.SCRIPT_DIR + TEST_DIR
             fullDMLScriptName = HOME + testname + ".dml"
 //            if ( rewrites ) // "-explain", "recompile_hops",
-            programArgs = arrayOf("-stats", "-args", output("S"))
+            programArgs = arrayOf("-stats", //"-explain", "hops",
+                    "-args", output("S"))
 
 
             fullRScriptName = HOME + testname + ".R"

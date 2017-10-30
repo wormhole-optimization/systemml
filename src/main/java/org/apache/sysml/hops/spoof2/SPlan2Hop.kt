@@ -417,6 +417,17 @@ object SPlan2Hop {
                                     Spoof2Compiler.LOG.trace("on $current id=${current.id}, created transpose to force orientation to $oldHopClass on input $i of $current")
                             }
                         }
+                        val oldDataType = current.hop.input[i]!!.dataType
+                        inputs[i] = when (inputs[i].dataType) {
+                            oldDataType -> inputs[i]
+                            Expression.DataType.SCALAR -> {
+                                HopRewriteUtils.createUnary(inputs[i], Hop.OpOp1.CAST_AS_MATRIX)
+                            }
+                            Expression.DataType.MATRIX -> {
+                                HopRewriteUtils.createUnary(inputs[i], Hop.OpOp1.CAST_AS_SCALAR)
+                            }
+                            else -> inputs[i]
+                        }
                     }
 
                     if (inputs.isNotEmpty()) { //robustness datagen

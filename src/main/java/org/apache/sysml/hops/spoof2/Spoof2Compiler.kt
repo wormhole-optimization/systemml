@@ -135,7 +135,6 @@ object Spoof2Compiler {
 //        recompile, inplace=true  ==>  CSE; SumProduct
 //        LOG.trace("Call ProgramRewriter with static=${!recompile} dynamic=$doDynamicProgramRewriter")
         val rewriter2 = ProgramRewriter(!recompile, doDynamicProgramRewriter)
-        // todo - some fix with handling literals in predicates, as exposed by CSE in static rewrites during recompile - need fix from master
         rewriter2.rewriteHopDAG(roots, ProgramRewriteStatus())
         Hop.resetVisitStatus(roots)
         return roots
