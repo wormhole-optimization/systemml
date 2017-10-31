@@ -186,6 +186,8 @@ class NormalFormExploreEq : SPlanRewriter {
             var renameInputToFactorOut: Long = 0L,
             /** # of paths rejected from "factor common term out of +" decision */
             var rejectExplore: Long = 0L,
+            /** # of paths rejected early because a tensor intermediary was identified during the "factor common term out of +" decision */
+            var rejectTensor: Long = 0L,
             /** # of paths rejected during construction of SNodes from SumProduct blocks */
             var rejectConstruct: Long = 0L,
             var numInserts: Long = 0L,
@@ -203,6 +205,7 @@ class NormalFormExploreEq : SPlanRewriter {
             numSP += s.numSP
             renameInputToFactorOut += s.renameInputToFactorOut
             rejectExplore += s.rejectExplore
+            rejectTensor += s.rejectTensor
             rejectConstruct += s.rejectConstruct
             numInserts += s.numInserts
             numAggPlusMultiply += s.numAggPlusMultiply
@@ -216,6 +219,7 @@ class NormalFormExploreEq : SPlanRewriter {
             numSP = 0
             renameInputToFactorOut = 0
             rejectExplore = 0
+            rejectTensor = 0
             rejectConstruct = 0
             numInserts = 0
             numAggPlusMultiply = 0
@@ -231,12 +235,12 @@ class NormalFormExploreEq : SPlanRewriter {
             fun header(): String {
                 //numPlusInputs: # of inputs to n-ary + (this is 1 if there is no n-ary plus)
                 //numUniqueBaseInputsPullableFromPlus: # of unique base inputs that occur in at least two plus terms
-                return "id${sep}numSP${sep}renameInputToFactorOut${sep}rejectExplore${sep}rejectConstruct${sep}numInserts${sep}numAggPlusMultiply${sep}numLabels${sep}numContingencies${sep}maxCC${sep}considerPlan" +
+                return "id${sep}numSP${sep}renameInputToFactorOut${sep}rejectExplore${sep}rejectTensor${sep}rejectConstruct${sep}numInserts${sep}numAggPlusMultiply${sep}numLabels${sep}numContingencies${sep}maxCC${sep}considerPlan" +
                         "${sep}numAggNames${sep}numPlusInputs${sep}numBaseInputs${sep}numUniqueBaseInputs${sep}numUniqueBaseInputsPullableFromPlus${sep}normalSpb"
             }
         }
         fun toCSVString_Basic(): String {
-            return "$id$sep$numSP$sep$renameInputToFactorOut$sep$rejectExplore$sep$rejectConstruct$sep$numInserts$sep$numAggPlusMultiply$sep$numLabels$sep$numContingencies$sep$maxCC$sep$considerPlan"
+            return "$id$sep$numSP$sep$renameInputToFactorOut$sep$rejectExplore$sep$rejectTensor$sep$rejectConstruct$sep$numInserts$sep$numAggPlusMultiply$sep$numLabels$sep$numContingencies$sep$maxCC$sep$considerPlan"
         }
         fun toCSVString(): String {
             val s = toCSVString_Basic()
@@ -253,7 +257,7 @@ class NormalFormExploreEq : SPlanRewriter {
         }
 
          override fun toString(): String {
-             return "Stats(id=$id, numSP=$numSP, renameInputToFactorOut=$renameInputToFactorOut, rejectExplore=$rejectExplore, rejectConstruct=$rejectConstruct, numInserts=$numInserts, numAggPlusMultiply=$numAggPlusMultiply, numLabels=$numLabels, numContingencies=$numContingencies, maxCC=$maxCC, considerPlan=$considerPlan, " +
+             return "Stats(id=$id, numSP=$numSP, renameInputToFactorOut=$renameInputToFactorOut, rejectExplore=$rejectExplore, rejectTensor=$rejectTensor, rejectConstruct=$rejectConstruct, numInserts=$numInserts, numAggPlusMultiply=$numAggPlusMultiply, numLabels=$numLabels, numContingencies=$numContingencies, maxCC=$maxCC, considerPlan=$considerPlan, " +
                      "#spbs=${spbs.size})"
          }
 
@@ -495,6 +499,7 @@ class NormalFormExploreEq : SPlanRewriter {
             is ESP -> throw AssertionError("unexpected EBlock")
         } }
         val groupByBase = msi.groupBy(groupByFun).zipIntersect(msj.groupBy(groupByFun)).filter { (_,p) ->
+            // filter away when aggregation differs
             val (a,_) = p
             val x = a.first()
             val pi = _spb.edges[i]
@@ -527,14 +532,13 @@ class NormalFormExploreEq : SPlanRewriter {
         val factorOut = ArrayList<SP>()
         val alternatives = HashSet<SP>()
         var rejectExplore = 0
+        var rejectTensor = 0
 
         for (k in 1L until (1L shl groupByBase.size)) {
             if( recNo+k >= 20 ) {
                 LOG.warn("Cut off factorization after depth $recNo (groupByBase.size = ${groupByBase.size})")
                 val spb = _spb
                 val newSpb = factorCommonTermsFromPlus_next(spb, i, j, recNo)
-//            if( LOG.isTraceEnabled )
-//                LOG.trace("Common factor pull from + choice $i $j $k /${spb.edges.size}:\n$newSpb")
                 return newSpb
             }
 
@@ -568,8 +572,8 @@ class NormalFormExploreEq : SPlanRewriter {
                             // only types of factors we can handle now are those whose snode is SNodeBind
                             fim.filterInPlace { it.snode is SNodeBind } // todo check necessary
                             fjm.filterInPlace { it.snode is SNodeBind }
-                            if( LOG.isTraceEnabled )
-                                LOG.info("factorOut: $factorOut; fim and fjm: $fim, $fjm")
+//                            if( LOG.isTraceEnabled )
+//                                LOG.info("factorOut: $factorOut; fim and fjm: $fim, $fjm")
                             if( fim.isNotEmpty() && fjm.isNotEmpty() && (pi is SPB && pj is SPB) ) {
                                 val iaggs = pi.aggNames()
                                 val jaggs = pj.aggNames()
@@ -646,8 +650,16 @@ class NormalFormExploreEq : SPlanRewriter {
             pj = removeFromPlus(pj, factorOut)
             //spb.refresh()
             val pnew = SPB(SNodeNary.NaryOp.PLUS, pi, pj)
+
+            // check: did we form a tensor intermediate? If so, jump ship.
+            if( pnew.schema.size > 2 ) {
+                rejectTensor++
+                continue
+            }
+
             val mnew = SPB(sbs, SNodeNary.NaryOp.MULT, factorOut + pnew)
             spb.edges[i] = mnew
+
             val newSpb = if(j < spb.edges.size) factorCommonTermsFromPlus(spb, i, j, recNo+(1L shl groupByBase.size))
                     else factorCommonTermsFromPlus_next(spb, i, j, recNo+(1L shl groupByBase.size))
 //            if( LOG.isTraceEnabled )
@@ -663,6 +675,7 @@ class NormalFormExploreEq : SPlanRewriter {
             alternatives += newSpb
         else rejectExplore++
         stats.rejectExplore += rejectExplore
+        stats.rejectTensor += rejectTensor
 
         return when( alternatives.size ) {
             0 -> null

@@ -61,8 +61,8 @@ object SPlanCseEliminator {
         SNode.resetVisited(roots)
 
         val leaves = dataops.values + literalops.values
-        if( LOG.isTraceEnabled )
-            LOG.trace("Before CSE Elim:"+ Explain.explainSPlan(roots))
+//        if( LOG.isTraceEnabled )
+//            LOG.trace("Before CSE Elim:"+ Explain.explainSPlan(roots))
         val changed = leaves.sumBy { rCSEElim(it, params) }
         SNode.resetVisited(roots)
         if(CHECK)
