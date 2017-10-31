@@ -175,6 +175,7 @@ public class Recompiler
 		throws DMLRuntimeException, HopsException, LopsException, IOException
 	{
 		ArrayList<Instruction> newInst = null;
+		inplace = !ConfigurationManager.isSpoofEnabled() && inplace;
 
 		//need for synchronization as we do temp changes in shared hops/lops
 		//however, we create deep copies for most dags to allow for concurrent recompile

@@ -28,7 +28,7 @@ for alg in "${algs[@]}"; do
     fi
     for conf in "${confs[@]}"; do
         for rep in `seq 1 ${reps}`; do
-            echo ${num_rows} ${alg} ${conf} \#${rep}
+            echo "$(date '+%Y%m%d.%H%M%S')" ${num_rows} ${alg} ${conf} \#${rep}
             cmd=$(num_cols=${num_cols} num_rows=${num_rows} sparsity=${sparsity} \
                 envsubst < queries/alg_${alg}.txt)
             cmd="--config ./SystemML-config-${conf}.xml ${addOpts} ${cmd}"

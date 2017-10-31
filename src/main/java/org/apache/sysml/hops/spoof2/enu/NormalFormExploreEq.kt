@@ -535,7 +535,7 @@ class NormalFormExploreEq : SPlanRewriter {
         var rejectTensor = 0
 
         for (k in 1L until (1L shl groupByBase.size)) {
-            if( recNo+k >= 20 ) {
+            if( recNo+k-rejectTensor >= 25 ) {
                 LOG.warn("Cut off factorization after depth $recNo (groupByBase.size = ${groupByBase.size})")
                 val spb = _spb
                 val newSpb = factorCommonTermsFromPlus_next(spb, i, j, recNo)
@@ -661,7 +661,7 @@ class NormalFormExploreEq : SPlanRewriter {
             spb.edges[i] = mnew
 
             val newSpb = if(j < spb.edges.size) factorCommonTermsFromPlus(spb, i, j, recNo+(1L shl groupByBase.size))
-                    else factorCommonTermsFromPlus_next(spb, i, j, recNo+(1L shl groupByBase.size))
+                    else factorCommonTermsFromPlus_next(spb, i, j, recNo+(1L shl groupByBase.size)-rejectTensor)
 //            if( LOG.isTraceEnabled )
 //                LOG.trace("Common factor pull from + choice $i $j $k /${spb.edges.size}:\n$newSpb")
             if (newSpb != null)
@@ -670,7 +670,7 @@ class NormalFormExploreEq : SPlanRewriter {
         }
 
         // option to factor nothing
-        val newSpb = factorCommonTermsFromPlus_next(_spb, i, j, recNo+(1L shl groupByBase.size))
+        val newSpb = factorCommonTermsFromPlus_next(_spb, i, j, recNo+(1L shl groupByBase.size)-rejectTensor)
         if( newSpb != null )
             alternatives += newSpb
         else rejectExplore++

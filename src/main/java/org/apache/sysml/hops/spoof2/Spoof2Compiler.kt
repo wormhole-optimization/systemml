@@ -366,8 +366,11 @@ object Spoof2Compiler {
         HopDagValidator.validateHopDag(roots2)
 
         //rewrite after applied sum-product optimizer
-        ProgramRewriter(RewriteCommonSubexpressionElimination()).rewriteHopDAG(roots, ProgramRewriteStatus())
-        programRewriteHops(roots2, recompile, true) // Todo Testing...
+//        ProgramRewriter(RewriteCommonSubexpressionElimination()).rewriteHopDAG(roots, ProgramRewriteStatus())
+//        ProgramRewriter(RewriteConstantFolding()).rewriteHopDAG(roots, ProgramRewriteStatus())
+//        ProgramRewriter(RewriteAlgebraicSimplificationStatic()).rewriteHopDAG(roots, ProgramRewriteStatus())
+//        ProgramRewriter(RewriteCommonSubexpressionElimination()).rewriteHopDAG(roots, ProgramRewriteStatus())
+        programRewriteHops(roots2, false, true) // Todo Testing...
         //programRewriteHops(roots2, false, true)
 //        if( doDynamicProgramRewriter )
 //            RewriteAlgebraicSimplificationDynamic().rewriteHopDAGs(roots2, ProgramRewriteStatus())

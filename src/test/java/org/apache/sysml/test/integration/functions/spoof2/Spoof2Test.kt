@@ -114,7 +114,7 @@ class Spoof2Test(
         //	TEST_NAME+71;  //t(X)%*%X + 2*t(colSums(X))%*%colSums(X) + 3*t(colSums(X))%*%colSums(X) // expanded form of 66
         //	TEST_NAME+72;  //C %*% S #C is a col vector; S is a scalar; no algebraic rewrites
         //	TEST_NAME+73;  //S %*% R #R is a row vector; S is a scalar; no algebraic rewrites
-        //	TEST_NAME+74;  //complex from GLM.dml
+        //	TEST_NAME+74;  //complex from GLM.dml that stresses factoring CSEs from +
         //	TEST_NAME+75;  //y + x*(m + y) // a minus prevents the result from factoring as much as it could have otherwise. Change 0-Y to Y*(-1).
         //	TEST_NAME+76;  //A * log(3) // check correct type on log
         //	TEST_NAME+77;  //A * 3 / 4  // check correct type on div
