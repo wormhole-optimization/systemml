@@ -4,6 +4,7 @@ import org.apache.sysml.hops.*
 import org.apache.sysml.hops.rewrite.HopRewriteUtils
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.*
+import org.apache.sysml.parser.Expression
 import org.apache.sysml.utils.Explain
 import java.util.ArrayList
 
@@ -106,7 +107,8 @@ object Hop2SPlan {
                     SNodeExt(current, inputs[0])
             }
             is BinaryOp -> {
-                if (current.op.name in SNodeNary.NaryOp) {
+                if (current.op.name in SNodeNary.NaryOp // special case + on strings
+                        && !( current.valueType == Expression.ValueType.STRING && current.op == Hop.OpOp2.PLUS )) {
                     //PLUS, MIN, MAX, MULT, EQUAL, AND, OR
                     //POW, MINUS, DIV, MODULUS, INTDIV, LESS, LESSEQUAL, GREATER, GREATEREQUAL, NOTEQUAL
                     // if both scalar, no bindings

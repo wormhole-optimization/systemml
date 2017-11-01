@@ -27,6 +27,7 @@ import org.apache.sysml.lops.LopProperties.ExecType.*
 import org.apache.sysml.test.integration.AutomatedTestBase
 import org.apache.sysml.test.integration.TestConfiguration
 import org.apache.sysml.test.utils.TestUtils
+import org.junit.Assert
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
@@ -125,8 +126,9 @@ class Spoof2Test(
                            // interesting idea: do both and test whether they are equal for particular matrices
         //	TEST_NAME+82;  //A - B - C
         //	TEST_NAME+83;  //A - B - B
+        //	TEST_NAME+84;  //print ("test " + (i - 1) + " test");
         private const val NUM_TESTS = 73
-        private val ACTIVE_TESTS = listOf(82)//(1..NUM_TESTS).toList() + (75..79) + (81..82)
+        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..84)
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
@@ -189,7 +191,7 @@ class Spoof2Test(
             val HOME = AutomatedTestBase.SCRIPT_DIR + TEST_DIR
             fullDMLScriptName = HOME + testname + ".dml"
 //            if ( rewrites ) // "-explain", "recompile_hops",
-            programArgs = arrayOf(//"-stats", //"-explain", "hops",
+            programArgs = arrayOf("-stats", //"-explain", "hops",
                     "-args", output("S"))
 
 
@@ -207,8 +209,9 @@ class Spoof2Test(
 //            Assert.assertTrue(heavyHittersContainsSubString("spoofRA") || heavyHittersContainsSubString("sp_spoofRA"))
 
             //ensure full aggregates for certain patterns
-//            if (testname == TEST_NAME+15)
-//                Assert.assertTrue(!heavyHittersContainsSubString("uark+"))
+            val testnum = testname.substring(TEST_NAME.length, testname.length).toInt()
+            if (testnum in 82..84)
+                Assert.assertTrue(heavyHittersContainsSubString("-"))
 //            if (testname == TEST_NAME+17)
 //                Assert.assertTrue(!heavyHittersContainsSubString("rangeReIndex"))
 
