@@ -127,6 +127,7 @@ class Spoof2Test(
         //	TEST_NAME+82;  //A - B - C
         //	TEST_NAME+83;  //A - B - B
         //	TEST_NAME+84;  //print ("test " + (i - 1) + " test");
+        //	TEST_NAME+85;  //A + A + B + B
         private const val NUM_TESTS = 73
         private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..84)
 
@@ -210,7 +211,7 @@ class Spoof2Test(
 
             //ensure full aggregates for certain patterns
             val testnum = testname.substring(TEST_NAME.length, testname.length).toInt()
-            if (testnum in 82..84)
+            if (testnum in listOf(82, 84))
                 Assert.assertTrue(heavyHittersContainsSubString("-"))
 //            if (testname == TEST_NAME+17)
 //                Assert.assertTrue(!heavyHittersContainsSubString("rangeReIndex"))
