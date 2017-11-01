@@ -16,6 +16,7 @@ import org.apache.sysml.utils.Explain
 object SPlan2Hop {
     private val _rulesToHopReady = listOf(
             RewriteMultiplyCSEToPower(), // RewriteNormalForm factorizes, so we can't get powers >2. Need to reposition. // Obsolete by RewriteElementwiseMultiplyChain?
+            RewriteRecoverMinus(),
             RewriteSplitMultiplyPlus(),
             RewritePushAggIntoMult(),
             RewriteClearMxM()

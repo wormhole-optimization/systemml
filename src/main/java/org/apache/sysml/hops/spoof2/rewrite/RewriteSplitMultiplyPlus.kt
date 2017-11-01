@@ -19,18 +19,16 @@ class RewriteSplitMultiplyPlus : SPlanRewriteRule() {
             val curMult = node
 
             adjustInputOrder(curMult)
-
             splitMultiply(curMult)
 
-            if (SPlanRewriteRule.LOG.isDebugEnabled)
-                SPlanRewriteRule.LOG.debug("RewriteSplitMultiplyPlus (num=${origInputSize-2}) onto top ${curMult.id} $curMult.")
+            if (LOG.isDebugEnabled)
+                LOG.debug("RewriteSplitMultiplyPlus (num=${origInputSize-2}) onto top ${curMult.id} $curMult.")
             return RewriteResult.NewNode(curMult)
         }
         return RewriteResult.NoChange
     }
 
     companion object {
-
 
         /**
          * Change the order of inputs to mult so as to enable Hop reconstruction.
@@ -45,8 +43,8 @@ class RewriteSplitMultiplyPlus : SPlanRewriteRule() {
                                 .thenComparing<Int> { -(it.schema.names - parent.aggs).size }
                 )
                 val changed = mult.refreshSchemasUpward()
-                if (changed && SPlanRewriteRule.LOG.isDebugEnabled)
-                    SPlanRewriteRule.LOG.debug("In RewriteSplitMultiplyPlus, reorder inputs of $mult id=${mult.id} to schema ${mult.schema}.")
+                if (changed && LOG.isDebugEnabled)
+                    LOG.debug("In RewriteSplitMultiplyPlus, reorder inputs of $mult id=${mult.id} to schema ${mult.schema}.")
             }
         }
 

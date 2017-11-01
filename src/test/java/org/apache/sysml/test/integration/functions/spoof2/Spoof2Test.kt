@@ -123,8 +123,10 @@ class Spoof2Test(
         //	TEST_NAME+80;  //GLM snippet
         //	TEST_NAME+81;  //sum(A * (u %*% t(v) + a %*% t(y))) ==> t(u) %*% A %*% v + t(x) %*% A %*% y
                            // interesting idea: do both and test whether they are equal for particular matrices
+        //	TEST_NAME+82;  //A - B - C
+        //	TEST_NAME+83;  //A - B - B
         private const val NUM_TESTS = 73
-        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..81)
+        private val ACTIVE_TESTS = listOf(82)//(1..NUM_TESTS).toList() + (75..79) + (81..82)
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
@@ -187,7 +189,7 @@ class Spoof2Test(
             val HOME = AutomatedTestBase.SCRIPT_DIR + TEST_DIR
             fullDMLScriptName = HOME + testname + ".dml"
 //            if ( rewrites ) // "-explain", "recompile_hops",
-            programArgs = arrayOf("-stats", //"-explain", "hops",
+            programArgs = arrayOf(//"-stats", //"-explain", "hops",
                     "-args", output("S"))
 
 
