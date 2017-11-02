@@ -8,13 +8,28 @@ script_start="$(date '+%Y%m%d.%H%M%S')"
 
 num_cols=10
 sparsity=1.0
-addOpts="--stats --explain2 hops"
+addOpts="--stats" # --explain2 hops"
 genData=0
-reps=3
-saveTimes=1
+reps=1
+saveTimes=0
 
-algs=( linregcg kmeans l2svm mlogreg ) #linregcg kmeans mlogreg l2svm ) #glm-binomial-probit )
-confs=( none none_spoof default_spoof default )
+algs=() # linregcg kmeans l2svm mlogreg ) #linregcg kmeans mlogreg l2svm ) #glm-binomial-probit )
+confs=() # none none_spoof default_spoof default )
+
+if [ "${#algs[@]}" == "0" ]; then
+  while read -r line; do
+    [[ $line = \#* ]] && continue
+    algs+=(${line})
+  done < "control_algs.txt"
+fi
+
+if [ "${#confs[@]}" == "0" ]; then
+  while read -r line; do
+    [[ $line = \#* ]] && continue
+    confs+=(${line})
+  done < "control_confs.txt"
+fi
+
 
 num_rowsArr=( 10000000 )
 for num_rows in "${num_rowsArr[@]}"; do

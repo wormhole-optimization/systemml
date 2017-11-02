@@ -6,9 +6,27 @@ set -o nounset
 
 script_start=$(cat logs/script_start)
 script_end=$(cat logs/script_end)
-algs=( linregcg kmeans mlogreg l2svm ) #glm-binomial-probit )
-confs=( "default_spoof" "default" "none" "none_spoof" )
+algs=() #( linregcg kmeans mlogreg l2svm ) #glm-binomial-probit )
+confs=() # "default_spoof" "default" "none" "none_spoof" )
 
+
+if [ "${#algs[@]}" == "0" ]; then
+  while read -r line; do
+    [[ $line = \#* ]] && continue
+    algs+=(${line})
+  done < "control_algs.txt"
+fi
+
+if [ "${#confs[@]}" == "0" ]; then
+  while read -r line; do
+    [[ $line = \#* ]] && continue
+    confs+=(${line})
+  done < "control_confs.txt"
+fi
+
+
+echo ${confs[@]}
+return
 
 function get_log_time() {
   ctime=$(grep "$1" "$2")
