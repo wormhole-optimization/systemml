@@ -304,7 +304,8 @@ public class Recompiler
 			RecompileStatus status, boolean inplace, boolean litreplace, long tid ) 
 		throws DMLRuntimeException, HopsException, LopsException, IOException
 	{
-		ArrayList<Instruction> newInst = null;
+		ArrayList<Instruction> newInst;
+		inplace = !ConfigurationManager.isSpoofEnabled() && inplace;
 
 		//need for synchronization as we do temp changes in shared hops/lops
 		synchronized( hops ) 
