@@ -1,8 +1,11 @@
 package org.apache.sysml.test.unit
 
 import org.apache.sysml.utils.Explain
+import org.apache.sysml.utils.Explain.getHopDAG
 import org.apache.sysml.utils.ParseExplain
+import org.junit.Assume
 import org.junit.Test
+import java.io.File
 
 class ParseExplainTest {
 
@@ -15,5 +18,44 @@ class ParseExplainTest {
         )
         val hops = ParseExplain.explainToHopDag(explain)
         println(Explain.explainHops(hops))
+
+//        val statement = OutputStatement()
+//        val sb = StatementBlock()
+//        sb.addStatement()
+//        val dml = DMLProgram()
+//        dml.statementBlocks.add(sb)
+
+        val nodes = StringBuilder()
+        val sb = StringBuilder()
+        sb.append("digraph {\n")
+        for (hop in hops)
+            sb.append(getHopDAG(hop, nodes, arrayListOf(), false))
+        sb.append(nodes)
+        sb.append("rankdir = \"BT\"\n")
+        sb.append("}\n")
+
+        println(sb)
+    }
+
+    @Test
+    fun testLiveInput() {
+        val f = File("explain.txt")
+        if( !f.exists() ) {
+            Assume.assumeTrue("Please place the Explain output you wish to recover into ${f.absolutePath}", false)
+        }
+        val lines = f.readLines()
+        val hops = ParseExplain.explainToHopDag(lines)
+        println(Explain.explainHops(hops))
+
+        val nodes = StringBuilder()
+        val sb = StringBuilder()
+        sb.append("digraph {\n")
+        for (hop in hops)
+            sb.append(getHopDAG(hop, nodes, arrayListOf(), false))
+        sb.append(nodes)
+        sb.append("rankdir = \"BT\"\n")
+        sb.append("}\n")
+
+        println(sb)
     }
 }

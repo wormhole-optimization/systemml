@@ -894,7 +894,7 @@ public class Explain
 		return isInRange;
 	}
 
-	private static StringBuilder getHopDAG(Hop hop, StringBuilder nodes, ArrayList<Integer> lines, boolean withSubgraph)
+	public static StringBuilder getHopDAG(Hop hop, StringBuilder nodes, ArrayList<Integer> lines, boolean withSubgraph)
 			throws DMLRuntimeException {
 		StringBuilder sb = new StringBuilder();
 		if (hop.isVisited() || (!SHOW_LITERAL_HOPS && hop instanceof LiteralOp))

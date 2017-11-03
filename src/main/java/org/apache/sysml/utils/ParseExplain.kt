@@ -39,17 +39,17 @@ object ParseExplain {
      * 10. value type
      */
     // todo - relax to not necessarily need data type and value type
-    private val regexLine = Regex("^-*\\((\\d+)\\) (.+?) ?(\\(?[0-9,\\[\\]]*\\)?) \\[(-?\\d+),(-?\\d+),(-?\\d+),(-?\\d+),(-?\\d+)](\\w)(\\w) \\[.+].*$")
+    private val regexLine = Regex("^-*\\((\\d+)\\) (.+?) ?(\\(?[0-9,.\\[\\]]*\\)?) \\[(-?\\d+),(-?\\d+),(-?\\d+),(-?\\d+),(-?\\d+)](\\w)(\\w) \\[.+].*$")
 
     private fun parseLine(explainLine: String,
                           memo: HashMap<Long, Hop>, literals: HashMap<String, Long>, roots: HashSet<Long>
     ) {
         val match = regexLine.matchEntire(explainLine) ?: throw RuntimeException("no regex match")
-        run {
-            val orig = match.groupValues[0]
-            val groups = match.groupValues.subList(1, match.groupValues.size)
-            println("$orig ==> $groups")
-        }
+//        run {
+//            val orig = match.groupValues[0]
+//            val groups = match.groupValues.subList(1, match.groupValues.size)
+//            println("$orig ==> $groups")
+//        }
         val id = match.groupValues[1].toLong()
         val opString = match.groupValues[2]
         val children = parseChildrenString(match.groupValues[3], literals, memo)
@@ -139,8 +139,13 @@ object ParseExplain {
         // todo create reversed map of these
         if( firstWord.startsWith("u(") && firstWord.last() == ')' ) {
             val op = firstWord.substring(2, firstWord.length-1)
-            val (op1, _) = Hop.HopsOpOp12String.entries.find { (_,v) -> v == op }
-                    ?: throw RuntimeException("Not in OpOp1: $firstWord")
+            val op1 =
+                    when (op) {
+                        "cast_as_scalar" -> Hop.OpOp1.CAST_AS_SCALAR
+                        "cast_as_matrix" -> Hop.OpOp1.CAST_AS_MATRIX
+                        else -> (Hop.HopsOpOp12String.entries.find { (_,v) -> v == op }
+                                ?: throw RuntimeException("Not in OpOp1: $firstWord")).key
+                    }
             return UnaryOp(inp[0].name, dataType, valueType, op1, inp[0])
         }
 
