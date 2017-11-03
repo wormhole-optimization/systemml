@@ -95,6 +95,7 @@ public class Explain
 	private static final boolean HOP_SHOW_PARENTS = false;
 	private static final boolean SNODE_SHOW_PARENTS = true;
 	private static final boolean SNODE_SHOW_CACHED_COST = true;
+	static final int LITERAL_EXPLAIN_CUTOFF = 10;
 
 	//different explain levels
 	public enum ExplainType { 
@@ -819,10 +820,10 @@ public class Explain
 				if( INLINE_LITERAL_HOPS && input instanceof LiteralOp) {
 					childs.append(childAdded?",":"");
 					String op = input.getOpString().substring(10);
-					if (op.length() < 10)
+					if (op.length() < LITERAL_EXPLAIN_CUTOFF)
 						childs.append('[').append(op).append(']');
 					else
-						childs.append('[').append(op.substring(0, 10)).append("...]");
+						childs.append('[').append(op.substring(0, LITERAL_EXPLAIN_CUTOFF)).append("...]");
 					childAdded = true;
 				} else if( SHOW_LITERAL_HOPS || !(input instanceof LiteralOp) ){
 					childs.append(childAdded?",":"");

@@ -1393,7 +1393,7 @@ public abstract class Hop implements ParseInfo
 		MultipleOperandOperationHopTypeToLopType.put(MultiInputOp.PRINTF, MultipleCP.OperationType.PRINTF);
 	}
 
-	protected static final HashMap<Hop.OpOp1, String> HopsOpOp12String;
+	public static final HashMap<Hop.OpOp1, String> HopsOpOp12String;
 	static {
 		HopsOpOp12String = new HashMap<>();
 		HopsOpOp12String.put(OpOp1.ABS, "abs");
@@ -1441,7 +1441,7 @@ public abstract class Hop implements ParseInfo
 		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.TOSTRING, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.TOSTRING);		
 	}
 
-	protected static final HashMap<Hop.OpOp2, String> HopsOpOp2String;
+	public static final HashMap<Hop.OpOp2, String> HopsOpOp2String;
 	static {
 		HopsOpOp2String = new HashMap<>();
 		HopsOpOp2String.put(OpOp2.PLUS, "+");
@@ -1482,7 +1482,7 @@ public abstract class Hop implements ParseInfo
 		return HopsOpOp2String.get(op);
 	}
 
-	protected static final HashMap<Hop.OpOp3, String> HopsOpOp3String;
+	public static final HashMap<Hop.OpOp3, String> HopsOpOp3String;
 	static {
 		HopsOpOp3String = new HashMap<>();
 		HopsOpOp3String.put(OpOp3.QUANTILE, "quantile");
@@ -1512,7 +1512,7 @@ public abstract class Hop implements ParseInfo
 		HopsDirection2String.put(Direction.Row, "R");
 	}
 
-	protected static final HashMap<Hop.AggOp, String> HopsAgg2String;
+	public static final HashMap<Hop.AggOp, String> HopsAgg2String;
 	static {
 		HopsAgg2String = new HashMap<>();
 		HopsAgg2String.put(AggOp.SUM, "+");
@@ -1527,7 +1527,7 @@ public abstract class Hop implements ParseInfo
 		HopsAgg2String.put(AggOp.VAR, "var");
 	}
 
-	protected static final HashMap<Hop.ReOrgOp, String> HopsTransf2String;
+	public static final HashMap<Hop.ReOrgOp, String> HopsTransf2String;
 	static {
 		HopsTransf2String = new HashMap<>();
 		HopsTransf2String.put(ReOrgOp.TRANSPOSE, "t");

@@ -8,7 +8,7 @@ script_start="$(date '+%Y%m%d.%H%M%S')"
 
 num_cols=10
 sparsity=1.0
-addOpts="--stats" # --explain2 hops"
+addOpts="--stats --explain2 recompile_hops" # --explain2 hops"
 genData=0
 reps=1
 saveTimes=0
@@ -75,3 +75,10 @@ if [ "${saveTimes}" == 1 ]; then
     echo "${script_start}" > logs/script_start
     echo "${script_end}" > logs/script_end
 fi
+
+echo "${script_start}" > latest_start
+echo "${script_end}" > latest_end
+./selectTimes.sh 1
+./aggTimes.sh
+PlotName="Experiment1-${script_end}.pdf"
+Rscript plotAgg.r && cp Experiment1.pdf "${PlotName}" && xre "${PlotName}" &

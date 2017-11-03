@@ -6,6 +6,12 @@ set -o nounset
 
 script_start=$(cat logs/script_start)
 script_end=$(cat logs/script_end)
+
+if [ ! -z "${1+x}" ] && [ ${1} == "1" ]; then
+  script_start=$(cat latest_start)
+  script_end=$(cat latest_end)
+fi
+
 algs=() #( linregcg kmeans mlogreg l2svm ) #glm-binomial-probit )
 confs=() # "default_spoof" "default" "none" "none_spoof" )
 
@@ -24,9 +30,6 @@ if [ "${#confs[@]}" == "0" ]; then
   done < "control_confs.txt"
 fi
 
-
-echo ${confs[@]}
-return
 
 function get_log_time() {
   ctime=$(grep "$1" "$2")
