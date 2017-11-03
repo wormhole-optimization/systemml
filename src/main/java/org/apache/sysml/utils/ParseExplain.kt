@@ -37,9 +37,13 @@ object ParseExplain {
      * 8. nnz
      * 9. data type
      * 10. value type
+     * 11. input memory estimate
+     * 12. intermediate memory estimate
+     * 13. output memory estimate
+     * 14. memory estimate
      */
     // todo - relax to not necessarily need data type and value type
-    private val regexLine = Regex("^-*\\((\\d+)\\) (.+?) ?(\\(?[0-9,.\\[\\]]*\\)?) \\[(-?\\d+),(-?\\d+),(-?\\d+),(-?\\d+),(-?\\d+)](\\w)(\\w) \\[.+].*$")
+    private val regexLine = Regex("^-*\\((\\d+)\\) (.+?) ?(\\(?[0-9,.\\[\\]]*\\)?) \\[(-?\\d+),(-?\\d+),(-?\\d+),(-?\\d+),(-?\\d+)](\\w)(\\w) \\[(-|\\d+|MAX),(-|\\d+|MAX),(-|\\d+|MAX) -> (-|\\d+|MAX)MB].*$")
 
     private fun parseLine(explainLine: String,
                           memo: HashMap<Long, Hop>, literals: HashMap<String, Long>, roots: HashSet<Long>
@@ -48,7 +52,7 @@ object ParseExplain {
 //        run {
 //            val orig = match.groupValues[0]
 //            val groups = match.groupValues.subList(1, match.groupValues.size)
-//            println("$orig ==> $groups")
+//            println("$orig ==> ${groups.withIndex().joinToString(separator = "") { (i,v) -> String.format("\n\t%2d: '%s'", i, v) } }")
 //        }
         val id = match.groupValues[1].toLong()
         val opString = match.groupValues[2]
@@ -75,6 +79,10 @@ object ParseExplain {
             'U' -> Expression.ValueType.UNKNOWN
             else -> throw RuntimeException("unrecognized ValueType: ${match.groupValues[10]}")
         }
+        val memInput = recoverMem(match.groupValues[11])
+        val memIntermediate = recoverMem(match.groupValues[12])
+        val memOutput = recoverMem(match.groupValues[13])
+        val memAll = recoverMem(match.groupValues[14])
 
         val childrenHops = children.map {
             roots -= it
@@ -83,13 +91,31 @@ object ParseExplain {
 
         val hop = createHop(id, opString, childrenHops, dim1, dim2, rowsInBlock, colsInBlock, nnz, dataType, valueType)
 
+        HOP_FIELD_MEM_INTERMEDIATE.set(hop, memIntermediate)
+        HOP_FIELD_MEM_OUTPUT.set(hop, memOutput)
+        HOP_FIELD_MEM.set(hop, memAll)
+
         memo.put(id, hop)
         roots += id
     }
 
-    private val IDFIELD = Hop::class.java.getDeclaredField("_ID")!!
+    private fun recoverMem(str: String): Double {
+        return when( str ) {
+            "MAX" -> OptimizerUtils.DEFAULT_SIZE
+            "-" -> -1.0
+            else -> str.toDouble()*1024*1024
+        }
+    }
+
+    private val HOP_FIELD_ID = Hop::class.java.getDeclaredField("_ID")!!
+    private val HOP_FIELD_MEM = Hop::class.java.getDeclaredField("_memEstimate")!!
+    private val HOP_FIELD_MEM_OUTPUT = Hop::class.java.getDeclaredField("_outputMemEstimate")!!
+    private val HOP_FIELD_MEM_INTERMEDIATE = Hop::class.java.getDeclaredField("_processingMemEstimate")!!
     init {
-        IDFIELD.isAccessible = true
+        HOP_FIELD_ID.isAccessible = true
+        HOP_FIELD_MEM.isAccessible = true
+        HOP_FIELD_MEM_OUTPUT.isAccessible = true
+        HOP_FIELD_MEM_INTERMEDIATE.isAccessible = true
     }
 
     private fun parseChildrenString(childrenString: String,
@@ -119,7 +145,7 @@ object ParseExplain {
                         else -> LiteralOp(litStr)
                     }
                     val litId = -literals.size - 1L
-                    IDFIELD.set(lit, litId)
+                    HOP_FIELD_ID.set(lit, litId)
                     literals.put(litStr, litId)
                     memo.put(litId, lit)
                     litId
@@ -229,14 +255,14 @@ object ParseExplain {
 
         // todo memory estimates
 
-        IDFIELD.set(hop, id)
+        HOP_FIELD_ID.set(hop, id)
         return hop
     }
 
     private fun firstWordAndRem(str: String): Pair<String,String> {
         val idx = str.indexOf(' ')
         return if( idx == -1 ) str to ""
-        else str.substring(0, idx) to str.substring(idx, str.length)
+        else str.substring(0, idx) to str.substring(idx+1, str.length)
     }
 
 }

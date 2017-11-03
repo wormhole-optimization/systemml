@@ -1,5 +1,6 @@
 package org.apache.sysml.test.unit
 
+import org.apache.sysml.hops.OptimizerUtils
 import org.apache.sysml.utils.Explain
 import org.apache.sysml.utils.Explain.getHopDAG
 import org.apache.sysml.utils.ParseExplain
@@ -8,6 +9,10 @@ import org.junit.Test
 import java.io.File
 
 class ParseExplainTest {
+
+    init {
+        OptimizerUtils.resetDefaultSize()
+    }
 
     @Test
     fun testParseExplain() {

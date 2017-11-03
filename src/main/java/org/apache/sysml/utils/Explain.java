@@ -91,6 +91,7 @@ public class Explain
 	private static final boolean INLINE_LITERAL_HOPS        = true;  // write literals in [_]. Use false for SHOW_LITERAL_HOPS when this is true.
 	private static final boolean SHOW_DATA_DEPENDENCIES     = true;
 	private static final boolean SHOW_DATA_FLOW_PROPERTIES  = true;
+	private static final boolean DOT_SHOW_ID_CHILDREN  = true;
 	public static boolean SHOW_VISIT_STATUS = false; // modified for SPlans in SNodeValidator, to help debug visit status
 	private static final boolean HOP_SHOW_PARENTS = false;
 	private static final boolean SNODE_SHOW_PARENTS = true;
@@ -921,6 +922,10 @@ public class Explain
 
 	private static String getNodeLabel(Hop hop) {
 		StringBuilder sb = new StringBuilder();
+		if( DOT_SHOW_ID_CHILDREN ) {
+			sb.append(hop.getHopID());
+			sb.append(' ');
+		}
 		sb.append(hop.getOpString());
 		if (hop instanceof AggBinaryOp) {
 			AggBinaryOp aggBinOp = (AggBinaryOp) hop;
@@ -936,16 +941,42 @@ public class Explain
 			else if (hop.requiresCheckpoint())
 				sb.append(", chkpt");
 		}
-		if (hop.getFilename() == null) {
-			sb.append("[" + hop.getBeginLine() + ":" + hop.getBeginColumn() + "-" + hop.getEndLine() + ":"
-					+ hop.getEndColumn() + "]");
-		} else {
-			sb.append("[" + hop.getFilename() + " " + hop.getBeginLine() + ":" + hop.getBeginColumn() + "-"
-					+ hop.getEndLine() + ":" + hop.getEndColumn() + "]");
+		if( hop.getEndLine() > 0 ) {
+			if (hop.getFilename() == null) {
+				sb.append("[" + hop.getBeginLine() + ":" + hop.getBeginColumn() + "-" + hop.getEndLine() + ":"
+						+ hop.getEndColumn() + "]");
+			} else {
+				sb.append("[" + hop.getFilename() + " " + hop.getBeginLine() + ":" + hop.getBeginColumn() + "-"
+						+ hop.getEndLine() + ":" + hop.getEndColumn() + "]");
+			}
 		}
 
 		if (hop.getUpdateType().isInPlace())
 			sb.append("," + hop.getUpdateType().toString().toLowerCase());
+		if( DOT_SHOW_ID_CHILDREN &&
+				(hop.getInput().size() > 1 || hop.getInput().size() == 1 && hop.getInput().get(0) instanceof LiteralOp) ) {
+			sb.append(" (");
+//			sb.append(hop.getInput().stream().map(h -> Long.toString(h.getHopID())).collect(Collectors.joining(",")));
+
+			boolean childAdded = false;
+			for( Hop input : hop.getInput() )
+				if( INLINE_LITERAL_HOPS && input instanceof LiteralOp) {
+					sb.append(childAdded?",":"");
+					String op = input.getOpString().substring(10);
+					if (op.length() < LITERAL_EXPLAIN_CUTOFF)
+						sb.append('[').append(op).append(']');
+					else
+						sb.append('[').append(op.substring(0, LITERAL_EXPLAIN_CUTOFF)).append("...]");
+					childAdded = true;
+				} else if( SHOW_LITERAL_HOPS || !(input instanceof LiteralOp) ){
+					sb.append(childAdded?",":"");
+					sb.append(input.getHopID());
+					childAdded = true;
+				}
+
+			sb.append(')');
+		}
+
 		return sb.toString();
 	}
 

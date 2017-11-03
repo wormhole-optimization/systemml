@@ -82,3 +82,4 @@ echo "${script_end}" > latest_end
 ./aggTimes.sh
 PlotName="Experiment1-${script_end}.pdf"
 Rscript plotAgg.r && cp Experiment1.pdf "${PlotName}" && xre "${PlotName}" &
+#dot -Tpdf  dot.dot -o dot.pdf
