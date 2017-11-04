@@ -1247,7 +1247,7 @@ public final class MLContextUtil {
 			}
 
 			mlCtx.setExecutionScript(script);
-			scriptExecutor.compile(script, performHOPRewrites);
+			scriptExecutor.compile(script, performHOPRewrites, false);
 			Explain.reset();
 			// To deal with potential Py4J issues
 			lines = lines.size() == 1 && lines.get(0) == -1 ? new ArrayList<>() : lines;

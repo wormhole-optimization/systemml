@@ -1260,7 +1260,7 @@ public abstract class AutomatedTestBase
 //				spoof2NormalFormNameLength.get(), Statistics.spoof2NormalFormAggs, Statistics.spoof2NormalFormFactoredSpb);
 	}
 
-	public String hop2dot(ArrayList<Integer> lines, boolean performHOPRewrites, boolean withSubgraph) {
+	public String hop2dot(ArrayList<Integer> lines, boolean performHOPRewrites, boolean withSubgraph, boolean performSpoofRewrites) {
 		String scriptStr;
 		try {
 			scriptStr = new String(Files.readAllBytes(Paths.get(fullDMLScriptName)));
@@ -1289,7 +1289,7 @@ public abstract class AutomatedTestBase
 			script.setName(new Date().toString());
 		}
 
-		scriptExecutor.compile(script, performHOPRewrites);
+		scriptExecutor.compile(script, performHOPRewrites, performSpoofRewrites);
 		Explain.reset();
 		try {
 			return Explain.getHopDAG(scriptExecutor.getDmlProgram(), lines, withSubgraph);
@@ -1298,8 +1298,8 @@ public abstract class AutomatedTestBase
 		}
 	}
 
-	public void testdml2dot(ArrayList<Integer> lines, boolean performHOPRewrites, boolean withSubgraph) {
-		String dot = hop2dot(lines, performHOPRewrites, withSubgraph);
+	public void testdml2dot(ArrayList<Integer> lines, boolean performHOPRewrites, boolean withSubgraph, boolean performSpoofRewrites) {
+		String dot = hop2dot(lines, performHOPRewrites, withSubgraph, performSpoofRewrites);
 
 		File dmlFile = new File(fullDMLScriptName);
 		String dotFilename = dmlFile.getName();
@@ -1309,6 +1309,8 @@ public abstract class AutomatedTestBase
 		}
 		if( performHOPRewrites )
 			dotFilename += "_rewrite";
+		if( performSpoofRewrites )
+			dotFilename += "_spoof";
 		dotFilename += ".dot";
 		File folder = new File("testdml2dot");
 		if( !folder.exists() )

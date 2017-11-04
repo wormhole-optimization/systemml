@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -o errexit
 set -o pipefail
 set -o nounset
@@ -82,4 +82,4 @@ echo "${script_end}" > latest_end
 ./aggTimes.sh
 PlotName="Experiment1-${script_end}.pdf"
 Rscript plotAgg.r && cp Experiment1.pdf "${PlotName}" && xre "${PlotName}" &
-#dot -Tpdf  explain.dot -o dot.pdf
+#dot -Tpdf explain.dot -o dot.pdf
