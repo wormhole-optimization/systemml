@@ -1278,13 +1278,14 @@ public abstract class AutomatedTestBase
 		}
 
 		Script script = new Script(scriptStr, st);
-		script.in("$1", programArgs[programArgs.length-1]);
+		addProgramArgsToScript(script, programArgs);
 
 		ScriptExecutor scriptExecutor = new ScriptExecutor();
 		scriptExecutor.setExecutionType(MLContext.ExecutionType.DRIVER_AND_SPARK);
 		scriptExecutor.setGPU(TEST_GPU);
 		scriptExecutor.setForceGPU(false);
 		scriptExecutor.setInit(true);
+		scriptExecutor.setExplain(false);
 		if ((script.getName() == null) || (script.getName().isEmpty())) {
 			script.setName(new Date().toString());
 		}
@@ -1295,6 +1296,28 @@ public abstract class AutomatedTestBase
 			return Explain.getHopDAG(scriptExecutor.getDmlProgram(), lines, withSubgraph);
 		} catch (Exception e) {
 			throw new RuntimeException("problem explaining script at "+fullDMLScriptName, e);
+		}
+	}
+
+	/**
+	 * Find "-args" or "-nvargs" and register those as script inputs.
+	 */
+	private void addProgramArgsToScript(Script script, String[] programArgs) {
+		boolean args=false, nvargs=false;
+		int argcnt = 1;
+		for (String programArg : programArgs) {
+			if (!args && !nvargs)
+				switch (programArg) {
+					case "-args": args = true; continue;
+					case "-nvargs": nvargs = true; continue;
+				}
+			else if (args) {
+				script.in("$" + argcnt, programArg);
+				argcnt++;
+			} else if (nvargs) {
+				String[] split = programArg.split("=");
+				script.in(split[0], split[1]);
+			}
 		}
 	}
 

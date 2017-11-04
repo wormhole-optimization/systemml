@@ -160,7 +160,7 @@ public class AlgorithmMLogreg extends AutomatedTestBase
 			loadTestConfiguration(config);
 			
 			fullDMLScriptName = "scripts/algorithms/MultiLogReg.dml";
-			programArgs = new String[]{ "-explain", "hops", "-stats", "-nvargs", "X="+input("X"), "Y="+input("Y"),
+			programArgs = new String[]{ "-explain", "recompile_hops", "-stats", "-nvargs", "X="+input("X"), "Y="+input("Y"),
 				"icpt="+String.valueOf(intercept), "tol="+String.valueOf(epsilon),
 				"moi="+String.valueOf(maxiter), "reg=0.001", "B="+output("w")};
 
