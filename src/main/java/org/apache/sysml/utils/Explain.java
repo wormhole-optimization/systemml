@@ -886,7 +886,7 @@ public class Explain
 	}
 	
 	private static boolean isInRange(Hop hop, ArrayList<Integer> lines) {
-		boolean isInRange = lines.size() == 0 ? true : false;
+		boolean isInRange = lines.size() == 0;
 		for (int lineNum : lines) {
 			if (hop.getBeginLine() == lineNum && lineNum == hop.getEndLine()) {
 				return true;
@@ -895,7 +895,7 @@ public class Explain
 		return isInRange;
 	}
 
-	public static StringBuilder getHopDAG(Hop hop, StringBuilder nodes, ArrayList<Integer> lines, boolean withSubgraph)
+	private static StringBuilder getHopDAG(Hop hop, StringBuilder nodes, ArrayList<Integer> lines, boolean withSubgraph)
 			throws DMLRuntimeException {
 		StringBuilder sb = new StringBuilder();
 		if (hop.isVisited() || (!SHOW_LITERAL_HOPS && hop instanceof LiteralOp))
@@ -953,6 +953,7 @@ public class Explain
 
 		if (hop.getUpdateType().isInPlace())
 			sb.append("," + hop.getUpdateType().toString().toLowerCase());
+
 		if( DOT_SHOW_ID_CHILDREN &&
 				(hop.getInput().size() > 1 || hop.getInput().size() == 1 && hop.getInput().get(0) instanceof LiteralOp) ) {
 			sb.append(" (");
@@ -976,6 +977,10 @@ public class Explain
 
 			sb.append(')');
 		}
+
+		if( hop instanceof DataOp && ((DataOp) hop).isRead() ) {
+		    sb.append(" [").append(hop.getDim1()).append(", ").append(hop.getDim2()).append(']');
+        }
 
 		return sb.toString();
 	}
@@ -1530,4 +1535,22 @@ public class Explain
 
 		return builder.toString();
 	}
+
+	public static String hop2dot(ArrayList<Hop> hops) {
+        StringBuilder sb = new StringBuilder();
+        StringBuilder nodes = new StringBuilder();
+        sb.append("digraph {\n");
+        for (Hop hop : hops)
+            try {
+                sb.append(getHopDAG(hop, nodes, new ArrayList<>(), false));
+            } catch (DMLRuntimeException e) {
+                throw new RuntimeException("problem creating DOT from hop dag", e);
+            }
+        sb.append(nodes);
+        sb.append("rankdir = \"BT\"\n");
+        sb.append("}\n");
+        return sb.toString();
+    }
+
+
 }

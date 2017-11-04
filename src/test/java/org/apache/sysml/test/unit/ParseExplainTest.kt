@@ -2,7 +2,6 @@ package org.apache.sysml.test.unit
 
 import org.apache.sysml.hops.OptimizerUtils
 import org.apache.sysml.utils.Explain
-import org.apache.sysml.utils.Explain.getHopDAG
 import org.apache.sysml.utils.ParseExplain
 import org.junit.Assume
 import org.junit.Test
@@ -30,18 +29,13 @@ class ParseExplainTest {
 //        val dml = DMLProgram()
 //        dml.statementBlocks.add(sb)
 
-        val nodes = StringBuilder()
-        val sb = StringBuilder()
-        sb.append("digraph {\n")
-        for (hop in hops)
-            sb.append(getHopDAG(hop, nodes, arrayListOf(), false))
-        sb.append(nodes)
-        sb.append("rankdir = \"BT\"\n")
-        sb.append("}\n")
-
-        println(sb)
+        val dot = Explain.hop2dot(hops)
+        println(dot)
     }
 
+    /**
+     * Read in Explain input for one Hop Dag from `explain.txt` into a DOT file, saved at `dot.dot`.
+     */
     @Test
     fun testLiveInput() {
         val f = File("explain.txt")
@@ -52,15 +46,10 @@ class ParseExplainTest {
         val hops = ParseExplain.explainToHopDag(lines)
         println(Explain.explainHops(hops))
 
-        val nodes = StringBuilder()
-        val sb = StringBuilder()
-        sb.append("digraph {\n")
-        for (hop in hops)
-            sb.append(getHopDAG(hop, nodes, arrayListOf(), false))
-        sb.append(nodes)
-        sb.append("rankdir = \"BT\"\n")
-        sb.append("}\n")
+        val dot = Explain.hop2dot(hops)
+        println(dot)
 
-        println(sb)
+        val fout = File("dot.dot")
+        fout.writeText(dot.toString())
     }
 }
