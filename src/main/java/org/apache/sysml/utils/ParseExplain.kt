@@ -244,6 +244,7 @@ object ParseExplain {
                     remainder)
             "rix" -> IndexingOp(inp[0].name, dataType, valueType,
                     inp[0], inp[1], inp[2], inp[3], inp[4], true, true) // todo last two params
+            "lix" -> throw RuntimeException("no support for lix yet")
             else -> throw RuntimeException("Cannot recognize Hop in: $opString")
         }
 

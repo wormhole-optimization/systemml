@@ -23,9 +23,15 @@ args<-commandArgs(TRUE)
 options(digits=22)
 library(Matrix)
 
-A = matrix(c(1,2,3,4,5,6), nrow=2, ncol=3, byrow=TRUE)
-B = matrix(2, nrow=2, ncol=3, byrow=TRUE)
+scale = 10000
+X = matrix(1, nrow=scale, ncol=10, byrow=TRUE)
+s = matrix(1, nrow=scale, ncol=1, byrow=TRUE)
+v = matrix(1, nrow=10, ncol=1, byrow=TRUE)
+lambda = matrix(1, nrow=10, ncol=1, byrow=TRUE)
 
-R = A + A + B + B
+alpha = t(v) %*% (v * lambda + t(X) %*% ((X %*% v) * s))
+HV = v * lambda + t(X) %*% ((X %*% v) * s)
+
+R = rbind(HV, alpha)
 
 writeMM(as(R, "CsparseMatrix"), paste(args[2], "S", sep=""));

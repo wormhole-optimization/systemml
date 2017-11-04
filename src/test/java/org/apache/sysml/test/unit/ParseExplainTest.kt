@@ -49,7 +49,7 @@ class ParseExplainTest {
         val dot = Explain.hop2dot(hops)
         println(dot)
 
-        val fout = File("dot.dot")
+        val fout = File("explain.dot")
         fout.writeText(dot.toString())
     }
 }

@@ -19,10 +19,16 @@
 #
 #-------------------------------------------------------------
 
-A = matrix("1 2 3 4 5 6", rows=2, cols=3)
-B = matrix(2, rows=2, cols=3)
+scale = 10000
+X = matrix(1, rows=scale, cols=10)
+s = matrix(1, rows=scale, cols=1)
+v = matrix(1, rows=10, cols=1)
+lambda = matrix(1, rows=10, cols=1)
 while(FALSE) {}
 
-R = A + A + B + B
+alpha = t(v) %*% (v * lambda + t(X) %*% ((X %*% v) * s))
+HV = v * lambda + t(X) %*% ((X %*% v) * s)
 
+while(FALSE) {}
+R = rbind(HV, alpha)
 write(R,$1)

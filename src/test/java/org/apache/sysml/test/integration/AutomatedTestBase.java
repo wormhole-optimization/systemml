@@ -27,14 +27,13 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.PrintStream;
+import java.io.*;
 import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.*;
+import java.util.stream.Collectors;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
@@ -42,6 +41,10 @@ import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.SparkSession.Builder;
 import org.apache.sysml.api.DMLScript;
 import org.apache.sysml.api.DMLScript.RUNTIME_PLATFORM;
+import org.apache.sysml.api.mlcontext.MLContext;
+import org.apache.sysml.api.mlcontext.Script;
+import org.apache.sysml.api.mlcontext.ScriptExecutor;
+import org.apache.sysml.api.mlcontext.ScriptType;
 import org.apache.sysml.conf.DMLConfig;
 import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.lops.Lop;
@@ -61,6 +64,7 @@ import org.apache.sysml.runtime.matrix.data.OutputInfo;
 import org.apache.sysml.runtime.util.DataConverter;
 import org.apache.sysml.runtime.util.MapReduceTool;
 import org.apache.sysml.test.utils.TestUtils;
+import org.apache.sysml.utils.Explain;
 import org.apache.sysml.utils.ParameterBuilder;
 import org.apache.sysml.utils.Statistics;
 import org.apache.wink.json4j.JSONObject;
@@ -1254,6 +1258,68 @@ public abstract class AutomatedTestBase
 //		System.out.format("Spoof2 largest sum-product block on %s\n\tname length: %d\t aggs: %s\n\tschemas: %s\n",
 //				spoof2NormalFormTestName,
 //				spoof2NormalFormNameLength.get(), Statistics.spoof2NormalFormAggs, Statistics.spoof2NormalFormFactoredSpb);
+	}
+
+	public String hop2dot(ArrayList<Integer> lines, boolean performHOPRewrites, boolean withSubgraph) {
+		String scriptStr;
+		try {
+			scriptStr = new String(Files.readAllBytes(Paths.get(fullDMLScriptName)));
+		} catch (IOException e) {
+			throw new RuntimeException("problem reading DML script at "+fullDMLScriptName, e);
+		}
+
+		final org.apache.sysml.api.mlcontext.ScriptType st;
+		if( scriptType == null )
+			st = org.apache.sysml.api.mlcontext.ScriptType.DML;
+		else switch (scriptType) {
+			case DML: st = org.apache.sysml.api.mlcontext.ScriptType.DML; break;
+			case PYDML: st = org.apache.sysml.api.mlcontext.ScriptType.PYDML; break;
+			default: throw new AssertionError("unrecognized ScriptType: "+scriptType);
+		}
+
+		Script script = new Script(scriptStr, st);
+		script.in("$1", programArgs[programArgs.length-1]);
+
+		ScriptExecutor scriptExecutor = new ScriptExecutor();
+		scriptExecutor.setExecutionType(MLContext.ExecutionType.DRIVER_AND_SPARK);
+		scriptExecutor.setGPU(TEST_GPU);
+		scriptExecutor.setForceGPU(false);
+		scriptExecutor.setInit(true);
+		if ((script.getName() == null) || (script.getName().isEmpty())) {
+			script.setName(new Date().toString());
+		}
+
+		scriptExecutor.compile(script, performHOPRewrites);
+		Explain.reset();
+		try {
+			return Explain.getHopDAG(scriptExecutor.getDmlProgram(), lines, withSubgraph);
+		} catch (Exception e) {
+			throw new RuntimeException("problem explaining script at "+fullDMLScriptName, e);
+		}
+	}
+
+	public void testdml2dot(ArrayList<Integer> lines, boolean performHOPRewrites, boolean withSubgraph) {
+		String dot = hop2dot(lines, performHOPRewrites, withSubgraph);
+
+		File dmlFile = new File(fullDMLScriptName);
+		String dotFilename = dmlFile.getName();
+		if( lines != null && !lines.isEmpty() ) {
+			lines.sort(Comparator.naturalOrder());
+			dotFilename += "_"+lines.stream().map(String::valueOf).collect(Collectors.joining("_"));
+		}
+		if( performHOPRewrites )
+			dotFilename += "_rewrite";
+		dotFilename += ".dot";
+		File folder = new File("testdml2dot");
+		if( !folder.exists() )
+			folder.mkdir();
+		Path out = Paths.get("testdml2dot/"+dotFilename);
+
+		try {
+			Files.write(out, dot.getBytes());
+		} catch (IOException e) {
+			throw new RuntimeException("trouble writing dot to file "+dotFilename, e);
+		}
 	}
 
 	public void cleanupScratchSpace()

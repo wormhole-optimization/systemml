@@ -27,6 +27,7 @@ import org.apache.sysml.lops.LopProperties.ExecType.*
 import org.apache.sysml.test.integration.AutomatedTestBase
 import org.apache.sysml.test.integration.TestConfiguration
 import org.apache.sysml.test.utils.TestUtils
+import org.apache.sysml.utils.Explain
 import org.junit.Assert
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -37,7 +38,8 @@ import java.io.File
 class Spoof2Test(
         private val testName: String,
         private val rewrites: Boolean,
-        private val execType: ExecType
+        private val execType: ExecType,
+        private val dc: DC?
 ) : AutomatedTestBase() {
 
     companion object {
@@ -127,9 +129,10 @@ class Spoof2Test(
         //	TEST_NAME+82;  //A - B - C
         //	TEST_NAME+83;  //A - B - B
         //	TEST_NAME+84;  //print ("test " + (i - 1) + " test");
-        //	TEST_NAME+85;  //A + A + B + B
+        //	TEST_NAME+85;  //fragment from line 205 of mlogreg
         private const val NUM_TESTS = 73
-        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..84)
+        private val ACTIVE_TESTS = listOf(85) //(1..NUM_TESTS).toList() + (75..79) + (81..84)
+        private val DO_DOT = mapOf(85 to DC(arrayListOf(29, 30)))
 
         private const val TEST_DIR = "functions/spoof2/"
         private val TEST_CLASS_DIR = TEST_DIR + Spoof2Test::class.java.simpleName + "/"
@@ -137,20 +140,28 @@ class Spoof2Test(
         private const val TEST_CONF_NOSPOOF2 = "SystemML-config-nospoof2.xml"
         private val TEST_CONF_FILE_SPOOF2 = File(SCRIPT_DIR + TEST_DIR, TEST_CONF_SPOOF2)
         private val TEST_CONF_FILE_NOSPOOF2 = File(SCRIPT_DIR + TEST_DIR, TEST_CONF_NOSPOOF2)
-
         private const val eps = 10.0e-10
+
+        data class DC(
+                val lines: ArrayList<Int> = arrayListOf(),
+                val performHOPRewrites: Boolean = true,
+                val withSubgraph: Boolean = true
+        )
 
         @JvmStatic
         @Parameterized.Parameters(name = "{0}, rewrites={1}, {2}")
-        fun testParams(): Collection<Array<Any>> {
-            val params = ArrayList<Array<Any>>(NUM_TESTS * 3)
+        fun testParams(): Collection<Array<Any?>> {
+            val params = ArrayList<Array<Any?>>(NUM_TESTS * 3)
             for (testNum in ACTIVE_TESTS) {
 //                if (testNum != NUM_TESTS) continue
 
                 val testName = TEST_NAME + testNum
 //                params.add(arrayOf(testName, false, CP))
 //                params.add(arrayOf(testName, false, SPARK))
-                params.add(arrayOf(testName, true, CP))
+
+                val dc = DO_DOT[testNum]
+
+                params.add(arrayOf(testName, true, CP, dc))
             }
             return params
         }
@@ -164,11 +175,11 @@ class Spoof2Test(
 
     @Test
     fun test() {
-        testIt(testName, rewrites, execType)
+        testIt(testName, rewrites, execType, dc)
     }
 
 
-    private fun testIt(testname: String, rewrites: Boolean, instType: LopProperties.ExecType) {
+    private fun testIt(testname: String, rewrites: Boolean, instType: LopProperties.ExecType, dc: DC?) {
         val platformOld = AutomatedTestBase.rtplatform
         when (instType) {
             MR -> AutomatedTestBase.rtplatform = DMLScript.RUNTIME_PLATFORM.HADOOP
@@ -192,14 +203,16 @@ class Spoof2Test(
             val HOME = AutomatedTestBase.SCRIPT_DIR + TEST_DIR
             fullDMLScriptName = HOME + testname + ".dml"
 //            if ( rewrites ) // "-explain", "recompile_hops",
-            programArgs = arrayOf("-stats", //"-explain", "hops",
+            programArgs = arrayOf("-stats", "-explain", "recompile_hops",
                     "-args", output("S"))
-
 
             fullRScriptName = HOME + testname + ".R"
             rCmd = getRCmd(inputDir(), expectedDir())
 
             runTest(true, false, null, -1)
+            if( dc != null ) {
+                testdml2dot(dc.lines, dc.performHOPRewrites, dc.withSubgraph)
+            }
             runRScript(true)
 
             //compare matrices
