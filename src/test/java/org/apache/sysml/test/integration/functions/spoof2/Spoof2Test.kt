@@ -130,11 +130,12 @@ class Spoof2Test(
         //	TEST_NAME+84;  //print ("test " + (i - 1) + " test");
         //	TEST_NAME+85;  //fragment from line 205 of mlogreg
         private const val NUM_TESTS = 73
-        private val ACTIVE_TESTS = listOf(85) //(1..NUM_TESTS).toList() + (75..79) + (81..84)
-        private val _DO_DOT = listOf(
-                85 to DC(arrayListOf(29, 30), performSpoofRewrites = false),
-                85 to DC(arrayListOf(29, 30))
+        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..85)
+        private val _DO_DOT: List<Pair<Int, DC>> = listOf(
+//                85 to DC(arrayListOf(29, 30), performSpoofRewrites = false),
+//                85 to DC(arrayListOf(29, 30))
         )
+        private const val DO_R = true
 
         private val DO_DOT: Map<Int, List<DC>>
         init {
@@ -210,7 +211,7 @@ class Spoof2Test(
             val HOME = AutomatedTestBase.SCRIPT_DIR + TEST_DIR
             fullDMLScriptName = HOME + testname + ".dml"
 //            if ( rewrites ) // "-explain", "recompile_hops",
-            programArgs = arrayOf("-stats", "-explain", "recompile_hops",
+            programArgs = arrayOf(//"-stats", "-explain", "hops",
                     "-args", output("S"))
 
             fullRScriptName = HOME + testname + ".R"
@@ -220,21 +221,19 @@ class Spoof2Test(
             dcs.forEach { dc ->
                 testdml2dot(dc.lines, dc.performHOPRewrites, dc.withSubgraph, dc.performSpoofRewrites)
             }
-            runRScript(true)
+            if( DO_R ) {
+                runRScript(true)
 
-            //compare matrices
-            val dmlfile = AutomatedTestBase.readDMLMatrixFromHDFS("S")
-            val rfile = readRMatrixFromFS("S")
-            TestUtils.compareMatrices(dmlfile, rfile, eps, "Stat-DML", "Stat-R")
-
-//            Assert.assertTrue(heavyHittersContainsSubString("spoofRA") || heavyHittersContainsSubString("sp_spoofRA"))
+                //compare matrices
+                val dmlfile = AutomatedTestBase.readDMLMatrixFromHDFS("S")
+                val rfile = readRMatrixFromFS("S")
+                TestUtils.compareMatrices(dmlfile, rfile, eps, "Stat-DML", "Stat-R")
+            }
 
             //ensure full aggregates for certain patterns
             val testnum = testname.substring(TEST_NAME.length, testname.length).toInt()
             if (testnum in listOf(82, 84))
                 Assert.assertTrue(heavyHittersContainsSubString("-"))
-//            if (testname == TEST_NAME+17)
-//                Assert.assertTrue(!heavyHittersContainsSubString("rangeReIndex"))
 
         } finally {
             AutomatedTestBase.rtplatform = platformOld

@@ -36,7 +36,7 @@ class SNodeNary(
         }
     }
 
-    override fun shallowCopyNoParentsYesInputs() = SNodeNary(op, inputs)
+    override fun shallowCopy(newInputs: List<SNode>) = SNodeNary(op, newInputs)
     override fun compare(o: SNode): Boolean {
         if( o !is SNodeNary || o.op != this.op)
             return false

@@ -20,7 +20,6 @@ object SPlan2Hop {
             RewriteSplitMultiplyPlus(),
             RewritePushAggIntoMult(),
             RewriteClearMxM()
-            // todo RewriteRestoreCompound - subtract
     )
 
     /** Whether to invoke the SPlanValidator after every rewrite pass. */

@@ -19,7 +19,7 @@ class SNodeAggregate(
     constructor(op: AggOp, input: SNode, names: Iterable<AB>) :
             this(op, input, input.schema.filterKeys { it in names })
 
-    override fun shallowCopyNoParentsYesInputs() = SNodeAggregate(op, input, aggs)
+    override fun shallowCopy(newInputs: List<SNode>) = SNodeAggregate(op, newInputs[0], aggs)
     override fun compare(o: SNode) =
             o is SNodeAggregate && o.op == this.op && o.aggs == this.aggs && o.input == this.input
 

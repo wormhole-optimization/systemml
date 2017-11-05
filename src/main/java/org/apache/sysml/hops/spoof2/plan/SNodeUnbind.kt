@@ -18,7 +18,7 @@ class SNodeUnbind(
 
     override fun compare(o: SNode) =
             o is SNodeUnbind && this.unbindings == o.unbindings && this.input == o.input
-    override fun shallowCopyNoParentsYesInputs() = SNodeUnbind(input, unbindings)
+    override fun shallowCopy(newInputs: List<SNode>) = SNodeUnbind(newInputs[0], unbindings)
     init {
         refreshSchema()
     }

@@ -7,7 +7,7 @@ class SNodeExt(
         val hop: Hop,
         inputs: List<SNode>
 ) : SNode(inputs) {
-    override fun shallowCopyNoParentsYesInputs() = SNodeExt(hop, inputs)
+    override fun shallowCopy(newInputs: List<SNode>) = SNodeExt(hop, newInputs)
     override fun compare(o: SNode) = // don't consider SNodeExt equal, in order to avoid unifying DataGen (need distinct random streams)
             false //o is SNodeExt && o.hop == this.hop && o.inputs == this.inputs
 

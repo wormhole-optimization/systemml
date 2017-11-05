@@ -27,6 +27,8 @@ import kotlin.collections.component2
  */
 class NormalFormExploreEq : SPlanRewriter {
     companion object {
+        private const val SAVE_STATS = false
+
         private fun normalSpb_Verify(spb: SumProduct.Block) {
             // top-level block is allowed to have aggregates
             if( spb.product == SNodeNary.NaryOp.PLUS ) {
@@ -130,7 +132,7 @@ class NormalFormExploreEq : SPlanRewriter {
         }
 
         private fun addHook() {
-            if( !_addedHook.getAndSet(true) && DMLScript.STATISTICS )
+            if( SAVE_STATS && !_addedHook.getAndSet(true) && DMLScript.STATISTICS )
                 Runtime.getRuntime().addShutdownHook(object : Thread() {
                     override fun run() {
                         if( LOG.isInfoEnabled ) {
@@ -292,7 +294,7 @@ class NormalFormExploreEq : SPlanRewriter {
 //        } while( changed && eNodes.isEmpty() )
 
         if( eNodes.isEmpty() ) {
-            if( stats.renameInputToFactorOut != 0L && DMLScript.STATISTICS )
+            if( SAVE_STATS && stats.renameInputToFactorOut != 0L && DMLScript.STATISTICS )
                 statsAll += stats
             return RewriterResult.NoChange
         }

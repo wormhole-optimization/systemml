@@ -5,10 +5,18 @@ import com.google.common.collect.Multimap
 import org.apache.sysml.hops.spoof2.plan.*
 import java.util.*
 
-class ENode(schema: Map<Attribute.Unbound, Pair<AB, Shape>>) : SNode() {
-    init {
-        for( (au, e) in schema )
+class ENode private constructor() : SNode() {
+
+    override fun shallowCopy(newInputs: List<SNode>) = ENode().also { en ->
+        en.schema.setTo(this.schema)
+        en.inputs += newInputs
+        newInputs.forEach { it.parents += en }
+    }
+
+    constructor(schema: Map<Attribute.Unbound, Pair<AB, Shape>>) : this() {
+        schema.forEach { au, e ->
             this.schema.put(au, e.second)
+        }
     }
 
     /** These correspond to the SNodes in [inputs]. */
@@ -17,9 +25,6 @@ class ENode(schema: Map<Attribute.Unbound, Pair<AB, Shape>>) : SNode() {
     override fun refreshSchema() {}
     override fun toString() = "ENode"
     override fun checkArity() {}
-    override fun shallowCopyNoParentsYesInputs(): SNode {
-        TODO("not implemented")
-    }
     override fun compare(o: SNode): Boolean {
         return false
     }

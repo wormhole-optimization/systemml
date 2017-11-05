@@ -267,9 +267,9 @@ abstract class SNode(inputs: List<SNode>) {
         return postVisit(this, ret)
     }
 
-    /** Create a copy of this SNode whose inputs point to the same inputs, adding the new copy to the inputs' parents.
+    /** Create a copy of this SNode whose inputs point to the given new inputs, adding the new copy to the new inputs' parents.
      * The new copy has no parents. */
-    abstract fun shallowCopyNoParentsYesInputs(): SNode
+    abstract fun shallowCopy(newInputs: List<SNode>): SNode
 
     /**
      * Compare this SNode with another based on type equality (same class, same operator, etc.)
@@ -280,4 +280,26 @@ abstract class SNode(inputs: List<SNode>) {
     val ePathLabels: ArrayList<EPath> = arrayListOf()
     var cachedCost: SPCost = SPCost.ZERO_COST
     var onRootPath: Boolean = false
+}
+
+/** Create a copy of this SNode whose inputs point to the same inputs, adding the new copy to the inputs' parents.
+ * The new copy has no parents. */
+@Suppress("UNCHECKED_CAST")
+fun <T : SNode> T.shallowCopyNoParentsYesInputs(): T {
+    return this.shallowCopy(this.inputs) as T
+}
+
+/** Deep copy this whole sub-tree, using a memo table internally to preserve common sub-expressions.
+ * The returned node has no parents. */
+fun <T : SNode> T.deepCopy(): T = deepCopy(mutableMapOf())
+
+/** Deep copy this whole SPlan DAG, using a memo table internally to preserve common sub-expressions. */
+fun deepCopySPlan(roots: List<SNode>): ArrayList<SNode> {
+    val memo: MutableMap<Long, SNode> = mutableMapOf()
+    return roots.mapTo(arrayListOf()) { it.deepCopy(memo) }
+}
+
+@Suppress("UNCHECKED_CAST")
+private fun <T : SNode> T.deepCopy(memo: MutableMap<Long, SNode>): T {
+    return (memo[this.id] ?: this.shallowCopy(this.inputs.map { it.deepCopy(memo) })) as T
 }

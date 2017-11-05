@@ -24,11 +24,11 @@ X = matrix(1, rows=scale, cols=10)
 s = matrix(1, rows=scale, cols=1)
 v = matrix(1, rows=10, cols=1)
 lambda = matrix(1, rows=10, cols=1)
-while(FALSE) {}
-
+iter = 1
+while(iter < 2) {
 alpha = t(v) %*% (v * lambda + t(X) %*% ((X %*% v) * s))
 HV = v * lambda + t(X) %*% ((X %*% v) * s)
-
-while(FALSE) {}
+iter = iter + 1
+}
 R = rbind(HV, alpha)
 write(R,$1)

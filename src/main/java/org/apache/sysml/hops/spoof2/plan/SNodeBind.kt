@@ -18,7 +18,7 @@ class SNodeBind(
 
     override fun compare(o: SNode) =
             o is SNodeBind && o.bindings == this.bindings && o.input == this.input
-    override fun shallowCopyNoParentsYesInputs() = SNodeBind(input, bindings)
+    override fun shallowCopy(newInputs: List<SNode>) = SNodeBind(newInputs[0], bindings)
 
     init {
         refreshSchema()

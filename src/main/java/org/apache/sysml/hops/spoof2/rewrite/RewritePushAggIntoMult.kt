@@ -5,6 +5,7 @@ import org.apache.sysml.hops.spoof2.plan.SNode
 import org.apache.sysml.hops.spoof2.plan.SNodeAggregate
 import org.apache.sysml.hops.spoof2.plan.SNodeNary
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
+import org.apache.sysml.hops.spoof2.plan.shallowCopyNoParentsYesInputs
 
 class RewritePushAggIntoMult : SPlanRewriteRule() {
     override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
