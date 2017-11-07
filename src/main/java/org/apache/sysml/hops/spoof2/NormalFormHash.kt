@@ -43,6 +43,8 @@ object NormalFormHash {
     /**
      * Compute a hash value for this SPlan tree, assuming that it is in normal form.
      * The hash value can be used to compare SPlan trees in normal form for semantic equivalence.
+     *
+     * This method modifies the order of inputs to commutative SNodeNary nodes into a canonical order.
      */
     fun hashNormalForm(node: SNode): Hash {
         return hashNormalForm(node, mutableMapOf(), mutableMapOf())
@@ -61,7 +63,8 @@ object NormalFormHash {
             is SNodeAggregate -> {
                 val inputAttributePositions = createAttributePositionList(node.input, attrPosMemo)
                 val aggPos = node.aggs.names.map { inputAttributePositions.indexOf(it) }.sorted()
-                "${node.op}$aggPos(${inputsHashes[0]})".hashCode()
+                val s = "${node.op}$aggPos(${inputsHashes[0]})"
+                s.hashCode()
             }
             is SNodeNary -> {
                 // 0. Get the positions of the attributes in the inputs
@@ -69,7 +72,7 @@ object NormalFormHash {
                 // 0. Get the hashes of the inputs.
                 val inputHashMap = node.inputs.zip(inputsHashes).toMap()
 
-                if( node.op.commutative ) {
+                if( node.op.commutative && node.inputs.size > 1 ) {
                     // 1. Separate the inputs into connected components.
                     val CCs = partitionInputsByJoinConditions(node.inputs)
                     // 2. Create a join string used for ordering in steps 3 and 4.
@@ -99,9 +102,9 @@ object NormalFormHash {
                     val fullySortedOrder = CCsSorted.flatten()
                     if( fullySortedOrder != node.inputs ) { // we changed the order of inputs
                         inputAttributePositions = fullySortedOrder.map { createAttributePositionList(it, attrPosMemo) }
+                        node.inputs.clear()
+                        node.inputs += fullySortedOrder
                     }
-                    node.inputs.clear()
-                    node.inputs += fullySortedOrder
                 } else {
                     // not commutative; fixed order of inputs
                 }
@@ -132,7 +135,7 @@ object NormalFormHash {
                     .sortedWith(pairComparator())
 //                    .also{println(it)}
                     .joinToString(separator = "=") { (h,p) -> "$h-$p" }
-        }.joinToString(separator = "|")
+        }.sorted().joinToString(separator = "|")
     }
 
     private data class JoinCondition(

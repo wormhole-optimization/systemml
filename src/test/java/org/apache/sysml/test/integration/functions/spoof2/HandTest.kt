@@ -3,6 +3,7 @@ package org.apache.sysml.test.integration.functions.spoof2
 import org.apache.sysml.hops.DataOp
 import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.spoof2.NormalFormHash
+import org.apache.sysml.hops.spoof2.SPlan2NormalForm
 import org.apache.sysml.hops.spoof2.SPlanCseEliminator
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.*
@@ -166,6 +167,61 @@ class HandTest {
         System.out.println("Explain2: "+Explain.explain(BA))
         BA.resetVisited()
         assertEquals(hash1, hash2)
+    }
+
+    /**
+     * Test that AB*BA hashes to the same value as BA*AB.
+     */
+    @Test
+    fun testHash_ABxBA() {
+        val A = SNodeData(createReadHop("A"))
+        val B = SNodeData(createReadHop("B"))
+        val a = AB() //"a1"
+        val b = AB() //"b2"
+        val c = AB() //"c3"
+        val d = AB() //"d4"
+        val p = Hop.AggOp.SUM
+        val m = SNodeNary.NaryOp.MULT
+
+        val ab = SNodeBind(A, mapOf(AU.U0 to a, AU.U1 to b))
+        val bc = SNodeBind(B, mapOf(AU.U0 to b, AU.U1 to c))
+        val ad = SNodeBind(A, mapOf(AU.U0 to a, AU.U1 to d))
+        val dc = SNodeBind(B, mapOf(AU.U0 to d, AU.U1 to c))
+        val AB = SNodeAggregate(p,
+                SNodeNary(m, ab, bc)
+                , b)
+        val BA = SNodeAggregate(p,
+                SNodeNary(m, dc, ad)
+                , d)
+        val ABxBA = SNodeNary(m, AB, BA)
+        val BAxAB = SNodeNary(m, BA, AB)
+
+//        System.out.println("Explain1: "+Explain.explain(AB))
+//        AB.resetVisited()
+//        System.out.println("Explain2: "+Explain.explain(BA))
+//        BA.resetVisited()
+        val hAB = NormalFormHash.hashNormalForm(AB)
+        val hBA = NormalFormHash.hashNormalForm(BA)
+        val hABxBA = NormalFormHash.hashNormalForm(ABxBA)
+        val hBAxAB = NormalFormHash.hashNormalForm(BAxAB)
+//        System.out.println("Explain1: "+Explain.explain(AB))
+//        AB.resetVisited()
+//        System.out.println("Explain2: "+Explain.explain(BA))
+//        BA.resetVisited()
+        assertEquals(hAB, hBA)
+        assertEquals(hABxBA, hBAxAB)
+
+        val w1 = SNodeData(createWriteHop("w1"), SNodeUnbind(ABxBA, mapOf(AU.U0 to a, AU.U1 to c)))
+        val w2 = SNodeData(createWriteHop("w2"), SNodeUnbind(BAxAB, mapOf(AU.U0 to a, AU.U1 to c)))
+        val roots = arrayListOf<SNode>(w1, w2)
+
+        SPlan2NormalForm.rewriteSPlan(roots)
+//        println(Explain.explainSPlan(roots))
+
+        val nABxBA = NormalFormHash.hashNormalForm(w1.inputs[0])
+        val nBAxAB = NormalFormHash.hashNormalForm(w2.inputs[0])
+//        println(Explain.explainSPlan(roots))
+        assertEquals(nABxBA, nBAxAB)
     }
 
     @Test

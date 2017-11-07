@@ -32,7 +32,7 @@ object SPlan2NormalForm {
     /** Whether to invoke the SPlanValidator after every rewrite pass. */
     private const val CHECK = true
 
-    private fun bottomUpRewrite(roots: java.util.ArrayList<SNode>, doElimCSE: Boolean = true): SPlanRewriter.RewriterResult {
+    private fun bottomUpRewrite(roots: ArrayList<SNode>, doElimCSE: Boolean = true): SPlanRewriter.RewriterResult {
         val rr0 = if(doElimCSE) SPlanBottomUpRewriter.rewriteSPlan(roots) else SPlanBottomUpRewriter.rewriteSPlan(roots, false)
         if( rr0 is SPlanRewriter.RewriterResult.NewRoots && rr0.newRoots !== roots ) {
             roots.clear()
