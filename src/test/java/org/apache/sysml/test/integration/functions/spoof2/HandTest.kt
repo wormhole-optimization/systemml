@@ -2,14 +2,15 @@ package org.apache.sysml.test.integration.functions.spoof2
 
 import org.apache.sysml.hops.DataOp
 import org.apache.sysml.hops.Hop
+import org.apache.sysml.hops.spoof2.NormalFormHash
 import org.apache.sysml.hops.spoof2.SPlanCseEliminator
-import org.apache.sysml.hops.spoof2.enu.RewriteSplitBU_ExtendNormalForm
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.*
 import org.apache.sysml.parser.Expression
 import org.apache.sysml.utils.Explain
 import org.junit.Assert
 import org.junit.Test
+import kotlin.test.assertEquals
 
 class HandTest {
 
@@ -126,6 +127,45 @@ class HandTest {
         val nary = countPred(roots) { it is SNodeNary }
         Assert.assertEquals("CSE Elim should not unify AB and BA",2, aggs)
         Assert.assertEquals("CSE Elim should not unify AB and BA",2, nary)
+    }
+
+    /**
+     * Test that an agg-multiply with inputs A, B hashes to the same value as one with inputs B, A.
+     */
+    @Test
+    fun testHash_AB_BA() {
+        val A = SNodeData(createReadHop("A"))
+        val B = SNodeData(createReadHop("B"))
+        val a = AB() //"a1"
+        val b = AB() //"b2"
+        val c = AB() //"c3"
+        val d = AB() //"d4"
+        val e = AB() //"e5"
+        val p = Hop.AggOp.SUM
+        val m = SNodeNary.NaryOp.MULT
+
+        val ab = SNodeBind(A, mapOf(AU.U0 to a, AU.U1 to b))
+        val bc = SNodeBind(B, mapOf(AU.U0 to b, AU.U1 to c))
+        val cd = SNodeBind(A, mapOf(AU.U0 to c, AU.U1 to d))
+        val de = SNodeBind(B, mapOf(AU.U0 to d, AU.U1 to e))
+        val AB = SNodeAggregate(p,
+                SNodeNary(m, ab, bc)
+                , b)
+        val BA = SNodeAggregate(p,
+                SNodeNary(m, de, cd)
+                , d)
+
+        System.out.println("Explain1: "+Explain.explain(AB))
+        AB.resetVisited()
+        System.out.println("Explain2: "+Explain.explain(BA))
+        BA.resetVisited()
+        val hash1 = NormalFormHash.hashNormalForm(AB)
+        val hash2 = NormalFormHash.hashNormalForm(BA)
+        System.out.println("Explain1: "+Explain.explain(AB))
+        AB.resetVisited()
+        System.out.println("Explain2: "+Explain.explain(BA))
+        BA.resetVisited()
+        assertEquals(hash1, hash2)
     }
 
     @Test

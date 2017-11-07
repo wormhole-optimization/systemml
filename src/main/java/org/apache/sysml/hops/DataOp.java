@@ -358,10 +358,7 @@ public class DataOp extends Hop
 
 	@Override
 	public String getOpString() {
-		String s = new String("");
-		s += HopsData2String.get(_dataop);
-		s += " "+getName();
-		return s;
+		return HopsData2String.get(_dataop)+" "+getName();
 	}
 
 	@Override

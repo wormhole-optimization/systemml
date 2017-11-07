@@ -7,19 +7,6 @@ sealed class Attribute constructor(
 ): Comparable<Attribute> {
     fun isBound() = this is Bound
 
-    override fun compareTo(other: Attribute): Int {
-        return when(this) {
-            is AU -> when( other ) {
-                is AU -> this.dim.compareTo(other.dim)
-                is AB -> -1
-            }
-            is AB -> when( other ) {
-                is AU -> 1
-                is AB -> this.id.compareTo(other.id)
-            }
-        }
-    }
-
     class Unbound private constructor(
             val dim: Dim
     ): Attribute() {
@@ -47,6 +34,12 @@ sealed class Attribute constructor(
         override fun hashCode(): Int {
             return dim
         }*/
+        override fun compareTo(other: Attribute): Int {
+            return when( other ) {
+                is AU -> this.dim.compareTo(other.dim)
+                is AB -> -1
+            }
+        }
     }
 
 
@@ -81,5 +74,11 @@ sealed class Attribute constructor(
             return true
         }
         override fun hashCode() = id.hashCode()
+        override fun compareTo(other: Attribute): Int {
+            return when( other ) {
+                is AU -> 1
+                is AB -> this.id.compareTo(other.id)
+            }
+        }
     }
 }

@@ -13,6 +13,7 @@ typealias AU = Attribute.Unbound
 typealias Shape = Long
 typealias Dim = Int
 typealias Id = Long
+typealias Hash = Int
 typealias SPB = SumProduct.Block
 typealias ESP = SumProduct.EBlock
 typealias SP = SumProduct
