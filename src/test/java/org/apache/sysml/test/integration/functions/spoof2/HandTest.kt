@@ -196,20 +196,14 @@ class HandTest {
         val ABxBA = SNodeNary(m, AB, BA)
         val BAxAB = SNodeNary(m, BA, AB)
 
+        listOf(AB to BA, ABxBA to BAxAB).forEach { (n1, n2) ->
+            testHash(n1, n2)
+        }
+
 //        System.out.println("Explain1: "+Explain.explain(AB))
 //        AB.resetVisited()
 //        System.out.println("Explain2: "+Explain.explain(BA))
 //        BA.resetVisited()
-        val hAB = NormalFormHash.hashNormalForm(AB)
-        val hBA = NormalFormHash.hashNormalForm(BA)
-        val hABxBA = NormalFormHash.hashNormalForm(ABxBA)
-        val hBAxAB = NormalFormHash.hashNormalForm(BAxAB)
-//        System.out.println("Explain1: "+Explain.explain(AB))
-//        AB.resetVisited()
-//        System.out.println("Explain2: "+Explain.explain(BA))
-//        BA.resetVisited()
-        assertEquals(hAB, hBA)
-        assertEquals(hABxBA, hBAxAB)
 
         val w1 = SNodeData(createWriteHop("w1"), SNodeUnbind(ABxBA, mapOf(AU.U0 to a, AU.U1 to c)))
         val w2 = SNodeData(createWriteHop("w2"), SNodeUnbind(BAxAB, mapOf(AU.U0 to a, AU.U1 to c)))
@@ -218,10 +212,19 @@ class HandTest {
         SPlan2NormalForm.rewriteSPlan(roots)
 //        println(Explain.explainSPlan(roots))
 
-        val nABxBA = NormalFormHash.hashNormalForm(w1.inputs[0])
-        val nBAxAB = NormalFormHash.hashNormalForm(w2.inputs[0])
+        testHash(w1.inputs[0], w2.inputs[0])
 //        println(Explain.explainSPlan(roots))
-        assertEquals(nABxBA, nBAxAB)
+    }
+    // todo test the case of independent connected components
+
+    private fun testHash(n1: SNode, n2: SNode) {
+        val s1 = NormalFormHash.prettyPrintByPosition(n1)
+        val s2 = NormalFormHash.prettyPrintByPosition(n2)
+        val h1 = NormalFormHash.hashNormalForm(n1)
+        val h2 = NormalFormHash.hashNormalForm(n2)
+        println(s1)
+        assertEquals(s1, s2)
+        assertEquals(h1, h2)
     }
 
     @Test

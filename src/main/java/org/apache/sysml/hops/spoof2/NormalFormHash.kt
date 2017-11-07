@@ -40,6 +40,81 @@ object NormalFormHash {
         return map
     }
 
+    fun prettyPrintByPosition(node: SNode): String {
+        return prettyPrintByPosition(node, mutableMapOf(), mutableMapOf())
+    }
+
+    fun prettyPrintByPosition(node: SNode, memo: MutableMap<Id, String>, attrPosMemo: MutableMap<Id, List<AB>>): String {
+        if( node.id in memo )
+            return memo[node.id]!!
+        val inputsHashes = node.inputs.map { prettyPrintByPosition(it, memo, attrPosMemo) }
+
+        val h = when (node) {
+            is SNodeData -> node.hop.opString + inputsHashes
+            is SNodeExt -> node.hop.opString + inputsHashes
+            is SNodeBind -> inputsHashes[0]
+            is SNodeUnbind -> inputsHashes[0]
+            is SNodeAggregate -> {
+                val inputAttributePositions = createAttributePositionList(node.input, attrPosMemo)
+                val aggPos = node.aggs.names.map { inputAttributePositions.indexOf(it) }.sorted()
+                "${node.op}$aggPos(${inputsHashes[0]})"
+            }
+            is SNodeNary -> {
+                // 0. Get the positions of the attributes in the inputs
+                var inputAttributePositions = node.inputs.map { createAttributePositionList(it, attrPosMemo) }
+                // 0. Get the hashes of the inputs.
+                val inputHashMap = node.inputs.zip(inputsHashes).toMap()
+
+                if( node.op.commutative && node.inputs.size > 1 ) {
+                    // 1. Separate the inputs into connected components.
+                    val CCs = partitionInputsByJoinConditions(node.inputs)
+                    // 2. Create a join string used for ordering in steps 3 and 4.
+                    val joinConditions = getJoinConditions(node.inputs, inputAttributePositions)
+                    // 3. Order across connected components.
+                    val CCsSorted = CCs.map { CC ->
+                        val CCjoinConditions = joinConditions.filter { !CC.disjoint(it.nodesPresent) }
+
+                        // 4. Order within connected components.
+                        val CCsortedWithHashAndPos =
+                                CC.map { n ->
+                                    val h = inputHashMap[n]!!
+                                    val x = joinConditionsToSortedString(CCjoinConditions.filter { n in it.nodesPresent }, inputHashMap)
+                                    n to (h to x)
+                                }.sortedWith(secondPairComparator())
+
+                        val CCsortedNodeHashString = CCsortedWithHashAndPos.joinToString(separator = "_") { (_,pair) ->
+                            pair.first
+                        }
+                        val joinHashString = joinConditionsToSortedString(CCjoinConditions, inputHashMap)
+                        val hashString = CCsortedNodeHashString + "~~" + joinHashString
+                        val CCsorted = CCsortedWithHashAndPos.map { it.first }
+                        CCsorted to hashString
+                    }.sortedBy { it.second }.map { it.first }
+                    // Further ties should indicate exact equality
+
+                    val fullySortedOrder = CCsSorted.flatten()
+                    if( fullySortedOrder != node.inputs ) { // we changed the order of inputs
+                        inputAttributePositions = fullySortedOrder.map { createAttributePositionList(it, attrPosMemo) }
+                        node.inputs.clear()
+                        node.inputs += fullySortedOrder
+                    }
+                } else {
+                    // not commutative; fixed order of inputs
+                }
+                val joinHashString = joinConditionsToSortedString(getJoinConditions(node.inputs, inputAttributePositions), inputHashMap)
+                node.inputs.joinToString(prefix = "${node.op} (", postfix = ")", separator = "_") { inputHashMap[it]!! }
+                        .plus("~~")
+                        .plus(joinHashString)
+//                        .also { println(it) }
+            }
+            is ENode -> throw IllegalStateException("There should not be an ENode present during hashNormalForm")
+            else -> throw IllegalStateException("Unrecognized: $node")
+        }
+//        println("(${node.id}) $node ==> $h")
+        memo[node.id] = h
+        return h
+    }
+
     /**
      * Compute a hash value for this SPlan tree, assuming that it is in normal form.
      * The hash value can be used to compare SPlan trees in normal form for semantic equivalence.
@@ -129,7 +204,7 @@ object NormalFormHash {
     private fun <T, A : Comparable<A>, B : Comparable<B>> secondPairComparator(): Comparator<Pair<T,Pair<A,B>>> {
         return Comparator.comparing<Pair<T,Pair<A,B>>,A> { it.second.first }.thenComparing<B> { it.second.second }
     }
-    private fun joinConditionsToSortedString(jcs: List<JoinCondition>, inputHashes: Map<SNode, Hash>): String {
+    private fun <V: Comparable<V>>joinConditionsToSortedString(jcs: List<JoinCondition>, inputHashes: Map<SNode, V>): String {
         return jcs.map { jc ->
             jc.inputsWithPosition.map { (n,p) -> inputHashes[n]!! to p }
                     .sortedWith(pairComparator())
