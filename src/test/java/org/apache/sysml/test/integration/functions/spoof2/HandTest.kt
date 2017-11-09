@@ -11,6 +11,7 @@ import org.apache.sysml.parser.Expression
 import org.apache.sysml.utils.Explain
 import org.junit.Assert
 import org.junit.Test
+import java.util.Comparator
 import kotlin.test.assertEquals
 
 class HandTest {
@@ -170,7 +171,7 @@ class HandTest {
     }
 
     /**
-     * Test that AB*BA hashes to the same value as BA*AB.
+     * Test that AB*AB hashes the same no matter how we switch values around.
      */
     @Test
     fun testHash_ABxBA() {
@@ -209,11 +210,11 @@ class HandTest {
         val w2 = SNodeData(createWriteHop("w2"), SNodeUnbind(BAxAB, mapOf(AU.U0 to a, AU.U1 to c)))
         val roots = arrayListOf<SNode>(w1, w2)
 
+        println(Explain.explainSPlan(roots))
         SPlan2NormalForm.rewriteSPlan(roots)
-//        println(Explain.explainSPlan(roots))
 
         testHash(w1.inputs[0], w2.inputs[0])
-//        println(Explain.explainSPlan(roots))
+        println(Explain.explainSPlan(roots))
     }
     // todo test the case of independent connected components
 
@@ -272,6 +273,30 @@ class HandTest {
         SPlanValidator.validateSPlan(roots)
     }
 
+
+    @Test
+    fun testSortHierarchical() {
+        val data = listOf(
+                Triple(11, 21, 31),
+                Triple(10, 20, 30),
+                Triple(11, 21, 30),
+                Triple(11, 20, 30)
+        )
+        val sortFuns = listOf<(Triple<Int,Int,Int>) -> Int>(
+                { it.first },
+                { it.second },
+                { it.third }
+        )
+        val sortIdxs = NormalFormHash.sortIndicesHierarchical(data, sortFuns)
+        assertEquals(listOf(1, 3, 2, 0), sortIdxs)
+        val actual = data.permute(sortIdxs)
+        val expected = data.sortedWith(compareTriple())
+        assertEquals(expected, actual)
+    }
+
+    private fun <A:Comparable<A>,B:Comparable<B>,C:Comparable<C>> compareTriple(): Comparator<Triple<A,B,C>> {
+        return Comparator.comparing<Triple<A,B,C>,A> {it.first}.thenComparing<B> {it.second}.thenComparing<C> {it.third}
+    }
 
 
 }

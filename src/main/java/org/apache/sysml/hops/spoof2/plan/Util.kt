@@ -225,3 +225,8 @@ fun <K,V1,V2> Map<K,V1>.zipIntersect(m: Map<K,V2>): Map<K, Pair<V1,V2>> {
         v1[0].second as V1 to v2[0].second as V2
     }
 }
+
+fun <T> List<T>.permute(newIndices: List<Int>): List<T> {
+    return newIndices.map(this::get)
+}
+
