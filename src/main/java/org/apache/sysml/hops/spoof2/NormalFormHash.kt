@@ -142,8 +142,11 @@ object NormalFormHash {
     /**
      * Compute the sort indices of data by sorting with the provided sort functions.
      * Used the each sort function after the first to break ties made by the previous sort function.
+     *
+     * @param stillConfused An output variable appended with the ranges of positions in the returned array that the [sortFuns] failed to distinguish.
      */
-    fun <T, C: Comparable<C>> sortIndicesHierarchical(data: List<T>, sortFuns: List<(T) -> C>): List<Int> {
+    fun <T, C: Comparable<C>> sortIndicesHierarchical(data: List<T>, sortFuns: List<(T) -> C>,
+                                                      stillConfused: MutableList<IntSlice>? = null): List<Int> {
         // Turns out there is a standard implementation of this method.
 //        if( sortFuns.isEmpty() )
 //            return data.indices.toList()
@@ -156,15 +159,30 @@ object NormalFormHash {
 
         // this is my own implementation, which should be more efficient in that it evaluates the sortFuns no more than necessary
         val ret = data.indices.toMutableList()
+        if( sortFuns.isEmpty() ) {
+            if( stillConfused != null )
+                stillConfused += IntSlice(0, data.size-1)
+            return ret
+        }
         val ci = data.indices.toList() // confusion indices
-        rSortIndicesHierarchical(data, sortFuns, ret, ci)
+        rSortIndicesHierarchical(data, sortFuns, ret, ci, stillConfused)
         return ret
     }
 
+    /**
+     * Used for a slice of array indices, from [first] to [last] inclusive.
+     */
+    data class IntSlice(
+            val first: Int,
+            val last: Int
+    ) {
+        inline fun <R> map(transform: (Int) -> R): List<R> = (first..last).map(transform)
+        inline fun mapSlice(transform: (Int) -> Int): IntSlice = IntSlice(transform(first), transform(last))
+    }
+
     private fun <T, C : Comparable<C>> rSortIndicesHierarchical(data: List<T>, sortFuns: List<(T) -> C>,
-                                                                ret: MutableList<Int>, ci: List<Int>) {
-        if( sortFuns.isEmpty() )
-            return
+                                                                ret: MutableList<Int>, ci: List<Int>,
+                                                                stillConfused: MutableList<IntSlice>?) {
         val sortFun = sortFuns[0]
         val dataSub = ci.map { data[ret[it]] }
         val prox = dataSub.map(sortFun)
@@ -173,10 +191,16 @@ object NormalFormHash {
         sp.indices.forEach { i ->
             ret[ci[i]] = oldRet[ci[sp[i].index]]
         }
-        val rangesOfSameProx: List<IntRange> = getRangesOfRepeatedValue(sp.map{it.value})
+        val rangesOfSameProx: List<IntSlice> = getRangesOfRepeatedValue(sp.map{it.value})
+        val remainingSortFuns = sortFuns.drop(1)
+        if( remainingSortFuns.isEmpty() ) {
+            if( stillConfused != null )
+                stillConfused += rangesOfSameProx.map { it.mapSlice { ci[it] } }
+            return
+        }
         rangesOfSameProx.forEach { range ->
             val newCi = range.map { ci[it] }
-            rSortIndicesHierarchical(data, sortFuns.drop(1), ret, newCi)
+            rSortIndicesHierarchical(data, sortFuns.drop(1), ret, newCi, stillConfused)
         }
     }
 
@@ -184,23 +208,23 @@ object NormalFormHash {
      * Given a list of items, return the ranges of indices
      * that have the same item, are consecutive, and have length at least 2.
      */
-    private fun getRangesOfRepeatedValue(sp: List<Any?>): List<IntRange> {
+    private fun getRangesOfRepeatedValue(sp: List<Any?>): List<IntSlice> {
         if( sp.size <= 1 )
             return listOf()
         var repVal = sp[0]
         var startIdx = 0
-        val ranges = mutableListOf<IntRange>()
+        val ranges = mutableListOf<IntSlice>()
         for (i in 1 until sp.size) {
             if( sp[i] != repVal ) {
                 // match on [startIdx, idx-1]
                 if( startIdx != i - 1 )
-                    ranges += startIdx until i
+                    ranges += IntSlice(startIdx, i-1)
                 repVal = sp[i]
                 startIdx = i
             }
         }
         if( startIdx != sp.size - 1 )
-            ranges += startIdx until sp.size
+            ranges += IntSlice(startIdx, sp.size-1)
         return ranges
     }
 

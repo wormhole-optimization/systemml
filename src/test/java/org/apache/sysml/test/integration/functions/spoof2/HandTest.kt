@@ -11,8 +11,9 @@ import org.apache.sysml.parser.Expression
 import org.apache.sysml.utils.Explain
 import org.junit.Assert
 import org.junit.Test
-import java.util.Comparator
+import java.util.*
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class HandTest {
 
@@ -280,22 +281,82 @@ class HandTest {
                 Triple(11, 21, 31),
                 Triple(10, 20, 30),
                 Triple(11, 21, 30),
-                Triple(11, 20, 30)
+                Triple(11, 20, 30),
+                Triple(11, 21, 31)
         )
         val sortFuns = listOf<(Triple<Int,Int,Int>) -> Int>(
                 { it.first },
                 { it.second },
                 { it.third }
         )
-        val sortIdxs = NormalFormHash.sortIndicesHierarchical(data, sortFuns)
-        assertEquals(listOf(1, 3, 2, 0), sortIdxs)
+        val stillConfused = mutableListOf<NormalFormHash.IntSlice>()
+        val sortIdxs = NormalFormHash.sortIndicesHierarchical(data, sortFuns, stillConfused)
+        assertEquals(listOf(1, 3, 2, 0, 4), sortIdxs)
         val actual = data.permute(sortIdxs)
         val expected = data.sortedWith(compareTriple())
         assertEquals(expected, actual)
+        assertEquals(listOf(NormalFormHash.IntSlice(3, 4)), stillConfused)
     }
 
     private fun <A:Comparable<A>,B:Comparable<B>,C:Comparable<C>> compareTriple(): Comparator<Triple<A,B,C>> {
         return Comparator.comparing<Triple<A,B,C>,A> {it.first}.thenComparing<B> {it.second}.thenComparing<C> {it.third}
+    }
+
+    /**
+     * Test [NormalFormHash.sortIndicesHierarchical] on randomly generated lists of data.
+     */
+    @Test
+    fun testRandomSortHierarchical() {
+        val seed = System.currentTimeMillis()
+        println("seed is $seed")
+        val r = Random(seed)
+
+        // dimension is RANGES.size
+        val RANGES = listOf(
+                NormalFormHash.IntSlice(10, 15),
+                NormalFormHash.IntSlice(20, 25),
+                NormalFormHash.IntSlice(30, 35)
+        )
+        val NUM_POINTS = 50
+
+        val data: MutableList<List<Int>> = mutableListOf()
+        repeat(NUM_POINTS) {
+            val list = mutableListOf<Int>()
+            for (range in RANGES) {
+                list += r.nextInt(range.last-range.first+1) + range.first // [10,15]
+            }
+            data += list
+        }
+
+        val sortFuns: MutableList<(List<Int>) -> Int> = mutableListOf()
+        for (i in RANGES.indices) {
+            sortFuns += { it[i] }
+        }
+
+        val stillConfused = mutableListOf<NormalFormHash.IntSlice>()
+        val sortIdxs = NormalFormHash.sortIndicesHierarchical(data, sortFuns, stillConfused)
+        val actual = data.permute(sortIdxs)
+        val expect = data.sortedWith(listComparator())
+        assertEquals(expect, actual)
+//        println(stillConfused.map { it.map { data[sortIdxs[it]] } })
+        stillConfused.forEach { sc ->
+            val d = data[sortIdxs[sc.first]]
+            assertTrue((sc.first+1..sc.last).all { data[sortIdxs[it]] == d })
+        }
+    }
+
+    private fun <T : Comparable<T>> listComparator(): Comparator<List<T>> {
+        return Comparator { a, b ->
+            val min = minOf(a.size, b.size)
+            var i = 0
+            var c = 0
+            while( c == 0 && i < min ) {
+                c = a[i].compareTo(b[i])
+                i++
+            }
+            if( c == 0 ) a.size.compareTo(b.size)
+            else c
+        }
     }
 
 
