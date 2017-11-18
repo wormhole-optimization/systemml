@@ -1,4 +1,4 @@
-# Rscript plotAgg.r && xre Experiment1.pdf &
+# Rscript plotAgg.r && xreader Experiment1.pdf &
 require(graphics)
 require(Matrix)
 require(lattice)
@@ -15,7 +15,7 @@ T2$type <- factor(T2$type, levels=c("none", "none_spoof", "default", "default_sp
 T2[order(alg, type)]
 
 colors=c("lightblue", "blue", "green", "darkgreen")
-barchart(compile + execute ~ alg, groups=type, T2, auto.key=list(space="inside", x=0.01, y=0.93), outer=TRUE, par.settings=list(superpose.polygon=list(col=colors)), main=paste("Spoof Experiment 10M x 10"), sub=paste("Plotted on", Sys.time()), ylim=c(0,max(T2$execute*1.04, T2$compile*1.04)))
+barchart(compile + execute ~ alg, groups=type, T2, auto.key=list(space="inside", x=0.01, y=0.93), outer=TRUE, par.settings=list(superpose.polygon=list(col=colors)), main=paste("Spoof Experiment 10M x 10"), sub=paste("Plotted on", Sys.time()), ylim=c(0,max(T2$execute*1.04, T2$compile*1.04)), scales=list(x=list(rot=45)))
 #, col=rainbow(length(unique(T2$type)))
 #scales=list(y=list(log=10))
 #main="Runtime with & without Spoof"
