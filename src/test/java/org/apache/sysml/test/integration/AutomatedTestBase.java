@@ -1316,7 +1316,7 @@ public abstract class AutomatedTestBase
 				argcnt++;
 			} else if (nvargs) {
 				String[] split = programArg.split("=");
-				script.in(split[0], split[1]);
+				script.in("$"+split[0], split[1]);
 			}
 		}
 	}
@@ -1328,7 +1328,27 @@ public abstract class AutomatedTestBase
 		String dotFilename = dmlFile.getName();
 		if( lines != null && !lines.isEmpty() ) {
 			lines.sort(Comparator.naturalOrder());
-			dotFilename += "_"+lines.stream().map(String::valueOf).collect(Collectors.joining("_"));
+			int firstLine = -1;
+			int lastLine = -1;
+			for (int line : lines) {
+				if( firstLine == -1 ) {
+					firstLine = lastLine = line;
+				} else if( line == lastLine+1 ){
+					lastLine = line;
+				} else {
+					if( firstLine == lastLine )
+						dotFilename += "_"+firstLine;
+					else
+						dotFilename += "_"+firstLine+"-"+lastLine;
+					firstLine = lastLine = line;
+				}
+			}
+			if( firstLine != -1 ) {
+				if (firstLine == lastLine)
+					dotFilename += "_" + firstLine;
+				else
+					dotFilename += "_" + firstLine + "-" + lastLine;
+			}
 		}
 		if( performHOPRewrites )
 			dotFilename += "_rewrite";

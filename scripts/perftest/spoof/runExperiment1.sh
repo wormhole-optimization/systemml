@@ -11,7 +11,7 @@ sparsity=1.0
 addOpts="--stats --explain2 recompile_hops" # --explain2 hops"
 genData=0
 reps=1
-saveTimes=0
+saveTimes=1
 
 algs=() # linregcg kmeans l2svm mlogreg ) #linregcg kmeans mlogreg l2svm ) #glm-binomial-probit )
 confs=() # none none_spoof default_spoof default )
@@ -81,5 +81,5 @@ echo "${script_end}" > latest_end
 ./selectTimes.sh 1
 ./aggTimes.sh
 PlotName="Experiment1-${script_end}.pdf"
-Rscript plotAgg.r && cp Experiment1.pdf "${PlotName}" && xre "${PlotName}" &
+Rscript plotAgg.r && cp Experiment1.pdf "${PlotName}" && xreader "${PlotName}" &
 #dot -Tpdf explain.dot -o dot.pdf

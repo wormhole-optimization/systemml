@@ -20,6 +20,7 @@
 package org.apache.sysml.test.integration.functions.codegen;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.HashMap;
 
 import org.junit.Assert;
@@ -115,8 +116,7 @@ public class AlgorithmLinregCG extends AutomatedTestBase
 
 		try
 		{
-			String TEST_NAME = testname;
-			TestConfiguration config = getTestConfiguration(TEST_NAME);
+			TestConfiguration config = getTestConfiguration(testname);
 			loadTestConfiguration(config);
 			
 			fullDMLScriptName = "scripts/algorithms/LinearRegCG.dml";
@@ -135,7 +135,14 @@ public class AlgorithmLinregCG extends AutomatedTestBase
 			double[][] y = getRandomMatrix(rows, 1, 0, 10, 1.0, 3);
 			writeInputMatrixWithMTD("y", y, true);
 			
-			runTest(true, false, null, -1); 
+			runTest(true, false, null, -1);
+
+//			ArrayList<Integer> lines = new ArrayList<>();
+//			for (int i = 176; i <= 195; i++) {
+//				lines.add(i);
+//			}
+//			testdml2dot(lines, true, true, true);
+
 			runRScript(true); 
 			
 			//compare matrices 
