@@ -1,3 +1,5 @@
+autoencoder
+als-cg
 kmeans
 linregcg
 l2svm

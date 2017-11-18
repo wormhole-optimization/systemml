@@ -6,11 +6,10 @@ set -o nounset
 runner="./sparkDML.sh"
 script_start="$(date '+%Y%m%d.%H%M%S')"
 
-num_cols=10
 sparsity=1.0
-addOpts="--stats --explain2 recompile_hops" # --explain2 hops"
+addOpts="--stats --explain2 hops" # --explain2 hops"
 genData=0
-reps=1
+reps=3
 saveTimes=1
 
 algs=() # linregcg kmeans l2svm mlogreg ) #linregcg kmeans mlogreg l2svm ) #glm-binomial-probit )
@@ -32,11 +31,28 @@ fi
 
 
 num_rowsArr=( 10000000 )
-for num_rows in "${num_rowsArr[@]}"; do
+num_rowsArr_reduced=( 10000 )
+num_rowsArr_expanded=( 100000000 )
 for alg in "${algs[@]}"; do
+case "${alg}" in
+    "als-cg"|"autoencoder")
+        actual_rowsArr=${num_rowsArr_reduced}
+        num_cols=10000 # als-cg: rank set to 10
+        ;;
+    "linregcg")
+        actual_rowsArr=${num_rowsArr_expanded}
+        num_cols=10
+        ;;
+    *)
+        actual_rowsArr=${num_rowsArr}
+        num_cols=10
+        ;;
+esac
+
+for num_rows in "${actual_rowsArr[@]}"; do
     #if ! hdfs dfs -test -f "${fA}" || ! hdfs dfs -test -f "${fA}.mtd"; then
     if [ "${genData}" == 1 ]; then
-        cmd=$(num_cols=${num_cols} num_rows=${num_rows} sparsity=${sparsity} \
+        cmd=$(num_cols=${num_cols} num_rows=${num_rows} sparsity=${sparsity} als_nnz=$(($num_rows * $num_cols / 100)) \
                 envsubst < queries/datagen_${alg}.txt)
         cmd="--config SystemML-config-default.xml ${cmd}"
         echo "${cmd}" | xargs "${runner}"

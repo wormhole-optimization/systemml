@@ -1,0 +1,1 @@
+-f ./dml/autoencoder-2layer.dml --nvargs X=spoof/X6_${num_rows} icpt=0 tol=0.000000000001 reg=0.001 EPOCH=1 H1=500 H2=2 BATCH=512 W1_out=spoof/W1 b1_out=spoof/b1 W2_out=spoof/W2 b2_out=spoof/b2 W3_out=spoof/W3 b3_out=spoof/b3 W4_out=spoof/W4 b4_out=spoof/b4 fmt="binary"
