@@ -51,5 +51,6 @@ class ParseExplainTest {
 
         val fout = File("explain.dot")
         fout.writeText(dot.toString())
+        //dot -Tpdf explain.dot -o explain.pdf && xreader explain.pdf &
     }
 }

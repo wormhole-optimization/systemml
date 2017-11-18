@@ -43,7 +43,7 @@ object ParseExplain {
      * 14. memory estimate
      */
     // todo - relax to not necessarily need data type and value type
-    private val regexLine = Regex("^-*\\((\\d+)\\) (.+?) ?(\\(?[0-9,.\\[\\]]*\\)?) \\[(-?\\d+),(-?\\d+),(-?\\d+),(-?\\d+),(-?\\d+)](\\w)(\\w) \\[(-|\\d+|MAX),(-|\\d+|MAX),(-|\\d+|MAX) -> (-|\\d+|MAX)MB].*$")
+    private val regexLine = Regex("^-*\\((\\d+)\\) (.+?) (\\((?:(?:\\d+|\\[.+]),)*(?:\\d+|\\[.+])\\) )?\\[(-?\\d+),(-?\\d+),(-?\\d+),(-?\\d+),(-?\\d+)](\\w)(\\w) \\[(-|\\d+|MAX),(-|\\d+|MAX),(-|\\d+|MAX) -> (-|\\d+|MAX)MB].*$")
 
     private fun parseLine(explainLine: String,
                           memo: HashMap<Long, Hop>, literals: HashMap<String, Long>, roots: HashSet<Long>
@@ -56,7 +56,8 @@ object ParseExplain {
 //        }
         val id = match.groupValues[1].toLong()
         val opString = match.groupValues[2]
-        val children = parseChildrenString(match.groupValues[3], literals, memo)
+        val tmp = if( match.groupValues[3].isEmpty()) "" else match.groupValues[3].substring(0, match.groupValues[3].length-1)
+        val children = parseChildrenString(tmp, literals, memo)
         val dim1 = match.groupValues[4].toLong()
         val dim2 = match.groupValues[5].toLong()
         val rowsInBlock = match.groupValues[6].toLong()
@@ -245,6 +246,7 @@ object ParseExplain {
             "rix" -> IndexingOp(inp[0].name, dataType, valueType,
                     inp[0], inp[1], inp[2], inp[3], inp[4], true, true) // todo last two params
             "lix" -> throw RuntimeException("no support for lix yet")
+            "m(printf)" -> MultipleOp(inp[0].name, dataType, valueType, Hop.MultiInputOp.PRINTF, *inp.toTypedArray())
             else -> throw RuntimeException("Cannot recognize Hop in: $opString")
         }
 

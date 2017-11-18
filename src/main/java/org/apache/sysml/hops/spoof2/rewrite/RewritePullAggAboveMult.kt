@@ -115,6 +115,7 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
                     if (SPlanRewriteRule.LOG.isDebugEnabled)
                         SPlanRewriteRule.LOG.debug("In RewritePullAggAboveMult, " +
                                 "copy id=${agg.id} $agg to renamed id=${newAgg.id} $newAgg")
+                    mult.refreshSchemasUpward()
                     agg = newAgg
                 }
 
