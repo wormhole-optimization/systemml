@@ -90,7 +90,7 @@ object ParseExplain {
             memo[it] ?: throw RuntimeException("child $it not declared before this line")
         }
 
-        val hop = createHop(id, opString, childrenHops, dim1, dim2, rowsInBlock, colsInBlock, nnz, dataType, valueType)
+        val hop = createHop(id, opString, childrenHops, dim1, dim2, rowsInBlock, colsInBlock, nnz, dataType, valueType, literals, memo)
 
         HOP_FIELD_MEM_INTERMEDIATE.set(hop, memIntermediate)
         HOP_FIELD_MEM_OUTPUT.set(hop, memOutput)
@@ -127,127 +127,149 @@ object ParseExplain {
         if( childrenString[0] != '(' || childrenString.last() != ')' )
             throw RuntimeException("children string is not surrounded by parentheses: $childrenString")
 
-        return childrenString.substring(1, childrenString.length-1).split(",").map { cstr ->
+        var newstr = childrenString.substring(1, childrenString.length-1)
+                //.replace("[,]","[]")
+        while (true) {
+            val idx = newstr.indexOf("[,]")
+            if( idx == -1 )
+                break
+            else {
+                newstr = newstr.replaceRange(idx, idx+2, "[]")
+            }
+        }
+        return newstr.split(",").map { cstr ->
             val len = cstr.length
             if( cstr[0] == '[' && cstr[len-1] == ']' ) { // inline literal child
                 val litStr = if( len >= Explain.LITERAL_EXPLAIN_CUTOFF + 5 && cstr.substring(len-5,len-2) == "..." )
                     cstr.substring(1,len-5)
                 else
                     cstr.substring(1, len-1)
-                if( litStr in literals )
-                    literals[litStr]!! // literal exists in cache
-                else {
-                    // not in cache - create new literal
-                    val lit = when {
-                        litStr.equals("true", true) || litStr.equals("false", true) ->
-                            LiteralOp(litStr.toBoolean())
-                        litStr.toLongOrNull() != null -> LiteralOp(litStr.toLong())
-                        litStr.toDoubleOrNull() != null -> LiteralOp(litStr.toDouble())
-                        else -> LiteralOp(litStr)
-                    }
-                    val litId = -literals.size - 1L
-                    HOP_FIELD_ID.set(lit, litId)
-                    literals.put(litStr, litId)
-                    memo.put(litId, lit)
-                    litId
-                }
+                getLiteralOp(litStr, literals, memo)
             }
             else // normal Hop child
                 cstr.toLong()
         }
     }
 
+    private fun getLiteralOp(litStr: String, literals: HashMap<String, Long>, memo: HashMap<Long, Hop>): Long {
+        return if( litStr in literals )
+            literals[litStr]!! // literal exists in cache
+        else {
+            // not in cache - create new literal
+            val lit = when {
+                litStr.equals("true", true) || litStr.equals("false", true) ->
+                    LiteralOp(litStr.toBoolean())
+                litStr.toLongOrNull() != null -> LiteralOp(litStr.toLong())
+                litStr.toDoubleOrNull() != null -> LiteralOp(litStr.toDouble())
+                else -> LiteralOp(litStr)
+            }
+            val litId = -literals.size - 1L
+            HOP_FIELD_ID.set(lit, litId)
+            literals.put(litStr, litId)
+            memo.put(litId, lit)
+            litId
+        }
+    }
+
     private fun createHop(id: Long, opString: String, inp: List<Hop>,
                           dim1: Long, dim2: Long, rowsInBlock: Long, colsInBlock: Long, nnz: Long,
-                          dataType: Expression.DataType, valueType: Expression.ValueType
+                          dataType: Expression.DataType, valueType: Expression.ValueType,
+                          literals: HashMap<String, Long>, memo: HashMap<Long, Hop>
     ): Hop {
         val (firstWord, remainder) = firstWordAndRem(opString)
 
         // todo create reversed map of these
-        if( firstWord.startsWith("u(") && firstWord.last() == ')' ) {
-            val op = firstWord.substring(2, firstWord.length-1)
-            val op1 =
-                    when (op) {
-                        "cast_as_scalar" -> Hop.OpOp1.CAST_AS_SCALAR
-                        "cast_as_matrix" -> Hop.OpOp1.CAST_AS_MATRIX
-                        else -> (Hop.HopsOpOp12String.entries.find { (_,v) -> v == op }
-                                ?: throw RuntimeException("Not in OpOp1: $firstWord")).key
-                    }
-            return UnaryOp(inp[0].name, dataType, valueType, op1, inp[0])
-        }
+        //            "PWrite" -> DataOp(remainder, dataType, valueType, inp[0], Hop.DataOpTypes.PERSISTENTWRITE, remainder)
+        // todo last two params
 
-        if( firstWord.startsWith("b(") && firstWord.last() == ')' ) {
-            val op = firstWord.substring(2, firstWord.length-1)
-            val (op2, _) = Hop.HopsOpOp2String.entries.find { (_,v) -> v == op }
-                    ?: throw RuntimeException("Not in OpOp2: $firstWord")
-            return BinaryOp(inp[0].name, dataType, valueType, op2, inp[0], inp[1])
-        }
-
-        if( firstWord.startsWith("r(") && firstWord.last() == ')' ) {
-            val op = firstWord.substring(2, firstWord.length-1)
-            val (rop, _) = Hop.HopsTransf2String.entries.find { (_,v) -> v == op }
-                    ?: throw RuntimeException("Not in ReOrgOp: $firstWord")
-            return ReorgOp(inp[0].name, dataType, valueType, rop, inp[0])
-        }
-
-        if( firstWord.startsWith("t(") && firstWord.last() == ')' ) {
-            val op = firstWord.substring(2, firstWord.length-1)
-            val (top, _) = Hop.HopsOpOp3String.entries.find { (_,v) -> v == op }
-                    ?: throw RuntimeException("Not in OpOp3: $firstWord")
-            return if( inp.size == 3 )
-                TernaryOp(inp[0].name, dataType, valueType, top, inp[0], inp[1], inp[2])
-            else
-                TernaryOp(inp[0].name, dataType, valueType, top, inp[0], inp[1], inp[2], inp[3], inp[4])
-        }
-
-        if( firstWord.startsWith("ba(") && firstWord.last() == ')' ) {
-            val op = firstWord.substring(3, firstWord.length-1)
-            val (aggOp, op2) = run {
-                val (aggOp, aggOpStr) = HopsAgg2String.entries.maxBy { (_, v) ->
-                    if (op.startsWith(v) && Hop.HopsOpOp2String.values.contains(op.substring(v.length)))
-                        v.length
-                    else -1
-                }!!
-                if( !op.startsWith(aggOpStr) )
-                    throw RuntimeException("Cannot find AggOp/OpOp2 of AggBinaryOp in: $firstWord")
-                val rem = op.substring(aggOpStr.length)
-                val (op2, _) = Hop.HopsOpOp2String.entries.find { (_, v) -> v == rem } ?: throw RuntimeException("Cannot find AggOp/OpOp2 in: $firstWord")
-                aggOp to op2
+        // todo memory estimates
+        val hop = when {
+            firstWord.startsWith("u(") && firstWord.last() == ')' -> {
+                val op = firstWord.substring(2, firstWord.length - 1)
+                val op1 =
+                        when (op) {
+                            "cast_as_scalar" -> Hop.OpOp1.CAST_AS_SCALAR
+                            "cast_as_matrix" -> Hop.OpOp1.CAST_AS_MATRIX
+                            else -> (Hop.HopsOpOp12String.entries.find { (_, v) -> v == op }
+                                    ?: throw RuntimeException("Not in OpOp1: $firstWord")).key
+                        }
+                UnaryOp(inp[0].name, dataType, valueType, op1, inp[0])
             }
-            return AggBinaryOp(inp[0].name, dataType, valueType, op2, aggOp, inp[0], inp[1])
-        }
-
-        if( firstWord.startsWith("ua(") && firstWord.last() == ')' ) {
-            val op = firstWord.substring(3, firstWord.length-1)
-            val (aggStr, dir) = when {
-                op.endsWith("RC") -> op.substring(0, op.length-2) to Hop.Direction.RowCol
-                op.endsWith("R") -> op.substring(0, op.length-1) to Hop.Direction.Row
-                op.endsWith("C") -> op.substring(0, op.length-1) to Hop.Direction.Col
-                else -> throw RuntimeException("Cannot find Direction of AggUnaryOp in: $firstWord")
+            firstWord.startsWith("b(") && firstWord.last() == ')' -> {
+                val op = firstWord.substring(2, firstWord.length - 1)
+                val (op2, _) = Hop.HopsOpOp2String.entries.find { (_, v) -> v == op }
+                        ?: throw RuntimeException("Not in OpOp2: $firstWord")
+                BinaryOp(inp[0].name, dataType, valueType, op2, inp[0], inp[1])
             }
-            val (aggOp, _) = Hop.HopsAgg2String.entries.find { (_,v) -> v == aggStr }
-                    ?: throw RuntimeException("Cannot find AggOp of AggUnaryOp in: $firstWord")
-            return AggUnaryOp(inp[0].name, dataType, valueType, aggOp, dir, inp[0])
-        }
-
-        if( firstWord.startsWith("dg(") && firstWord.last() == ')' ) {
-            val op = firstWord.substring(3, firstWord.length-1)
-            val dg = Hop.DataGenMethod.valueOf(op.toUpperCase())
-            val di = DataIdentifier("dg")
-            return DataGenOp(dg, di, hashMapOf()) // todo reconstruct DataGen
-        }
-
-
-        val hop = when (firstWord) {
-            "TRead" -> DataOp(remainder, dataType, valueType, Hop.DataOpTypes.TRANSIENTREAD,
-                    remainder, dim1, dim2, nnz, rowsInBlock, colsInBlock)
-            "TWrite" -> DataOp(remainder, dataType, valueType, inp[0], Hop.DataOpTypes.TRANSIENTWRITE,
-                    remainder)
-            "rix" -> IndexingOp(inp[0].name, dataType, valueType,
-                    inp[0], inp[1], inp[2], inp[3], inp[4], true, true) // todo last two params
-            "lix" -> throw RuntimeException("no support for lix yet")
-            "m(printf)" -> MultipleOp(inp[0].name, dataType, valueType, Hop.MultiInputOp.PRINTF, *inp.toTypedArray())
-            else -> throw RuntimeException("Cannot recognize Hop in: $opString")
+            firstWord.startsWith("r(") && firstWord.last() == ')' -> {
+                val op = firstWord.substring(2, firstWord.length - 1)
+                val (rop, _) = Hop.HopsTransf2String.entries.find { (_, v) -> v == op }
+                        ?: throw RuntimeException("Not in ReOrgOp: $firstWord")
+                ReorgOp(inp[0].name, dataType, valueType, rop, inp[0])
+            }
+            firstWord.startsWith("t(") && firstWord.last() == ')' -> {
+                val op = firstWord.substring(2, firstWord.length - 1)
+                val (top, _) = Hop.HopsOpOp3String.entries.find { (_, v) -> v == op }
+                        ?: throw RuntimeException("Not in OpOp3: $firstWord")
+                if (inp.size == 3)
+                    TernaryOp(inp[0].name, dataType, valueType, top, inp[0], inp[1], inp[2])
+                else
+                    TernaryOp(inp[0].name, dataType, valueType, top, inp[0], inp[1], inp[2], inp[3], inp[4])
+            }
+            firstWord.startsWith("ba(") && firstWord.last() == ')' -> {
+                val op = firstWord.substring(3, firstWord.length - 1)
+                val (aggOp, op2) = run {
+                    val (aggOp, aggOpStr) = HopsAgg2String.entries.maxBy { (_, v) ->
+                        if (op.startsWith(v) && Hop.HopsOpOp2String.values.contains(op.substring(v.length)))
+                            v.length
+                        else -1
+                    }!!
+                    if (!op.startsWith(aggOpStr))
+                        throw RuntimeException("Cannot find AggOp/OpOp2 of AggBinaryOp in: $firstWord")
+                    val rem = op.substring(aggOpStr.length)
+                    val (op2, _) = Hop.HopsOpOp2String.entries.find { (_, v) -> v == rem } ?: throw RuntimeException("Cannot find AggOp/OpOp2 in: $firstWord")
+                    aggOp to op2
+                }
+                AggBinaryOp(inp[0].name, dataType, valueType, op2, aggOp, inp[0], inp[1])
+            }
+            firstWord.startsWith("ua(") && firstWord.last() == ')' -> {
+                val op = firstWord.substring(3, firstWord.length - 1)
+                val (aggStr, dir) = when {
+                    op.endsWith("RC") -> op.substring(0, op.length - 2) to Hop.Direction.RowCol
+                    op.endsWith("R") -> op.substring(0, op.length - 1) to Hop.Direction.Row
+                    op.endsWith("C") -> op.substring(0, op.length - 1) to Hop.Direction.Col
+                    else -> throw RuntimeException("Cannot find Direction of AggUnaryOp in: $firstWord")
+                }
+                val (aggOp, _) = Hop.HopsAgg2String.entries.find { (_, v) -> v == aggStr }
+                        ?: throw RuntimeException("Cannot find AggOp of AggUnaryOp in: $firstWord")
+                AggUnaryOp(inp[0].name, dataType, valueType, aggOp, dir, inp[0])
+            }
+            firstWord.startsWith("dg(") && firstWord.last() == ')' -> {
+                val op = firstWord.substring(3, firstWord.length - 1)
+                val dg = Hop.DataGenMethod.valueOf(op.toUpperCase())
+                val di = DataIdentifier("dg")
+                DataGenOp(dg, di, hashMapOf("rows" to LiteralOp(dim1), "cols" to LiteralOp(dim2),
+                        "lambda" to memo[getLiteralOp("1.0", literals, memo)],
+                        "min" to memo[getLiteralOp("1.0", literals, memo)],
+                        "pdf" to memo[getLiteralOp("uniform", literals, memo)],
+                        "seed" to memo[getLiteralOp("-1", literals, memo)],
+                        "max" to memo[getLiteralOp("1.0", literals, memo)],
+                        "sparsity" to memo[getLiteralOp("1.0", literals, memo)]
+                        )) // todo reconstruct DataGen
+            }
+            else -> {
+                when (firstWord) {
+                    "TRead" -> DataOp(remainder, dataType, valueType, Hop.DataOpTypes.TRANSIENTREAD,
+                            remainder, dim1, dim2, nnz, rowsInBlock, colsInBlock)
+                    "TWrite", "PWrite" -> DataOp(remainder, dataType, valueType, inp[0], Hop.DataOpTypes.TRANSIENTWRITE, remainder)
+//            "PWrite" -> DataOp(remainder, dataType, valueType, inp[0], Hop.DataOpTypes.PERSISTENTWRITE, remainder)
+                    "rix" -> IndexingOp(inp[0].name, dataType, valueType,
+                            inp[0], inp[1], inp[2], inp[3], inp[4], true, true) // todo last two params
+                    "lix" -> throw RuntimeException("no support for lix yet")
+                    "m(printf)" -> MultipleOp(inp[0].name, dataType, valueType, Hop.MultiInputOp.PRINTF, *inp.toTypedArray())
+                    else -> throw RuntimeException("Cannot recognize Hop in: $opString")
+                }
+            }
         }
 
         hop.dim1 = dim1
@@ -255,7 +277,6 @@ object ParseExplain {
         hop.rowsInBlock = rowsInBlock
         hop.colsInBlock = colsInBlock
         hop.nnz = nnz
-
         // todo memory estimates
 
         HOP_FIELD_ID.set(hop, id)

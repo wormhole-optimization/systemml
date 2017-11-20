@@ -49,14 +49,14 @@ class RewriteSplitBU_ExtendNormalForm : SPlanRewriteRule() {
                 // rename below the unbind from the unbind atts to the bind atts
                 val renaming: Map<AB, AB> = unbind.unbindings.zipIntersect(bind.bindings).values.toMap()
                 LOG.debug("renaming is $renaming on unbind input ${unbind.input} ${unbind.input.schema}")
-                val newUnbindInput = unbind.input.renameCopyDown(renaming, null)
+                val newUnbindInput = unbind.input.renameCopyDown(renaming, HashMap(renaming), null)
                 bind.parents.removeIf { it == aboveBind }
                 stripDead(bind)
                 // move aboveBind's input from bind to newUnbindInput
                 do {
                     aboveBind.inputs[aboveBind.inputs.indexOf(bind)] = newUnbindInput
                     newUnbindInput.parents += aboveBind
-                } while (aboveBind.inputs.indexOf(bind) != -1)
+                } while (bind in aboveBind.inputs)
                 aboveBind.refreshSchemasUpward()
                 return newUnbindInput
             }

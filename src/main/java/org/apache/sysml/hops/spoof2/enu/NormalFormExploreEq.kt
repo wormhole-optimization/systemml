@@ -461,9 +461,12 @@ class NormalFormExploreEq : SPlanRewriter {
     }
 
     private fun factorCommonTermsFromPlus(spb: SumProduct.Block): SumProduct {
-        if( spb.product != SNodeNary.NaryOp.PLUS || spb.edges.size <= 1 )
-            return factor(spb)!!
-        return factorCommonTermsFromPlus(spb, 0, 1, 1)!!
+        if( spb.product != SNodeNary.NaryOp.PLUS || spb.edges.size <= 1 ) {
+            val x = factor(spb)
+            return x!!
+        }
+        val x = factorCommonTermsFromPlus(spb, 0, 1, 1)
+        return x!!
     }
     /*
     val msintersect = msi.intersect(msj)

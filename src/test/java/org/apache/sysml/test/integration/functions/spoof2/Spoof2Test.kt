@@ -108,7 +108,7 @@ class Spoof2Test(
         //	TEST_NAME+63;  //A - A*B
         //	TEST_NAME+64;  //A*b*A*C*A*d
         //	TEST_NAME+65;  //t(A) %*% (B + v)
-        //	TEST_NAME+66;  //t(X + colSums(X)) %*% (X + colSums(X))
+        //	TEST_NAME+66;  //t(X + colSums(X)) %*% (X + colSums(X))  // evil example...
         //	TEST_NAME+67;  //t(X) %*% (P * (X %*% V) - P * rowSums(P * (X %*% V)))
         //	TEST_NAME+68;  //t(colSums(X)) %*% (colSums(X))
         //	TEST_NAME+69;  //X - colSums(X)
@@ -129,6 +129,7 @@ class Spoof2Test(
         //	TEST_NAME+83;  //A - B - B
         //	TEST_NAME+84;  //print ("test " + (i - 1) + " test");
         //	TEST_NAME+85;  //fragment from line 205 of mlogreg
+        //	TEST_NAME+86;  //nyi
         private const val NUM_TESTS = 73
         private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..85)
         private val _DO_DOT: List<Pair<Int, DC>> = listOf(
@@ -211,7 +212,7 @@ class Spoof2Test(
             val HOME = AutomatedTestBase.SCRIPT_DIR + TEST_DIR
             fullDMLScriptName = HOME + testname + ".dml"
 //            if ( rewrites ) // "-explain", "recompile_hops",
-            programArgs = arrayOf(//"-stats", "-explain", "hops",
+            programArgs = arrayOf("-stats", //"-explain", "runtime",
                     "-args", output("S"))
 
             fullRScriptName = HOME + testname + ".R"
@@ -232,7 +233,7 @@ class Spoof2Test(
 
             //ensure full aggregates for certain patterns
             val testnum = testname.substring(TEST_NAME.length, testname.length).toInt()
-            if (testnum in listOf(82, 84))
+            if ("-stats" in programArgs && testnum in listOf(82, 84))
                 Assert.assertTrue(heavyHittersContainsSubString("-"))
 
         } finally {

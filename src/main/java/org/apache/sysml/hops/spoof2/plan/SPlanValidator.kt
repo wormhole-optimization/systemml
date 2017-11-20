@@ -112,7 +112,9 @@ object SPlanValidator {
         // check Node has a legal arity (number of children)
         node.checkArity()
 
-        // maybe check bind/unbind properties
+        // if parent is a Write or Ext, then it must be a matix or smaller in dimension.
+        if( node.parents.any { it is SNodeExt || it is SNodeData } )
+            node.check(node.schema.size <= 2) {"node has too many attributes: ${node.schema}"}
 
         //recursively process children
         for (child in inputs)

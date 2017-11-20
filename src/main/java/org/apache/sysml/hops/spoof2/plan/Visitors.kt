@@ -63,12 +63,13 @@ fun SNode.isEntirelyDataExtEquals(): Boolean {
 
 fun SNodeAggregate.copyAggRenameDown(): SNodeAggregate {
     val renaming = this.aggs.names.map { (it as AB); it to it.deriveFresh() }.toMap()
-    val aggInput = this.inputs[0].renameCopyDown(renaming, HashMap())
+    val old = HashMap(renaming)
+    val aggInput = this.inputs[0].renameCopyDown(renaming, old, HashMap())
     return SNodeAggregate(op, aggInput, Schema.copyShapes(aggInput.schema, renaming.values))
 }
 
 
-fun SNode.renameCopyDown(renaming: Map<AB, AB>, memo: HashMap<Long, SNode>? = HashMap()): SNode {
+fun SNode.renameCopyDown(renaming: Map<AB, AB>, old: HashMap<AB,AB> = HashMap(renaming), memo: HashMap<Long, SNode>? = HashMap()): SNode {
     check( this.schema.names.containsAll(renaming.keys) ) {"renameCopyDown should only touch SNodes that have a schema to rename; saw id=${this.id} $this ${this.schema}"}
     if( memo != null && this.id in memo )
         return memo[this.id]!!
@@ -76,30 +77,30 @@ fun SNode.renameCopyDown(renaming: Map<AB, AB>, memo: HashMap<Long, SNode>? = Ha
         is SNodeBind -> {
             val b = this.bindings.mapValues { (_,n) -> renaming[n] ?: n }
             val r = renaming.filter { (orig,_) -> orig !in this.bindings.values }
-            val i: SNode = if( r.isNotEmpty() ) this.inputs[0].renameCopyDown(r, memo) else this.inputs[0]
+            val i: SNode = if( r.isNotEmpty() ) this.inputs[0].renameCopyDown(r, old, memo) else this.inputs[0]
             SNodeBind(i, b)
         }
         is SNodeAggregate -> {
             // Let's rename all aggregated names to be safe. This is related to code in SumProductBlock's constructBlock.
             @Suppress("UNCHECKED_CAST")
-            val overlap = this.aggs.names as Set<AB> // renaming.values.intersect(this.aggs.names) as Set<AB>
+            val overlap = (old.keys + old.values).intersect(this.aggs.names) as Set<AB> //this.aggs.names as Set<AB> // renaming
             val (newRenaming, newAggs) = if( overlap.isNotEmpty() ) {
-                val addRenaming = overlap.map { it to it.deriveFresh() }.toMap()
+                val addRenaming = overlap.map { o -> o to (old[o] ?: o.deriveFresh().also { old.put(o, it) }) }.toMap()
                 (renaming+addRenaming) to this.aggs.mapKeys { n, _ -> addRenaming.getOrDefault(n, n) }
             } else renaming to this.aggs
-            SNodeAggregate(this.op, this.input.renameCopyDown(newRenaming, memo), newAggs)
+            SNodeAggregate(this.op, this.input.renameCopyDown(newRenaming, old, memo), newAggs)
         }
         is SNodeNary -> {
             SNodeNary(this.op, this.inputs.map { input ->
                 val renamingIntersect = renaming.filterKeys { it in input.schema.names }
                 if( renamingIntersect.isNotEmpty() )
-                    input.renameCopyDown(renamingIntersect, memo)
+                    input.renameCopyDown(renamingIntersect, old, memo)
                 else input
             })
         }
-        is SNodeUnbind -> SNodeUnbind(this.inputs[0].renameCopyDown(renaming, memo), this.unbindings)
+        is SNodeUnbind -> SNodeUnbind(this.inputs[0].renameCopyDown(renaming, old, memo), this.unbindings)
         is SNodeData -> throw AssertionError("should not reach an SNodeData; should hit a Bind first") // Write Hops cannot have parents, right?
-        is SNodeExt -> SNodeExt(Recompiler.deepCopyHopsDag(this.hop), this.inputs.map { it.renameCopyDown(renaming, memo) })
+        is SNodeExt -> SNodeExt(Recompiler.deepCopyHopsDag(this.hop), this.inputs.map { it.renameCopyDown(renaming, old, memo) })
         else -> throw AssertionError("unknown SNode $this")
     }
     if( memo != null )

@@ -20,7 +20,8 @@ object Hop2SPlan {
     private const val CHECK = false
 
     private val _rulesFirstOnce: List<SPlanRewriteRule> = listOf(
-            RewriteDecompose()          // Subtract  + and *(-1);   ^2  Self-*
+            RewriteDecompose(),          // Subtract  + and *(-1);   ^2  Self-*
+            RewriteNormalizePlusMatrixVector()
     )
     private val _ruleBindElim: List<SPlanRewriteRule> = listOf(
             RewriteBindElim()
