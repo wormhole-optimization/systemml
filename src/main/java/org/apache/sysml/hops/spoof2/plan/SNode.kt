@@ -81,6 +81,12 @@ abstract class SNode(inputs: List<SNode>) {
         val FN_NOOP: (SNode) -> Unit = {}
         val FN_NULL: (SNode) -> Nothing? = {null}
         fun <R> FN_RET(node: SNode, ret: R) = ret
+
+        /** Deep copy this whole SPlan DAG, using a memo table internally to preserve common sub-expressions. */
+        fun deepCopySPlan(roots: List<SNode>): ArrayList<SNode> {
+            val memo: MutableMap<Long, SNode> = mutableMapOf()
+            return roots.mapTo(arrayListOf()) { it.deepCopy(memo) }
+        }
     }
 
 
@@ -285,19 +291,11 @@ abstract class SNode(inputs: List<SNode>) {
 /** Create a copy of this SNode whose inputs point to the same inputs, adding the new copy to the inputs' parents.
  * The new copy has no parents. */
 @Suppress("UNCHECKED_CAST")
-fun <T : SNode> T.shallowCopyNoParentsYesInputs(): T {
-    return this.shallowCopy(this.inputs) as T
-}
+fun <T : SNode> T.shallowCopyNoParentsYesInputs() = this.shallowCopy(this.inputs) as T
 
 /** Deep copy this whole sub-tree, using a memo table internally to preserve common sub-expressions.
  * The returned node has no parents. */
 fun <T : SNode> T.deepCopy(): T = deepCopy(mutableMapOf())
-
-/** Deep copy this whole SPlan DAG, using a memo table internally to preserve common sub-expressions. */
-fun deepCopySPlan(roots: List<SNode>): ArrayList<SNode> {
-    val memo: MutableMap<Long, SNode> = mutableMapOf()
-    return roots.mapTo(arrayListOf()) { it.deepCopy(memo) }
-}
 
 @Suppress("UNCHECKED_CAST")
 private fun <T : SNode> T.deepCopy(memo: MutableMap<Long, SNode>): T {

@@ -32,17 +32,17 @@ fi
 
 num_rowsArr=( 10000000 )
 num_rowsArr_reduced=( 10000 )
-num_rowsArr_expanded=( 100000000 )
+# num_rowsArr_expanded=( 500000000 )
 for alg in "${algs[@]}"; do
 case "${alg}" in
     "als-cg"|"autoencoder")
         actual_rowsArr=${num_rowsArr_reduced}
         num_cols=10000 # als-cg: rank set to 10
         ;;
-    "linregcg")
-        actual_rowsArr=${num_rowsArr_expanded}
-        num_cols=10
-        ;;
+    # "linregcg")
+    #     actual_rowsArr=${num_rowsArr_expanded}
+    #     num_cols=10
+    #     ;;
     *)
         actual_rowsArr=${num_rowsArr}
         num_cols=10

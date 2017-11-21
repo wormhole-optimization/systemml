@@ -1,6 +1,6 @@
-autoencoder
-als-cg
 kmeans
-linregcg
+#linregcg
 l2svm
 mlogreg
+als-cg
+#autoencoder

@@ -11,6 +11,8 @@ import java.util.ArrayList
 /**
  * Construct an SPlan DAG from a Hop DAG.
  * Performs one-time SPlan Rewrites.
+ *
+ * Todo: expand t(+*) and t(-*).
  */
 object Hop2SPlan {
     private val LOG = Spoof2Compiler.LOG
@@ -21,7 +23,7 @@ object Hop2SPlan {
 
     private val _rulesFirstOnce: List<SPlanRewriteRule> = listOf(
             RewriteDecompose(),          // Subtract  + and *(-1);   ^2  Self-*
-            RewriteNormalizePlusMatrixVector()
+            RewriteNormalizePlusMatrixVector() // matrix + vector ==> maxtrix + (ones * vector)
     )
     private val _ruleBindElim: List<SPlanRewriteRule> = listOf(
             RewriteBindElim()

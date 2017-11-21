@@ -12,6 +12,8 @@ import org.apache.sysml.utils.Explain
 
 /**
  * Construct a Hop DAG from an SPlan DAG.
+ *
+ * Todo: recover t(+*) and t(-*).
  */
 object SPlan2Hop {
     private val _rulesToHopReady = listOf(

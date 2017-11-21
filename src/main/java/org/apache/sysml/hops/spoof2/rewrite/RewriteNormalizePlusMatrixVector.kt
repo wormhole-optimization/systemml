@@ -77,8 +77,8 @@ class RewriteNormalizePlusMatrixVector : SPlanRewriteRule() {
                     "cols" to LiteralOp(1)
             )
             val dgo = DataGenOp(Hop.DataGenMethod.RAND, de, hopParams)
-            dgo.rowsInBlock = -1 // TODO? Maybe 1000?
-            dgo.colsInBlock = -1
+            dgo.rowsInBlock = 1000 // TODO? Maybe 1000?
+            dgo.colsInBlock = 1000
             return dgo
         }
         private fun genBindDataGen(name: AB, nrows: Shape): SNodeBind {

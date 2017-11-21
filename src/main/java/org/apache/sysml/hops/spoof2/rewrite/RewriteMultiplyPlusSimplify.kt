@@ -7,8 +7,8 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary
 import org.apache.sysml.hops.spoof2.plan.refreshSchemasUpward
 
 /**
- * Combine consecutive multiplies into one.
- * Handles common subexpresions, when multiple inputs are the same expression (and that expression has no other parents).
+ * Combine consecutive multiply ops into one.
+ * Handles common sub-expresions, when multiple inputs are the same expression (and that expression has no other parents).
  */
 class RewriteMultiplyPlusSimplify : SPlanRewriteRule() {
 
