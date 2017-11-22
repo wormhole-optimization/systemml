@@ -100,7 +100,7 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
         if (EXPLAIN_DURING_RECURSION && LOG.isTraceEnabled && newChanged)
             LOG.trace(Explain.explainSPlan(allRoots, true))
 
-        return changed || newChanged
+        return changed || newChanged && node !is SNodeBind && node !is SNodeUnbind // bind/unbind changes are not real changes
     }
 
     private tailrec fun insertUnbind(unbind: SNodeUnbind): Boolean {
@@ -237,6 +237,9 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
 
     private fun renameDownSplitCse(node: SNode, renaming: Map<AB, AB>, seen: Set<Id>) {
         assert(renaming.isNotEmpty())
+        // if no names to be renamed in schema, then stop
+        if( node.schema.names.disjoint(renaming.keys) )
+            return
         // split CSEs from parents not inside the renaming.
         node.parents.toSet().filter { it.id !in seen }.forEach { parent ->
             splitCse(parent, node) // removes parent
@@ -420,7 +423,7 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
 
     private fun splitCse(parent: SNode, input: SNode) {
         // split CSE
-        val copy = input.deepCopy()
+        val copy = input.shallowCopyNoParentsYesInputs()
         parent.inputs.mapInPlace {
             if (it == input) {
                 input.parents -= parent

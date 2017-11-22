@@ -297,7 +297,10 @@ abstract class SNode(inputs: List<SNode>) {
 fun <T : SNode> T.shallowCopyNoParentsYesInputs() = this.shallowCopy(this.inputs) as T
 
 /** Deep copy this whole sub-tree, using a memo table internally to preserve common sub-expressions.
- * The returned node has no parents. */
+ * The returned node has no parents.
+ *
+ * Warning: it can be dangerous to deep copy SNodeExt and SNodeData due to the Hops. Possible problems during reconstruction.
+ */
 fun <T : SNode> T.deepCopy(): T = deepCopy(mutableMapOf())
 
 @Suppress("UNCHECKED_CAST")

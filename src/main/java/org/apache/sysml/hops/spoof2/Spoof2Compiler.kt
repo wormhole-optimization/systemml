@@ -253,8 +253,8 @@ object Spoof2Compiler {
             dimsToInputDims(sroot)
         }
         if( LOG.isTraceEnabled ) {
-            LOG.trace("Base input map: ${baseInputs.mapIndexed {i, bil -> "\nr$i\t${bil.mapIndexed { d, bi -> "d$d: $bi" }.joinToString("\n\t")}"}.reduce(String::plus)}" +
-                    "\nBase input map2: ${baseInputs2.mapIndexed {i, bil -> "\nr$i\t${bil.mapIndexed { d, bi -> "d$d: $bi" }.joinToString("\n\t")}"}.reduce(String::plus)}")
+            LOG.trace("Base input map: ${baseInputs.mapIndexed {i, bil -> "\nr$i\t${bil.mapIndexed { d, bi -> "d$d: ${bi.entries().groupBy { it.key }.map { "(${it.key.hopID})${it.key.opString}}=${it.value.map { it.value }}" }.joinToString()}"}.joinToString("\n\t")}"}}" +
+                      "\nBase input map2: ${baseInputs2.mapIndexed {i, bil -> "\nr$i\t${bil.mapIndexed { d, bi -> "d$d: ${bi.entries().groupBy { it.key }.map { "(${it.key.hopID})${it.key.opString}}=${it.value.map { it.value }}" }.joinToString()}"}.joinToString("\n\t")}"}}")
         }
 
 
@@ -294,10 +294,10 @@ object Spoof2Compiler {
                             }
                             else -> throw SNodeException(sroots[idx], "Failed to distinguish orientation for old Hop root ${roots[idx].hopID} and new Hop root ${root2.hopID}; " +
                                     "baseInputs have different unique inputs but neither equal to base inputs 2:" +
-                                    "\n\t0: ${biu[0].map { (k,_) -> k }.toSet().joinToString { "(${it.hopID})$it" }}" +
-                                    "\n\t1: ${biu[1].map { (k,_) -> k }.toSet().joinToString { "(${it.hopID})$it" }}" +
-                                    "\n\t0: ${biu2[0].map { (k,_) -> k }.toSet().joinToString { "(${it.hopID})$it" }}" +
-                                    "\n\t1: ${biu2[0].map { (k,_) -> k }.toSet().joinToString { "(${it.hopID})$it" }}")
+                                    "\n\t0: ${biu[0].map { (k,_) -> k }.toSet().joinToString { "(${it.hopID})${it.opString}" }}" +
+                                    "\n\t1: ${biu[1].map { (k,_) -> k }.toSet().joinToString { "(${it.hopID})${it.opString}" }}" +
+                                    "\n\t0: ${biu2[0].map { (k,_) -> k }.toSet().joinToString { "(${it.hopID})${it.opString}" }}" +
+                                    "\n\t1: ${biu2[0].map { (k,_) -> k }.toSet().joinToString { "(${it.hopID})${it.opString}" }}")
                         }
                     } else {
                         // for each unique base input, if the number of base inputs is different between dimensions,

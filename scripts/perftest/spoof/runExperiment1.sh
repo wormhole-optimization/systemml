@@ -58,7 +58,12 @@ for num_rows in "${actual_rowsArr[@]}"; do
         echo "${cmd}" | xargs "${runner}"
     fi
     for conf in "${confs[@]}"; do
-        for rep in `seq 1 ${reps}`; do
+        if [ "$alg" == "als-cg" ] && [[ "$conf" == none* ]]; then
+            myreps=1
+        else
+            myreps=${reps}
+        fi
+        for rep in `seq 1 ${myreps}`; do
             echo "$(date '+%Y%m%d.%H%M%S')" ${num_rows} ${alg} ${conf} \#${rep}
             cmd=$(num_cols=${num_cols} num_rows=${num_rows} sparsity=${sparsity} \
                 envsubst < queries/alg_${alg}.txt)
