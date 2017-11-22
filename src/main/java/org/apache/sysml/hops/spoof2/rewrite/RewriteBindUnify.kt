@@ -63,14 +63,12 @@ import java.util.*
  */
 class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
 
-    override fun rewriteNodeUp(node: SNode): RewriteResult {
-        return rRewriteBindUnify(node, false)
-    }
+    override fun rewriteNodeUp(node: SNode) = rRewriteBindUnify(node, false)
     private tailrec fun rRewriteBindUnify(node: SNode, changed: Boolean): RewriteResult {
         if( node.isBindOrUnbind() ) {
             // empty bind/unbind
             if( node.agBindings().isEmpty() ) {
-                val child = RewriteBindElim.eliminateEmpty(node)
+                val child = RewriteBindElim.eliminateNode(node)
                 child.visited = false
                 if( LOG.isTraceEnabled )
                     LOG.trace("RewriteBindUnify: on empty ${node.id} $node; replace with child ${child.id} $child")
@@ -94,7 +92,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                     node.parents -= matchingParent
                     matchingParent
                 }
-                RewriteBindElim.eliminateEmpty(killParent)
+                RewriteBindElim.eliminateNode(killParent)
                 if( LOG.isTraceEnabled )
                     LOG.trace("RewriteBindUnify: combine consecutive ${killParent.id} -- ${node.id} to $node ${node.schema}")
                 return rRewriteBindUnify(node, true)
@@ -108,33 +106,33 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
             }
             if( above != null ) {
                 val commonBindings = node.agBindings().intersectEntries(above.agBindings())
-                    // above can only be a parent once because it is a bind/unbind
-                    val otherNodeParents = node.parents.filter { it !== above }
-                    if (otherNodeParents.isNotEmpty()) {
-                        // Split CSE: connect otherNodeParents to a copy of node
-                        val copy = node.shallowCopyNoParentsYesInputs()
-                        otherNodeParents.forEach {
-                            it.inputs[it.inputs.indexOf(node)] = copy
-                            copy.parents += it
-                            node.parents -= it
-                        }
+                // above can only be a parent once because it is a bind/unbind
+                val otherNodeParents = node.parents.filter { it !== above }
+                if (otherNodeParents.isNotEmpty()) {
+                    // Split CSE: connect otherNodeParents to a copy of node
+                    val copy = node.shallowCopyNoParentsYesInputs()
+                    otherNodeParents.forEach {
+                        it.inputs[it.inputs.indexOf(node)] = copy
+                        copy.parents += it
+                        node.parents -= it
                     }
-                    // only parent of node is above
-                    assert(node.parents.size == 1)
-                    commonBindings.forEach { (k, _) ->
-                        node.agBindings() -= k
-                        above.agBindings() -= k
-                    }
-                    node.refreshSchema()
-                    // Be careful!
-                    above.refreshSchemasUpward() // insidious situation: The unbind in unbind-bind shifts the indices
+                }
+                // only parent of node is above
+                assert(node.parents.size == 1)
+                commonBindings.forEach { (k, _) ->
+                    node.agBindings() -= k
+                    above.agBindings() -= k
+                }
+                node.refreshSchema()
+                // Be careful!
+                above.refreshSchemasUpward() // insidious situation: The unbind in unbind-bind shifts the indices
 
-                    if (above.agBindings().isEmpty())
-                        RewriteBindElim.eliminateEmpty(above)
-                    val newNode = if (node.agBindings().isEmpty()) RewriteBindElim.eliminateEmpty(node) else node
-                    if (LOG.isTraceEnabled)
-                        LOG.trace("RewriteBindUnify: elim redundant bindings $commonBindings in ${above.id} $above -- ${node.id} $node ${if (otherNodeParents.isNotEmpty()) "(with split CSE)" else ""} to yield ${newNode.id} $newNode")
-                    return rRewriteBindUnify(newNode, true)
+                if (above.agBindings().isEmpty())
+                    RewriteBindElim.eliminateNode(above)
+                val newNode = if (node.agBindings().isEmpty()) RewriteBindElim.eliminateNode(node) else node
+                if (LOG.isTraceEnabled)
+                    LOG.trace("RewriteBindUnify: elim redundant bindings $commonBindings in ${above.id} $above -- ${node.id} $node ${if (otherNodeParents.isNotEmpty()) "(with split CSE)" else ""} to yield ${newNode.id} $newNode")
+                return rRewriteBindUnify(newNode, true)
             }
 
             // unbind-bind-unbind or bind-unbind-bind with disjoint mappings on the common one
@@ -157,7 +155,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                             LOG.trace("RewriteBindUnify: combine disjoint triple (${node.id}) $node <- $a2 <- $a3, eliminating (${a3.id}) $a3")
                         node.agBindings().putAll(a3.agBindings())
                         a3.agBindings().clear()
-                        RewriteBindElim.eliminateEmpty(a3)
+                        RewriteBindElim.eliminateNode(a3)
                         node.refreshSchema()
                         a2.refreshSchema()
                         return rRewriteBindUnify(node, true)

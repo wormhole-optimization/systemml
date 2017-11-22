@@ -21,7 +21,7 @@ class RewriteBindElim : SPlanRewriteRule() {
                 node is SNodeBind && node.bindings.isEmpty()
                         || node is SNodeUnbind && node.unbindings.isEmpty()
 
-        fun eliminateEmpty(node: SNode): SNode {
+        fun eliminateNode(node: SNode): SNode {
             val child = node.inputs[0]
             SNodeRewriteUtils.removeAllChildReferences(node) // clear node.inputs, remove node from child.parents
             SNodeRewriteUtils.rewireAllParentChildReferences(node, child) // for each parent of node, change its input from node to child and add the parent to child
@@ -36,7 +36,7 @@ class RewriteBindElim : SPlanRewriteRule() {
         if( canEliminateEmpty(node) ) {
             if (SPlanRewriteRule.LOG.isDebugEnabled)
                 SPlanRewriteRule.LOG.debug("RewriteBindElim on empty ${node.id} $node.")
-            return rRewriteNode(parent, eliminateEmpty(node), true)
+            return rRewriteNode(parent, eliminateNode(node), true)
         }
 //        if( node.visited || parent.visited ) // safety; try removing this later
 //            return if (changed) RewriteResult.NewNode(node) else RewriteResult.NoChange
@@ -73,7 +73,7 @@ class RewriteBindElim : SPlanRewriteRule() {
             node.check(node.agBindings().keys != child.agBindings().keys) {"Overlap between keys of consecutive ${node.id} $node $child"}
             node.agBindings() += child.agBindings()
 
-            eliminateEmpty(child)
+            eliminateNode(child)
 
             if (SPlanRewriteRule.LOG.isDebugEnabled)
                 SPlanRewriteRule.LOG.debug("RewriteBindElim on consecutve Unbinds at ${node.id} to $node.")
@@ -105,9 +105,9 @@ class RewriteBindElim : SPlanRewriteRule() {
                                 if(unbind.unbindings.isEmpty()) " and elim Unbind" else "")
 
                     // Common case: the resulting bind-unbind is empty.
-                    if (unbind.unbindings.isEmpty()) eliminateEmpty(unbind)
+                    if (unbind.unbindings.isEmpty()) eliminateNode(unbind)
                     return if (bind.bindings.isEmpty())
-                        rRewriteNode(parent, eliminateEmpty(bind), true)
+                        rRewriteNode(parent, eliminateNode(bind), true)
                     else RewriteResult.NewNode(bind)
                 }
             }
@@ -136,9 +136,9 @@ class RewriteBindElim : SPlanRewriteRule() {
                                         if(bind.bindings.isEmpty()) " and elim Bind" else ""))
 
                     // Common case: the resulting unbind-bind is empty.
-                    if (bind.bindings.isEmpty()) eliminateEmpty(bind)
+                    if (bind.bindings.isEmpty()) eliminateNode(bind)
                     return if (unbind.unbindings.isEmpty())
-                        rRewriteNode(parent, eliminateEmpty(unbind), true)
+                        rRewriteNode(parent, eliminateNode(unbind), true)
                     else RewriteResult.NewNode(unbind)
                 }
             }

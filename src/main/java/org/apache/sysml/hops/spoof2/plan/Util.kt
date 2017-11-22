@@ -230,3 +230,40 @@ fun <T> List<T>.permute(newIndices: List<Int>): List<T> {
     return newIndices.map(this::get)
 }
 
+fun <E> List<List<E>>.cartesian(): Sequence<List<E>> {
+    return object : Sequence<List<E>> {
+        override fun iterator(): Iterator<List<E>> = CartesianIterator(this@cartesian)
+    }
+}
+
+private class CartesianIterator<out E>(
+        private val lists: List<List<E>>
+): Iterator<List<E>> {
+    private val ptrs = IntArray(lists.size)
+    private var nextValid = lists.all { it.isNotEmpty() }
+
+    fun reset() {
+        nextValid = lists.all { it.isNotEmpty() }
+        ptrs.fill(0)
+    }
+
+    override fun hasNext(): Boolean {
+        return nextValid
+    }
+
+    override fun next(): List<E> {
+        val result = lists.mapIndexed { i, list -> list[ptrs[i]] }
+        var i = lists.size-1
+        while( i >= 0 && ptrs[i] == lists[i].size - 1 ) {
+            ptrs[i] = 0
+            i--
+        }
+        if( i == -1 )
+            nextValid = false
+        else
+            ptrs[i]++
+        return result
+    }
+
+}
+

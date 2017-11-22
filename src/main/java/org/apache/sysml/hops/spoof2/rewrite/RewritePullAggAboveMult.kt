@@ -80,8 +80,8 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
                     && agg.op == AggOp.SUM ) {
                 val numAggInMultInput = agg.parents.count() // this is >1 if the mult has a CSE
                 if (SPlanRewriteRule.LOG.isDebugEnabled && numAggInMultInput > 1)
-                    SPlanRewriteRule.LOG.debug("In RewritePullAggAboveMult, splitting CSE id=${agg.id} $agg " +
-                            "that occurs $numAggInMultInput times as input to id=${mult.id} $mult")
+                    SPlanRewriteRule.LOG.debug("In RewritePullAggAboveMult, splitting CSE (${agg.id}) $agg " +
+                            "that occurs $numAggInMultInput times as input to (${mult.id}) $mult")
 
                 val (overlapAggNames, nonOverlapAggNames) = agg.aggs.partition { n, _ -> n in mult.schema }
                 if( overlapAggNames.isNotEmpty() ) {
@@ -94,7 +94,7 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
                         agg.inputs[0] = aggDown
                         if (SPlanRewriteRule.LOG.isDebugEnabled)
                             SPlanRewriteRule.LOG.debug("In RewritePullAggAboveMult, " +
-                                    "split id=${agg.id} $agg into $overlapAggNames and $nonOverlapAggNames")
+                                    "split (${agg.id}) $agg into $overlapAggNames and $nonOverlapAggNames")
                     }
                     val newAgg = agg.copyAggRenameDown()
                     repeat(numAggInMultInput) {
@@ -114,7 +114,7 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
 
                     if (SPlanRewriteRule.LOG.isDebugEnabled)
                         SPlanRewriteRule.LOG.debug("In RewritePullAggAboveMult, " +
-                                "copy id=${agg.id} $agg to renamed id=${newAgg.id} $newAgg")
+                                "copy (${agg.id}) $agg to renamed id=${newAgg.id} $newAgg")
                     mult.refreshSchemasUpward()
                     agg = newAgg
                 }
@@ -174,8 +174,7 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
             stripDead(node, action)
             if (SPlanRewriteRule.LOG.isDebugEnabled) {
                 val s = sb!!.substring(1).toString()
-                SPlanRewriteRule.LOG.debug("In RewritePullAggAboveMult, " +
-                        "dead code eliminate $s")
+                SPlanRewriteRule.LOG.debug("In RewritePullAggAboveMult, dead code eliminate $s")
             }
         }
         private fun stripDead(node: SNode, action: (SNode) -> Unit) {

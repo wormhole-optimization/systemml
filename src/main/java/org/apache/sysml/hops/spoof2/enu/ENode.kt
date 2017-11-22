@@ -7,7 +7,7 @@ import java.util.*
 
 class ENode private constructor() : SNode() {
 
-    override fun shallowCopy(newInputs: List<SNode>) = ENode().also { en ->
+    override fun _shallowCopy(newInputs: List<SNode>) = ENode().also { en ->
         en.schema.setTo(this.schema)
         en.inputs += newInputs
         newInputs.forEach { it.parents += en }

@@ -70,9 +70,9 @@ class RewriteClearMxM : SPlanRewriteRule() {
             // keep it simple; let RewriteBindUnify handle empty bind/unbind
 //            var top: SNode
 //            if( bind.bindings.isEmpty() )
-//                RewriteBindElim.eliminateEmpty(bind)
+//                RewriteBindElim.eliminateNode(bind)
 //            if( unbind.unbindings.isEmpty() )
-//                RewriteBindElim.eliminateEmpty(unbind)
+//                RewriteBindElim.eliminateNode(unbind)
             agg.refreshSchema()
             unbind.refreshSchema()
             bind.refreshSchema()

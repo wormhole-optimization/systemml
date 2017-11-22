@@ -65,7 +65,7 @@ fun SNodeAggregate.copyAggRenameDown(): SNodeAggregate {
     val renaming = this.aggs.names.map { (it as AB); it to it.deriveFresh() }.toMap()
     val old = HashMap(renaming)
     val aggInput = this.inputs[0].renameCopyDown(renaming, old, HashMap())
-    return SNodeAggregate(op, aggInput, Schema.copyShapes(aggInput.schema, renaming.values))
+    return SNodeAggregate(op, aggInput, Schema.copyShapes(aggInput.schema, renaming.values)).also { it.visited = visited }
 }
 
 
@@ -103,6 +103,7 @@ fun SNode.renameCopyDown(renaming: Map<AB, AB>, old: HashMap<AB,AB> = HashMap(re
         is SNodeExt -> SNodeExt(Recompiler.deepCopyHopsDag(this.hop), this.inputs.map { it.renameCopyDown(renaming, old, memo) })
         else -> throw AssertionError("unknown SNode $this")
     }
+    newNode.visited = visited
     if( memo != null )
         memo[this.id] = newNode
     return newNode

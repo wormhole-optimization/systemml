@@ -12,7 +12,7 @@ class SNodeData private constructor(
         val hop: Hop,
         input: List<SNode>
 ) : SNode(input) {
-    override fun shallowCopy(newInputs: List<SNode>) = SNodeData(hop, newInputs)
+    override fun _shallowCopy(newInputs: List<SNode>) = SNodeData(hop, newInputs)
 
     constructor(hop: Hop): this(hop, listOf())
 

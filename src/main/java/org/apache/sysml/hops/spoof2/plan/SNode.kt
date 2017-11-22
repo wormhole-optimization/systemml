@@ -275,7 +275,10 @@ abstract class SNode(inputs: List<SNode>) {
 
     /** Create a copy of this SNode whose inputs point to the given new inputs, adding the new copy to the new inputs' parents.
      * The new copy has no parents. */
-    abstract fun shallowCopy(newInputs: List<SNode>): SNode
+    protected abstract fun _shallowCopy(newInputs: List<SNode>): SNode
+    /** Create a copy of this SNode whose inputs point to the given new inputs, adding the new copy to the new inputs' parents.
+     * The new copy has no parents. The new copy copies the visit status. */
+    fun shallowCopy(newInputs: List<SNode>): SNode = this._shallowCopy(newInputs).also { it.visited = visited }
 
     /**
      * Compare this SNode with another based on type equality (same class, same operator, etc.)

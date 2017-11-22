@@ -141,9 +141,9 @@ object Spoof2Compiler {
     }
 
     // dim -> <Input -> Dim>
-    private fun dimsToInputDims(root: SNode): List<ListMultimap<SNode, AU>> {
+    private fun dimsToInputDims(root: SNode): List<ListMultimap<Hop, AU>> {
         return root.schema.map { (n,_) ->
-            val mm = ArrayListMultimap.create<SNode, AU>()
+            val mm = ArrayListMultimap.create<Hop, AU>()
             when( n ) {
                 is AB -> mapToInputs(root, n, mm)
                 is AU -> mapToInputs(root, n, mm)
@@ -152,12 +152,12 @@ object Spoof2Compiler {
         }
     }
 
-    private fun mapToInputs(node: SNode, i: AU, mm: ListMultimap<SNode, AU>) {
+    private fun mapToInputs(node: SNode, i: AU, mm: ListMultimap<Hop, AU>) {
         when( node ) {
             is SNodeData -> {
                 if( node.isWrite ) mapToInputs(node.inputs[0], i, mm)
                 else if( node.isLiteral )
-                else mm.put(node, i)
+                else mm.put(node.hop, i)
             }
             is SNodeBind -> mapToInputs(node.input, i, mm)
             is SNodeUnbind -> {
@@ -166,11 +166,11 @@ object Spoof2Compiler {
                 else
                     mapToInputs(node.input, i, mm)
             }
-            is SNodeExt -> mm.put(node, i)
+            is SNodeExt -> mm.put(node.hop, i)
             else -> throw SNodeException(node, "don't know how to handle snode type $node")
         }
     }
-    private fun mapToInputs(node: SNode, n: AB, mm: ListMultimap<SNode, AU>) {
+    private fun mapToInputs(node: SNode, n: AB, mm: ListMultimap<Hop, AU>) {
         when( node ) {
             is SNodeBind -> {
                 if( n in node.bindings.values )
@@ -236,7 +236,7 @@ object Spoof2Compiler {
 //        if (LOG.isTraceEnabled)
 //            LOG.trace("Explain after initial SPlan construction: " + Explain.explainSPlan(sroots))
 
-        val result2NormalForm = SPlan2NormalForm.rewriteSPlan(sroots)
+        val result2NormalForm = SPlan2NormalForm_InsertStyle.rewriteSPlan(sroots) // SPlan2NormalForm.rewriteSPlan(sroots)
         sroots = result2NormalForm.replace(sroots)
 
         if( result2NormalForm != SPlanRewriter.RewriterResult.NoChange ) {
@@ -294,10 +294,10 @@ object Spoof2Compiler {
                             }
                             else -> throw SNodeException(sroots[idx], "Failed to distinguish orientation for old Hop root ${roots[idx].hopID} and new Hop root ${root2.hopID}; " +
                                     "baseInputs have different unique inputs but neither equal to base inputs 2:" +
-                                    "\n\t0: ${biu[0].map { (k,_) -> k }.toSet().joinToString { "(${it.id})$it" }}" +
-                                    "\n\t1: ${biu[1].map { (k,_) -> k }.toSet().joinToString { "(${it.id})$it" }}" +
-                                    "\n\t0: ${biu2[0].map { (k,_) -> k }.toSet().joinToString { "(${it.id})$it" }}" +
-                                    "\n\t1: ${biu2[0].map { (k,_) -> k }.toSet().joinToString { "(${it.id})$it" }}")
+                                    "\n\t0: ${biu[0].map { (k,_) -> k }.toSet().joinToString { "(${it.hopID})$it" }}" +
+                                    "\n\t1: ${biu[1].map { (k,_) -> k }.toSet().joinToString { "(${it.hopID})$it" }}" +
+                                    "\n\t0: ${biu2[0].map { (k,_) -> k }.toSet().joinToString { "(${it.hopID})$it" }}" +
+                                    "\n\t1: ${biu2[0].map { (k,_) -> k }.toSet().joinToString { "(${it.hopID})$it" }}")
                         }
                     } else {
                         // for each unique base input, if the number of base inputs is different between dimensions,
