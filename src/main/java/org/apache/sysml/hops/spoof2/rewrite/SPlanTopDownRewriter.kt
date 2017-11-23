@@ -5,7 +5,7 @@ import org.apache.sysml.hops.spoof2.plan.SPlanValidator
 import org.apache.sysml.utils.Explain
 
 object SPlanTopDownRewriter {
-    private const val CHECK_DURING_RECUSION = false
+    private const val CHECK_DURING_RECURSION = false
     private const val EXPLAIN_DURING_RECURSION = false
 
     fun rewriteDown(roots: List<SNode>, vararg rules: SPlanRewriteRule): Boolean =
@@ -33,7 +33,7 @@ object SPlanTopDownRewriter {
                     is SPlanRewriteRule.RewriteResult.NewNode -> {
                         child = result.newNode
                         changed = true
-                        if( CHECK_DURING_RECUSION )
+                        if(CHECK_DURING_RECURSION)
                             SPlanValidator.validateSPlan(allRoots, false)
                         if( EXPLAIN_DURING_RECURSION && SPlanRewriteRule.LOG.isTraceEnabled )
                             SPlanRewriteRule.LOG.trace(Explain.explainSPlan(allRoots, true))

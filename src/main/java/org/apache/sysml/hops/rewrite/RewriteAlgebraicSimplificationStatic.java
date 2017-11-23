@@ -706,7 +706,9 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 					if( X != null ){ //rewrite '+/- binary'
 						LiteralOp literal = new LiteralOp(1);
 						BinaryOp plus = HopRewriteUtils.createBinary(literal, Y, bop.getOp());
-						BinaryOp mult = HopRewriteUtils.createBinary(plus, X, OpOp2.MULT);
+						BinaryOp mult = plus.getDim1() == 1 || plus.getDim2() == 1 ? // matrix * vector must have vector on right
+								HopRewriteUtils.createBinary(X, plus, OpOp2.MULT) :
+								HopRewriteUtils.createBinary(plus, X, OpOp2.MULT);
 						HopRewriteUtils.replaceChildReference(parent, hi, mult, pos);
 						HopRewriteUtils.cleanupUnreferenced(hi, right);
 						hi = mult;

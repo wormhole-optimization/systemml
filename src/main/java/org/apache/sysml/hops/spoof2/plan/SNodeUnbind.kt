@@ -31,7 +31,6 @@ class SNodeUnbind(
 
     override fun refreshSchema() {
         val si = inputs[0].schema
-        this.check( unbindings.values.all { it in si } ) {"attempt to unbind $unbindings on input schema $si"}
         schema.setTo(si)
         unbindings.forEach { d, b -> schema.replaceKey(b, d) }
     }

@@ -253,8 +253,8 @@ object Spoof2Compiler {
             dimsToInputDims(sroot)
         }
         if( LOG.isTraceEnabled ) {
-            LOG.trace("Base input map: ${baseInputs.mapIndexed {i, bil -> "\nr$i\t${bil.mapIndexed { d, bi -> "d$d: ${bi.entries().groupBy { it.key }.map { "(${it.key.hopID})${it.key.opString}}=${it.value.map { it.value }}" }.joinToString()}"}.joinToString("\n\t")}"}}" +
-                      "\nBase input map2: ${baseInputs2.mapIndexed {i, bil -> "\nr$i\t${bil.mapIndexed { d, bi -> "d$d: ${bi.entries().groupBy { it.key }.map { "(${it.key.hopID})${it.key.opString}}=${it.value.map { it.value }}" }.joinToString()}"}.joinToString("\n\t")}"}}")
+            LOG.trace("Base input map: ${baseInputs.mapIndexed {i, bil -> "\nr$i\t${bil.mapIndexed { d, bi -> "d$d: ${bi.entries().groupBy { it.key }.map { "(${it.key.hopID})${it.key.opString}=${it.value.map { it.value }}" }.joinToString()}"}.joinToString("\n\t")}"}}" +
+                      "\nBase input map2: ${baseInputs2.mapIndexed {i, bil -> "\nr$i\t${bil.mapIndexed { d, bi -> "d$d: ${bi.entries().groupBy { it.key }.map { "(${it.key.hopID})${it.key.opString}=${it.value.map { it.value }}" }.joinToString()}"}.joinToString("\n\t")}"}}")
         }
 
 

@@ -1,6 +1,5 @@
 package org.apache.sysml.hops.spoof2.rewrite
 
-import org.apache.commons.logging.LogFactory
 import org.apache.log4j.Level
 import org.apache.log4j.Logger
 import org.apache.sysml.conf.DMLConfig
@@ -15,7 +14,7 @@ import java.util.*
 object SPlanBottomUpRewriter {
     /** Whether to invoke the SPlanValidator after every rewrite pass. */
     private const val CHECK = true
-    private const val CHECK_DURING_RECUSION = false
+    private const val CHECK_DURING_RECURSION = false
     //private val LOG = LogFactory.getLog(SPlanBottomUpRewriter::class.java)!!
 
     //internal configuration flags
@@ -101,7 +100,7 @@ object SPlanBottomUpRewriter {
                 is SPlanRewriteRule.RewriteResult.NewNode -> {
                     node = result.newNode
                     changed = result
-                    if( CHECK_DURING_RECUSION )
+                    if( CHECK_DURING_RECURSION )
                         SPlanValidator.validateSPlan(allRoots, false)
                 }
             }

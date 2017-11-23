@@ -23,11 +23,13 @@ object SPlanValidator {
         if (roots == null)
             return
         try {
-            SNode.resetVisited(roots)
+            if (checkVisit)
+                SNode.resetVisited(roots)
             val state = ValidatorState(checkVisit)
             for (node in roots)
                 rValidateNode(node, state)
-            SNode.resetVisited(roots)
+            if (checkVisit)
+                SNode.resetVisited(roots)
             checkAllRootsAreReal(roots, state)
         } catch (ex: SNodeException) {
             try {
@@ -42,10 +44,12 @@ object SPlanValidator {
         if (root == null)
             return
         try {
-            root.resetVisited()
+            if (checkVisit)
+                root.resetVisited()
             val state = ValidatorState(checkVisit)
             rValidateNode(root, state)
-            root.resetVisited()
+            if (checkVisit)
+                root.resetVisited()
             checkAllRootsAreReal(listOf(root), state)
         } catch (ex: SNodeException) {
             try {
@@ -132,8 +136,15 @@ object SPlanValidator {
                     node.check(s == node.inputs[0].schema[n]) { "shape changed in aggregation schema" }
             }
         }
+        if( node is SNodeUnbind )
+            node.check(node.unbindings.values.all { it in node.input.schema }) {"attempt to unbind ${node.unbindings} on input schema ${node.input.schema}"}
 
         if( state.checkVisit )
             node.visited = true
+    }
+
+    fun checkAtBelowVisited(node: SNode) {
+        node.check(node.visited) {"is not visited"}
+        node.inputs.forEach { checkAtBelowVisited(it) }
     }
 }

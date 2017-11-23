@@ -125,7 +125,7 @@ class Schema private constructor(
     }
     fun replaceKey(aOld: Attribute, aNew: Attribute): Boolean {
         val changed = if( aOld != aNew ) {
-            val shape = remove(aOld) ?: throw IllegalArgumentException("old attribute $aOld is not present in this schema")
+            val shape = remove(aOld) ?: -1 //throw IllegalArgumentException("old attribute $aOld is not present in this schema")
             put(aNew, shape)
             true
         } else false

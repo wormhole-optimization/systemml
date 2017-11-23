@@ -24,7 +24,7 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
     /** Whether to invoke the SPlanValidator after every rewrite pass. */
     private const val CHECK = true
     private val LOG = SPlanRewriteRule.LOG
-    private const val CHECK_DURING_RECUSION = false
+    private const val CHECK_DURING_RECURSION = false
     private const val EXPLAIN_DURING_RECURSION = false
     private val rewritePullAggAboveMult = org.apache.sysml.hops.spoof2.rewrite.RewritePullAggAboveMult()
 
@@ -48,7 +48,7 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
             return SPlanRewriter.RewriterResult.NoChange
         } else {
             if (LOG.isTraceEnabled)
-                LOG.trace("'SPlan2NormalForm_InsertStyle' rewrites yield: " + Explain.explainSPlan(roots))
+                LOG.trace("'SPlan2NormalForm_InsertStyle' rewrites yield: " + Explain.explainSPlan(roots, true))
             return SPlanRewriter.RewriterResult.NewRoots(roots)
         }
     }
@@ -60,9 +60,26 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
 //        // wait until all children processed
 //        if( !node.inputs.all { it.id in resultMap } )
 //            return false
-        if (node.visited)
+        if (node.visited) {
+//            SPlanValidator.checkAtBelowVisited(node)
             return false
-        var changed = node.inputs.toSet().fold(false) { acc, input -> toNormalForm(input, allRoots) || acc }
+        }
+//        if( LOG.isTraceEnabled )
+//            LOG.trace("enter children of (${node.id} $node ${node.schema}")
+        var changed = false
+        for (i in node.inputs.indices) {
+            changed = toNormalForm(node.inputs[i], allRoots)
+        }
+//        if( LOG.isTraceEnabled )
+//            LOG.trace("at (${node.id}) $node ${node.schema}")
+//        node.visited = true
+//        try {
+//            SPlanValidator.checkAtBelowVisited(node)
+//        } catch (e: SNodeException) {
+//            LOG.error("\n" + Explain.explainSPlan(allRoots, true), e)
+//            throw RuntimeException("at (${node.id}) $node ${node.schema}", e)
+//        }
+//        node.visited = false
         // inductive hypothesis: each input is in normal form
 
         // Split input CSEs only if we would modify them. Otherwise allow inputs to have multiple parents.
@@ -94,11 +111,12 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
             else -> false
         }
         node.visited = true
+//        SPlanValidator.checkAtBelowVisited(node)
 
-        if (CHECK_DURING_RECUSION && newChanged)
-            SPlanValidator.validateSPlan(allRoots, false)
         if (EXPLAIN_DURING_RECURSION && LOG.isTraceEnabled && newChanged)
             LOG.trace(Explain.explainSPlan(allRoots, true))
+        if (CHECK_DURING_RECURSION && newChanged)
+            SPlanValidator.validateSPlan(allRoots, false)
 
         return changed || newChanged && node !is SNodeBind && node !is SNodeUnbind // bind/unbind changes are not real changes
     }
@@ -219,7 +237,12 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
         // 1st pass gathers the node ids that are involved inside the renaming.
         // 2nd pass executes the renaming. As it does so, it splits away foreign parents not involved in the renaming.
         val seen = allNodesAtBelowToBind(nodeParent, renaming.keys)
-        renameDownSplitCse(node, renaming, seen)
+        val bindsToRename = mutableSetOf<SNodeBind>()
+        renameDownSplitCse(node, renaming, seen, bindsToRename)
+        bindsToRename.forEach {
+            it.bindings.mapValuesInPlace { renaming[it] ?: it }
+            it.refreshSchemasUpward()
+        }
     }
 
     private fun allNodesAtBelowToBind(node: SNode, toBound: Set<AB>): Set<Id> = mutableSetOf<Id>().also { allNodesAtBelowToBind(node, toBound, it) }
@@ -235,29 +258,27 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
             node.inputs.forEach { allNodesAtBelowToBind(it, toBound, seen) }
     }
 
-    private fun renameDownSplitCse(node: SNode, renaming: Map<AB, AB>, seen: Set<Id>) {
+    private fun renameDownSplitCse(node: SNode, renaming: Map<AB, AB>, seen: Set<Id>, bindsToRename: MutableSet<SNodeBind>) {
         assert(renaming.isNotEmpty())
         // if no names to be renamed in schema, then stop
-        if( node.schema.names.disjoint(renaming.keys) )
-            return
+//        if( node.schema.names.disjoint(renaming.keys) )
+//            return
         // split CSEs from parents not inside the renaming.
         node.parents.toSet().filter { it.id !in seen }.forEach { parent ->
             splitCse(parent, node) // removes parent
         }
         // Rename
         when( node ) {
-//            is SNodeAggregate -> node.aggs.replaceKeys { renaming[it] ?: it }
             is SNodeBind -> { // stop condition
-                node.bindings.mapValuesInPlace { renaming[it] ?: it }
                 val newRenaming = renaming.filterKeys { it !in node.bindings.values }
-                if( newRenaming.isNotEmpty() )
-                    renameDownSplitCse(node.input, newRenaming, seen)
-                node.refreshSchema()
+//                node.bindings.mapValuesInPlace { renaming[it] ?: it }
+                bindsToRename += node
+                if( newRenaming.isNotEmpty() && !node.input.schema.names.disjoint(newRenaming.keys) )
+                    renameDownSplitCse(node.input, newRenaming, seen, bindsToRename)
                 return
             }
         }
-        node.inputs.forEach { renameDownSplitCse(it, renaming, seen) }
-        node.refreshSchema()
+        node.inputs.toSet().filter { !it.schema.names.disjoint(renaming.keys) }.forEach { renameDownSplitCse(it, renaming, seen, bindsToRename) }
     }
 
     private fun insertMult(mult: SNodeNary): Boolean {
