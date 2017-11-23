@@ -33,6 +33,7 @@ import org.apache.sysml.hops.LiteralOp;
 import org.apache.sysml.hops.ParameterizedBuiltinOp;
 import org.apache.sysml.hops.TernaryOp;
 import org.apache.sysml.hops.UnaryOp;
+import org.apache.sysml.hops.codegen.SpoofCompiler;
 import org.apache.sysml.hops.codegen.cplan.CNode;
 import org.apache.sysml.hops.codegen.cplan.CNodeBinary;
 import org.apache.sysml.hops.codegen.cplan.CNodeBinary.BinType;
@@ -50,7 +51,6 @@ import org.apache.sysml.hops.Hop.Direction;
 import org.apache.sysml.hops.Hop.OpOp1;
 import org.apache.sysml.hops.Hop.OpOp2;
 import org.apache.sysml.parser.Expression.DataType;
-import org.apache.sysml.runtime.codegen.SpoofRowwise.RowType;
 import org.apache.sysml.runtime.matrix.data.LibMatrixMult;
 import org.apache.sysml.runtime.matrix.data.Pair;
 
@@ -69,8 +69,8 @@ public class TemplateRow extends TemplateBase
 		super(TemplateType.ROW);
 	}
 	
-	public TemplateRow(boolean closed) {
-		super(TemplateType.ROW, closed);
+	public TemplateRow(CloseType ctype) {
+		super(TemplateType.ROW, ctype);
 	}
 	
 	@Override
@@ -83,7 +83,8 @@ public class TemplateRow extends TemplateBase
 				&& hop.getInput().get(0).getDim1()>1 && hop.getInput().get(0).getDim2()>1)
 			|| (hop instanceof AggBinaryOp && hop.dimsKnown() && LibMatrixMult.isSkinnyRightHandSide(
 				hop.getInput().get(0).getDim1(), hop.getInput().get(0).getDim2(), //MM
-				hop.getInput().get(1).getDim1(), hop.getInput().get(1).getDim2())
+				hop.getInput().get(1).getDim1(), hop.getInput().get(1).getDim2(),
+				SpoofCompiler.PLAN_SEL_POLICY.isCostBased())
 				&& hop.getInput().get(0).getDim1()>1 && hop.getInput().get(0).getDim2()>1
 				&& !HopRewriteUtils.isOuterProductLikeMM(hop))
 			|| (HopRewriteUtils.isTransposeOperation(hop) && hop.getParent().size()==1
@@ -93,7 +94,8 @@ public class TemplateRow extends TemplateBase
 			|| (hop instanceof AggUnaryOp && ((AggUnaryOp)hop).getDirection()!=Direction.RowCol 
 				&& hop.getInput().get(0).getDim1()>1 && hop.getInput().get(0).getDim2()>1
 				&& HopRewriteUtils.isAggUnaryOp(hop, SUPPORTED_ROW_AGG))
-			|| (hop instanceof IndexingOp && HopRewriteUtils.isColumnRangeIndexing((IndexingOp)hop));
+			|| (hop instanceof IndexingOp && hop.getInput().get(0).getDim2() > 0
+				&& HopRewriteUtils.isColumnRangeIndexing((IndexingOp)hop));
 	}
 
 	@Override
@@ -113,7 +115,8 @@ public class TemplateRow extends TemplateBase
 			|| (hop instanceof AggBinaryOp && hop.dimsKnown() && isFuseSkinnyMatrixMult(hop) //MM
 				&& HopRewriteUtils.isTransposeOperation(hop.getInput().get(0))
 				&& hop.getInput().get(0).getDim1()>1 && hop.getInput().get(0).getDim2()>1)
-			|| isPartOfValidCumAggChain(hop) ); //cum* with transpose
+			|| isPartOfValidCumAggChain(hop) //cum* with transpose
+			|| isPartOfValidTransposeMMChain(hop)); //t(f(X))%*%X
 	}
 
 	@Override
@@ -136,8 +139,10 @@ public class TemplateRow extends TemplateBase
 		if(    (hop instanceof AggUnaryOp && ((AggUnaryOp)hop).getDirection()!=Direction.Row)
 			|| (hop instanceof AggBinaryOp && HopRewriteUtils.isTransposeOperation(hop.getInput().get(0))))
 			return CloseType.CLOSED_VALID;
+		else if( HopRewriteUtils.isTransposeOperation(hop) )
+			return CloseType.OPEN_INVALID;
 		else
-			return CloseType.OPEN;
+			return CloseType.OPEN_VALID;
 	}
 	
 	private static boolean isValidBinaryOperation(Hop hop) {
@@ -150,8 +155,9 @@ public class TemplateRow extends TemplateBase
 		//check for fusable but not opening matrix multiply (vect_outer-mult)
 		Hop in1 = hop.getInput().get(0); //transpose
 		Hop in2 = hop.getInput().get(1);
-		return LibMatrixMult.isSkinnyRightHandSide(in1.getDim2(), in1.getDim1(), hop.getDim1(), hop.getDim2())
-			|| LibMatrixMult.isSkinnyRightHandSide(in2.getDim1(), in2.getDim2(), hop.getDim2(), hop.getDim1());
+		boolean inclSizes = SpoofCompiler.PLAN_SEL_POLICY.isCostBased();
+		return LibMatrixMult.isSkinnyRightHandSide(in1.getDim2(), in1.getDim1(), hop.getDim1(), hop.getDim2(), inclSizes)
+			|| LibMatrixMult.isSkinnyRightHandSide(in2.getDim1(), in2.getDim2(), hop.getDim2(), hop.getDim1(), inclSizes);
 	}
 	
 	private static boolean isPartOfValidCumAggChain(Hop hop) {
@@ -170,6 +176,22 @@ public class TemplateRow extends TemplateBase
 				&& HopRewriteUtils.isTransposeOperation(hop.getInput().get(0))
 				&& hop.getInput().get(0).getParent().size()==1);
 		}
+	}
+	
+	private static boolean isPartOfValidTransposeMMChain(Hop hop) {
+		//check if transpose is part of t(f(X))%*%X chain w/ single consumer
+		//for now: we restrict this to tall and skinny matrix multiplications
+		return HopRewriteUtils.isTransposeOperation(hop)
+			&& hop.getParent().size() == 1 
+			&& hop.dimsKnown() && hop.getParent().get(0).dimsKnown()
+			&& hop.getDim2() > 128 * hop.getParent().get(0).getDim1()
+			&& hop.getDim2() > 128 * hop.getParent().get(0).getDim2()
+			&& HopRewriteUtils.isMatrixMultiply(hop.getParent().get(0))
+			&& isFuseSkinnyMatrixMult(hop.getParent().get(0))
+			&& ((hop.getParent().get(0).getInput().get(0) == hop && 
+				HopRewriteUtils.containsInput(hop, hop.getParent().get(0).getInput().get(1)))
+				||(hop.getParent().get(0).getInput().get(1) == hop && 
+				HopRewriteUtils.containsInput(hop, hop.getParent().get(0).getInput().get(0))));
 	}
 
 	@Override
@@ -196,7 +218,7 @@ public class TemplateRow extends TemplateBase
 		CNodeRow tpl = new CNodeRow(inputs, output);
 		tpl.setRowType(TemplateUtils.getRowType(hop, 
 			inHops2.get("X"), inHops2.get("B1")));
-		if( tpl.getRowType()==RowType.NO_AGG_CONST )
+		if( tpl.getRowType().isConstDim2(hop.getDim2()) )
 			tpl.setConstDim2(hop.getDim2());
 		tpl.setNumVectorIntermediates(TemplateUtils
 			.determineMinVectorIntermediates(output));
@@ -209,7 +231,7 @@ public class TemplateRow extends TemplateBase
 	}
 
 	private void rConstructCplan(Hop hop, CPlanMemoTable memo, HashMap<Long, CNode> tmp, HashSet<Hop> inHops, HashMap<String, Hop> inHops2, boolean compileLiterals) 
-	{	
+	{
 		//memoization for common subexpression elimination and to avoid redundant work 
 		if( tmp.containsKey(hop.getHopID()) )
 			return;
@@ -238,14 +260,14 @@ public class TemplateRow extends TemplateBase
 				else {
 					String opcode = "ROW_"+((AggUnaryOp)hop).getOp().name().toUpperCase()+"S";
 					out = new CNodeUnary(cdata1, UnaryType.valueOf(opcode));
-					if( cdata1 instanceof CNodeData && inHops2.isEmpty() )
+					if( cdata1 instanceof CNodeData && !inHops2.containsKey("X") )
 						inHops2.put("X", hop.getInput().get(0));
 				}
 			}
 			else if (((AggUnaryOp)hop).getDirection() == Direction.Col && ((AggUnaryOp)hop).getOp() == AggOp.SUM ) {
 				//vector add without temporary copy
 				if( cdata1 instanceof CNodeBinary && ((CNodeBinary)cdata1).getType().isVectorScalarPrimitive() )
-					out = new CNodeBinary(cdata1.getInput().get(0), cdata1.getInput().get(1), 
+					out = new CNodeBinary(cdata1.getInput().get(0), cdata1.getInput().get(1),
 							((CNodeBinary)cdata1).getType().getVectorAddPrimitive());
 				else	
 					out = cdata1;
@@ -264,18 +286,23 @@ public class TemplateRow extends TemplateBase
 			{
 				//correct input under transpose
 				cdata1 = TemplateUtils.skipTranspose(cdata1, hop.getInput().get(0), tmp, compileLiterals);
-				inHops.remove(hop.getInput().get(0)); 
-				inHops.add(hop.getInput().get(0).getInput().get(0));
+				inHops.remove(hop.getInput().get(0));
+				if( cdata1 instanceof CNodeData )
+					inHops.add(hop.getInput().get(0).getInput().get(0));
 				
 				//note: vectorMultAdd applicable to vector-scalar, and vector-vector
 				if( hop.getInput().get(1).getDim2() == 1 )
 					out = new CNodeBinary(cdata1, cdata2, BinType.VECT_MULT_ADD);
 				else {
 					out = new CNodeBinary(cdata1, cdata2, BinType.VECT_OUTERMULT_ADD);
-					if( !inHops2.containsKey("B1") )
+					if( !inHops2.containsKey("B1") ) { //incl modification of X for consistency
+						if( cdata1 instanceof CNodeData )
+							inHops2.put("X", hop.getInput().get(0).getInput().get(0));
 						inHops2.put("B1", hop.getInput().get(1));
+					}
 				}
-				inHops2.put("X", hop.getInput().get(0).getInput().get(0));
+				if( !inHops2.containsKey("X") )
+					inHops2.put("X", hop.getInput().get(0).getInput().get(0));
 			}
 			else
 			{
@@ -305,22 +332,22 @@ public class TemplateRow extends TemplateBase
 			CNode cdata1 = tmp.get(hop.getInput().get(0).getHopID());
 			
 			// if one input is a matrix then we need to do vector by scalar operations
-			if(hop.getInput().get(0).getDim1() > 1 && hop.getInput().get(0).getDim2() > 1 ) 
+			if(hop.getInput().get(0).getDim1() > 1 && hop.getInput().get(0).getDim2() > 1 
+				|| (!hop.dimsKnown() && cdata1.getDataType()==DataType.MATRIX ) ) 
 			{
 				if( HopRewriteUtils.isUnary(hop, SUPPORTED_VECT_UNARY) ) {
 					String opname = "VECT_"+((UnaryOp)hop).getOp().name();
 					out = new CNodeUnary(cdata1, UnaryType.valueOf(opname));
-					if( cdata1 instanceof CNodeData && inHops2.isEmpty() )
+					if( cdata1 instanceof CNodeData && !inHops2.containsKey("X") )
 						inHops2.put("X", hop.getInput().get(0));
 				}
 				else 
 					throw new RuntimeException("Unsupported unary matrix "
-							+ "operation: " + ((UnaryOp)hop).getOp().name());
+						+ "operation: " + ((UnaryOp)hop).getOp().name());
 			}
 			else //general scalar case
 			{
 				cdata1 = TemplateUtils.wrapLookupIfNecessary(cdata1, hop.getInput().get(0));
-				
 				String primitiveOpName = ((UnaryOp)hop).getOp().toString();
 				out = new CNodeUnary(cdata1, UnaryType.valueOf(primitiveOpName));
 			}
@@ -340,7 +367,7 @@ public class TemplateRow extends TemplateBase
 				cdata2 = TemplateUtils.wrapLookupIfNecessary(cdata2, hop.getInput().get(1));
 			}
 			out = new CNodeBinary(cdata1, cdata2, BinType.VECT_CBIND);
-			if( cdata1 instanceof CNodeData )
+			if( cdata1 instanceof CNodeData && !inHops2.containsKey("X") )
 				inHops2.put("X", hop.getInput().get(0));
 		}
 		else if(hop instanceof BinaryOp)
@@ -350,7 +377,10 @@ public class TemplateRow extends TemplateBase
 			
 			// if one input is a matrix then we need to do vector by scalar operations
 			if( (hop.getInput().get(0).getDim1() > 1 && hop.getInput().get(0).getDim2() > 1)
-				|| (hop.getInput().get(1).getDim1() > 1 && hop.getInput().get(1).getDim2() > 1))
+				|| (hop.getInput().get(1).getDim1() > 1 && hop.getInput().get(1).getDim2() > 1)
+				|| (!(hop.dimsKnown() && hop.getInput().get(0).dimsKnown() && hop.getInput().get(1).dimsKnown())
+					&& (hop.getDim2() != 1) //not a known vector output
+					&& (cdata1.getDataType().isMatrix() || cdata2.getDataType().isMatrix())))
 			{
 				if( HopRewriteUtils.isBinary(hop, SUPPORTED_VECT_BINARY) ) {
 					if( TemplateUtils.isMatrix(cdata1) && (TemplateUtils.isMatrix(cdata2) 
@@ -366,14 +396,14 @@ public class TemplateRow extends TemplateBase
 							cdata2 = new CNodeUnary(cdata2, UnaryType.LOOKUP_R);
 						out = new CNodeBinary(cdata1, cdata2, BinType.valueOf(opname));
 					}
-					if( cdata1 instanceof CNodeData && inHops2.isEmpty() 
+					if( cdata1 instanceof CNodeData && !inHops2.containsKey("X")
 						&& !(cdata1.getDataType()==DataType.SCALAR) ) {
 						inHops2.put("X", hop.getInput().get(0));
 					}
 				}
 				else 
 					throw new RuntimeException("Unsupported binary matrix "
-							+ "operation: " + ((BinaryOp)hop).getOp().name());
+						+ "operation: " + ((BinaryOp)hop).getOp().name());
 			}
 			else //one input is a vector/scalar other is a scalar
 			{
@@ -384,7 +414,7 @@ public class TemplateRow extends TemplateBase
 					|| (TemplateUtils.isColVector(hop.getInput().get(0)) && cdata2 instanceof CNodeData
 						&& hop.getInput().get(1).getDataType().isMatrix()))
 					cdata2 = new CNodeUnary(cdata2, UnaryType.LOOKUP_R);
-				out = new CNodeBinary(cdata1, cdata2, BinType.valueOf(primitiveOpName));	
+				out = new CNodeBinary(cdata1, cdata2, BinType.valueOf(primitiveOpName));
 			}
 		}
 		else if(hop instanceof TernaryOp) 
@@ -400,16 +430,16 @@ public class TemplateRow extends TemplateBase
 			
 			//construct ternary cnode, primitive operation derived from OpOp3
 			out = new CNodeTernary(cdata1, cdata2, cdata3, 
-					TernaryType.valueOf(top.getOp().toString()));
+				TernaryType.valueOf(top.getOp().toString()));
 		}
-		else if( hop instanceof ParameterizedBuiltinOp ) 
+		else if( hop instanceof ParameterizedBuiltinOp )
 		{
 			CNode cdata1 = tmp.get(((ParameterizedBuiltinOp)hop).getTargetHop().getHopID());
 			cdata1 = TemplateUtils.wrapLookupIfNecessary(cdata1, hop.getInput().get(0));
 			
 			CNode cdata2 = tmp.get(((ParameterizedBuiltinOp)hop).getParameterHop("pattern").getHopID());
 			CNode cdata3 = tmp.get(((ParameterizedBuiltinOp)hop).getParameterHop("replacement").getHopID());
-			TernaryType ttype = (cdata2.isLiteral() && cdata2.getVarname().equals("Double.NaN")) ? 
+			TernaryType ttype = (cdata2.isLiteral() && cdata2.getVarname().equals("Double.NaN")) ?
 					TernaryType.REPLACE_NAN : TernaryType.REPLACE;
 			out = new CNodeTernary(cdata1, cdata2, cdata3, ttype);
 		}
@@ -417,9 +447,9 @@ public class TemplateRow extends TemplateBase
 		{
 			CNode cdata1 = tmp.get(hop.getInput().get(0).getHopID());
 			out = new CNodeTernary(cdata1, 
-				TemplateUtils.createCNodeData(new LiteralOp(hop.getInput().get(0).getDim2()), true), 
+				TemplateUtils.createCNodeData(new LiteralOp(hop.getInput().get(0).getDim2()), true),
 				TemplateUtils.createCNodeData(hop.getInput().get(4), true),
-				(!hop.dimsKnown()||hop.getDim2()>1) ? TernaryType.LOOKUP_RVECT1 : TernaryType.LOOKUP_RC1);
+				(hop.getDim2() != 1) ? TernaryType.LOOKUP_RVECT1 : TernaryType.LOOKUP_RC1);
 		}
 		
 		if( out == null ) {
@@ -451,13 +481,13 @@ public class TemplateRow extends TemplateBase
 		
 		@Override
 		public int compare(Hop h1, Hop h2) {
-			long ncells1 = h1.isScalar() ? Long.MIN_VALUE : 
-				(h1==_X) ? Long.MAX_VALUE : (h1==_B1) ? Long.MAX_VALUE-1 : 
+			long ncells1 = h1.isScalar() ? Long.MIN_VALUE :
+				(h1==_X) ? Long.MAX_VALUE : (h1==_B1) ? Long.MAX_VALUE-1 :
 				h1.dimsKnown() ? h1.getLength() : Long.MAX_VALUE-2;
-			long ncells2 = h2.isScalar() ? Long.MIN_VALUE : 
-				(h2==_X) ? Long.MAX_VALUE : (h2==_B1) ? Long.MAX_VALUE-1 : 
+			long ncells2 = h2.isScalar() ? Long.MIN_VALUE :
+				(h2==_X) ? Long.MAX_VALUE : (h2==_B1) ? Long.MAX_VALUE-1 :
 				h2.dimsKnown() ? h2.getLength() : Long.MAX_VALUE-2;
-			return (ncells1 > ncells2) ? -1 : (ncells1 < ncells2) ? 1 : 0; 
+			return (ncells1 > ncells2) ? -1 : (ncells1 < ncells2) ? 1 : 0;
 		}
 	}
 }

@@ -42,6 +42,7 @@ import org.apache.sysml.hops.codegen.cplan.CNodeTernary;
 import org.apache.sysml.hops.codegen.cplan.CNodeUnary;
 import org.apache.sysml.hops.codegen.cplan.CNodeUnary.UnaryType;
 import org.apache.sysml.hops.codegen.template.CPlanMemoTable.MemoTableEntry;
+import org.apache.sysml.hops.codegen.template.TemplateBase.CloseType;
 import org.apache.sysml.hops.codegen.template.TemplateBase.TemplateType;
 import org.apache.sysml.hops.rewrite.HopRewriteUtils;
 import org.apache.sysml.hops.codegen.cplan.CNodeTernary.TernaryType;
@@ -143,27 +144,27 @@ public class TemplateUtils
 	}
 	
 	public static TemplateBase createTemplate(TemplateType type) {
-		return createTemplate(type, false);
+		return createTemplate(type, CloseType.OPEN_VALID);
 	}
 	
-	public static TemplateBase createTemplate(TemplateType type, boolean closed) {
+	public static TemplateBase createTemplate(TemplateType type, CloseType ctype) {
 		TemplateBase tpl = null;
 		switch( type ) {
-			case CELL: tpl = new TemplateCell(closed); break;
-			case ROW: tpl = new TemplateRow(closed); break;
-			case MAGG: tpl = new TemplateMultiAgg(closed); break;
-			case OUTER: tpl = new TemplateOuterProduct(closed); break;
+			case CELL: tpl = new TemplateCell(ctype); break;
+			case ROW: tpl = new TemplateRow(ctype); break;
+			case MAGG: tpl = new TemplateMultiAgg(ctype); break;
+			case OUTER: tpl = new TemplateOuterProduct(ctype); break;
 		}
 		return tpl;
 	}
 	
-	public static TemplateBase[] createCompatibleTemplates(TemplateType type, boolean closed) {
+	public static TemplateBase[] createCompatibleTemplates(TemplateType type, CloseType ctype) {
 		TemplateBase[] tpl = null;
 		switch( type ) {
-			case CELL: tpl = new TemplateBase[]{new TemplateCell(closed), new TemplateRow(closed)}; break;
-			case ROW: tpl = new TemplateBase[]{new TemplateRow(closed)}; break;
-			case MAGG: tpl = new TemplateBase[]{new TemplateMultiAgg(closed)}; break;
-			case OUTER: tpl = new TemplateBase[]{new TemplateOuterProduct(closed)}; break;
+			case CELL: tpl = new TemplateBase[]{new TemplateCell(ctype), new TemplateRow(ctype)}; break;
+			case ROW: tpl = new TemplateBase[]{new TemplateRow(ctype)}; break;
+			case MAGG: tpl = new TemplateBase[]{new TemplateMultiAgg(ctype)}; break;
+			case OUTER: tpl = new TemplateBase[]{new TemplateOuterProduct(ctype)}; break;
 		}
 		return tpl;
 	}
@@ -183,7 +184,7 @@ public class TemplateUtils
 	public static RowType getRowType(Hop output, Hop... inputs) {
 		Hop X = inputs[0];
 		Hop B1 = (inputs.length>1) ? inputs[1] : null;
-		if( (X!=null && HopRewriteUtils.isEqualSize(output, X)) || X==null )
+		if( (X!=null && HopRewriteUtils.isEqualSize(output, X)) || X==null || !X.dimsKnown() )
 			return RowType.NO_AGG;
 		else if( ((B1!=null && output.getDim1()==X.getDim1() && output.getDim2()==B1.getDim2())
 			|| (output instanceof IndexingOp && HopRewriteUtils.isColumnRangeIndexing((IndexingOp)output)))
@@ -208,6 +209,8 @@ public class TemplateUtils
 			return RowType.COL_AGG_B1R;
 		else if( X.getDim1() == output.getDim1() && X.getDim2() != output.getDim2() )
 			return RowType.NO_AGG_CONST;
+		else if( output.getDim1() == 1 && X.getDim2() != output.getDim2() )
+			return RowType.COL_AGG_CONST;
 		else
 			throw new RuntimeException("Unknown row type for hop "+output.getHopID()+".");
 	}
@@ -311,7 +314,8 @@ public class TemplateUtils
 	public static boolean hasSingleOperation(CNodeTpl tpl) {
 		CNode output = tpl.getOutput();
 		return ((output instanceof CNodeUnary 
-				&& !TemplateUtils.isUnary(output, UnaryType.EXP, UnaryType.LOG)) 
+				&& !TemplateUtils.isUnary(output, 
+					UnaryType.EXP, UnaryType.LOG, UnaryType.ROW_COUNTNNZS)) 
 			|| (output instanceof CNodeBinary
 				&& !TemplateUtils.isBinary(output, BinType.VECT_OUTERMULT_ADD))) 
 			&& hasOnlyDataNodeOrLookupInputs(output);

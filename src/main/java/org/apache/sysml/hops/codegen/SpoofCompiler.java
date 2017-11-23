@@ -59,6 +59,7 @@ import org.apache.sysml.hops.codegen.template.CPlanCSERewriter;
 import org.apache.sysml.hops.codegen.template.CPlanMemoTable;
 import org.apache.sysml.hops.codegen.template.CPlanMemoTable.MemoTableEntry;
 import org.apache.sysml.hops.codegen.template.CPlanMemoTable.MemoTableEntrySet;
+import org.apache.sysml.hops.codegen.template.CPlanOpRewriter;
 import org.apache.sysml.hops.codegen.template.TemplateUtils;
 import org.apache.sysml.hops.recompile.RecompileStatus;
 import org.apache.sysml.hops.recompile.Recompiler;
@@ -135,6 +136,10 @@ public class SpoofCompiler
 		public boolean isHeuristic() {
 			return this == FUSE_ALL
 				|| this == FUSE_NO_REDUNDANCY;
+		}
+		public boolean isCostBased() {
+			return this == FUSE_COST_BASED_V2
+				|| this == FUSE_COST_BASED;
 		}
 	}
 
@@ -235,7 +240,7 @@ public class SpoofCompiler
 		}
 		else //generic (last-level)
 		{
-			current.set_hops( generateCodeFromHopDAGs(current.get_hops()) );
+			current.setHops( generateCodeFromHopDAGs(current.getHops()) );
 			current.updateRecompilationFlag();
 		}
 	}
@@ -286,7 +291,7 @@ public class SpoofCompiler
 		else //generic (last-level)
 		{
 			StatementBlock sb = current.getStatementBlock();
-			current.setInstructions( generateCodeFromHopDAGsToInst(sb, sb.get_hops()) );
+			current.setInstructions( generateCodeFromHopDAGsToInst(sb, sb.getHops()) );
 		}
 	}
 
@@ -396,14 +401,14 @@ public class SpoofCompiler
 					
 					//explain debug output cplans or generated source code
 					if( LOG.isTraceEnabled() || DMLScript.EXPLAIN.isHopsType(recompile) ) {
-						LOG.info("Codegen EXPLAIN (generated cplan for HopID: " 
-							+ cplan.getKey() + ", line "+tmp.getValue().getBeginLine() + "):");
+						LOG.info("Codegen EXPLAIN (generated cplan for HopID: " + cplan.getKey() + 
+							", line "+tmp.getValue().getBeginLine() + ", hash="+tmp.getValue().hashCode()+"):");
 						LOG.info(tmp.getValue().getClassname()
 							+ Explain.explainCPlan(cplan.getValue().getValue()));
 					}
 					if( LOG.isTraceEnabled() || DMLScript.EXPLAIN.isRuntimeType(recompile) ) {
-						LOG.info("Codegen EXPLAIN (generated code for HopID: "
-							+ cplan.getKey() + ", line "+tmp.getValue().getBeginLine() + "):");
+						LOG.info("Codegen EXPLAIN (generated code for HopID: " + cplan.getKey() + 
+							", line "+tmp.getValue().getBeginLine() + ", hash="+tmp.getValue().hashCode()+"):");
 						LOG.info(src);
 					}
 					
@@ -535,8 +540,7 @@ public class SpoofCompiler
 				CloseType ccode = tpl.close(hop);
 				if( ccode == CloseType.CLOSED_INVALID )
 					iter.remove();
-				else if( ccode == CloseType.CLOSED_VALID )
-					me.closed = true;
+				me.ctype = ccode;
 			}
 		}
 		
@@ -643,7 +647,7 @@ public class SpoofCompiler
 				for( int i=0; i<roots.size(); i++ ) {
 					Hop hnewi = (roots.get(i) instanceof AggUnaryOp) ? 
 						HopRewriteUtils.createScalarIndexing(hnew, 1, i+1) :
-						HopRewriteUtils.createMatrixIndexing(hnew, 1, i+1);
+						HopRewriteUtils.createIndexingOp(hnew, 1, i+1);
 					HopRewriteUtils.rewireAllParentChildReferences(roots.get(i), hnewi);
 				}
 			}
@@ -651,7 +655,8 @@ public class SpoofCompiler
 				HopRewriteUtils.setOutputParametersForScalar(hnew);
 				hnew = HopRewriteUtils.createUnary(hnew, OpOp1.CAST_AS_MATRIX);
 			}
-			else if( tmpCNode instanceof CNodeRow && ((CNodeRow)tmpCNode).getRowType()==RowType.NO_AGG_CONST )
+			else if( tmpCNode instanceof CNodeRow && (((CNodeRow)tmpCNode).getRowType()==RowType.NO_AGG_CONST
+				|| ((CNodeRow)tmpCNode).getRowType()==RowType.COL_AGG_CONST) )
 				((SpoofFusedOp)hnew).setConstDim2(((CNodeRow)tmpCNode).getConstDim2());
 			
 			if( !(tmpCNode instanceof CNodeMultiAgg) )
@@ -678,13 +683,15 @@ public class SpoofCompiler
 	private static HashMap<Long, Pair<Hop[],CNodeTpl>> cleanupCPlans(CPlanMemoTable memo, HashMap<Long, Pair<Hop[],CNodeTpl>> cplans) 
 	{
 		HashMap<Long, Pair<Hop[],CNodeTpl>> cplans2 = new HashMap<>();
+		CPlanOpRewriter rewriter = new CPlanOpRewriter();
 		CPlanCSERewriter cse = new CPlanCSERewriter();
 		
 		for( Entry<Long, Pair<Hop[],CNodeTpl>> e : cplans.entrySet() ) {
 			CNodeTpl tpl = e.getValue().getValue();
 			Hop[] inHops = e.getValue().getKey();
 			
-			//perform common subexpression elimination
+			//perform simplifications and cse rewrites
+			tpl = rewriter.simplifyCPlan(tpl);
 			tpl = cse.eliminateCommonSubexpressions(tpl);
 			
 			//update input hops (order-preserving)
@@ -730,17 +737,19 @@ public class SpoofCompiler
 						LOG.trace("Removed invalid row cplan w/o agg on column vector.");
 				}
 				else if( OptimizerUtils.isSparkExecutionMode() ) {
+					Hop hop = memo.getHopRefs().get(e.getKey());
 					boolean isSpark = DMLScript.rtplatform == RUNTIME_PLATFORM.SPARK
-						|| OptimizerUtils.getTotalMemEstimate(inHops, memo.getHopRefs().get(e.getKey()))
+						|| OptimizerUtils.getTotalMemEstimate(inHops, hop, true)
 							> OptimizerUtils.getLocalMemBudget();
-					boolean invalidNcol = false;
+					boolean invalidNcol = hop.getDataType().isMatrix() && (HopRewriteUtils.isTransposeOperation(hop) ?
+						hop.getDim1() > hop.getRowsInBlock() : hop.getDim2() > hop.getColsInBlock());
 					for( Hop in : inHops )
 						invalidNcol |= (in.getDataType().isMatrix() 
 							&& in.getDim2() > in.getColsInBlock());
 					if( isSpark && invalidNcol ) {
 						cplans2.remove(e.getKey());
 						if( LOG.isTraceEnabled() )
-							LOG.trace("Removed invalid row cplan w/ ncol>ncolpb.");		
+							LOG.trace("Removed invalid row cplan w/ ncol>ncolpb.");
 					}
 				}
 			}

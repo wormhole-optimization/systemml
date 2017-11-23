@@ -20,7 +20,6 @@
 package org.apache.sysml.runtime.instructions.cp;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -28,83 +27,75 @@ import org.apache.sysml.api.DMLScript;
 import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.controlprogram.context.ExecutionContext;
-import org.apache.sysml.runtime.functionobjects.SwapIndex;
+import org.apache.sysml.runtime.functionobjects.KahanPlus;
 import org.apache.sysml.runtime.instructions.InstructionUtils;
 import org.apache.sysml.runtime.matrix.data.ConvolutionParameters;
 import org.apache.sysml.runtime.matrix.data.LibMatrixDNN;
 import org.apache.sysml.runtime.matrix.data.LibMatrixNative;
 import org.apache.sysml.runtime.matrix.data.MatrixBlock;
-import org.apache.sysml.runtime.matrix.operators.ReorgOperator;
+import org.apache.sysml.runtime.matrix.data.SparseBlock;
 import org.apache.sysml.runtime.util.ConvolutionUtils;
 import org.apache.sysml.utils.NativeHelper;
 
 public class ConvolutionCPInstruction extends UnaryCPInstruction {
-	private CPOperand _in2;
-	private CPOperand _in3;
-	private ArrayList<CPOperand> _input_shape;
-	private ArrayList<CPOperand> _filter_shape;
-	private ArrayList<CPOperand> _stride = new ArrayList<>();
-	private ArrayList<CPOperand> _padding = new ArrayList<>();
-	private int _numThreads = -1;	private double _intermediateMemoryBudget = 0;
 	private static final Log LOG = LogFactory.getLog(ConvolutionCPInstruction.class.getName());
 	private static boolean warnedUnderUtilitization = false;
 	
-	public ConvolutionCPInstruction(CPOperand in, CPOperand in2, CPOperand out, String opcode, String istr, int numThreads, double intermediateMemoryBudget) throws DMLRuntimeException {
-		super(new ReorgOperator(SwapIndex.getSwapIndexFnObject()), in, out,
-				opcode, istr);
-		if( !(opcode.equals("bias_add") || opcode.equals("relu_backward") || opcode.equals("bias_multiply") ) ) {
-			throw new DMLRuntimeException("Incorrect usage. Expected the opcode to be bias_add or bias_multiply or relu_backward, but found " + opcode);
-		}
-		_in2 = in2;
-		_cptype = CPINSTRUCTION_TYPE.Convolution;
-		_numThreads = numThreads;
-		_intermediateMemoryBudget = intermediateMemoryBudget;
-	}
-
-	private ConvolutionCPInstruction(CPOperand in, CPOperand out, String opcode, String istr,
+	private final CPOperand _in2;
+	private final CPOperand _in3;
+	private final ArrayList<CPOperand> _input_shape;
+	private final ArrayList<CPOperand> _filter_shape;
+	private final ArrayList<CPOperand> _stride;
+	private final ArrayList<CPOperand> _padding;
+	private final int _numThreads;
+	private final double _intermediateMemoryBudget;
+	
+	public ConvolutionCPInstruction(CPOperand in, CPOperand in2, CPOperand in3, CPOperand out, 
 			ArrayList<CPOperand> stride, ArrayList<CPOperand> padding, ArrayList<CPOperand> input_shape,
-			ArrayList<CPOperand> filter_shape, int numThreads, double intermediateMemoryBudget) {
-		super(new ReorgOperator(SwapIndex.getSwapIndexFnObject()), in, out, opcode, istr);
-		_cptype = CPINSTRUCTION_TYPE.Convolution;
+			ArrayList<CPOperand> filter_shape, int numThreads, double intermediateMemoryBudget, String opcode, String istr) {
+		super(CPType.Convolution, null, in, out, opcode, istr);
+		_in2 = in2;
+		_in3 = in3;
 		_stride = stride;
 		_padding = padding;
 		_input_shape = input_shape;
 		_filter_shape = filter_shape;
 		_numThreads = numThreads;
 		_intermediateMemoryBudget = intermediateMemoryBudget;
+	}
+	
+	public ConvolutionCPInstruction(CPOperand in, CPOperand in2, CPOperand out, String opcode, String istr, int numThreads, double intermediateMemoryBudget) throws DMLRuntimeException {
+		this(in, in2, null, out, null, null, null, null, numThreads, intermediateMemoryBudget, opcode, istr);
+		if( !(opcode.equals("bias_add") || opcode.equals("relu_backward") || opcode.equals("bias_multiply") ) ) {
+			throw new DMLRuntimeException("Incorrect usage. Expected the opcode to be bias_add or bias_multiply or relu_backward, but found " + opcode);
+		}
+	}
+	
+	public ConvolutionCPInstruction(CPOperand in, CPOperand in2, CPOperand in3, CPOperand out, String opcode, String istr, int numThreads, double intermediateMemoryBudget) throws DMLRuntimeException {
+		this(in, in2, in3, out, null, null, null, null, numThreads, intermediateMemoryBudget, opcode, istr);
+		if( !opcode.equals("channel_sums") ) {
+			throw new DMLRuntimeException("Incorrect usage. Expected the opcode to be channel_sums, but found " + opcode);
+		}
+	}
+
+	private ConvolutionCPInstruction(CPOperand in, CPOperand out, String opcode, String istr,
+			ArrayList<CPOperand> stride, ArrayList<CPOperand> padding, ArrayList<CPOperand> input_shape,
+			ArrayList<CPOperand> filter_shape, int numThreads, double intermediateMemoryBudget) {
+		this(in, null, null, out, stride, padding, input_shape, filter_shape, numThreads, intermediateMemoryBudget, opcode, istr);
 	}
 	
 	public ConvolutionCPInstruction(CPOperand in, CPOperand in2, CPOperand out, String opcode,
 			String istr, ArrayList<CPOperand> stride,
 			ArrayList<CPOperand> padding, ArrayList<CPOperand> input_shape,
 			ArrayList<CPOperand> filter_shape, int numThreads, double intermediateMemoryBudget) {
-		super(new ReorgOperator(SwapIndex.getSwapIndexFnObject()), in, out,
-				opcode, istr);
-		_in2 = in2;
-		_cptype = CPINSTRUCTION_TYPE.Convolution;
-		_stride = stride;
-		_padding = padding;
-		_input_shape = input_shape;
-		_filter_shape = filter_shape;
-		_numThreads = numThreads;
-		_intermediateMemoryBudget = intermediateMemoryBudget;
+		this(in, in2, null, out, stride, padding, input_shape, filter_shape, numThreads, intermediateMemoryBudget, opcode, istr);
 	}
 	
 	public ConvolutionCPInstruction(CPOperand in, CPOperand in2, CPOperand in3, CPOperand out, String opcode,
 			String istr, ArrayList<CPOperand> stride,
 			ArrayList<CPOperand> padding, ArrayList<CPOperand> input_shape,
 			ArrayList<CPOperand> filter_shape, int numThreads, double intermediateMemoryBudget) {
-		super(new ReorgOperator(SwapIndex.getSwapIndexFnObject()), in, out,
-				opcode, istr);
-		_in2 = in2;
-		_in3 = in3;
-		_cptype = CPINSTRUCTION_TYPE.Convolution;
-		_stride = stride;
-		_padding = padding;
-		_input_shape = input_shape;
-		_filter_shape = filter_shape;
-		_numThreads = numThreads;
-		_intermediateMemoryBudget = intermediateMemoryBudget;
+		this(in, in2, in3, out, stride, padding, input_shape, filter_shape, numThreads, intermediateMemoryBudget, opcode, istr);
 	}
 
 	public static ConvolutionCPInstruction parseInstruction(String str)
@@ -213,6 +204,14 @@ public class ConvolutionCPInstruction extends UnaryCPInstruction {
 			int k = Integer.parseInt(parts[4]);
 			return new ConvolutionCPInstruction(in, in2, out, opcode, str, k, Double.parseDouble(parts[5]));
 		}
+		else if (opcode.equalsIgnoreCase("channel_sums")) {
+			InstructionUtils.checkNumFields(parts, 4);
+			CPOperand in = new CPOperand(parts[1]);
+			CPOperand in2 = new CPOperand(parts[2]);
+			CPOperand in3 = new CPOperand(parts[3]);
+			CPOperand out = new CPOperand(parts[4]);
+			return new ConvolutionCPInstruction(in, in2, in3, out, opcode, str, -1, 0);
+		}
 		else {
 			throw new DMLRuntimeException("Unknown opcode while parsing a ConvolutionCPInstruction: " + str);
 		}
@@ -298,6 +297,65 @@ public class ConvolutionCPInstruction extends UnaryCPInstruction {
 		ec.setMatrixOutput(getOutputVariableName(), outputBlock, getExtendedOpcode());
 	}
 	
+	public void processChannelSumsInstruction(ExecutionContext ec) throws DMLRuntimeException {
+		MatrixBlock input = ec.getMatrixInput(input1.getName(), getExtendedOpcode());
+		int C = (int) ec.getScalarInput(_in2.getName(), _in2.getValueType(), _in2.isLiteral()).getLongValue();
+		int HW = (int) ec.getScalarInput(_in3.getName(), _in3.getValueType(), _in3.isLiteral()).getLongValue();
+		if(C*HW != input.getNumColumns()) {
+			throw new DMLRuntimeException("Expected rows*cols" + C + "*" + HW + " to be equal to number of columns of input " + input.getNumColumns());
+		}
+		MatrixBlock outputBlock = null;
+		if(input.isEmpty()) {
+			outputBlock = new MatrixBlock(C, 1, true);
+		}
+		else {
+			outputBlock = new MatrixBlock(C, 1, false).allocateBlock();
+			double [] output = outputBlock.getDenseBlock();
+			if(input.isInSparseFormat()) {
+				SparseBlock sblock = input.getSparseBlock();
+				for(int n = 0; n < input.getNumRows(); n++) {
+					if( sblock.isEmpty(n) )
+						continue;
+					int apos = sblock.pos(n);
+					int alen = sblock.size(n);
+					int[] aix = sblock.indexes(n);
+					double[] avals = sblock.values(n);
+					
+					// Iterate over the sparse block
+					for(int j=apos; j<apos+alen; j++) {
+						// Note: the input is of shape [N, CHW]
+						int chw = aix[j];
+						
+						// Get individual zero-based c,h,w indexes from zero-based 'chw'
+						int c = chw / HW;
+						output[c] += avals[j];
+					}
+				}
+			}
+			else {
+				double [] inArr = input.getDenseBlock();
+				if(inArr != null) {
+					KahanPlus kplus = KahanPlus.getKahanPlusFnObject();
+					for(int c = 0; c < C; c++) {
+						KahanObject sum = new KahanObject(0.0, 0.0);
+						for(int n = 0; n < input.getNumRows(); n++) {
+							int index =  n*C*HW + c*HW;
+							for(int hw = 0; hw < HW; hw++, index++) {
+								kplus.execute2(sum, inArr[index]);
+							}
+						}
+						output[c] = sum._sum;
+					}
+				}
+			}
+			outputBlock.recomputeNonZeros(getExtendedOpcode());
+		}
+		
+		// release inputs/outputs
+		ec.releaseMatrixInput(input1.getName(), getExtendedOpcode());
+		ec.setMatrixOutput(getOutputVariableName(), outputBlock, getExtendedOpcode());
+	}
+	
 	// Assumption: enableNative && NativeHelper.isNativeLibraryLoaded() is true
 	// This increases the number of native calls. For example:the cases where filter is sparse but input is dense
 	private static boolean isFilterSparse(MatrixBlock filter) throws DMLRuntimeException {
@@ -323,6 +381,10 @@ public class ConvolutionCPInstruction extends UnaryCPInstruction {
 		}
 		else if (instOpcode.equalsIgnoreCase("relu_backward")) {
 			processReluBackwardInstruction(ec);
+			return;
+		}
+		else if (instOpcode.equalsIgnoreCase("channel_sums")) {
+			processChannelSumsInstruction(ec);
 			return;
 		}
 		
@@ -354,8 +416,8 @@ public class ConvolutionCPInstruction extends UnaryCPInstruction {
 			}
 			else {
 				outputBlock = new MatrixBlock(N, C*P*Q, false).allocateBlock();
-				if(instOpcode.equalsIgnoreCase("maxpooling"))
-					Arrays.fill(outputBlock.getDenseBlock(), -Double.MAX_VALUE);
+				if(instOpcode.equalsIgnoreCase("relu_maxpooling"))
+					params.minValForMaxPoolOperations = 0;
 				LibMatrixDNN.maxpooling(matBlock, outputBlock, params);
 			}
 		}
@@ -366,10 +428,10 @@ public class ConvolutionCPInstruction extends UnaryCPInstruction {
 			}
 			else {
 				outputBlock = new MatrixBlock(N, C*H*W, false).allocateBlock();
-				if(instOpcode.equalsIgnoreCase("maxpooling_backward"))
-					LibMatrixDNN.maxpoolingBackward(matBlock, dout, outputBlock, params, false);
-				else
-					LibMatrixDNN.maxpoolingBackward(matBlock, dout, outputBlock, params, true);
+				if(instOpcode.equalsIgnoreCase("relu_maxpooling_backward"))
+					params.minValForMaxPoolOperations = 0;
+				LibMatrixDNN.maxpoolingBackward(matBlock, dout, outputBlock, params, 
+					!instOpcode.equalsIgnoreCase("maxpooling_backward"));
 			}
 			ec.releaseMatrixInput(_in2.getName(), getExtendedOpcode());
 		}

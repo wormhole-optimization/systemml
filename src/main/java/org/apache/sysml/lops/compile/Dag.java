@@ -67,12 +67,12 @@ import org.apache.sysml.runtime.controlprogram.parfor.ProgramConverter;
 import org.apache.sysml.runtime.controlprogram.parfor.util.IDSequence;
 import org.apache.sysml.runtime.instructions.CPInstructionParser;
 import org.apache.sysml.runtime.instructions.Instruction;
-import org.apache.sysml.runtime.instructions.Instruction.INSTRUCTION_TYPE;
+import org.apache.sysml.runtime.instructions.Instruction.IType;
 import org.apache.sysml.runtime.instructions.InstructionParser;
 import org.apache.sysml.runtime.instructions.MRJobInstruction;
 import org.apache.sysml.runtime.instructions.SPInstructionParser;
 import org.apache.sysml.runtime.instructions.cp.CPInstruction;
-import org.apache.sysml.runtime.instructions.cp.CPInstruction.CPINSTRUCTION_TYPE;
+import org.apache.sysml.runtime.instructions.cp.CPInstruction.CPType;
 import org.apache.sysml.runtime.instructions.cp.VariableCPInstruction;
 import org.apache.sysml.runtime.matrix.MatrixCharacteristics;
 import org.apache.sysml.runtime.matrix.data.InputInfo;
@@ -1240,8 +1240,8 @@ public class Dag<N extends Lop>
 	private static void excludeRemoveInstruction(String varName, ArrayList<Instruction> deleteInst) {
 		for(int i=0; i < deleteInst.size(); i++) {
 			Instruction inst = deleteInst.get(i);
-			if ((inst.getType() == INSTRUCTION_TYPE.CONTROL_PROGRAM  || inst.getType() == INSTRUCTION_TYPE.SPARK)
-					&& ((CPInstruction)inst).getCPInstructionType() == CPINSTRUCTION_TYPE.Variable 
+			if ((inst.getType() == IType.CONTROL_PROGRAM  || inst.getType() == IType.SPARK)
+					&& ((CPInstruction)inst).getCPInstructionType() == CPType.Variable 
 					&& ((VariableCPInstruction)inst).isRemoveVariable(varName) ) {
 				deleteInst.remove(i);
 			}
@@ -1383,14 +1383,16 @@ public class Dag<N extends Lop>
 						inputs[count++] = in.getOutputParameters().getLabel();
 					count = 0;
 					for( Lop out : node.getOutputs() )
-					{
 						outputs[count++] = out.getOutputParameters().getLabel();
-					}
-					
 					inst_string = node.getInstructions(inputs, outputs);
 				}
-				else if (node.getType() == Lop.Type.MULTIPLE_CP) { // ie, MultipleCP class
-					inst_string = node.getInstructions(node.getOutputParameters().getLabel());
+				else if (node.getType() == Lop.Type.Nary) {
+					String[] inputs = new String[node.getInputs().size()];
+					int count = 0;
+					for( Lop in : node.getInputs() )
+						inputs[count++] = in.getOutputParameters().getLabel();
+					inst_string = node.getInstructions(inputs, 
+						node.getOutputParameters().getLabel());
 				}
 				else {
 					if ( node.getInputs().isEmpty() ) {

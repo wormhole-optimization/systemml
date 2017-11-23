@@ -94,7 +94,7 @@ import org.apache.sysml.runtime.instructions.cp.FunctionCallCPInstruction;
 import org.apache.sysml.runtime.instructions.gpu.context.GPUContextPool;
 import org.apache.sysml.runtime.instructions.spark.data.RDDObject;
 import org.apache.sysml.runtime.matrix.MatrixCharacteristics;
-import org.apache.sysml.runtime.matrix.MatrixFormatMetaData;
+import org.apache.sysml.runtime.matrix.MetaDataFormat;
 import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.matrix.data.OutputInfo;
 import org.apache.sysml.runtime.matrix.data.SparseRowVector;
@@ -773,7 +773,7 @@ public class OptimizerRuleBased extends Optimizer
 		
 		//construct new instructions
 		ArrayList<Instruction> newInst = Recompiler.recompileHopsDag(
-			sb, sb.get_hops(), vars, null, false, false, 0);
+			sb, sb.getHops(), vars, null, false, false, 0);
 		pb.setInstructions( newInst );   
 		
 		//reset all rix estimated (modified by recompile)
@@ -2078,7 +2078,7 @@ public class OptimizerRuleBased extends Optimizer
 			{
 				//replace existing matrix object with empty matrix
 				MatrixObject mo = (MatrixObject)dat;
-				ec.cleanupMatrixObject(mo);
+				ec.cleanupCacheableData(mo);
 				ec.setMatrixOutput(rvar, new MatrixBlock((int)mo.getNumRows(), (int)mo.getNumColumns(),false), null);
 				
 				//keep track of cleaned result variables
@@ -2247,7 +2247,7 @@ public class OptimizerRuleBased extends Optimizer
 			else
 			{
 				MatrixObject mo = (MatrixObject)dat;
-				MatrixFormatMetaData meta = (MatrixFormatMetaData) mo.getMetaData();
+				MetaDataFormat meta = (MetaDataFormat) mo.getMetaData();
 				OutputInfo oi = meta.getOutputInfo();
 				long nnz = meta.getMatrixCharacteristics().getNonZeros();
 				

@@ -709,7 +709,7 @@ public class OptimizerUtils
 		//check for guaranteed existence of empty blocks (less nnz than total number of blocks)
 		long tnrblks = (long)Math.ceil((double)rlen/brlen);
 		long tncblks = (long)Math.ceil((double)clen/bclen);
-		long nnz = (long) Math.ceil(sp * rlen * clen);		
+		long nnz = (long) Math.ceil(sp * rlen * clen);
 		if( nnz < tnrblks * tncblks ) {
 			long lrlen = Math.min(rlen, brlen);
 			long lclen = Math.min(clen, bclen);
@@ -771,9 +771,14 @@ public class OptimizerUtils
 	}
 	
 	public static double getTotalMemEstimate(Hop[] in, Hop out) {
+		return getTotalMemEstimate(in, out, false);
+	}
+	
+	public static double getTotalMemEstimate(Hop[] in, Hop out, boolean denseOut) {
 		return Arrays.stream(in)
 			.mapToDouble(h -> h.getOutputMemEstimate()).sum()
-			+ out.getOutputMemEstimate();
+			+ (!denseOut ? out.getOutputMemEstimate() :
+				OptimizerUtils.estimateSize(out.getDim1(), out.getDim2()));
 	}
 	
 	/**
@@ -1017,7 +1022,10 @@ public class OptimizerUtils
 				||(op==OpOp2.LESS     && val==0)
 				||(op==OpOp2.NOTEQUAL && val==0)
 				||(op==OpOp2.EQUAL    && val!=0)
-				||(op==OpOp2.MINUS    && val==0));
+				||(op==OpOp2.MINUS    && val==0)
+				||(op==OpOp2.PLUS     && val==0)
+				||(op==OpOp2.MAX      && val<=0)
+				||(op==OpOp2.MIN      && val>=0));
 	}
 	
 	public static double getBinaryOpSparsityConditionalSparseSafe( double sp1, OpOp2 op, LiteralOp lit ) {

@@ -555,7 +555,8 @@ public class Statistics
 	}
 	
 	public static long getCPHeavyHitterCount(String opcode) {
-		return _cpInstCounts.get(opcode);
+		Long tmp = _cpInstCounts.get(opcode);
+		return (tmp != null) ? tmp : 0;
 	}
 
 	/**
@@ -610,7 +611,7 @@ public class Statistics
 		sb.append(String.format(
 				" %" + maxNumLen + "s  %-" + maxInstLen + "s  %" + maxTimeSLen + "s  %" + maxCountLen + "s", numCol,
 				instCol, timeSCol, countCol));
-		if (GPUStatistics.DISPLAY_STATISTICS || DMLScript.FINEGRAINED_STATISTICS) {
+		if (DMLScript.FINEGRAINED_STATISTICS) {
 			sb.append("  ");
 			sb.append(gpuCol);
 		}
@@ -627,15 +628,15 @@ public class Statistics
 			int numLines = wrappedInstruction.length;
 			String [] miscTimers = null;
 			
-			if (GPUStatistics.DISPLAY_STATISTICS || DMLScript.FINEGRAINED_STATISTICS) {
+			if (DMLScript.FINEGRAINED_STATISTICS) {
 				miscTimers = wrap(GPUStatistics.getStringForCPMiscTimesPerInstruction(instruction), DMLScript.STATISTICS_MAX_WRAP_LEN);
 				numLines = Math.max(numLines, miscTimers.length);
 			}
 			
-			String miscFormatString = (GPUStatistics.DISPLAY_STATISTICS || DMLScript.FINEGRAINED_STATISTICS) ? " %" + DMLScript.STATISTICS_MAX_WRAP_LEN + "s" : "%s";
+			String miscFormatString = (DMLScript.FINEGRAINED_STATISTICS) ? " %" + DMLScript.STATISTICS_MAX_WRAP_LEN + "s" : "%s";
 			for(int wrapIter = 0; wrapIter < numLines; wrapIter++) {
 				String instStr = (wrapIter < wrappedInstruction.length) ? wrappedInstruction[wrapIter] : "";
-				String miscTimerStr = ( (GPUStatistics.DISPLAY_STATISTICS || DMLScript.FINEGRAINED_STATISTICS) && wrapIter < miscTimers.length) ? miscTimers[wrapIter] : ""; 
+				String miscTimerStr = ( (DMLScript.FINEGRAINED_STATISTICS) && wrapIter < miscTimers.length) ? miscTimers[wrapIter] : ""; 
 				if(wrapIter == 0) {
 					// Display instruction count
 					sb.append(String.format(
@@ -783,8 +784,8 @@ public class Statistics
 		//show extended caching/compilation statistics
 		if( DMLScript.STATISTICS ) 
 		{
-			if(NativeHelper.blasType != null) {
-				String blas = NativeHelper.blasType != null ? NativeHelper.blasType : ""; 
+			if(NativeHelper.CURRENT_NATIVE_BLAS_STATE == NativeHelper.NativeBlasState.SUCCESSFULLY_LOADED_NATIVE_BLAS_AND_IN_USE) {
+				String blas = NativeHelper.getCurrentBLAS(); 
 				sb.append("Native " + blas + " calls (dense mult/conv/bwdF/bwdD):\t" + numNativeLibMatrixMultCalls.longValue()  + "/" + 
 						numNativeConv2dCalls.longValue() + "/" + numNativeConv2dBwdFilterCalls.longValue()
 						+ "/" + numNativeConv2dBwdDataCalls.longValue() + ".\n");

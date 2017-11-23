@@ -102,8 +102,15 @@ public class IndexingOp extends Hop
 			return false;
 		}
 		else {
-			// only matrix indexing is supported on GPU
-			return (getDataType() == DataType.MATRIX);
+			// Indexing is only supported on GPU if:
+			// 1. the input is of type matrix AND
+			// 2. the input is less than 2GB. 
+			// The second condition is added for following reason:
+			// 1. Indexing is a purely memory-bound operation and doesnot benefit drastically from pushing down to GPU.
+			// 2. By forcing larger matrices to GPU (for example: training dataset), we run into risk of unnecessary evictions of 
+			// parameters and the gradients. For single precision, there is additional overhead of converting training dataset 
+			// to single precision every single time it is evicted.
+			return (getDataType() == DataType.MATRIX) && getInputMemEstimate() < 2e+9;
 		}
 	}
 
@@ -118,10 +125,7 @@ public class IndexingOp extends Hop
 		Hop input = getInput().get(0);
 		
 		//rewrite remove unnecessary right indexing
-		if( dimsKnown() && input.dimsKnown() 
-			&& getDim1() == input.getDim1() && getDim2() == input.getDim2()
-			&& !(getDim1()==1 && getDim2()==1))
-		{
+		if( HopRewriteUtils.isUnnecessaryRightIndexing(this) ) {
 			setLops( input.constructLops() );
 		}
 		//actual lop construction, incl operator selection 

@@ -761,19 +761,17 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		}
 		else //SPARSE <- DENSE
 		{
-			for( int i=0; i<that.rlen; i++ )
-			{
-				int aix = rowoffset+i;
-				for( int j=0, bix=i*that.clen; j<that.clen; j++ )
-				{
-					double val = that.denseBlock[bix+j];
-					if( val != 0 ) {
-						//create sparserow only if required
-						sparseBlock.allocate(aix, estimatedNNzsPerRow,clen);
-						sparseBlock.append(aix, coloffset+j, val);
+			double[] b = that.denseBlock;
+			final int bm = that.rlen;
+			final int bn = that.clen;
+			for( int i=0, aix=rowoffset, bix=0; i<bm; i++, aix++, bix+=bn )
+				for( int j=0; j<bn; j++ ) {
+					final double bval = b[bix+j];
+					if( bval != 0 ) {
+						sparseBlock.allocate(aix, estimatedNNzsPerRow, clen);
+						sparseBlock.append(aix, coloffset+j, bval);
 					}
 				}
-			}
 		}
 	}
 	
@@ -1351,6 +1349,17 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 			copyDenseToDense(that);
 	}
 	
+	public void copyShallow(MatrixBlock that) {
+		rlen = that.rlen;
+		clen = that.clen;
+		nonZeros = that.nonZeros;
+		sparse = that.sparse;
+		if( !sparse )
+			denseBlock = that.denseBlock;
+		else
+			sparseBlock = that.sparseBlock;
+	}
+	
 	private void copySparseToSparse(MatrixBlock that)
 	{
 		this.nonZeros=that.nonZeros;
@@ -1650,7 +1659,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 				nonZeros -= recomputeNonZeros(rl, ru, cl, cu);
 				copyEmptyToDense(rl, ru, cl, cu);
 			}
-			return;		
+			return;
 		}
 		
 		//allocate output block
@@ -1661,7 +1670,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 			nonZeros = nonZeros - recomputeNonZeros(rl, ru, cl, cu) + src.nonZeros;
 		
 		//copy values
-		int rowLen = cu-cl+1;				
+		int rowLen = cu-cl+1;
 		if(clen == src.clen) //optimization for equal width
 			System.arraycopy(src.denseBlock, 0, denseBlock, rl*clen+cl, src.rlen*src.clen);
 		else
@@ -1697,7 +1706,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 	
 	private void copyEmptyToDense(int rl, int ru, int cl, int cu)
 	{
-		int rowLen = cu-cl+1;				
+		int rowLen = cu-cl+1;
 		if(clen == rowLen) //optimization for equal width
 			Arrays.fill(denseBlock, rl*clen+cl, ru*clen+cu+1, 0);
 		else
@@ -3453,7 +3462,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		{
 			//SPECIAL case (operators with special performance requirements, 
 			//or size-dependent special behavior)
-			//currently supported opcodes: r', rdiag, rsort
+			//currently supported opcodes: r', rdiag, rsort, rev
 			LibMatrixReorg.reorg(this, result, op);
 		}
 		else 
@@ -3521,79 +3530,92 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		return result;
 	}
 
-	public MatrixBlock appendOperations( MatrixBlock that, MatrixBlock ret ) 	
-		throws DMLRuntimeException 
-	{
-		//default append-cbind
-		return appendOperations(that, ret, true);
+	public MatrixBlock appendOperations( MatrixBlock that, MatrixBlock ret ) throws DMLRuntimeException {
+		return appendOperations(that, ret, true); //default cbind
 	}
 
-	public MatrixBlock appendOperations( MatrixBlock that, MatrixBlock ret, boolean cbind ) 	
+	public MatrixBlock appendOperations( MatrixBlock that, MatrixBlock ret, boolean cbind ) throws DMLRuntimeException {
+		return appendOperations(new MatrixBlock[]{that}, ret, cbind);
+	}
+	
+	public MatrixBlock appendOperations( MatrixBlock[] that, MatrixBlock ret, boolean cbind )
 		throws DMLRuntimeException 
 	{
 		MatrixBlock result = checkType( ret );
-		final int m = cbind ? rlen : rlen+that.rlen;
-		final int n = cbind ? clen+that.clen : clen;
-		final long nnz = nonZeros+that.nonZeros;		
+		final int m = cbind ? rlen : rlen+Arrays.stream(that).mapToInt(mb -> mb.rlen).sum();
+		final int n = cbind ? clen+Arrays.stream(that).mapToInt(mb -> mb.clen).sum() : clen;
+		final long nnz = nonZeros+Arrays.stream(that).mapToLong(mb -> mb.nonZeros).sum();
+		boolean shallowCopy = (nonZeros == nnz);
 		boolean sp = evalSparseFormatInMemory(m, n, nnz);
 		
 		//init result matrix 
-		if( result == null ) 
+		if( result == null )
 			result = new MatrixBlock(m, n, sp, nnz);
 		else
 			result.reset(m, n, sp, nnz);
 		
 		//core append operation
 		//copy left and right input into output
-		if( !result.sparse ) //DENSE
-		{	
+		if( !result.sparse && nnz!=0 ) //DENSE
+		{
 			if( cbind ) {
 				result.copy(0, m-1, 0, clen-1, this, false);
-				result.copy(0, m-1, clen, n-1, that, false);
+				for(int i=0, off=clen; i<that.length; i++) {
+					result.copy(0, m-1, off, off+that[i].clen-1, that[i], false);
+					off += that[i].clen;
+				}
 			}
 			else { //rbind
 				result.copy(0, rlen-1, 0, n-1, this, false);
-				result.copy(rlen, m-1, 0, n-1, that, false);	
+				for(int i=0, off=rlen; i<that.length; i++) {
+					result.copy(off, off+that[i].rlen-1, 0, n-1, that[i], false);
+					off += that[i].rlen;
+				}
 			}
 		}
-		else //SPARSE
+		else if(nnz != 0) //SPARSE
 		{
 			//adjust sparse rows if required
-			if( !this.isEmptyBlock(false) || !that.isEmptyBlock(false) ) {
-				result.allocateSparseRowsBlock();
-			
-				//allocate sparse rows once for cbind
-				if( cbind && result.getSparseBlock() instanceof SparseBlockMCSR ) {
-					SparseBlock sblock = result.getSparseBlock();
-					for( int i=0; i<result.rlen; i++ ) {
-						int lnnz = (int)(this.recomputeNonZeros(i, i, 0, this.clen-1)
-							+ that.recomputeNonZeros(i, i, 0, that.clen-1));
-						sblock.allocate(i, lnnz);
-					}
+			result.allocateSparseRowsBlock();
+			//allocate sparse rows once for cbind
+			if( cbind && nnz > rlen && !shallowCopy && result.getSparseBlock() instanceof SparseBlockMCSR ) {
+				SparseBlock sblock = result.getSparseBlock();
+				for( int i=0; i<result.rlen; i++ ) {
+					final int row = i; //workaround for lambda compile issue
+					int lnnz = (int) (this.recomputeNonZeros(i, i, 0, this.clen-1) + Arrays.stream(that)
+						.mapToLong(mb -> mb.recomputeNonZeros(row, row, 0, mb.clen-1)).sum());
+					sblock.allocate(i, lnnz);
 				}
 			}
 			
 			//core append operation
-			result.appendToSparse(this, 0, 0);			
-			if( cbind )
-				result.appendToSparse(that, 0, clen);
-			else //rbind
-				result.appendToSparse(that, rlen, 0);
-		}		
+			result.appendToSparse(this, 0, 0, !shallowCopy);
+			if( cbind ) {
+				for(int i=0, off=clen; i<that.length; i++) {
+					result.appendToSparse(that[i], 0, off);
+					off += that[i].clen;
+				}
+			}
+			else { //rbind
+				for(int i=0, off=rlen; i<that.length; i++) {
+					result.appendToSparse(that[i], off, 0);
+					off += that[i].rlen;
+				}
+			}
+		}
 		
 		//update meta data
 		result.nonZeros = nnz;
-		
 		return result;
 	}
-
-	public MatrixBlock transposeSelfMatrixMultOperations( MatrixBlock out, MMTSJType tstype ) 	
+	
+	public MatrixBlock transposeSelfMatrixMultOperations( MatrixBlock out, MMTSJType tstype )
 		throws DMLRuntimeException 
 	{
 		return transposeSelfMatrixMultOperations(out, tstype, 1);
 	}
 
-	public MatrixBlock transposeSelfMatrixMultOperations( MatrixBlock out, MMTSJType tstype, int k ) 	
+	public MatrixBlock transposeSelfMatrixMultOperations( MatrixBlock out, MMTSJType tstype, int k )
 		throws DMLRuntimeException 
 	{
 		//check for transpose type
@@ -3852,8 +3874,9 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 	 * @param ru row upper
 	 * @param cl column lower
 	 * @param cu column upper
-	 * @param ret ?
-	 * @return matrix block
+	 * @param deep should perform deep copy
+	 * @param ret output matrix block
+	 * @return matrix block output matrix block
 	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
 	public MatrixBlock sliceOperations(int rl, int ru, int cl, int cu, boolean deep, CacheBlock ret) 
@@ -3930,9 +3953,9 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 					int alen = sparseBlock.size(i);
 					int[] aix = sparseBlock.indexes(i);
 					double[] avals = sparseBlock.values(i);
-					int astart = (cl>0)?sparseBlock.posFIndexGTE(i, cl) : apos;
+					int astart = (cl>0)?sparseBlock.posFIndexGTE(i, cl) : 0;
 					if( astart != -1 )
-						for( int j=astart; j<apos+alen && aix[j] <= cu; j++ )
+						for( int j=apos+astart; j<apos+alen && aix[j] <= cu; j++ )
 							dest.appendValue(i-rl, aix[j]-cl, avals[j]);
 				}
 		}
@@ -4080,11 +4103,12 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 			return;
 		
 		//actual slice operation
+		int pos = sparseBlock.pos(r);
 		for(int i=start; i<=end; i++) {
-			if(cols[i]<colCut)
-				left.appendValue(r+rowOffset, cols[i]+normalBlockColFactor-colCut, values[i]);
+			if(cols[pos+i]<colCut)
+				left.appendValue(r+rowOffset, cols[pos+i]+normalBlockColFactor-colCut, values[pos+i]);
 			else
-				right.appendValue(r+rowOffset, cols[i]-colCut, values[i]);
+				right.appendValue(r+rowOffset, cols[pos+i]-colCut, values[pos+i]);
 		}
 	}
 	
@@ -4732,7 +4756,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		tdw.quickSetValue(0, 1, zero_wt); //num zeros in input
 		
 		// Sort td and tw based on values inside td (ascending sort), incl copy into result
-		SortIndex sfn = SortIndex.getSortIndexFnObject(1, false, false);
+		SortIndex sfn = new SortIndex(1, false, false);
 		ReorgOperator rop = new ReorgOperator(sfn);
 		LibMatrixReorg.reorg(tdw, (MatrixBlock)result, rop);
 		
@@ -5187,25 +5211,16 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		
 		//sparse-unsafe ctable execution
 		//(because input values of 0 are invalid and have to result in errors) 
-		if ( resultBlock == null ) {
-			for( int i=0; i<rlen; i++ )
-				for( int j=0; j<clen; j++ )
-				{
-					double v1 = this.quickGetValue(i, j);
-					double w = that2.quickGetValue(i, j);
-					ctable.execute(v1, v2, w, false, resultMap);
-				}
-		}
-		else {
-			for( int i=0; i<rlen; i++ )
-				for( int j=0; j<clen; j++ )
-				{
-					double v1 = this.quickGetValue(i, j);
-					double w = that2.quickGetValue(i, j);
-					ctable.execute(v1, v2, w, false, resultBlock);
-				}
+		for( int i=0; i<rlen; i++ )
+			for( int j=0; j<clen; j++ ) {
+				double v1 = this.quickGetValue(i, j);
+				double w = that2.quickGetValue(i, j);
+				ctable.execute(v1, v2, w, false, resultMap, resultBlock);
+			}
+		
+		//maintain nnz (if necessary)
+		if( resultBlock!=null )
 			resultBlock.recomputeNonZeros();
-		}
 	}
 
 	/**
@@ -5227,23 +5242,15 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		
 		//sparse-unsafe ctable execution
 		//(because input values of 0 are invalid and have to result in errors) 
-		if ( resultBlock == null ) { 
-			for( int i=0; i<rlen; i++ )
-				for( int j=0; j<clen; j++ )
-				{
-					double v1 = this.quickGetValue(i, j);
-					ctable.execute(v1, v2, w, false, resultMap);
-				}
-		}
-		else {
-			for( int i=0; i<rlen; i++ )
-				for( int j=0; j<clen; j++ )
-				{
-					double v1 = this.quickGetValue(i, j);
-					ctable.execute(v1, v2, w, false, resultBlock);
-				}	
+		for( int i=0; i<rlen; i++ )
+			for( int j=0; j<clen; j++ ) {
+				double v1 = this.quickGetValue(i, j);
+				ctable.execute(v1, v2, w, false, resultMap, resultBlock);
+			}
+		
+		//maintain nnz (if necessary)
+		if( resultBlock!=null )
 			resultBlock.recomputeNonZeros();
-		}		
 	}
 	
 	/**
@@ -5263,29 +5270,18 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		
 		//sparse-unsafe ctable execution
 		//(because input values of 0 are invalid and have to result in errors) 
-		if( resultBlock == null) {
-			for( int i=0; i<rlen; i++ )
-				for( int j=0; j<clen; j++ )
-				{
-					double v1 = this.quickGetValue(i, j);
-					if( left )
-						ctable.execute(offset+i+1, v1, w, false, resultMap);
-					else
-						ctable.execute(v1, offset+i+1, w, false, resultMap);
-				}
-		}
-		else {
-			for( int i=0; i<rlen; i++ )
-				for( int j=0; j<clen; j++ )
-				{
-					double v1 = this.quickGetValue(i, j);
-					if( left )
-						ctable.execute(offset+i+1, v1, w, false, resultBlock);
-					else
-						ctable.execute(v1, offset+i+1, w, false, resultBlock);
-				}
+		for( int i=0; i<rlen; i++ )
+			for( int j=0; j<clen; j++ ) {
+				double v1 = this.quickGetValue(i, j);
+				if( left )
+					ctable.execute(offset+i+1, v1, w, false, resultMap, resultBlock);
+				else
+					ctable.execute(v1, offset+i+1, w, false, resultMap, resultBlock);
+			}
+		
+		//maintain nnz (if necessary)
+		if( resultBlock!=null )
 			resultBlock.recomputeNonZeros();
-		}
 	}
 
 	/**
@@ -5321,40 +5317,27 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 			
 			SparseBlock a = this.sparseBlock;
 			SparseBlock b = that.sparseBlock;
-			for( int i=0; i<rlen; i++ )
-			{
-				if( !a.isEmpty(i) )
-				{
-					int alen = a.size(i);
-					int apos = a.pos(i);
-					double[] avals = a.values(i);
-					int bpos = b.pos(i);
-					double[] bvals = b.values(i); 
-					
-					if( resultBlock == null ) {
-						for( int j=0; j<alen; j++ )
-							ctable.execute(avals[apos+j], bvals[bpos+j], w, ignoreZeros, resultMap);		
-					}
-					else {
-						for( int j=0; j<alen; j++ )
-							ctable.execute(avals[apos+j], bvals[bpos+j], w, ignoreZeros, resultBlock);			
-					}
-				}
-			}	
+			for( int i=0; i<rlen; i++ ) {
+				if( a.isEmpty(i) ) continue; 
+				int alen = a.size(i);
+				int apos = a.pos(i);
+				double[] avals = a.values(i);
+				int bpos = b.pos(i);
+				double[] bvals = b.values(i); 
+				for( int j=0; j<alen; j++ )
+					ctable.execute(avals[apos+j], bvals[bpos+j], 
+						w, ignoreZeros, resultMap, resultBlock);
+			}
 		}
 		else //SPARSE-UNSAFE | GENERIC INPUTS
 		{
 			//sparse-unsafe ctable execution
 			//(because input values of 0 are invalid and have to result in errors) 
 			for( int i=0; i<rlen; i++ )
-				for( int j=0; j<clen; j++ )
-				{
+				for( int j=0; j<clen; j++ ) {
 					double v1 = this.quickGetValue(i, j);
 					double v2 = that.quickGetValue(i, j);
-					if( resultBlock == null )
-						ctable.execute(v1, v2, w, ignoreZeros, resultMap);
-					else
-						ctable.execute(v1, v2, w, ignoreZeros, resultBlock);
+					ctable.execute(v1, v2, w, ignoreZeros, resultMap, resultBlock);
 				}
 		}
 		

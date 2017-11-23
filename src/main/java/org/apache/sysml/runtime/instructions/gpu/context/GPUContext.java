@@ -24,8 +24,6 @@ import static jcuda.jcudnn.JCudnn.cudnnCreate;
 import static jcuda.jcudnn.JCudnn.cudnnDestroy;
 import static jcuda.jcusolver.JCusolverDn.cusolverDnCreate;
 import static jcuda.jcusolver.JCusolverDn.cusolverDnDestroy;
-import static jcuda.jcusolver.JCusolverSp.cusolverSpCreate;
-import static jcuda.jcusolver.JCusolverSp.cusolverSpDestroy;
 import static jcuda.jcusparse.JCusparse.cusparseCreate;
 import static jcuda.jcusparse.JCusparse.cusparseDestroy;
 import static jcuda.runtime.JCuda.cudaDeviceScheduleBlockingSync;
@@ -63,7 +61,6 @@ import jcuda.Pointer;
 import jcuda.jcublas.cublasHandle;
 import jcuda.jcudnn.cudnnHandle;
 import jcuda.jcusolver.cusolverDnHandle;
-import jcuda.jcusolver.cusolverSpHandle;
 import jcuda.jcusparse.cusparseHandle;
 import jcuda.runtime.JCuda;
 import jcuda.runtime.cudaDeviceProp;
@@ -106,10 +103,6 @@ public class GPUContext {
 	 * cusolverDnHandle for invoking solve() function on dense matrices on the GPU
 	 */
 	private cusolverDnHandle cusolverDnHandle;
-	/**
-	 * cusolverSpHandle for invoking solve() function on sparse matrices on the GPU
-	 */
-	private cusolverSpHandle cusolverSpHandle;
 	/**
 	 * to launch custom CUDA kernel, specific to the active GPU for this GPUContext
 	 */
@@ -233,12 +226,7 @@ public class GPUContext {
 			cusolverDnHandle = new cusolverDnHandle();
 			cusolverDnCreate(cusolverDnHandle);
 		}
-
-		if (cusolverSpHandle == null) {
-			cusolverSpHandle = new cusolverSpHandle();
-			cusolverSpCreate(cusolverSpHandle);
-		}
-
+		
 		if (kernels == null) {
 			kernels = new JCudaKernels();
 		}
@@ -310,7 +298,7 @@ public class GPUContext {
 						"GPU : in allocate from instruction " + instructionName + ", found free block of size " + (size
 								/ 1024.0) + " Kbytes from previously allocated block on " + this);
 			}
-			if (instructionName != null && GPUStatistics.DISPLAY_STATISTICS)
+			if (instructionName != null && DMLScript.FINEGRAINED_STATISTICS)
 				t0 = System.nanoTime();
 			Set<Pointer> freeList = freeCUDASpaceMap.get(size);
 
@@ -320,7 +308,7 @@ public class GPUContext {
 
 			if (freeList.isEmpty())
 				freeCUDASpaceMap.remove(size);
-			if (instructionName != null && GPUStatistics.DISPLAY_STATISTICS)
+			if (instructionName != null && DMLScript.FINEGRAINED_STATISTICS)
 				GPUStatistics
 						.maintainCPMiscTimes(instructionName, GPUInstruction.MISC_TIMER_REUSE, System.nanoTime() - t0);
 		} else {
@@ -338,7 +326,7 @@ public class GPUContext {
 				GPUStatistics.cudaAllocTime.add(System.nanoTime() - t0);
 			if (DMLScript.STATISTICS)
 				GPUStatistics.cudaAllocCount.add(statsCount);
-			if (instructionName != null && GPUStatistics.DISPLAY_STATISTICS)
+			if (instructionName != null && DMLScript.FINEGRAINED_STATISTICS)
 				GPUStatistics.maintainCPMiscTimes(instructionName, GPUInstruction.MISC_TIMER_ALLOCATE,
 						System.nanoTime() - t0);
 		}
@@ -352,7 +340,7 @@ public class GPUContext {
 		cudaMemset(A, 0, size);
 		if (DMLScript.STATISTICS)
 			end = System.nanoTime();
-		if (instructionName != null && GPUStatistics.DISPLAY_STATISTICS)
+		if (instructionName != null && DMLScript.FINEGRAINED_STATISTICS)
 			GPUStatistics.maintainCPMiscTimes(instructionName, GPUInstruction.MISC_TIMER_SET_ZERO, end - t1);
 		if (DMLScript.STATISTICS)
 			GPUStatistics.cudaMemSet0Time.add(end - t1);
@@ -425,7 +413,7 @@ public class GPUContext {
 				GPUStatistics.cudaDeAllocTime.add(System.nanoTime() - t0);
 			if (DMLScript.STATISTICS)
 				GPUStatistics.cudaDeAllocCount.add(1);
-			if (instructionName != null && GPUStatistics.DISPLAY_STATISTICS)
+			if (instructionName != null && DMLScript.FINEGRAINED_STATISTICS)
 				GPUStatistics.maintainCPMiscTimes(instructionName, GPUInstruction.MISC_TIMER_CUDA_FREE,
 						System.nanoTime() - t0);
 		} else {
@@ -578,7 +566,7 @@ public class GPUContext {
 								+ "). Allocated GPU objects:" + allocatedGPUObjects.toString());
 			}
 			if (toBeRemoved.dirty) {
-				toBeRemoved.copyFromDeviceToHost();
+				toBeRemoved.copyFromDeviceToHost(instructionName, true);
 			}
 			toBeRemoved.clearData(true);
 		}
@@ -754,15 +742,6 @@ public class GPUContext {
 	}
 
 	/**
-	 * Returns cusolverSpHandle for invoking solve() function on sparse matrices on the GPU.
-	 *
-	 * @return cusolverSpHandle for current thread
-	 */
-	public cusolverSpHandle getCusolverSpHandle() {
-		return cusolverSpHandle;
-	}
-
-	/**
 	 * Returns utility class used to launch custom CUDA kernel, specific to the active GPU for this GPUContext.
 	 *
 	 * @return {@link JCudaKernels} for current thread
@@ -801,14 +780,10 @@ public class GPUContext {
 		if (cusolverDnHandle != null)
 			cusolverDnDestroy(cusolverDnHandle);
 
-		if (cusolverSpHandle != null)
-			cusolverSpDestroy(cusolverSpHandle);
-
 		cudnnHandle = null;
 		cublasHandle = null;
 		cusparseHandle = null;
 		cusolverDnHandle = null;
-		cusolverSpHandle = null;
 	}
 
 	/**
@@ -827,7 +802,7 @@ public class GPUContext {
 			if (o.isDirty()) {
 				LOG.warn("Attempted to free GPU Memory when a block[" + o
 						+ "] is still on GPU memory, copying it back to host.");
-				o.acquireHostRead();
+				o.acquireHostRead(null);
 			}
 			o.clearData(true);
 		}

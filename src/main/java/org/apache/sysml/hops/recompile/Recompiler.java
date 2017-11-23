@@ -32,7 +32,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.wink.json4j.JSONObject;
 import org.apache.sysml.api.DMLScript;
-import org.apache.sysml.api.jmlc.JMLCProxy;
+import org.apache.sysml.api.jmlc.JMLCUtils;
 import org.apache.sysml.conf.ConfigurationManager;
 import org.apache.sysml.conf.CompilerConfig.ConfigType;
 import org.apache.sysml.hops.DataGenOp;
@@ -96,7 +96,7 @@ import org.apache.sysml.runtime.instructions.mr.RandInstruction;
 import org.apache.sysml.runtime.instructions.mr.SeqInstruction;
 import org.apache.sysml.runtime.io.IOUtilFunctions;
 import org.apache.sysml.runtime.matrix.MatrixCharacteristics;
-import org.apache.sysml.runtime.matrix.MatrixFormatMetaData;
+import org.apache.sysml.runtime.matrix.MetaDataFormat;
 import org.apache.sysml.runtime.matrix.data.FrameBlock;
 import org.apache.sysml.runtime.matrix.data.InputInfo;
 import org.apache.sysml.runtime.matrix.data.MatrixBlock;
@@ -105,7 +105,6 @@ import org.apache.sysml.runtime.util.UtilFunctions;
 import org.apache.sysml.utils.Explain;
 import org.apache.sysml.utils.Explain.ExplainType;
 import org.apache.sysml.utils.JSONHelper;
-import org.apache.sysml.utils.MLContextProxy;
 
 /**
  * Dynamic recompilation of hop dags to runtime instructions, which includes the 
@@ -142,7 +141,7 @@ public class Recompiler
 			return this != NO_RESET;
 		}
 	}
-
+	
 	/**
 	 * Re-initializes the recompiler according to the current optimizer flags.
 	 */
@@ -184,7 +183,7 @@ public class Recompiler
 			if( LOG.isDebugEnabled() )
 				LOG.debug ("\n**************** Optimizer (Recompile) *************\nMemory Budget = " +
 					OptimizerUtils.toMB(OptimizerUtils.getLocalMemBudget()) + " MB");
-
+			
 			// prepare hops dag for recompile
 			if( !inplace ){ 
 				// deep copy hop dag (for non-reversable rewrites)
@@ -196,7 +195,7 @@ public class Recompiler
 				for( Hop hopRoot : hops )
 					rClearLops( hopRoot );
 			}
-
+			
 			// replace scalar reads with literals 
 			if( !inplace && litreplace ) {
 				Hop.resetVisitStatus(hops);
@@ -242,7 +241,7 @@ public class Recompiler
 //				hops = SpoofCompiler.optimize(hops,
 //					(status==null || !status.isInitialCodegen()));
 //			}
-			
+
 			// construct lops
 			Dag<Lop> dag = new Dag<>();
 			for( Hop hopRoot : hops ){
@@ -259,19 +258,17 @@ public class Recompiler
 			newInst = ProgramConverter.createDeepCopyInstructionSet(newInst, tid, -1, null, null, null, false, false);
 		
 		// remove writes if called through mlcontext or jmlc 
-		if( MLContextProxy.isActive() )
-			newInst = MLContextProxy.performCleanupAfterRecompilation(newInst);
-		else if( JMLCProxy.isActive() )
-			newInst = JMLCProxy.performCleanupAfterRecompilation(newInst);
+		if( vars.getRegisteredOutputs() != null )
+			newInst = JMLCUtils.cleanupRuntimeInstructions(newInst, vars.getRegisteredOutputs());
 		
 		// explain recompiled hops / instructions
 		if( DMLScript.EXPLAIN == ExplainType.RECOMPILE_HOPS ){
 			LOG.info("EXPLAIN RECOMPILE \nGENERIC (lines "+sb.getBeginLine()+"-"+sb.getEndLine()+"):\n" + 
-		    Explain.explainHops(hops, 1));
+			Explain.explainHops(hops, 1));
 		}
 		if( DMLScript.EXPLAIN == ExplainType.RECOMPILE_RUNTIME ){
 			LOG.info("EXPLAIN RECOMPILE \nGENERIC (lines "+sb.getBeginLine()+"-"+sb.getEndLine()+"):\n" + 
-		    Explain.explain(newInst, 1));
+			Explain.explain(newInst, 1));
 		}
 	
 		return newInst;
@@ -366,7 +363,7 @@ public class Recompiler
 //				hops = SpoofCompiler.optimize(hops,
 //					(status==null || !status.isInitialCodegen()));
 //			}
-			
+
 			// construct lops
 			Dag<Lop> dag = new Dag<>();
 			Lop lops = hops.constructLops();
@@ -481,7 +478,7 @@ public class Recompiler
 			rSetExecType( hops, et );
 			hops.resetVisitStatus();
 			
-			// construct lops
+			// construct lops	
 			Dag<Lop> dag = new Dag<>();
 			Lop lops = hops.constructLops();
 			lops.addToDag(dag);
@@ -514,7 +511,7 @@ public class Recompiler
 			for( Hop hopRoot : hops )
 				rClearLops( hopRoot );
 			
-			// construct lops
+			// construct lops	
 			Dag<Lop> dag = new Dag<>();
 			for( Hop hopRoot : hops ){
 				Lop lops = hopRoot.constructLops();
@@ -571,7 +568,7 @@ public class Recompiler
 		return newInst;
 	}
 
-	public static void recompileProgramBlockHierarchy( ArrayList<ProgramBlock> pbs, LocalVariableMap vars, long tid, ResetType resetRecompile )
+	public static void recompileProgramBlockHierarchy( ArrayList<ProgramBlock> pbs, LocalVariableMap vars, long tid, ResetType resetRecompile ) 
 		throws DMLRuntimeException
 	{
 		try 
@@ -665,8 +662,8 @@ public class Recompiler
 		{
 			//recompile last-level program block instructions
 			StatementBlock sb = pb.getStatementBlock();
-			if( sb!=null && sb.get_hops()!=null ) {
-				pb.setInstructions(recompileHopsDagInstructions(sb, sb.get_hops()));
+			if( sb!=null && sb.getHops()!=null ) {
+				pb.setInstructions(recompileHopsDagInstructions(sb, sb.getHops()));
 			}
 		}
 	}
@@ -821,8 +818,8 @@ public class Recompiler
 	// private helper functions //
 	//////////////////////////////
 	
-	private static void rRecompileProgramBlock( ProgramBlock pb, LocalVariableMap vars,
-		RecompileStatus status, long tid, ResetType resetRecompile )
+	private static void rRecompileProgramBlock( ProgramBlock pb, LocalVariableMap vars, 
+		RecompileStatus status, long tid, ResetType resetRecompile ) 
 		throws HopsException, DMLRuntimeException, LopsException, IOException
 	{
 		if (pb instanceof WhileProgramBlock)
@@ -902,18 +899,18 @@ public class Recompiler
 				/*&& !Recompiler.containsNonRecompileInstructions(tmp)*/ )
 			{
 				tmp = Recompiler.recompileHopsDag(
-					sb, sb.get_hops(), vars, status, true, false, tid);
+					sb, sb.getHops(), vars, status, true, false, tid);
 				pb.setInstructions( tmp );
 				
 				//propagate stats across hops (should be executed on clone of vars)
-				Recompiler.extractDAGOutputStatistics(sb.get_hops(), vars);
+				Recompiler.extractDAGOutputStatistics(sb.getHops(), vars);
 				
 				//reset recompilation flags (w/ special handling functions)
-				if( ParForProgramBlock.RESET_RECOMPILATION_FLAGs
-					&& !containsRootFunctionOp(sb.get_hops())  
-					&& resetRecompile.isReset() )
+				if( ParForProgramBlock.RESET_RECOMPILATION_FLAGs 
+					&& !containsRootFunctionOp(sb.getHops())
+					&& resetRecompile.isReset() ) 
 				{
-					Hop.resetRecompilationFlag(sb.get_hops(), ExecType.CP, resetRecompile);
+					Hop.resetRecompilationFlag(sb.getHops(), ExecType.CP, resetRecompile);
 					sb.updateRecompilationFlag();
 				}
 			}
@@ -1139,7 +1136,7 @@ public class Recompiler
 		int blksz = ConfigurationManager.getBlocksize();
 		MatrixCharacteristics mc = new MatrixCharacteristics( 
 				dim1, dim2, blksz, blksz, nnz);
-		MatrixFormatMetaData meta = new MatrixFormatMetaData(mc,null,null);
+		MetaDataFormat meta = new MetaDataFormat(mc,null,null);
 		moOut.setMetaData(meta);
 		
 		return moOut;
@@ -1148,7 +1145,7 @@ public class Recompiler
 	
 	//helper functions for predicate recompile
 	
-	private static void recompileIfPredicate( IfProgramBlock ipb, IfStatementBlock isb, LocalVariableMap vars, RecompileStatus status, long tid, ResetType resetRecompile )
+	private static void recompileIfPredicate( IfProgramBlock ipb, IfStatementBlock isb, LocalVariableMap vars, RecompileStatus status, long tid, ResetType resetRecompile ) 
 		throws DMLRuntimeException, HopsException, LopsException, IOException
 	{
 		if( isb == null )
@@ -1167,7 +1164,7 @@ public class Recompiler
 		}
 	}
 	
-	private static void recompileWhilePredicate( WhileProgramBlock wpb, WhileStatementBlock wsb, LocalVariableMap vars, RecompileStatus status, long tid, ResetType resetRecompile )
+	private static void recompileWhilePredicate( WhileProgramBlock wpb, WhileStatementBlock wsb, LocalVariableMap vars, RecompileStatus status, long tid, ResetType resetRecompile ) 
 		throws DMLRuntimeException, HopsException, LopsException, IOException
 	{
 		if( wsb == null )
@@ -1186,7 +1183,7 @@ public class Recompiler
 		}
 	}
 	
-	private static void recompileForPredicates( ForProgramBlock fpb, ForStatementBlock fsb, LocalVariableMap vars, RecompileStatus status, long tid, ResetType resetRecompile )
+	private static void recompileForPredicates( ForProgramBlock fpb, ForStatementBlock fsb, LocalVariableMap vars, RecompileStatus status, long tid, ResetType resetRecompile ) 
 		throws DMLRuntimeException, HopsException, LopsException, IOException
 	{
 		if( fsb != null )
@@ -1197,7 +1194,7 @@ public class Recompiler
 			
 			//handle recompilation flags
 			if( ParForProgramBlock.RESET_RECOMPILATION_FLAGs 
-				&& resetRecompile.isReset() )
+				&& resetRecompile.isReset() ) 
 			{
 				if( fromHops != null ) {
 					ArrayList<Instruction> tmp = recompileHopsDag(
@@ -1297,7 +1294,7 @@ public class Recompiler
 			//would be invalid with permutation matrix mult across multiple dags)
 			if(	sb != null ) {
 				ArrayList<Instruction> tmp = pb.getInstructions();
-				tmp = Recompiler.recompileHopsDag2Forced(sb, sb.get_hops(), tid, et);
+				tmp = Recompiler.recompileHopsDag2Forced(sb, sb.getHops(), tid, et);
 				pb.setInstructions( tmp );
 			}
 			
@@ -1376,7 +1373,7 @@ public class Recompiler
 												hop.getDim1(), hop.getDim2(), 
 												ConfigurationManager.getBlocksize(), ConfigurationManager.getBlocksize(),
 												hop.getNnz());
-					MatrixFormatMetaData meta = new MatrixFormatMetaData(mc,null,null);
+					MetaDataFormat meta = new MetaDataFormat(mc,null,null);
 					mo.setMetaData(meta);	
 					vars.put(varName, mo);
 				}
@@ -1770,7 +1767,7 @@ public class Recompiler
 		if( ret && !localMode ) {
 			for( MatrixObject mo : inputs )
 			{
-				MatrixFormatMetaData iimd = (MatrixFormatMetaData) mo.getMetaData();
+				MetaDataFormat iimd = (MetaDataFormat) mo.getMetaData();
 				if((   iimd.getInputInfo()==InputInfo.TextCellInputInfo
 					|| iimd.getInputInfo()==InputInfo.MatrixMarketInputInfo
 					|| iimd.getInputInfo()==InputInfo.CSVInputInfo
@@ -1824,7 +1821,7 @@ public class Recompiler
 		//robustness for usage through mlcontext (key/values of input rdds are 
 		//not serializable for text; also bufferpool rdd read only supported for 
 		// binarycell and binaryblock)
-		MatrixFormatMetaData iimd = (MatrixFormatMetaData) obj.getMetaData();
+		MetaDataFormat iimd = (MetaDataFormat) obj.getMetaData();
 		if( obj.getRDDHandle() != null 
 			&& iimd.getInputInfo() != InputInfo.BinaryBlockInputInfo 
 			&& iimd.getInputInfo() != InputInfo.BinaryCellInputInfo ) {

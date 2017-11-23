@@ -84,7 +84,7 @@ import org.apache.sysml.runtime.instructions.gpu.GPUInstruction;
 import org.apache.sysml.runtime.instructions.mr.MRInstruction;
 import org.apache.sysml.runtime.instructions.spark.SPInstruction;
 import org.apache.sysml.runtime.matrix.MatrixCharacteristics;
-import org.apache.sysml.runtime.matrix.MatrixFormatMetaData;
+import org.apache.sysml.runtime.matrix.MetaDataFormat;
 import org.apache.sysml.runtime.matrix.data.InputInfo;
 import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.matrix.data.OutputInfo;
@@ -543,7 +543,7 @@ public class ProgramConverter
 		{
 			if( ConfigurationManager.getCompilerConfigFlag(ConfigType.ALLOW_PARALLEL_DYN_RECOMPILATION) 
 				&& sb != null  //forced deep copy for function recompilation
-				&& (Recompiler.requiresRecompilation( sb.get_hops() ) || forceDeepCopy)  )
+				&& (Recompiler.requiresRecompilation( sb.getHops() ) || forceDeepCopy)  )
 			{
 				//create new statement (shallow copy livein/liveout for recompile, line numbers for explain)
 				ret = new StatementBlock();
@@ -555,10 +555,10 @@ public class ProgramConverter
 				ret.setReadVariables( sb.variablesRead() );
 				
 				//deep copy hops dag for concurrent recompile
-				ArrayList<Hop> hops = Recompiler.deepCopyHopsDag( sb.get_hops() );
+				ArrayList<Hop> hops = Recompiler.deepCopyHopsDag( sb.getHops() );
 				if( !plain )
 					Recompiler.updateFunctionNames( hops, pid );
-				ret.set_hops( hops );
+				ret.setHops( hops );
 				ret.updateRecompilationFlag();
 			}
 			else
@@ -878,7 +878,7 @@ public class ProgramConverter
 				break;
 			case MATRIX:
 				MatrixObject mo = (MatrixObject) dat;
-				MatrixFormatMetaData md = (MatrixFormatMetaData) dat.getMetaData();
+				MetaDataFormat md = (MetaDataFormat) dat.getMetaData();
 				MatrixCharacteristics mc = md.getMatrixCharacteristics();
 				value = mo.getFileName();
 				PartitionFormat partFormat = (mo.getPartitionFormat()!=null) ? new PartitionFormat(
@@ -1718,19 +1718,16 @@ public class ProgramConverter
 				switch ( valuetype )
 				{
 					case INT:
-						long value1 = Long.parseLong(valString);
-						dat = new IntObject(name,value1);
+						dat = new IntObject(Long.parseLong(valString));
 						break;
 					case DOUBLE:
-						double value2 = Double.parseDouble(valString);
-						dat = new DoubleObject(name,value2);
+						dat = new DoubleObject(Double.parseDouble(valString));
 						break;
 					case BOOLEAN:
-						boolean value3 = Boolean.parseBoolean(valString);
-						dat = new BooleanObject(name,value3);
+						dat = new BooleanObject(Boolean.parseBoolean(valString));
 						break;
 					case STRING:
-						dat = new StringObject(name,valString);
+						dat = new StringObject(valString);
 						break;
 					default:
 						throw new DMLRuntimeException("Unable to parse valuetype "+valuetype);
@@ -1750,9 +1747,8 @@ public class ProgramConverter
 				PartitionFormat partFormat = PartitionFormat.valueOf( st.nextToken() );
 				UpdateType inplace = UpdateType.valueOf( st.nextToken() );
 				MatrixCharacteristics mc = new MatrixCharacteristics(rows, cols, brows, bcols, nnz); 
-				MatrixFormatMetaData md = new MatrixFormatMetaData( mc, oin, iin );
+				MetaDataFormat md = new MetaDataFormat( mc, oin, iin );
 				mo.setMetaData( md );
-				mo.setVarName( name );
 				if( partFormat._dpf != PDataPartitionFormat.NONE )
 					mo.setPartitioned( partFormat._dpf, partFormat._N );
 				mo.setUpdateType(inplace);

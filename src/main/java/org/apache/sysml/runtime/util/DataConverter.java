@@ -278,32 +278,47 @@ public class DataConverter
 		return ret;
 	}
 
-	public static int[] convertToIntVector( MatrixBlock mb)
-	{
+	public static int[] convertToIntVector( MatrixBlock mb) {
 		int rows = mb.getNumRows();
 		int cols = mb.getNumColumns();
 		int[] ret = new int[rows*cols]; //0-initialized
-		
-		
-		if( mb.getNonZeros() > 0 )
-		{
-			if( mb.isInSparseFormat() )
-			{
-				Iterator<IJV> iter = mb.getSparseBlockIterator();
-				while( iter.hasNext() ) {
-					IJV cell = iter.next();
-					ret[cell.getI()*cols+cell.getJ()] = (int)cell.getV();
-				}
-			}
-			else
-			{
-				//memcopy row major representation if at least 1 non-zero
-				for( int i=0, cix=0; i<rows; i++ )
-					for( int j=0; j<cols; j++, cix++ )
-						ret[cix] = (int)(mb.getValueDenseUnsafe(i, j));
+		if( mb.isEmptyBlock(false) ) 
+			return ret;
+		if( mb.isInSparseFormat() ) {
+			Iterator<IJV> iter = mb.getSparseBlockIterator();
+			while( iter.hasNext() ) {
+				IJV cell = iter.next();
+				ret[cell.getI()*cols+cell.getJ()] = (int)cell.getV();
 			}
 		}
-		
+		else {
+			//memcopy row major representation if at least 1 non-zero
+			for( int i=0, cix=0; i<rows; i++ )
+				for( int j=0; j<cols; j++, cix++ )
+					ret[cix] = (int)(mb.getValueDenseUnsafe(i, j));
+		}
+		return ret;
+	}
+	
+	public static long[] convertToLongVector( MatrixBlock mb) {
+		int rows = mb.getNumRows();
+		int cols = mb.getNumColumns();
+		long[] ret = new long[rows*cols]; //0-initialized
+		if( mb.isEmptyBlock(false) ) 
+			return ret;
+		if( mb.isInSparseFormat() ) {
+			Iterator<IJV> iter = mb.getSparseBlockIterator();
+			while( iter.hasNext() ) {
+				IJV cell = iter.next();
+				ret[cell.getI()*cols+cell.getJ()] = (int)cell.getV();
+			}
+		}
+		else {
+			//memcopy row major representation if at least 1 non-zero
+			for( int i=0, cix=0; i<rows; i++ )
+				for( int j=0; j<cols; j++, cix++ )
+					ret[cix] = (int)(mb.getValueDenseUnsafe(i, j));
+		}
 		return ret;
 	}
 
@@ -639,7 +654,7 @@ public class DataConverter
 		
 		if( mb.isInSparseFormat() ) //SPARSE
 		{
-			SparseBlock sblock = mb.getSparseBlock();			
+			SparseBlock sblock = mb.getSparseBlock();
 			for( int i=0; i<mb.getNumRows(); i++ ) {
 				Arrays.fill(row, null); //reset
 				if( sblock != null && !sblock.isEmpty(i) ) {
@@ -649,7 +664,7 @@ public class DataConverter
 					double[] aval = sblock.values(i);
 					for( int j=apos; j<apos+alen; j++ ) {
 						row[aix[j]] = UtilFunctions.doubleToObject(
-								schema[aix[j]], aval[j]);					
+								schema[aix[j]], aval[j]);
 					}
 				}
 				frame.appendRow(row);
@@ -658,8 +673,15 @@ public class DataConverter
 		else //DENSE
 		{
 			int dFreq = UtilFunctions.frequency(schema, ValueType.DOUBLE);
-		
-			if( dFreq == schema.length ) {
+			
+			if( schema.length==1 && dFreq==1 && mb.isAllocated() ) {
+				// special case double schema and single columns which
+				// allows for a shallow copy since the physical representation
+				// of row-major matrix and column-major frame match exactly
+				frame.reset();
+				frame.appendColumns(new double[][]{mb.getDenseBlock()});
+			}
+			else if( dFreq == schema.length ) {
 				// special case double schema (without cell-object creation, 
 				// col pre-allocation, and cache-friendly row-column copy)
 				int m = mb.getNumRows();

@@ -26,6 +26,7 @@ import org.junit.runners.Suite;
  *  won't run two of them at once. */
 @RunWith(Suite.class)
 @Suite.SuiteClasses({
+	BuildLiteJarTest.class,
 	FrameCastingTest.class,
 	FrameDecodeTest.class,
 	FrameEncodeTest.class,
@@ -33,8 +34,10 @@ import org.junit.runners.Suite;
 	FrameLeftIndexingTest.class,
 	FrameReadMetaTest.class,
 	FrameTransformTest.class,
+	JMLCClonedPreparedScriptTest.class,
 	JMLCInputOutputTest.class,
 	JMLCInputStreamReadTest.class,
+	JMLCParfor2ForCompileTest.class,
 	ReuseModelVariablesTest.class,
 	MulticlassSVMScoreTest.class
 })

@@ -95,9 +95,10 @@ import org.apache.wink.json4j.JSONObject;
  * </ul>
  */
 public class Connection implements Closeable
-{		
-	private DMLConfig _dmlconf = null;
-
+{
+	private final DMLConfig _dmlconf;
+	private final CompilerConfig _cconf;
+	
 	/**
 	 * Connection constructor, the starting point for any other JMLC API calls.
 	 * 
@@ -111,6 +112,7 @@ public class Connection implements Closeable
 		CompilerConfig cconf = new CompilerConfig();
 		cconf.set(ConfigType.IGNORE_UNSPECIFIED_ARGS, true);
 		cconf.set(ConfigType.IGNORE_READ_WRITE_METADATA, true);
+		cconf.set(ConfigType.IGNORE_TEMPORARY_FILENAMES, true);
 		cconf.set(ConfigType.REJECT_READ_WRITE_UNKNOWNS, false);
 		cconf.set(ConfigType.PARALLEL_CP_READ_TEXTFORMATS, false);
 		cconf.set(ConfigType.PARALLEL_CP_WRITE_TEXTFORMATS, false);
@@ -122,14 +124,15 @@ public class Connection implements Closeable
 		cconf.set(ConfigType.ALLOW_INDIVIDUAL_SB_SPECIFIC_OPS, false);
 		cconf.set(ConfigType.ALLOW_CSE_PERSISTENT_READS, false);
 		cconf.set(ConfigType.CODEGEN_ENABLED, false);
-		ConfigurationManager.setLocalConfig(cconf);
+		_cconf = cconf;
 		
 		//disable caching globally 
 		CacheableData.disableCaching();
 		
-		//create thread-local default configuration
+		//create default configuration
 		_dmlconf = new DMLConfig();
-		ConfigurationManager.setLocalConfig(_dmlconf);
+		
+		setLocalConfigs();
 	}
 	
 	/**
@@ -143,10 +146,24 @@ public class Connection implements Closeable
 		this();
 		
 		//set optional compiler configurations in current config
-		CompilerConfig cconf = ConfigurationManager.getCompilerConfig();
 		for( ConfigType configType : configs )
-			cconf.set(configType, true);
-		ConfigurationManager.setLocalConfig(cconf);
+			_cconf.set(configType, true);
+		setLocalConfigs();
+	}
+	
+	/**
+	 * Prepares (precompiles) a script and registers input and output variables.
+	 * 
+	 * @param script string representing the DML or PyDML script
+	 * @param inputs string array of input variables to register
+	 * @param outputs string array of output variables to register
+	 * @return PreparedScript object representing the precompiled script
+	 * @throws DMLException if DMLException occurs
+	 */
+	public PreparedScript prepareScript( String script, String[] inputs, String[] outputs) 
+		throws DMLException 
+	{
+		return prepareScript(script, inputs, outputs, false);
 	}
 	
 	/**
@@ -180,7 +197,7 @@ public class Connection implements Closeable
 		throws DMLException 
 	{
 		DMLScript.SCRIPT_TYPE = parsePyDML ? ScriptType.PYDML : ScriptType.DML;
-
+		
 		//check for valid names of passed arguments
 		String[] invalidArgs = args.keySet().stream()
 			.filter(k -> k==null || !k.startsWith("$")).toArray(String[]::new);
@@ -193,6 +210,8 @@ public class Connection implements Closeable
 		if( invalidVars.length > 0 )
 			throw new LanguageException("Invalid variable names: "+Arrays.toString(invalidVars));
 		
+		setLocalConfigs();
+		
 		//simplified compilation chain
 		Program rtprog = null;
 		try {
@@ -202,7 +221,7 @@ public class Connection implements Closeable
 			
 			//language validate
 			DMLTranslator dmlt = new DMLTranslator(prog);
-			dmlt.liveVariableAnalysis(prog);			
+			dmlt.liveVariableAnalysis(prog);
 			dmlt.validateParseTree(prog);
 			
 			//hop construct/rewrite
@@ -220,10 +239,6 @@ public class Connection implements Closeable
 			
 			//final cleanup runtime prog
 			JMLCUtils.cleanupRuntimeProgram(rtprog, outputs);
-			
-			//activate thread-local proxy for dynamic recompilation
-			if( ConfigurationManager.isDynamicRecompilation() )
-				JMLCProxy.setActive(outputs);
 		}
 		catch(ParseException pe) {
 			// don't chain ParseException (for cleaner error output)
@@ -232,9 +247,9 @@ public class Connection implements Closeable
 		catch(Exception ex) {
 			throw new DMLException(ex);
 		}
-			
+		
 		//return newly create precompiled script 
-		return new PreparedScript(rtprog, inputs, outputs);
+		return new PreparedScript(rtprog, inputs, outputs, _dmlconf, _cconf);
 	}
 	
 	/**
@@ -243,10 +258,8 @@ public class Connection implements Closeable
 	 */
 	@Override
 	public void close() {
-		//clear thread-local dml / compiler configs
+		//clear thread-local configurations
 		ConfigurationManager.clearLocalConfigs();
-		if( ConfigurationManager.isDynamicRecompilation() )
-			JMLCProxy.setActive(null);
 		if( ConfigurationManager.isCodegenEnabled() )
 			SpoofCompiler.cleanupCodeGenerator();
 	}
@@ -349,6 +362,8 @@ public class Connection implements Closeable
 	public double[][] readDoubleMatrix(String fname, InputInfo iinfo, long rows, long cols, int brlen, int bclen, long nnz) 
 		throws IOException
 	{
+		setLocalConfigs();
+		
 		try {
 			MatrixReader reader = MatrixReaderFactory.createMatrixReader(iinfo);
 			MatrixBlock mb = reader.readMatrixFromHDFS(fname, rows, cols, brlen, bclen, nnz);
@@ -515,6 +530,8 @@ public class Connection implements Closeable
 			throw new IOException("Invalid input format (expected: csv, text or mm): "+format);
 		}
 		
+		setLocalConfigs();
+		
 		try {
 			//read input matrix
 			InputInfo iinfo = DataExpression.FORMAT_TYPE_VALUE_CSV.equals(format) ? 
@@ -555,7 +572,7 @@ public class Connection implements Closeable
 			long rows = jmtd.getLong(DataExpression.READROWPARAM);
 			long cols = jmtd.getLong(DataExpression.READCOLPARAM);
 			String format = jmtd.getString(DataExpression.FORMAT_TYPE);
-			InputInfo iinfo = InputInfo.stringExternalToInputInfo(format);			
+			InputInfo iinfo = InputInfo.stringExternalToInputInfo(format);
 		
 			//read frame file
 			return readStringFrame(fname, iinfo, rows, cols);
@@ -579,6 +596,8 @@ public class Connection implements Closeable
 	public String[][] readStringFrame(String fname, InputInfo iinfo, long rows, long cols) 
 		throws IOException
 	{
+		setLocalConfigs();
+		
 		try {
 			FrameReader reader = FrameReaderFactory.createFrameReader(iinfo);
 			FrameBlock mb = reader.readFrameFromHDFS(fname, rows, cols);
@@ -745,6 +764,8 @@ public class Connection implements Closeable
 			throw new IOException("Invalid input format (expected: csv, text or mm): "+format);
 		}
 		
+		setLocalConfigs();
+		
 		try {
 			//read input frame
 			InputInfo iinfo = DataExpression.FORMAT_TYPE_VALUE_CSV.equals(format) ? 
@@ -843,5 +864,11 @@ public class Connection implements Closeable
 	 */
 	public FrameBlock readTransformMetaDataFromPath(String spec, String metapath, String colDelim) throws IOException {
 		return TfMetaUtils.readTransformMetaDataFromPath(spec, metapath, colDelim);
+	}
+	
+	private void setLocalConfigs() {
+		//set thread-local configurations for compilation and read
+		ConfigurationManager.setLocalConfig(_dmlconf);
+		ConfigurationManager.setLocalConfig(_cconf);
 	}
 }

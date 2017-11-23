@@ -63,21 +63,20 @@ public class TemplateCell extends TemplateBase
 		super(TemplateType.CELL);
 	}
 	
-	public TemplateCell(boolean closed) {
-		super(TemplateType.CELL, closed);
+	public TemplateCell(CloseType ctype) {
+		super(TemplateType.CELL, ctype);
 	}
 	
-	public TemplateCell(TemplateType type, boolean closed) {
-		super(type, closed);
+	public TemplateCell(TemplateType type, CloseType ctype) {
+		super(type, ctype);
 	}
 	
-
 	@Override
 	public boolean open(Hop hop) {
 		return hop.dimsKnown() && isValidOperation(hop)
 				&& !(hop.getDim1()==1 && hop.getDim2()==1) 	
-			|| (hop instanceof IndexingOp && (((IndexingOp)hop)
-				.isColLowerEqualsUpper() || hop.getDim2()==1));
+			|| (hop instanceof IndexingOp && hop.getInput().get(0).getDim2() > 0
+				&& (((IndexingOp)hop).isColLowerEqualsUpper() || hop.getDim2()==1));
 	}
 
 	@Override
@@ -108,7 +107,7 @@ public class TemplateCell extends TemplateBase
 		else if( hop instanceof AggUnaryOp || hop instanceof AggBinaryOp )
 			return CloseType.CLOSED_INVALID;
 		else
-			return CloseType.OPEN;
+			return CloseType.OPEN_VALID;
 	}
 
 	@Override
@@ -196,12 +195,9 @@ public class TemplateCell extends TemplateBase
 			cdata1 = TemplateUtils.wrapLookupIfNecessary(cdata1, hop.getInput().get(0));
 			cdata2 = TemplateUtils.wrapLookupIfNecessary(cdata2, hop.getInput().get(1));
 			
-			if( bop.getOp()==OpOp2.POW && cdata2.isLiteral() && cdata2.getVarname().equals("2") )
-				out = new CNodeUnary(cdata1, UnaryType.POW2);
-			else if( bop.getOp()==OpOp2.MULT && cdata2.isLiteral() && cdata2.getVarname().equals("2") )
-				out = new CNodeUnary(cdata1, UnaryType.MULT2);
-			else //default binary	
-				out = new CNodeBinary(cdata1, cdata2, BinType.valueOf(primitiveOpName));
+			//construct binary cnode
+			out = new CNodeBinary(cdata1, cdata2, 
+				BinType.valueOf(primitiveOpName));
 		}
 		else if(hop instanceof TernaryOp) 
 		{
@@ -216,7 +212,7 @@ public class TemplateCell extends TemplateBase
 			
 			//construct ternary cnode, primitive operation derived from OpOp3
 			out = new CNodeTernary(cdata1, cdata2, cdata3, 
-					TernaryType.valueOf(top.getOp().name()));
+				TernaryType.valueOf(top.getOp().name()));
 		}
 		else if( hop instanceof ParameterizedBuiltinOp ) 
 		{
@@ -323,10 +319,12 @@ public class TemplateCell extends TemplateBase
 	protected boolean isSparseSafe(List<Hop> roots, Hop mainInput, List<CNode> outputs, List<AggOp> aggOps, boolean onlySum) {
 		boolean ret = true;
 		for( int i=0; i<outputs.size() && ret; i++ ) {
-			ret &= (HopRewriteUtils.isBinary(roots.get(i), OpOp2.MULT) 
-					&& roots.get(i).getInput().contains(mainInput))
-				|| (HopRewriteUtils.isBinary(roots.get(i), OpOp2.DIV) 
-					&& roots.get(i).getInput().get(0) == mainInput)
+			Hop root = (roots.get(i) instanceof AggUnaryOp || roots.get(i) 
+				instanceof AggBinaryOp) ? roots.get(i).getInput().get(0) : roots.get(i);
+			ret &= (HopRewriteUtils.isBinarySparseSafe(root) 
+					&& root.getInput().contains(mainInput))
+				|| (HopRewriteUtils.isBinary(root, OpOp2.DIV) 
+					&& root.getInput().get(0) == mainInput)
 				|| (TemplateUtils.rIsSparseSafeOnly(outputs.get(i), BinType.MULT)
 					&& TemplateUtils.rContainsInput(outputs.get(i), mainInput.getHopID()));
 			if( onlySum )

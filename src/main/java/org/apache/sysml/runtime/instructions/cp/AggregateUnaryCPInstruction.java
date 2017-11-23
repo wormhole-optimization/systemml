@@ -43,8 +43,7 @@ public class AggregateUnaryCPInstruction extends UnaryCPInstruction {
 
 	protected AggregateUnaryCPInstruction(Operator op, CPOperand in1, CPOperand in2, CPOperand in3, CPOperand out,
 			String opcode, String istr) {
-		super(op, in1, in2, in3, out, opcode, istr);
-		_cptype = CPINSTRUCTION_TYPE.AggregateUnary;
+		super(CPType.AggregateUnary, op, in1, in2, in3, out, opcode, istr);
 	}
 
 	public static AggregateUnaryCPInstruction parseInstruction(String str)
@@ -61,9 +60,9 @@ public class AggregateUnaryCPInstruction extends UnaryCPInstruction {
 		}
 		else //DEFAULT BEHAVIOR
 		{
-			AggregateUnaryOperator aggun = InstructionUtils.parseBasicAggregateUnaryOperator(opcode);
-			aggun.setNumThreads( Integer.parseInt(parts[3]) );
-			return new AggregateUnaryCPInstruction(aggun, in1, out, opcode, str);				
+			AggregateUnaryOperator aggun = InstructionUtils
+				.parseBasicAggregateUnaryOperator(opcode, Integer.parseInt(parts[3]));
+			return new AggregateUnaryCPInstruction(aggun, in1, out, opcode, str);
 		}
 	}
 	
@@ -128,9 +127,9 @@ public class AggregateUnaryCPInstruction extends UnaryCPInstruction {
 			//create and set output scalar
 			ScalarObject ret = null;
 			switch( output.getValueType() ) {
-				case INT:	  ret = new IntObject(output_name, rval); break;
-				case DOUBLE:  ret = new DoubleObject(output_name, rval); break;
-				case STRING:  ret = new StringObject(output_name, String.valueOf(rval)); break;
+				case INT:	  ret = new IntObject(rval); break;
+				case DOUBLE:  ret = new DoubleObject(rval); break;
+				case STRING:  ret = new StringObject(String.valueOf(rval)); break;
 				
 				default: 
 					throw new DMLRuntimeException("Invalid output value type: "+output.getValueType());
@@ -149,7 +148,7 @@ public class AggregateUnaryCPInstruction extends UnaryCPInstruction {
 			ec.releaseMatrixInput(input1.getName(), getExtendedOpcode());
 			
 			if(output.getDataType() == DataType.SCALAR){
-				DoubleObject ret = new DoubleObject(output_name, resultBlock.getValue(0, 0));
+				DoubleObject ret = new DoubleObject(resultBlock.getValue(0, 0));
 				ec.setScalarOutput(output_name, ret);
 			} else{
 				// since the computed value is a scalar, allocate a "temp" output matrix

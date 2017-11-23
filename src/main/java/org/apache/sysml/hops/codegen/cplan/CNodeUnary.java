@@ -30,7 +30,7 @@ public class CNodeUnary extends CNode
 {
 	public enum UnaryType {
 		LOOKUP_R, LOOKUP_C, LOOKUP_RC, LOOKUP0, //codegen specific
-		ROW_SUMS, ROW_MINS, ROW_MAXS, //codegen specific
+		ROW_SUMS, ROW_SUMSQS, ROW_MINS, ROW_MAXS, ROW_COUNTNNZS, //codegen specific
 		VECT_EXP, VECT_POW2, VECT_MULT2, VECT_SQRT, VECT_LOG,
 		VECT_ABS, VECT_ROUND, VECT_CEIL, VECT_FLOOR, VECT_SIGN, 
 		VECT_SIN, VECT_COS, VECT_TAN, VECT_ASIN, VECT_ACOS, VECT_ATAN, 
@@ -51,9 +51,11 @@ public class CNodeUnary extends CNode
 		public String getTemplate(boolean sparse) {
 			switch( this ) {
 				case ROW_SUMS:
+				case ROW_SUMSQS:
 				case ROW_MINS:
-				case ROW_MAXS: {
-					String vectName = StringUtils.capitalize(this.toString().substring(4,7).toLowerCase());
+				case ROW_MAXS:
+				case ROW_COUNTNNZS: {
+					String vectName = StringUtils.capitalize(name().substring(4, name().length()-1).toLowerCase());
 					return sparse ? "    double %TMP% = LibSpoofPrimitives.vect"+vectName+"(%IN1v%, %IN1i%, %POS1%, alen, len);\n": 
 									"    double %TMP% = LibSpoofPrimitives.vect"+vectName+"(%IN1%, %POS1%, %LEN%);\n"; 
 				}
@@ -241,9 +243,11 @@ public class CNodeUnary extends CNode
 	@Override
 	public String toString() {
 		switch(_type) {
-			case ROW_SUMS:  return "u(R+)";
-			case ROW_MINS:  return "u(Rmin)";
-			case ROW_MAXS:  return "u(Rmax)";
+			case ROW_SUMS:   return "u(R+)";
+			case ROW_SUMSQS: return "u(Rsq+)";
+			case ROW_MINS:   return "u(Rmin)";
+			case ROW_MAXS:   return "u(Rmax)";
+			case ROW_COUNTNNZS: return "u(Rnnz)";
 			case VECT_EXP:
 			case VECT_POW2:
 			case VECT_MULT2:
@@ -306,8 +310,10 @@ public class CNodeUnary extends CNode
 				break;
 			
 			case ROW_SUMS:
+			case ROW_SUMSQS:
 			case ROW_MINS:
 			case ROW_MAXS:
+			case ROW_COUNTNNZS:
 			case EXP:
 			case LOOKUP_R:
 			case LOOKUP_C:

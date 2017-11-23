@@ -28,6 +28,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
+import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.compress.CompressedMatrixBlock;
 import org.apache.sysml.runtime.instructions.cp.DoubleObject;
@@ -81,7 +82,7 @@ public abstract class SpoofOuterProduct extends SpoofOperator
 		
 		//input preparation
 		double[][] ab = getDenseMatrices(prepInputMatrices(inputs, 1, 2, true, false));
-		double[][] b = getDenseMatrices(prepInputMatrices(inputs, 3, true));
+		SideInput[] b = prepInputMatrices(inputs, 3, false);
 		double[] scalars = prepInputScalars(scalarObjects);
 		
 		//core sequential execute
@@ -117,7 +118,7 @@ public abstract class SpoofOuterProduct extends SpoofOperator
 		
 		//input preparation
 		double[][] ab = getDenseMatrices(prepInputMatrices(inputs, 1, 2, true, false));
-		double[][] b = getDenseMatrices(prepInputMatrices(inputs, 3, true));
+		SideInput[] b = prepInputMatrices(inputs, 3, false);
 		double[] scalars = prepInputScalars(scalarObjects);
 		
 		//core sequential execute
@@ -185,9 +186,9 @@ public abstract class SpoofOuterProduct extends SpoofOperator
 		
 		//input preparation
 		double[][] ab = getDenseMatrices(prepInputMatrices(inputs, 1, 2, true, false));
-		double[][] b = getDenseMatrices(prepInputMatrices(inputs, 3, true));
+		SideInput[] b = prepInputMatrices(inputs, 3, false);
 		double[] scalars = prepInputScalars(scalarObjects);
-				
+		
 		//core sequential execute
 		final int m = inputs.get(0).getNumRows();
 		final int n = inputs.get(0).getNumColumns();
@@ -267,7 +268,7 @@ public abstract class SpoofOuterProduct extends SpoofOperator
 		
 		//input preparation
 		double[][] ab = getDenseMatrices(prepInputMatrices(inputs, 1, 2, true, false));
-		double[][] b = getDenseMatrices(prepInputMatrices(inputs, 3, true));
+		SideInput[] b = prepInputMatrices(inputs, 3, false);
 		double[] scalars = prepInputScalars(scalarObjects);
 		
 		//core sequential execute
@@ -279,7 +280,7 @@ public abstract class SpoofOuterProduct extends SpoofOperator
 		MatrixBlock a = inputs.get(0);
 		
 		try 
-		{			
+		{
 			ExecutorService pool = Executors.newFixedThreadPool(numThreads);
 			ArrayList<ParExecTask> tasks = new ArrayList<>();
 			//create tasks (for wdivmm-left, parallelization over columns;
@@ -337,12 +338,15 @@ public abstract class SpoofOuterProduct extends SpoofOperator
 		return UtilFunctions.roundToNext(base, k);
 	}
 	
-	private void executeDense(double[] a, double[] u, double[] v, double[][] b, double[] scalars,
+	private void executeDense(double[] a, double[] u, double[] v, SideInput[] b, double[] scalars,
 		double[] c, int m, int n, int k, OutProdType type, int rl, int ru, int cl, int cu )
 	{
 		//approach: iterate over non-zeros of w, selective mm computation
 		//cache-conscious blocking: due to blocksize constraint (default 1000),
 		//a blocksize of 16 allows to fit blocks of UV into L2 cache (256KB) 
+		
+		//NOTE: we don't create sparse side inputs w/ row-major cursors because 
+		//cache blocking would lead to non-sequential access
 		
 		final int blocksizeIJ = 16; //u/v block (max at typical L2 size) 
 		int cix = 0;
@@ -362,12 +366,15 @@ public abstract class SpoofOuterProduct extends SpoofOperator
 			}
 	}
 	
-	private void executeCellwiseDense(double[] a, double[] u, double[] v, double[][] b, double[] scalars,
+	private void executeCellwiseDense(double[] a, double[] u, double[] v, SideInput[] b, double[] scalars,
 		double[] c, int m, int n, int k, OutProdType type, int rl, int ru, int cl, int cu )
 	{
 		//approach: iterate over non-zeros of w, selective mm computation
 		//cache-conscious blocking: due to blocksize constraint (default 1000),
 		//a blocksize of 16 allows to fit blocks of UV into L2 cache (256KB)
+		
+		//NOTE: we don't create sparse side inputs w/ row-major cursors because 
+		//cache blocking would lead to non-sequential access
 		
 		final int blocksizeIJ = 16; //u/v block (max at typical L2 size)
 		//blocked execution
@@ -391,7 +398,7 @@ public abstract class SpoofOuterProduct extends SpoofOperator
 			c[0] = sum;
 	}
 	
-	private void executeSparse(SparseBlock sblock,  double[] u, double[] v, double[][] b, double[] scalars,
+	private void executeSparse(SparseBlock sblock, double[] u, double[] v, SideInput[] b, double[] scalars,
 		double[] c, int m, int n, int k, long nnz, OutProdType type, int rl, int ru, int cl, int cu) 
 	{
 		boolean left = (_outerProductType== OutProdType.LEFT_OUTER_PRODUCT);
@@ -401,45 +408,78 @@ public abstract class SpoofOuterProduct extends SpoofOperator
 		//blocksize is chosen such that we reuse each  Ui/Vj vector on average 8 times,
 		//with custom blocksizeJ for wdivmm_left to avoid LLC misses on output.
 		final int blocksizeI = (int) (8L*m*n/nnz);
-		final int blocksizeJ = left ? Math.max(8,Math.min(L2_CACHESIZE/(k*8), blocksizeI)) : blocksizeI;
-		int[] curk = new int[Math.min(blocksizeI,ru-rl)];
 		
-		for( int bi = rl; bi < ru; bi+=blocksizeI ) 
+		if( OptimizerUtils.getSparsity(m, n, nnz) < MatrixBlock.ULTRA_SPARSITY_TURN_POINT ) //ultra-sparse
 		{
-			int bimin = Math.min(ru, bi+blocksizeI);
-			//prepare starting indexes for block row
-			for( int i=bi; i<bimin; i++ ) {
+			//for ultra-sparse matrices, we do not allocate the index array because
+			//its allocation and maintenance can dominate the total runtime.
+			SideInput[] lb = createSparseSideInputs(b);
+				
+			//core wdivmm block matrix mult
+			for( int i=rl, uix=rl*k; i<ru; i++, uix+=k ) {
+				if( sblock.isEmpty(i) ) continue;
+				
+				int wpos = sblock.pos(i);
+				int wlen = sblock.size(i);
+				int[] wix = sblock.indexes(i);
+				double[] wval = sblock.values(i);
+				
 				int index = (cl==0||sblock.isEmpty(i)) ? 0 : sblock.posFIndexGTE(i,cl);
-				curk[i-bi] = (index>=0) ? index : n;
+				index = wpos + ((index>=0) ? index : n);
+				for( ; index<wpos+wlen && wix[index]<cu; index++ ) {
+					genexecDense(wval[index], u, uix, v, wix[index]*k, lb, scalars, c,
+						(left ? wix[index]*k : uix), m, n, k, i, wix[index]);
+				}
 			}
+		}
+		else //sparse
+		{
+			//NOTE: we don't create sparse side inputs w/ row-major cursors because 
+			//cache blocking would lead to non-sequential access
 			
-			//blocked execution over column blocks
-			for( int bj = cl; bj < cu; bj+=blocksizeJ )
+			final int blocksizeJ = left ? Math.max(8,Math.min(L2_CACHESIZE/(k*8), blocksizeI)) : blocksizeI;
+			int[] curk = new int[Math.min(blocksizeI,ru-rl)];
+			
+			for( int bi = rl; bi < ru; bi+=blocksizeI ) 
 			{
-				int bjmin = Math.min(cu, bj+blocksizeJ);
-				//core wdivmm block matrix mult
-				for( int i=bi, uix=bi*k; i<bimin; i++, uix+=k ) {
-					if( sblock.isEmpty(i) ) continue;
-					
-					int wpos = sblock.pos(i);
-					int wlen = sblock.size(i);
-					int[] wix = sblock.indexes(i);
-					double[] wval = sblock.values(i);
-					
-					int index = wpos + curk[i-bi];
-					for( ; index<wpos+wlen && wix[index]<bjmin; index++ ) {
-						genexecDense(wval[index], u, uix, v, wix[index]*k, b, scalars, c,
-							(left ? wix[index]*k : uix), m, n, k, i, wix[index]);
+				int bimin = Math.min(ru, bi+blocksizeI);
+				//prepare starting indexes for block row
+				for( int i=bi; i<bimin; i++ ) {
+					int index = (cl==0||sblock.isEmpty(i)) ? 0 : sblock.posFIndexGTE(i,cl);
+					curk[i-bi] = (index>=0) ? index : n;
+				}
+				
+				//blocked execution over column blocks
+				for( int bj = cl; bj < cu; bj+=blocksizeJ )
+				{
+					int bjmin = Math.min(cu, bj+blocksizeJ);
+					//core wdivmm block matrix mult
+					for( int i=bi, uix=bi*k; i<bimin; i++, uix+=k ) {
+						if( sblock.isEmpty(i) ) continue;
+						
+						int wpos = sblock.pos(i);
+						int wlen = sblock.size(i);
+						int[] wix = sblock.indexes(i);
+						double[] wval = sblock.values(i);
+						
+						int index = wpos + curk[i-bi];
+						for( ; index<wpos+wlen && wix[index]<bjmin; index++ ) {
+							genexecDense(wval[index], u, uix, v, wix[index]*k, b, scalars, c,
+								(left ? wix[index]*k : uix), m, n, k, i, wix[index]);
+						}
+						curk[i-bi] = index - wpos;
 					}
-					curk[i-bi] = index - wpos;
 				}
 			}
 		}
 	}
 	
-	private void executeCellwiseSparse(SparseBlock sblock, double[] u, double[] v, double[][] b, double[] scalars, 
+	private void executeCellwiseSparse(SparseBlock sblock, double[] u, double[] v, SideInput[] b, double[] scalars, 
 		MatrixBlock out, int m, int n, int k, long nnz, OutProdType type, int rl, int ru, int cl, int cu ) 
 	{
+		//NOTE: we don't create sparse side inputs w/ row-major cursors because 
+		//cache blocking would lead to non-sequential access
+		
 		final int blocksizeIJ = (int) (8L*m*n/nnz);
 		int[] curk = new int[Math.min(blocksizeIJ, ru-rl)];
 		
@@ -504,9 +544,12 @@ public abstract class SpoofOuterProduct extends SpoofOperator
 		}
 	}
 	
-	private void executeCompressed(CompressedMatrixBlock a, double[] u, double[] v, double[][] b, double[] scalars, 
+	private void executeCompressed(CompressedMatrixBlock a, double[] u, double[] v, SideInput[] b, double[] scalars, 
 			double[] c, int m, int n, int k, OutProdType type, int rl, int ru, int cl, int cu) 
 	{
+		//NOTE: we don't create sparse side inputs w/ row-major cursors because 
+		//compressed data is access in a column-major order 
+		
 		boolean left = (_outerProductType==OutProdType.LEFT_OUTER_PRODUCT);
 		
 		Iterator<IJV> iter = !left ? a.getIterator(rl, ru, false) :
@@ -520,9 +563,12 @@ public abstract class SpoofOuterProduct extends SpoofOperator
 		}
 	}
 	
-	private void executeCellwiseCompressed(CompressedMatrixBlock a, double[] u, double[] v, double[][] b, double[] scalars,
+	private void executeCellwiseCompressed(CompressedMatrixBlock a, double[] u, double[] v, SideInput[] b, double[] scalars,
 		MatrixBlock out, int m, int n, int k, OutProdType type, int rl, int ru, int cl, int cu )
-	{			
+	{
+		//NOTE: we don't create sparse side inputs w/ row-major cursors because 
+		//compressed data is access in a column-major order 
+		
 		double[] c = out.getDenseBlock();
 		SparseBlock csblock = out.getSparseBlock();
 		
@@ -548,10 +594,10 @@ public abstract class SpoofOuterProduct extends SpoofOperator
 		}
 	}
 
-	protected abstract void genexecDense( double a, double[] u, int ui, double[] v, int vi, double[][] b,
+	protected abstract void genexecDense( double a, double[] u, int ui, double[] v, int vi, SideInput[] b,
 		double[] scalars, double[] c, int ci, int m, int n, int k, int rowIndex, int colIndex);
 	
-	protected abstract double genexecCellwise( double a, double[] u, int ui, double[] v, int vi, double[][] b,
+	protected abstract double genexecCellwise( double a, double[] u, int ui, double[] v, int vi, SideInput[] b,
 		double[] scalars, int m, int n, int k, int rowIndex, int colIndex);
 	
 	private class ParExecTask implements Callable<Long> 
@@ -559,7 +605,7 @@ public abstract class SpoofOuterProduct extends SpoofOperator
 		private final MatrixBlock _a;
 		private final double[] _u;
 		private final double[] _v;
-		private final double[][] _b;
+		private final SideInput[] _b;
 		private final double[] _scalars;
 		private final MatrixBlock _c;
 		private final int _clen;
@@ -571,7 +617,7 @@ public abstract class SpoofOuterProduct extends SpoofOperator
 		private final int _cl;
 		private final int _cu;
 		
-		protected ParExecTask( MatrixBlock a, double[] u, double[] v, double[][] b, double[] scalars , MatrixBlock c, int m, int n, int k, OutProdType type, int rl, int ru, int cl, int cu ) {
+		protected ParExecTask( MatrixBlock a, double[] u, double[] v, SideInput[] b, double[] scalars , MatrixBlock c, int m, int n, int k, OutProdType type, int rl, int ru, int cl, int cu ) {
 			_a = a;
 			_u = u;
 			_v = v;
@@ -626,7 +672,7 @@ public abstract class SpoofOuterProduct extends SpoofOperator
 		private final MatrixBlock _a;
 		private final double[] _u;
 		private final double[] _v;
-		private final double[][] _b;
+		private final SideInput[] _b;
 		private final double[] _scalars;
 		private final int _rlen;
 		private final int _clen;
@@ -637,7 +683,7 @@ public abstract class SpoofOuterProduct extends SpoofOperator
 		private final int _cl;
 		private final int _cu;
 		
-		protected ParOuterProdAggTask( MatrixBlock a, double[] u, double[] v, double[][] b, double[] scalars, int m, int n, int k, OutProdType type, int rl, int ru, int cl, int cu ) {
+		protected ParOuterProdAggTask( MatrixBlock a, double[] u, double[] v, SideInput[] b, double[] scalars, int m, int n, int k, OutProdType type, int rl, int ru, int cl, int cu ) {
 			_a = a;
 			_u = u;
 			_v = v;

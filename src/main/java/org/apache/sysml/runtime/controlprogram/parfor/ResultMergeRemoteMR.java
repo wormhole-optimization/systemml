@@ -34,14 +34,12 @@ import org.apache.hadoop.mapred.JobConf;
 import org.apache.sysml.api.DMLScript;
 import org.apache.sysml.conf.ConfigurationManager;
 import org.apache.sysml.conf.DMLConfig;
-import org.apache.sysml.parser.Expression.DataType;
-import org.apache.sysml.parser.Expression.ValueType;
 import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.controlprogram.caching.MatrixObject;
 import org.apache.sysml.runtime.controlprogram.parfor.util.StagingFileUtils;
 import org.apache.sysml.runtime.io.IOUtilFunctions;
 import org.apache.sysml.runtime.matrix.MatrixCharacteristics;
-import org.apache.sysml.runtime.matrix.MatrixFormatMetaData;
+import org.apache.sysml.runtime.matrix.MetaDataFormat;
 import org.apache.sysml.runtime.matrix.data.InputInfo;
 import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.matrix.data.MatrixCell;
@@ -99,7 +97,7 @@ public class ResultMergeRemoteMR extends ResultMerge
 		MatrixObject moNew = null; //always create new matrix object (required for nested parallelism)
 		if( LOG.isTraceEnabled() )
 			LOG.trace("ResultMerge (remote, mr): Execute serial merge for output "
-				+_output.getVarName()+" (fname="+_output.getFileName()+")");
+				+_output.hashCode()+" (fname="+_output.getFileName()+")");
 		
 		try
 		{
@@ -123,7 +121,7 @@ public class ResultMergeRemoteMR extends ResultMerge
 				_output.exportData();
 				
 				//actual merge
-				MatrixFormatMetaData metadata = (MatrixFormatMetaData) _output.getMetaData();
+				MetaDataFormat metadata = (MetaDataFormat) _output.getMetaData();
 				MatrixCharacteristics mcOld = metadata.getMatrixCharacteristics();
 				
 				String fnameCompare = _output.getFileName();
@@ -135,17 +133,13 @@ public class ResultMergeRemoteMR extends ResultMerge
 						     mcOld.getRowsPerBlock(), mcOld.getColsPerBlock());
 				
 				//create new output matrix (e.g., to prevent potential export<->read file access conflict
-				String varName = _output.getVarName();
-				ValueType vt = _output.getValueType();
-				moNew = new MatrixObject( vt, _outputFName );
-				moNew.setVarName( varName.contains(NAME_SUFFIX) ? varName : varName+NAME_SUFFIX );
-				moNew.setDataType( DataType.MATRIX );
+				moNew = new MatrixObject(_output.getValueType(), _outputFName);
 				OutputInfo oiOld = metadata.getOutputInfo();
 				InputInfo iiOld = metadata.getInputInfo();
 				MatrixCharacteristics mc = new MatrixCharacteristics(mcOld.getRows(),mcOld.getCols(),
 						                                             mcOld.getRowsPerBlock(),mcOld.getColsPerBlock());
 				mc.setNonZeros( computeNonZeros(_output, inMO) );
-				MatrixFormatMetaData meta = new MatrixFormatMetaData(mc,oiOld,iiOld);
+				MetaDataFormat meta = new MetaDataFormat(mc,oiOld,iiOld);
 				moNew.setMetaData( meta );
 			}
 			else

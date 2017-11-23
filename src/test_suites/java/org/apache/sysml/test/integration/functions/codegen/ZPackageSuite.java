@@ -52,6 +52,7 @@ import org.junit.runners.Suite;
 	OuterProdTmplTest.class,
 	RowAggTmplTest.class,
 	RowVectorComparisonTest.class,
+	SparseSideInputTest.class,
 	SumProductChainTest.class,
 	Spoof2Test.class,
 })
