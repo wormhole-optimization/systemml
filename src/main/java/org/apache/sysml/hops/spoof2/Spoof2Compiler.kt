@@ -91,7 +91,7 @@ object Spoof2Compiler {
                     generateCodeFromStatementBlock(sb)
             }
             else -> { //generic (last-level)
-                current._hops = generateCodeFromHopDAGs(current._hops, false, true)
+                current.hops = generateCodeFromHopDAGs(current.hops, false, true)
                 current.updateRecompilationFlag()
             }
         }

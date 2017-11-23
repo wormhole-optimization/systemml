@@ -49,8 +49,8 @@ public class StatementBlock extends LiveVariableAnalysis implements ParseInfo
 
 	protected DMLProgram _dmlProg;
 	protected ArrayList<Statement> _statements;
-	ArrayList<Hop> _hops = null;
 	ArrayList<Lop> _lops = null;
+	ArrayList<Hop> _hops = null;
 	HashMap<String,ConstIdentifier> _constVarsIn;
 	HashMap<String,ConstIdentifier> _constVarsOut;
 

@@ -266,7 +266,9 @@ object ParseExplain {
                     "rix" -> IndexingOp(inp[0].name, dataType, valueType,
                             inp[0], inp[1], inp[2], inp[3], inp[4], true, true) // todo last two params
                     "lix" -> throw RuntimeException("no support for lix yet")
-                    "m(printf)" -> MultipleOp(inp[0].name, dataType, valueType, Hop.MultiInputOp.PRINTF, *inp.toTypedArray())
+                    "m(printf)" -> NaryOp(inp[0].name, dataType, valueType, Hop.OpOpN.PRINTF, *inp.toTypedArray())
+                    "m(cbind)" -> NaryOp(inp[0].name, dataType, valueType, Hop.OpOpN.CBIND, *inp.toTypedArray())
+                    "m(rbind)" -> NaryOp(inp[0].name, dataType, valueType, Hop.OpOpN.RBIND, *inp.toTypedArray())
                     else -> throw RuntimeException("Cannot recognize Hop in: $opString")
                 }
             }
