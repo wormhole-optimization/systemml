@@ -13,6 +13,7 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
     private val remainingToExpand = HashSet(initialRoots)
     private val seen = HashSet<Id>()
     private val nfhashTable = HashMap<Hash, SNode>()
+    // invariant: nodes in the hash table are in normal form
 
     fun expandAll() {
         while( remainingToExpand.isNotEmpty() )
@@ -28,6 +29,9 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
             return
         seen += node.id
 
+        // todo - start bottom up? Then we recgonize when we have a sub-normal form?
+        // go through algorithm with +, Σ, *
+
         when( node ) {
             is SNodeData -> return node.inputs.forEach { expand(it) }
             is SNodeExt -> return node.inputs.forEach { expand(it) }
@@ -38,21 +42,13 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
         }
 
         // node is SNodeNary or SNodeAggregate in normal form
-        val hash = NormalFormHash.hashNormalForm(node)
-        if( hash in nfhashTable ) {
-            val collisionNode = nfhashTable[hash]!!
-            if( collisionNode === node )
-                throw AssertionError("should not visit same node twice")
-            // wire to existing enumerated normal form
-            moveParentsToEquivalentNode(node, collisionNode)
-            return
-        } else {
-            nfhashTable[hash] = node
+        val nn = addToHashTable(node)
+        if( nn === node ) { // node was not in the hash table; we need to explore it
             when (node) {
                 is SNodeNary -> expandNary(node)
                 is SNodeAggregate -> expandAggregate(node)
             }
-            return node.inputs.forEach { expand(it) }
+            node.inputs.forEach { expand(it) }
         }
     }
 
@@ -61,6 +57,7 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
     }
 
     private fun expandAggregate(agg: SNodeAggregate) {
+        assert(agg.aggsNotInInputSchema().isNotEmpty()) {"(${agg.id}) $agg aggs not in input schema: ${agg.aggsNotInInputSchema()}"}
         val mult = agg.input
         if( agg.op == Hop.AggOp.SUM && mult is SNodeNary && mult.op == SNodeNary.NaryOp.MULT ) {
             // decision: order in which to push down Σ into *
@@ -68,19 +65,6 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
             // Otherwise nothing to expand; skip past this agg-multiply.
 
             // todo wait-- do simple factorization first -- multiply within groups, separate into connected components, push down independent aggregates
-
-
-            if (isSimpleAggMultiply(agg, mult)) {
-                return expand(mult)
-            }
-            // copy original, hold onto it
-            // create an OrNode, move parents of agg onto the OrNode
-            // for each factorization, add it to the OrNode's input.
-            // check for existing nfhash along the way.
-            //    If one is found, stop factorizing and link to the existing semantically equivalent node.
-            // dead code eliminate the original.
-            // add the leaves to the frontier. Leaves are the original mult's inputs.
-
             val edgesGroupByIncidentNames = groupByIncidentNames(mult)
             if( edgesGroupByIncidentNames.size == 1 )
                 return
@@ -96,9 +80,24 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
                                          *   <-- New nf
                                         A A
                      */
-                    factorDownEdges(agg, mult, edges)
+                    pushDownMultiplyGroup(agg, mult, edges)
                 }
             }
+            pushAggregations(agg)
+
+
+            if (isSimpleAggMultiply(agg, mult)) {
+                return expand(mult)
+            }
+            // copy original, hold onto it
+            // create an OrNode, move parents of agg onto the OrNode
+            // for each factorization, add it to the OrNode's input.
+            // check for existing nfhash along the way.
+            //    If one is found, stop factorizing and link to the existing semantically equivalent node.
+            // dead code eliminate the original.
+            // add the leaves to the frontier. Leaves are the original mult's inputs.
+
+
         }
     }
 
@@ -113,18 +112,78 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
      * Does not change semantics of agg.
      * Possibly changes semantics of mult.
      */
-    private fun factorDownEdges(agg: SNodeAggregate, mult: SNodeNary, factorEdges: List<SNode>) {
+    private fun pushDownMultiplyGroup(agg: SNodeAggregate, mult: SNodeNary, factorEdges: List<SNode>) {
         mult.inputs.removeAll(factorEdges)
         factorEdges.forEach { it.parents -= mult }
-        val nm = SNodeNary(SNodeNary.NaryOp.MULT, factorEdges)
+        var nm: SNode = SNodeNary(SNodeNary.NaryOp.MULT, factorEdges)
         mult.inputs += nm
         nm.parents += mult
-        // new nf: mult
-        // pushAggregations(agg, mult)
+        // new nf. It is in normal form.
+        nm = addToHashTable(nm)
+//        pushAggregations(agg, mult)
+    }
+
+    private fun pushAggregations(agg: SNodeAggregate, mult: SNodeNary) {
+        assert(agg.input == mult)
+        val iter = agg.aggs.iterator()
+        while (iter.hasNext()) {
+            val (aggName, shape) = iter.next()
+            aggName as AB
+            val incidentEdges = nameToIncidentEdges(mult)[aggName]!!
+            if (incidentEdges.size == 1) {
+                val bmult = incidentEdges[0]
+                // from Σ -> * -> *
+                // to   Σ -> * -> Σ -> *
+                // [mult] changes semantics.
+                iter.remove()
+                bmult.parents -= mult
+                val nagg = SNodeAggregate(Hop.AggOp.SUM, bmult, aggName)
+                mult.inputs[mult.inputs.indexOf(bmult)] = nagg
+                mult.refreshSchema()
+                // new Σ is ready to be inserted
+            }
+        }
+    }
+
+    /**
+     * If [node] has a semantically equivalent sister inside the hash table,
+     * then rewire [node]'s parents to its sister and return the sister.
+     * Otherwise add [node] to the hash table and return itself.
+     */
+    private fun addToHashTable(node: SNode): SNode {
+        val hash = NormalFormHash.hashNormalForm(node)
+        return if( hash in nfhashTable ) {
+            val collisionNode = nfhashTable[hash]!!
+            if( collisionNode === node )
+                throw AssertionError("should not visit same node twice")
+            // wire to existing enumerated normal form
+            moveParentsToEquivalentNode(node, collisionNode)
+            collisionNode
+        } else {
+            nfhashTable[hash] = node
+            node
+        }
     }
 
     private fun groupByIncidentNames(mult: SNodeNary): Map<Set<Name>, List<SNode>> {
         return mult.inputs.groupBy { it.schema.names.toSet() }
+    }
+
+    private fun nameToIncidentEdges(mult: SNodeNary): Map<Name, List<SNode>> {
+        return mult.inputs.flatMap { edge ->
+            edge.schema.names.map { name -> name to edge }
+        }.groupBy(Pair<Name, SNode>::first)
+                .mapValues { (n,v) ->
+                    v.map(Pair<Name, SNode>::second)
+                            // matrix[x,n], vector [n], matrix[n,x]
+                            .sortedBy {
+                                when( it.schema.size ) {
+                                    0 -> 0
+                                    1 -> 2
+                                    else -> if( it.schema.names.first() == n ) 3 else 1
+                                }
+                            }
+                }
     }
 
     /** Replace [node] with an [OrNode], having [node] as its only child. Move parents of [node] to the [OrNode]. */
