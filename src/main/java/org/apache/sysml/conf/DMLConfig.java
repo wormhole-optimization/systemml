@@ -55,7 +55,7 @@ import org.xml.sax.SAXException;
 
 public class DMLConfig
 {
-	public static final boolean SPOOF_DEBUG = false;
+	public static final boolean SPOOF_DEBUG = true;
 
 	public static final String DEFAULT_SYSTEMML_CONFIG_FILEPATH = "./SystemML-config.xml";
 	

@@ -112,7 +112,7 @@ fun SNode.renameCopyDown(renaming: Map<AB, AB>, old: HashMap<AB,AB> = HashMap(re
 /**
  * Count the nodes in this SPlan for which [pred] evaluates to true.
  */
-fun countPred(roots: ArrayList<SNode>, pred: (SNode) -> Boolean): Int {
+fun countPred(roots: List<SNode>, pred: (SNode) -> Boolean): Int {
     SNode.resetVisited(roots)
     val cnt = roots.sumBy { rCountPred(it, pred) }
     SNode.resetVisited(roots)

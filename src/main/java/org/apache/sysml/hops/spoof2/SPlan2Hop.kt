@@ -59,8 +59,9 @@ object SPlan2Hop {
 
         return if( mult is SNodeNary && mult.op == SNodeNary.NaryOp.MULT && agg.op == Hop.AggOp.SUM
                 && mult.inputs.size == 2
-                && mult.inputs[0].schema.names.intersect(mult.inputs[1].schema.names).size == 1 // forbear element-wise multiplication followed by agg
-                && agg.aggs.size == 1 )
+                && agg.aggs.size == 1
+                && mult.inputs[0].schema.names.intersect(mult.inputs[1].schema.names).first() == agg.aggs.names.first() // forbear element-wise multiplication followed by agg
+                       )
         {   // MxM
             var mult0 = mult.inputs[0]
             var mult1 = mult.inputs[1]

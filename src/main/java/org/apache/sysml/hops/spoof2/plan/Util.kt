@@ -267,3 +267,8 @@ private class CartesianIterator<out E>(
 
 }
 
+fun <E> MutableCollection<E>.removeFirst(): E? {
+    return if( this.isEmpty() ) null
+    else this.first().also { this.remove(it) }
+}
+

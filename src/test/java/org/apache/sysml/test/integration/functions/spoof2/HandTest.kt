@@ -5,6 +5,7 @@ import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.spoof2.NormalFormHash
 import org.apache.sysml.hops.spoof2.SPlan2NormalForm
 import org.apache.sysml.hops.spoof2.SPlanCseEliminator
+import org.apache.sysml.hops.spoof2.enu2.SPlanEnumerate
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.*
 import org.apache.sysml.parser.Expression
@@ -49,19 +50,19 @@ class HandTest {
         val de = SNodeBind(A, mapOf(AU.U0 to d, AU.U1 to e))
         val r1 = SNodeData(createWriteHop("X"),
                 SNodeUnbind(
-                SNodeAggregate(p, SNodeNary(m,
-                SNodeAggregate(p, SNodeNary(m, ab, bc), b),
-                cd
-                ), c)
-                , mapOf(AU.U0 to a, AU.U1 to d))
+                        SNodeAggregate(p, SNodeNary(m,
+                                SNodeAggregate(p, SNodeNary(m, ab, bc), b),
+                                cd
+                        ), c)
+                        , mapOf(AU.U0 to a, AU.U1 to d))
         )
         val r2 = SNodeData(createWriteHop("Y"),
                 SNodeUnbind(
-                SNodeAggregate(p, SNodeNary(m,
-                SNodeAggregate(p, SNodeNary(m, bc, cd), c),
-                de
-                ), d)
-                , mapOf(AU.U0 to b, AU.U1 to e))
+                        SNodeAggregate(p, SNodeNary(m,
+                                SNodeAggregate(p, SNodeNary(m, bc, cd), c),
+                                de
+                        ), d)
+                        , mapOf(AU.U0 to b, AU.U1 to e))
         )
         val roots = arrayListOf<SNode>(r1, r2)
         System.out.print("Before:")
@@ -134,6 +135,7 @@ class HandTest {
 
     /**
      * Test that an agg-multiply with inputs A, B hashes to the same value as one with inputs B, A.
+     * Also tests a small part of SPlanEnumerate.
      */
     @Test
     fun testHash_AB_BA() {
@@ -169,6 +171,20 @@ class HandTest {
         System.out.println("Explain2: "+Explain.explain(BA))
         BA.resetVisited()
         assertEquals(hash1, hash2)
+
+        val r0 = SNodeData(createWriteHop("r0"),
+                SNodeUnbind(AB, mapOf(AU.U0 to a, AU.U1 to c)))
+        val r1 = SNodeData(createWriteHop("r1"),
+                SNodeUnbind(BA, mapOf(AU.U0 to c, AU.U1 to e)))
+        val roots = listOf(r0, r1)
+        System.out.println("Explain before enu: "+Explain.explainSPlan(roots))
+        val enu = SPlanEnumerate(roots)
+        enu.expandAll()
+        System.out.println("Explain after enu : "+Explain.explainSPlan(roots))
+        val aggs = countPred(roots) { it is SNodeAggregate }
+        val nary = countPred(roots) { it is SNodeNary }
+        Assert.assertEquals("Plan Enumeration should unify semantically equivalent sub-expressions",1, aggs)
+        Assert.assertEquals("Plan Enumeration should unify semantically equivalent sub-expressions",1, nary)
     }
 
     /**

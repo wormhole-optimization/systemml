@@ -851,7 +851,7 @@ class NormalFormExploreEq : SPlanRewriter {
         // Determine what variables we could eliminate at this point
         val eligibleAggNames = spb.eligibleAggNames()
         // Prune down to the agg names with minimum degree
-        // Dylan: The minimum degree heuristic is very good.
+        // Dylan: The minimum degree heuristic is good.
         val tmp = eligibleAggNames.map { it to (spb.nameToAdjacentNames()[it]!!).size - 1 }
         val minDegree = tmp.map { it.second }.min()!!
         //check(minDegree <= 2) { "Minimum degree is >2. Will form tensor intermediary. In spb $spb" }

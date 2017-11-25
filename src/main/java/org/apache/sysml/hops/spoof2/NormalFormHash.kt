@@ -1,6 +1,7 @@
 package org.apache.sysml.hops.spoof2
 
 import org.apache.sysml.hops.spoof2.enu.ENode
+import org.apache.sysml.hops.spoof2.enu2.OrNode
 import org.apache.sysml.hops.spoof2.plan.*
 
 private typealias InputIdx = Int
@@ -8,7 +9,7 @@ private typealias AttrPosition = Int
 
 object NormalFormHash {
 
-    fun createAttributePositionList(node: SNode, memo: MutableMap<Id, List<AB>>): List<AB> {
+    fun createAttributePositionList(node: SNode, memo: MutableMap<Id, List<AB>> = mutableMapOf()): List<AB> {
         if( node.id in memo )
             return memo[node.id]!!
 
@@ -35,6 +36,7 @@ object NormalFormHash {
                 node.inputs.forEach { check(createAttributePositionList(it, memo).isEmpty()) {"An SNodeExt should not have bound attributes from its inputs"} }
                 listOf()
             }
+            is OrNode -> createAttributePositionList(node.inputs[0], memo)
             is ENode -> throw IllegalStateException("There should not be an ENode present during createAttributePositionList")
             else -> throw IllegalStateException("Unrecognized: $node")
         }
@@ -50,6 +52,8 @@ object NormalFormHash {
     fun prettyPrintByPosition(node: SNode, memo: MutableMap<Id, String>, attrPosMemo: MutableMap<Id, List<AB>>): String {
         if( node.id in memo )
             return memo[node.id]!!
+        if( node is OrNode )
+            return prettyPrintByPosition(node.inputs[0], memo, attrPosMemo)
         var inputsHashes = node.inputs.map { prettyPrintByPosition(it, memo, attrPosMemo) }
 
         val h = when (node) {
@@ -240,7 +244,7 @@ object NormalFormHash {
 
     fun hashNormalForm(node: SNode, memo: MutableMap<Id, String>, attrPosMemo: MutableMap<Id, List<AB>>): Hash {
         return prettyPrintByPosition(node, memo, attrPosMemo).hashCode()
-//        if( node.id in memo )
+/*        if( node.id in memo )
 //            return memo[node.id]!!
 //        val inputsHashes = node.inputs.map { hashNormalForm(it, memo, attrPosMemo) }
 //
@@ -309,7 +313,13 @@ object NormalFormHash {
 //        }
 ////        println("(${node.id}) $node ==> $h")
 //        memo[node.id] = h
-//        return h
+//        return h */
+    }
+
+    fun hashNormalFormKeepAttrPosTop(node: SNode): Pair<Hash, List<AB>> {
+        val attrPosMemo = mutableMapOf<Id, List<AB>>()
+        val hash = hashNormalForm(node, mutableMapOf(), attrPosMemo)
+        return hash to createAttributePositionList(node, attrPosMemo)
     }
 
     private fun <A : Comparable<A>, B : Comparable<B>> pairComparator(): Comparator<Pair<A,B>> {

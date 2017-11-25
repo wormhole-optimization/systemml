@@ -1,6 +1,7 @@
 package org.apache.sysml.hops.spoof2
 
 import org.apache.sysml.hops.Hop
+import org.apache.sysml.hops.LiteralOp
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.*
 import org.apache.sysml.hops.spoof2.rewrite.RewriteBindElim.Companion.eliminateNode
@@ -352,7 +353,8 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
     private fun insertAgg(agg: SNodeAggregate): Boolean {
         val modify = checkModifyConditionsOnInputs(agg) { input ->
             input is SNodeNary && input.op == SNodeNary.NaryOp.PLUS ||
-                    input is SNodeAggregate && input.op == Hop.AggOp.SUM
+                    input is SNodeAggregate && input.op == Hop.AggOp.SUM ||
+                    agg.aggsNotInInputSchema().isNotEmpty()
         }
         if (!modify)
             return false
@@ -384,8 +386,12 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
                 putAggIntoPlusInput(newAgg, plus, pi)
             }
 
+            // check if an Σ pushed below a + now has a constant aggregation. If so, eliminate it by creating a constant *.
+
+
             plus.inputs.forEach { insertAgg(it as SNodeAggregate) }
             plus.refreshSchema()
+            return true
         } else if (aggInput is SNodeAggregate && aggInput.op == Hop.AggOp.SUM) {
             if (LOG.isTraceEnabled)
                 LOG.trace("SPlan2NormalForm_InsertStyle: Insert Σ (${agg.id}): combine into Σ child")
@@ -393,7 +399,70 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
             agg.aggs += aggInput.aggs
             agg.refreshSchema()
             eliminateNode(aggInput)
+            if( agg.aggsNotInInputSchema().isEmpty() )
+                return true
         }
+        val notInInput = agg.aggsNotInInputSchema()
+        if( notInInput.isNotEmpty() ) {
+            if (LOG.isDebugEnabled)
+                LOG.debug("SPlan2NormalForm_InsertStyle: eliminate aggNames from Σ (${agg.id}) that are not in input schema: $notInInput")
+            val mult = agg.input
+            if( mult is SNodeNary && mult.op == SNodeNary.NaryOp.MULT ) {
+                @Suppress("UNCHECKED_CAST")
+                val litInputs = (agg.input.inputs.filter { it is SNodeData && it.isLiteralNumeric } as List<SNodeData>).toMutableList()
+
+                loop@ while (notInInput.isNotEmpty() && litInputs.isNotEmpty()) {
+                    for (v in 1L until (1L shl notInInput.size)) {
+                        val selectSchema = notInInput.entries.filterIndexed { p, _ ->
+                            v and (1L shl p) != 0L
+                        }.run { Schema(this.map { (n, s) -> n to s }) }
+                        val tgt = selectSchema.shapes.fold(1.0, Double::div)
+                        val exact = litInputs.find {
+                            val hop = it.hop as LiteralOp
+                            hop.doubleValue == tgt
+                        }
+                        if (exact != null) {
+                            // exact match with a literal - eliminate the literal
+                            exact.parents -= mult
+                            mult.inputs -= exact
+                            agg.aggs -= selectSchema
+                            notInInput -= selectSchema
+                            litInputs -= exact
+                            // eliminate the mult if it has a single input
+                            if (mult.inputs.size == 1 && notInInput.isEmpty()) {
+                                val i = mult.inputs[0]
+                                i.parents -= mult
+                                i.parents += agg
+                                agg.input = i
+                                break@loop
+                            }
+                            continue@loop
+                        }
+                    }
+                    break
+                }
+                if (notInInput.isNotEmpty()) {
+                    val mFactor = notInInput.shapes.prod()
+                    val lit = SNodeData(LiteralOp(mFactor))
+
+                    mult.inputs += lit
+                    lit.parents += mult
+                    agg.aggs -= notInInput
+                }
+            } else {
+                val mFactor = notInInput.shapes.prod()
+                val lit = SNodeData(LiteralOp(mFactor))
+                mult.parents -= agg
+                val m = SNodeNary(SNodeNary.NaryOp.MULT, mult, lit)
+                m.parents += agg
+                agg.input = m
+                agg.aggs -= notInInput
+            }
+            if( agg.aggs.isEmpty() ) {
+                eliminateNode(agg)
+            }
+        }
+
         return true
     }
 

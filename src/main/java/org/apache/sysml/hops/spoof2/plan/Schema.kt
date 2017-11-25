@@ -171,4 +171,6 @@ class Schema private constructor(
             au = AU(au.dim+1)
         return au
     }
+
+    operator fun minus(s: Schema): Schema = filterKeys { it !in s.names }
 }
