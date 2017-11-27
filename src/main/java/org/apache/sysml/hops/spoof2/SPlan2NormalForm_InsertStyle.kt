@@ -511,7 +511,12 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
         }
     }
 
-    private fun splitCse(parent: SNode, input: SNode) {
+    /**
+     * Create a copy of [input] that has exactly one parent: [parent].
+     * [parent] is removed from the original [input]'s parents.
+     * Return the copy.
+     */
+    fun <N : SNode> splitCse(parent: SNode, input: N): N {
         // split CSE
         val copy = input.shallowCopyNoParentsYesInputs()
         parent.inputs.mapInPlace {
@@ -521,9 +526,8 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
                 copy
             } else it
         }
+        return copy
     }
-
-
 }
 
 

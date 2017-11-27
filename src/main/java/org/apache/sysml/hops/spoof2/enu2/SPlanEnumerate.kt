@@ -1,9 +1,13 @@
 package org.apache.sysml.hops.spoof2.enu2
 
+import com.google.common.collect.BiMap
+import com.google.common.collect.HashBiMap
 import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.spoof2.NormalFormHash
+import org.apache.sysml.hops.spoof2.SPlan2NormalForm_InsertStyle
 import org.apache.sysml.hops.spoof2.enu.ENode
 import org.apache.sysml.hops.spoof2.plan.*
+import org.apache.sysml.hops.spoof2.rewrite.RewriteBindElim.Companion.eliminateNode
 
 class SPlanEnumerate(initialRoots: Collection<SNode>) {
 
@@ -12,7 +16,7 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
     // todo - configuration parameters for whether to expand +, prune, etc.
     private val remainingToExpand = HashSet(initialRoots)
     private val seen = HashSet<Id>()
-    private val nfhashTable = HashMap<Hash, SNode>()
+    private val nfhashTable: BiMap<Hash, SNode> = HashBiMap.create()
     // invariant: nodes in the hash table are in normal form
 
     fun expandAll() {
@@ -37,38 +41,50 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
             is SNodeExt -> return node.inputs.forEach { expand(it) }
             is SNodeUnbind -> return expand(node.input)
             is SNodeBind -> return expand(node.input)
-            is OrNode -> return
+            is OrNode -> return // OrNodes are already expanded.
             is ENode -> throw AssertionError("unexpected ENode")
         }
 
-        // node is SNodeNary or SNodeAggregate in normal form
+        // node is SNodeNary or SNodeAggregate in normal form. Check if a semantically equivalent node is in hash table.
         val nn = addToHashTable(node)
         if( nn === node ) { // node was not in the hash table; we need to explore it
             when (node) {
                 is SNodeNary -> expandNary(node)
                 is SNodeAggregate -> expandAggregate(node)
             }
-            node.inputs.forEach { expand(it) }
         }
     }
 
     private fun expandNary(nary: SNodeNary) {
-        TODO("not implemented")
+        if (nary.op == SNodeNary.NaryOp.MULT) {
+            // no decisions. Already checked the hash table.
+            return nary.inputs.forEach { expand(it) }
+        }
+        else if (nary.op == SNodeNary.NaryOp.PLUS) {
+            // todo PLUS
+            return nary.inputs.forEach { expand(it) }
+        }
     }
 
     private fun expandAggregate(agg: SNodeAggregate) {
-        assert(agg.aggsNotInInputSchema().isNotEmpty()) {"(${agg.id}) $agg aggs not in input schema: ${agg.aggsNotInInputSchema()}"}
-        val mult = agg.input
-        if( agg.op == Hop.AggOp.SUM && mult is SNodeNary && mult.op == SNodeNary.NaryOp.MULT ) {
-            // decision: order in which to push down Σ into *
-            // Are there decisions at all? Yes: copy original and make decisions underneath an OrNode.
-            // Otherwise nothing to expand; skip past this agg-multiply.
+        // already checked the hash table for the aggregate.
+        // by induction: Σ-*-ext
+        assert(agg.aggsNotInInputSchema().isEmpty()) {"(${agg.id}) $agg aggs not in input schema: ${agg.aggsNotInInputSchema()}"}
 
-            // todo wait-- do simple factorization first -- multiply within groups, separate into connected components, push down independent aggregates
+        if( agg.op == Hop.AggOp.SUM && agg.input is SNodeNary && (agg.input as SNodeNary).op == SNodeNary.NaryOp.MULT ) {
+            // First do simple rewrites:
+            // 0. Split the * away in order to not affect foreign parents on *. Todo: only do this if we are going to change the * in some way.
+            // 1. Multiply within groups for edges that have the same schema.
+            // 2. Push down Σs contained within one edge into a sub-Σ.
+            // 3. Partition aggNames by connected components. Factor edges into a sub-multiply for each partition.
+            val mult = if (agg.input.parents.all { it == agg }) agg.input as SNodeNary else SPlan2NormalForm_InsertStyle.splitCse(agg, agg.input as SNodeNary)
+
             val edgesGroupByIncidentNames = groupByIncidentNames(mult)
             if( edgesGroupByIncidentNames.size == 1 )
-                return
-            edgesGroupByIncidentNames.forEach { _, edges ->
+                return expand(mult)
+
+            //val incidentNamesToEdge = mapValues...
+            edgesGroupByIncidentNames.forEach { (_, edges) ->
                 if (edges.size > 1) { // multiply within group
                     /*       *     =>   *
                            A B A       B *   <-- New nf
@@ -80,15 +96,49 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
                                          *   <-- New nf
                                         A A
                      */
-                    pushDownMultiplyGroup(agg, mult, edges)
+                    pushDownMultiplyGroup(mult, edges)
+                } else edges[0]
+            } // now exactly one edge per name-set
+            pushAggregations(agg, mult)
+
+            // two aggNames are connected if there is an edge that contains both aggNames in its schema.
+            // Partition aggNames by connected component.
+            // If an aggName can be factored into a subset of mult's inputs, do it.
+            // Non-aggregated inputs have their own component.
+            val CCs = findConnectedAggs(agg, mult)
+            if (CCs.size >= 2) {
+                for ((_, Cedges) in CCs) {
+                    if (Cedges.size >= 2)
+                        pushDownMultiplyGroup(mult, Cedges)
                 }
+                pushAggregations(agg, mult)
             }
-            pushAggregations(agg)
+
+            if (agg.aggs.isEmpty()) { // stop if we pushed all the aggregates
+                eliminateNode(agg)
+                // change hash table entry to mult.
+                val hash = nfhashTable.inverse().remove(agg)!!
+                nfhashTable[hash] = mult
+                return mult.inputs.forEach { expand(it) }
+            }
+
+            // Now check for decision rewrites.
+            // Get the aggs with minimum degree.
+            val n2an = nameToAdjacentNames(mult)
+            val aggNameToDegree = agg.aggs.mapValues { (aggName, _) -> n2an[aggName]!!.size }
+            val minDegree = aggNameToDegree.minBy { it.value }!!.value
+            if (minDegree > 2) {
+                throw AssertionError("tensor intermediate! degree $minDegree")
+            }
+            val minDegreeAggNames = aggNameToDegree.filter { it.value == minDegree }.map { it.value }
 
 
-            if (isSimpleAggMultiply(agg, mult)) {
-                return expand(mult)
-            }
+            // decision: order in which to push down Σ into *
+            // Are there decisions at all? Yes: copy original and make decisions underneath an OrNode.
+            // Otherwise nothing to expand; skip past this agg-multiply.
+
+            // todo wait-- do simple factorization first -- multiply within groups, separate into connected components, push down independent aggregates
+
             // copy original, hold onto it
             // create an OrNode, move parents of agg onto the OrNode
             // for each factorization, add it to the OrNode's input.
@@ -96,51 +146,86 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
             //    If one is found, stop factorizing and link to the existing semantically equivalent node.
             // dead code eliminate the original.
             // add the leaves to the frontier. Leaves are the original mult's inputs.
-
-
         }
     }
 
-    private fun isSimpleAggMultiply(agg: SNodeAggregate, mult: SNodeNary): Boolean {
-        return agg.aggs.size == 1
+    private fun findConnectedAggs(agg: SNodeAggregate, mult: SNodeNary): Set<Pair<Set<AB>, List<SNode>>> {
+        val aggsRemaining = agg.aggs.names.toMutableSet()
+        val ret = mutableSetOf<Pair<Set<AB>, List<SNode>>>()
+        val edges = mult.inputs.toMutableList()
+        while (aggsRemaining.isNotEmpty()) {
+            val a = aggsRemaining.first() as AB
+            val component = findConnectedAggs(a, edges)
+            aggsRemaining -= component.first
+            ret += component
+        }
+        ret += setOf<AB>() to edges // no-aggregate edges
+        return ret
+    }
+
+    /**
+     * Find all inputs to [edges] that are in the same connected component as [aggName].
+     * An input is in the same connected component as [aggName] if it has a name of the same connected component as [aggName] in its schema.
+     * Two names are connected if an input to [edges] contains both in its schema.
+     * Return the names and input in the connected component.
+     *
+     * Modifies [edges]: deletes found edges.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun findConnectedAggs(aggName: AB, edges: MutableList<SNode>): Pair<Set<AB>, List<SNode>> {
+        val connectedNodes = mutableListOf<SNode>()
+        var toExplore = setOf(aggName)
+        val explored = mutableSetOf<AB>()
+        do {
+            val found = edges.filter { !toExplore.disjoint(it.schema.names) }
+            edges.removeAll(found)
+            connectedNodes += found
+            explored += toExplore
+            toExplore = found.flatMap { it.schema.names as Set<AB> }.toSet() - explored
+        } while (toExplore.isNotEmpty())
+        return explored to connectedNodes
     }
 
     /**
      * Push a group of multiplicands into a new sub-multiply.
-     * Factor down Σs that are restricted to them.
-     *
-     * Does not change semantics of agg.
-     * Possibly changes semantics of mult.
+     * Return the new sub-multiply.
      */
-    private fun pushDownMultiplyGroup(agg: SNodeAggregate, mult: SNodeNary, factorEdges: List<SNode>) {
+    private fun pushDownMultiplyGroup(mult: SNodeNary, factorEdges: List<SNode>): SNodeNary {
         mult.inputs.removeAll(factorEdges)
         factorEdges.forEach { it.parents -= mult }
-        var nm: SNode = SNodeNary(SNodeNary.NaryOp.MULT, factorEdges)
+        val nm = SNodeNary(SNodeNary.NaryOp.MULT, factorEdges)
         mult.inputs += nm
         nm.parents += mult
-        // new nf. It is in normal form.
-        nm = addToHashTable(nm)
-//        pushAggregations(agg, mult)
+        return nm
     }
 
+    /**
+     * Input: [agg]-[mult].
+     * For each aggregated index, check if it can be pushed down into a single input of [mult].
+     * Push down each one that can.
+     */
     private fun pushAggregations(agg: SNodeAggregate, mult: SNodeNary) {
         assert(agg.input == mult)
         val iter = agg.aggs.iterator()
         while (iter.hasNext()) {
-            val (aggName, shape) = iter.next()
+            val (aggName, aggShape) = iter.next()
             aggName as AB
-            val incidentEdges = nameToIncidentEdges(mult)[aggName]!!
+            val incidentEdges = mult.inputs.filter { aggName in it.schema } //nameToIncidentEdges(mult)[aggName]!!
             if (incidentEdges.size == 1) {
-                val bmult = incidentEdges[0]
+                val single = incidentEdges[0]
                 // from Σ -> * -> *
                 // to   Σ -> * -> Σ -> *
                 // [mult] changes semantics.
                 iter.remove()
-                bmult.parents -= mult
-                val nagg = SNodeAggregate(Hop.AggOp.SUM, bmult, aggName)
-                mult.inputs[mult.inputs.indexOf(bmult)] = nagg
+                if (single is SNodeAggregate && single.op == Hop.AggOp.SUM) {
+                    single.aggs.put(aggName, aggShape)
+                    single.refreshSchema()
+                } else {
+                    single.parents -= mult
+                    val nagg = SNodeAggregate(Hop.AggOp.SUM, single, aggName)
+                    mult.inputs[mult.inputs.indexOf(single)] = nagg
+                }
                 mult.refreshSchema()
-                // new Σ is ready to be inserted
             }
         }
     }
@@ -162,6 +247,12 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
         } else {
             nfhashTable[hash] = node
             node
+        }
+    }
+
+    private fun nameToAdjacentNames(mult: SNodeNary): Map<Name, Set<Name>> {
+        return nameToIncidentEdges(mult).mapValues { (_,edges) ->
+            edges.flatMap { it.schema.names }.toSet()
         }
     }
 
