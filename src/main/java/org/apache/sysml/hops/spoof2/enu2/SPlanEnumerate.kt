@@ -4,6 +4,7 @@ import com.google.common.collect.BiMap
 import com.google.common.collect.HashBiMap
 import org.apache.commons.logging.LogFactory
 import org.apache.sysml.hops.Hop
+import org.apache.sysml.hops.LiteralOp
 import org.apache.sysml.hops.spoof2.NormalFormHash
 import org.apache.sysml.hops.spoof2.SPlan2NormalForm_InsertStyle
 import org.apache.sysml.hops.spoof2.enu.ENode
@@ -16,7 +17,7 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
 
     // todo - configuration parameters for whether to expand +, prune, etc.
     private val remainingToExpand = HashSet(initialRoots)
-    private val seen = HashSet<Id>()
+//    private val seen = HashSet<Id>()
     private val nfhashTable: BiMap<Hash, SNode> = HashBiMap.create()
     // invariant: nodes in the hash table are in normal form
     private val costMemo: MutableMap<Id, Double> = mutableMapOf()
@@ -33,9 +34,9 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
     }
 
     private fun expand(node: SNode) {
-        if( node.id in seen ) // todo replace with visit flag
+        if( node in nfhashTable.values ) // todo replace with visit flag
             return
-        seen += node.id
+//        seen += node.id
 
         // todo - start bottom up? Then we recgonize when we have a sub-normal form?
         // go through algorithm with +, Σ, *
@@ -60,28 +61,78 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
     }
 
     private fun expandNary(nary: SNodeNary) {
-        if (nary.op == SNodeNary.NaryOp.MULT) {
-            // Multiply within groups. If there are more than 2 inputs, see if we can group them into sub-*s.
-            if (nary.inputs.size > 2) {
-                val edgesGroupByIncidentNames = groupByIncidentNames(nary)
-                edgesGroupByIncidentNames.forEach { (_, edges) ->
-                    if (edges.size > 1) { // multiply within group
-                        /*       *     =>   *
-                               A B A       B *
-                                            A A
-                         */
-                        pushDownMultiplyGroup(nary, edges)
-                    }
+        when (nary.op) {
+            SNodeNary.NaryOp.MULT -> expandNaryMult(nary)
+            SNodeNary.NaryOp.PLUS -> expandNaryPlus(nary)
+            else -> nary.inputs.forEach { expand(it) }
+        }
+    }
+
+    private fun expandNaryPlus(plus: SNodeNary) {
+        return plus.inputs.forEach { expand(it) }
+    }
+
+    private fun expandNaryMult(mult: SNodeNary) {
+        // Multiply within groups. If there are more than 2 inputs, see if we can group them into sub-*s.
+        val edgesGroupByIncidentNames = groupByIncidentNames(mult)
+        if (edgesGroupByIncidentNames.size == 1) {
+            // all edges have same schema
+            // change self-multiply to power.
+            mult.inputs.groupingBy { it }.eachCount().filterValues { it > 1 }.forEach { node, cnt ->
+                repeat(cnt) {
+                    node.parents -= mult
+                    mult.inputs -= node
                 }
-                // todo still more than 2 inputs? Somehow break these up into binary *s. Possibly use an OrNode
-                // todo change self-multiply to power?
+                val lit = SNodeData(LiteralOp(cnt.toLong()))
+                val pow = SNodeNary(SNodeNary.NaryOp.POW, node, lit)
+                mult.inputs += pow
+                pow.parents += mult
             }
-            return nary.inputs.forEach { expand(it) }
+
+        } else {
+            // there are at least two different edge groups.
+            edgesGroupByIncidentNames.forEach { (_, edges) ->
+                if (edges.size > 1) { // multiply within group
+                    /*       *     =>   *
+                           A B A       B *
+                                        A A
+                    */
+                    pushDownMultiplyGroup(mult, edges)
+                }
+            }
+            // still more than 2 inputs? Break these up into binary *s. Possibly use an OrNode
+            if (mult.inputs.size > 2) {
+                adjustInputOrder(mult)
+                // first x rest
+                val first = mult.inputs[0]
+                val rest = mult.inputs.toMutableList()
+                rest.removeAt(0)
+                mult.inputs.clear()
+                mult.inputs += first
+                rest.forEach { it.parents -= mult }
+                val nn = SNodeNary(SNodeNary.NaryOp.MULT, rest)
+                mult.inputs += nn
+                nn.parents += mult
+            }
         }
-        else if (nary.op == SNodeNary.NaryOp.PLUS) {
-            // todo PLUS
-            return nary.inputs.forEach { expand(it) }
+        return mult.inputs.forEach { expand(it) }
+    }
+
+    private fun adjustInputOrder(mult: SNodeNary) {
+        // See RewriteSplitMultiplyPlus
+        // See RewriteElementwiseMultChainOptimization. Todo sparsity.
+        if (mult.parents.size == 1 && mult.parents[0] is SNodeAggregate) {
+            val parent = mult.parents[0] as SNodeAggregate
+            // heuristic: the first inputs to multiply should be the ones with the most things to aggregate.
+            mult.inputs.sortWith(
+                    compareBy<SNode> { parent.aggs.names.intersect(it.schema.names).count() }
+                            .thenComparing<Int> { -(it.schema.names - parent.aggs).size }
+            )
+        } else {
+            mult.inputs.sortBy { -it.schema.size }
         }
+        if (LOG.isDebugEnabled)
+            LOG.debug("Reorder inputs of (${mult.id}) $mult as ${mult.inputs.map { it.schema }}")
     }
 
     private fun expandAggregate(agg: SNodeAggregate) {
@@ -112,7 +163,7 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
                 val hash = nfhashTable.inverse().remove(agg)!!
                 nfhashTable[hash] = mult
                 // continue to each partition
-                return mult.inputs.forEach { expand(it) }
+                return expandNaryMult(mult)
             }
 
             // Stop if there is a single aggName or there is a single edge group.

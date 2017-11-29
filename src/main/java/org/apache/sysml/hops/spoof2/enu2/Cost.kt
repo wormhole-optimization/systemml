@@ -3,9 +3,6 @@ package org.apache.sysml.hops.spoof2.enu2
 import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.spoof2.plan.*
 
-// simplify *s down to binary chains, in order of sparsity
-// put vector on right
-
 data class SCost(
         val flops: Double
 ) : Comparable<SCost> {
@@ -75,6 +72,11 @@ data class SCost(
         }
 
         private fun costNary(nary: SNodeNary, costMemo: MutableMap<Id, Double>): Pair<List<SNode>, Double> {
+            if (nary.op == SNodeNary.NaryOp.POW) {
+                val cost = nary.schema.shapes.prod().toDouble()
+                costMemo[nary.id] = cost
+                return nary.inputs to cost
+            }
             if( nary.op != SNodeNary.NaryOp.MULT && nary.op != SNodeNary.NaryOp.PLUS )
                 return nary.inputs to 0.0
 
