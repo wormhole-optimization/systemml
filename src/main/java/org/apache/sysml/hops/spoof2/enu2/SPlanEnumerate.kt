@@ -59,19 +59,13 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
 
     private fun expandNary(nary: SNodeNary) {
         if (nary.op == SNodeNary.NaryOp.MULT) {
-            // if there are more than 2 inputs, see if we can group them into sub-*s.
+            // Multiply within groups. If there are more than 2 inputs, see if we can group them into sub-*s.
             if (nary.inputs.size > 2) {
                 val edgesGroupByIncidentNames = groupByIncidentNames(nary)
                 edgesGroupByIncidentNames.forEach { (_, edges) ->
                     if (edges.size > 1) { // multiply within group
                         /*       *     =>   *
-                               A B A       B *   <-- New nf
-                                            A A
-
-                                 Σ          Σ
-                                 *     =>   *    <-- New nf
-                               A B A       B Σ   <-- New nf
-                                             *   <-- New nf
+                               A B A       B *
                                             A A
                          */
                         pushDownMultiplyGroup(nary, edges)
@@ -90,19 +84,16 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
 
     private fun expandAggregate(agg: SNodeAggregate) {
         // already checked the hash table for the aggregate.
-        // by induction: Σ-*-ext
+        // invariant: Σ-*-ext
         assert(agg.aggsNotInInputSchema().isEmpty()) {"(${agg.id}) $agg aggs not in input schema: ${agg.aggsNotInInputSchema()}"}
 
         if( agg.op == Hop.AggOp.SUM && agg.input is SNodeNary && (agg.input as SNodeNary).op == SNodeNary.NaryOp.MULT ) {
             // First do simple rewrites:
             // 0. Split the * away in order to not affect foreign parents on *. Todo: only do this if we are going to change the * in some way.
-            // 1. Partition aggNames by connected components. Factor edges into a sub-multiply for each partition.
-            // 2. Multiply within groups for edges that have the same schema.
-            // 3. Push down Σs contained within one edge into a sub-Σ.
             val mult = if (agg.input.parents.all { it == agg }) agg.input as SNodeNary else SPlan2NormalForm_InsertStyle.splitCse(agg, agg.input as SNodeNary)
 
+            // 1. Partition aggNames by connected components. Factor edges into a sub-multiply for each partition.
             // two aggNames are connected if there is an edge that contains both aggNames in its schema.
-            // Partition aggNames by connected component.
             // If an aggName can be factored into a subset of mult's inputs, do it.
             // Non-aggregated inputs have their own component.
             val CCs = findConnectedAggs(agg, mult) // todo unnecessary if parent of agg is *
@@ -122,25 +113,29 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
                 return mult.inputs.forEach { expand(it) }
             }
 
+            // Stop if there is a single aggName or there is a single edge group.
             if (agg.aggs.size == 1)
                 return expand(mult)
             val edgesGroupByIncidentNames = groupByIncidentNames(mult)
             if( edgesGroupByIncidentNames.size == 1 )
                 return expand(mult)
 
-            // These are the easy aggregates, that can be pushed into a single edge group. Not all degree 1 aggregates are easy, as in t(u)Av.
-            val pushableAggs = anticipatePushableAggs(agg, mult)
+            // 3. Identify easy aggregates. Easy aggNames are those that are contained within one edge and can be pushed into a sub-Σ-* edge group.
+            // Not all degree 1 aggregates are easy, as in t(u)Av.
+            val easyAggs = anticipatePushableAggs(agg, mult)
 
-            if (pushableAggs != agg.aggs.names) {
+            if (easyAggs != agg.aggs.names) {
                 // we have at least one hard aggregate. We have a choice over the hard aggregates of which one to leave up top.
                 @Suppress("UNCHECKED_CAST")
-                val hardAggs = (agg.aggs.names - pushableAggs) as Set<AB>
+                val hardAggs = (agg.aggs.names - easyAggs) as Set<AB>
                 if (hardAggs.size >= 2) {
                     // todo max degree heuristic
                     // Replace agg with an OrNode - we have choices.
                     val orNode = replaceWithOrNode(agg)
                     agg.parents.clear()   // use agg as master copy
                     orNode.inputs.clear()
+
+                    // todo - heuristics for ordering which to explore first (order hardAggs)
 
                     for (hardAgg in hardAggs) {
                         val curMult = mult.shallowCopyNoParentsYesInputs()
@@ -152,6 +147,9 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
                         curAggHard.parents += orNode
                         orNode.inputs += curAggHard
                         expand(curAgg)
+
+                        // todo - costing/pruning in the middle of enumeration
+                        // (decide whether to kill a child of the orNode by removing its parent and stripDead())
                     }
                     // eliminate master copy
                     stripDead(agg)
@@ -174,66 +172,6 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
             }
 
 
-//            val pushingAll = pushableAggs != agg.aggs.names
-//
-//            // for computing normal form hashes - a no-parent copy. Dead code eliminate these when finished.
-//            // we only need this if we are not pushing all the aggs already.
-//            val multCopy = if (pushingAll) mult else mult.shallowCopyNoParentsYesInputs()
-//            val aggCopy = if (pushingAll) agg else agg.shallowCopy(multCopy)
-//
-//            //val incidentNamesToEdge = mapValues...
-//            edgesGroupByIncidentNames.forEach { (_, edges) ->
-//                if (edges.size > 1) { // multiply within group
-//                    /*       *     =>   *
-//                           A B A       B *   <-- New nf
-//                                        A A
-//
-//                             Σ          Σ
-//                             *     =>   *    <-- New nf
-//                           A B A       B Σ   <-- New nf
-//                                         *   <-- New nf
-//                                        A A
-//                     */
-//                    pushDownMultiplyGroup(mult, edges)
-//                } else edges[0]
-//            } // now exactly one edge per name-set
-//            pushAggregations(agg, mult)
-//
-//            assert(agg.aggs.isEmpty() == pushingAll)
-//            if (pushingAll) { // stop if we pushed all the aggregates
-//                eliminateNode(agg)
-//                // change hash table entry to mult.
-//                val hash = nfhashTable.inverse().remove(agg)!!
-//                nfhashTable[hash] = mult
-//                return mult.inputs.forEach { expand(it) }
-//            }
-//
-//            // Now check for decision rewrites.
-//            // Get the aggs with minimum degree.
-//            val n2an = nameToAdjacentNames(mult)
-//            val aggNameToDegree = agg.aggs.mapValues { (aggName, _) -> n2an[aggName]!!.size }
-//            val minDegree = aggNameToDegree.minBy { it.value }!!.value
-//            if (minDegree > 2) {
-//                throw AssertionError("tensor intermediate! degree $minDegree")
-//            }
-//            val minDegreeAggNames = aggNameToDegree.filter { it.value == minDegree }.map { it.value }
-//
-//            // if there is a single minDegreeAggName, push it and repeat
-//
-//
-//            // decision: order in which to push down Σ into *
-//            // Are there decisions at all? Yes: copy original and make decisions underneath an OrNode.
-//            // Otherwise nothing to expand; skip past this agg-multiply.
-//
-//            // todo wait-- do simple factorization first -- multiply within groups, separate into connected components, push down independent aggregates
-//
-//            // copy original, hold onto it
-//            // create an OrNode, move parents of agg onto the OrNode
-//            // for each factorization, add it to the OrNode's input.
-//            // check for existing nfhash along the way.
-//            //    If one is found, stop factorizing and link to the existing semantically equivalent node.
-//            // dead code eliminate the original.
-//            // add the leaves to the frontier. Leaves are the original mult's inputs.
         }
     }
 
