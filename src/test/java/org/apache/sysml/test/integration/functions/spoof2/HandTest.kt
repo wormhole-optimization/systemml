@@ -66,7 +66,7 @@ class HandTest {
         )
         val roots = arrayListOf<SNode>(r1, r2)
         System.out.print("Before:")
-        System.out.println(Explain.explainSPlan(roots))
+        println(Explain.explainSPlan(roots))
 
         var cnt = 0
         do {
@@ -74,14 +74,14 @@ class HandTest {
             cnt++
         } while( result != SPlanRewriter.RewriterResult.NoChange )
         System.out.print("After (count=$cnt):")
-        System.out.println(Explain.explainSPlan(roots))
+        println(Explain.explainSPlan(roots))
 
         val aggs = countPred(roots) { it is SNodeAggregate }
         Assert.assertEquals("CSE Elim should reduce the number of aggregate nodes to 2",2, aggs)
 
         SPlanBottomUpRewriter.rewriteSPlan(roots)
         System.out.print("After Bind Unify:")
-        System.out.println(Explain.explainSPlan(roots))
+        println(Explain.explainSPlan(roots))
     }
 
 
@@ -112,7 +112,7 @@ class HandTest {
                 , d)
         val roots = arrayListOf<SNode>(AB, BA)
         System.out.print("Before:")
-        System.out.println(Explain.explainSPlan(roots))
+        println(Explain.explainSPlan(roots))
 
         var cnt = 0
         do {
@@ -120,12 +120,12 @@ class HandTest {
             cnt++
         } while( result != SPlanRewriter.RewriterResult.NoChange )
         System.out.print("After (count=$cnt):")
-        System.out.println(Explain.explainSPlan(roots))
+        println(Explain.explainSPlan(roots))
 
         SPlanBottomUpRewriter.rewriteSPlan(roots)
         SPlanBottomUpRewriter.rewriteSPlan(roots)
         System.out.print("After Bind Unify:")
-        System.out.println(Explain.explainSPlan(roots))
+        println(Explain.explainSPlan(roots))
 
         val aggs = countPred(roots) { it is SNodeAggregate }
         val nary = countPred(roots) { it is SNodeNary }
@@ -160,15 +160,15 @@ class HandTest {
                 SNodeNary(m, de, cd)
                 , d)
 
-        System.out.println("Explain1: "+Explain.explain(AB))
+        println("Explain1: "+Explain.explain(AB))
         AB.resetVisited()
-        System.out.println("Explain2: "+Explain.explain(BA))
+        println("Explain2: "+Explain.explain(BA))
         BA.resetVisited()
         val hash1 = NormalFormHash.hashNormalForm(AB)
         val hash2 = NormalFormHash.hashNormalForm(BA)
-        System.out.println("Explain1: "+Explain.explain(AB))
+        println("Explain1: "+Explain.explain(AB))
         AB.resetVisited()
-        System.out.println("Explain2: "+Explain.explain(BA))
+        println("Explain2: "+Explain.explain(BA))
         BA.resetVisited()
         assertEquals(hash1, hash2)
 
@@ -177,10 +177,10 @@ class HandTest {
         val r1 = SNodeData(createWriteHop("r1"),
                 SNodeUnbind(BA, mapOf(AU.U0 to c, AU.U1 to e)))
         val roots = listOf(r0, r1)
-        System.out.println("Explain before enu: "+Explain.explainSPlan(roots))
+        println("Explain before enu: "+Explain.explainSPlan(roots))
         val enu = SPlanEnumerate(roots)
         enu.expandAll()
-        System.out.println("Explain after enu : "+Explain.explainSPlan(roots))
+        println("Explain after enu : "+Explain.explainSPlan(roots))
         val aggs = countPred(roots) { it is SNodeAggregate }
         val nary = countPred(roots) { it is SNodeNary }
         Assert.assertEquals("Plan Enumeration should unify semantically equivalent sub-expressions",1, aggs)
@@ -218,9 +218,9 @@ class HandTest {
             testHash(n1, n2)
         }
 
-//        System.out.println("Explain1: "+Explain.explain(AB))
+//        println("Explain1: "+Explain.explain(AB))
 //        AB.resetVisited()
-//        System.out.println("Explain2: "+Explain.explain(BA))
+//        println("Explain2: "+Explain.explain(BA))
 //        BA.resetVisited()
 
         val w1 = SNodeData(createWriteHop("w1"), SNodeUnbind(ABxBA, mapOf(AU.U0 to a, AU.U1 to c)))
@@ -231,7 +231,15 @@ class HandTest {
         SPlan2NormalForm.rewriteSPlan(roots)
 
         testHash(w1.inputs[0], w2.inputs[0])
-        println(Explain.explainSPlan(roots))
+
+        println("Explain before enu: "+Explain.explainSPlan(roots))
+        val enu = SPlanEnumerate(roots)
+        enu.expandAll()
+        println("Explain after enu : "+Explain.explainSPlan(roots))
+        val aggs = countPred(roots) { it is SNodeAggregate }
+        val nary = countPred(roots) { it is SNodeNary }
+        Assert.assertEquals("Plan Enumeration should unify semantically equivalent sub-expressions",1, aggs)
+        Assert.assertEquals("Plan Enumeration should unify semantically equivalent sub-expressions",2, nary)
     }
     // todo test the case of independent connected components
 

@@ -278,7 +278,7 @@ abstract class SNode(inputs: List<SNode>) {
     protected abstract fun _shallowCopy(newInputs: List<SNode>): SNode
     /** Create a copy of this SNode whose inputs point to the given new inputs, adding the new copy to the new inputs' parents.
      * The new copy has no parents. The new copy copies the visit status. */
-    fun shallowCopy(newInputs: List<SNode>): SNode = this._shallowCopy(newInputs).also { it.visited = visited }
+    internal fun __shallowCopy(newInputs: List<SNode>) = this._shallowCopy(newInputs).also { it.visited = visited }
 
     /**
      * Compare this SNode with another based on type equality (same class, same operator, etc.)
@@ -291,10 +291,20 @@ abstract class SNode(inputs: List<SNode>) {
     var onRootPath: Boolean = false
 }
 
+/** Create a copy of this SNode whose inputs point to the given new inputs, adding the new copy to the new inputs' parents.
+ * The new copy has no parents. The new copy copies the visit status. */
+@Suppress("UNCHECKED_CAST")
+fun <T : SNode> T.shallowCopy(newInputs: List<SNode>): T = this.__shallowCopy(newInputs) as T
+
+/** Create a copy of this SNode whose inputs point to the given new inputs, adding the new copy to the new inputs' parents.
+ * The new copy has no parents. The new copy copies the visit status. */
+@Suppress("UNCHECKED_CAST")
+fun <T : SNode> T.shallowCopy(vararg newInputs: SNode): T = this.__shallowCopy(newInputs.asList()) as T
+
+
 /** Create a copy of this SNode whose inputs point to the same inputs, adding the new copy to the inputs' parents.
  * The new copy has no parents. */
-@Suppress("UNCHECKED_CAST")
-fun <T : SNode> T.shallowCopyNoParentsYesInputs() = this.shallowCopy(this.inputs) as T
+fun <T : SNode> T.shallowCopyNoParentsYesInputs() = this.shallowCopy(this.inputs)
 
 /** Deep copy this whole sub-tree, using a memo table internally to preserve common sub-expressions.
  * The returned node has no parents.
