@@ -19,6 +19,8 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
     private val seen = HashSet<Id>()
     private val nfhashTable: BiMap<Hash, SNode> = HashBiMap.create()
     // invariant: nodes in the hash table are in normal form
+    private val costMemo: MutableMap<Id, Double> = mutableMapOf()
+
     private val LOG = LogFactory.getLog(SPlanEnumerate::class.java)!!
 
     fun expandAll() {
@@ -150,9 +152,14 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
 
                         // todo - costing/pruning in the middle of enumeration
                         // (decide whether to kill a child of the orNode by removing its parent and stripDead())
+                        incrementalPruneOrNode(orNode, curAggHard)
                     }
                     // eliminate master copy
                     stripDead(agg)
+
+                    // due to naive pruning, the OrNode has a single child. Eliminate the OrNode.
+                    replaceOrNodeWithChild(orNode)
+
                     return
                 } else {
                     // just one hard agg. No OrNode necessary.
@@ -172,6 +179,24 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
             }
 
 
+        }
+    }
+
+    private fun incrementalPruneOrNode(orNode: OrNode, lastAlt: SNode) {
+        // initial pruning policy: throw away alternatives that are not the cheapest
+        if (orNode.inputs.size == 1)
+            return
+        val costs = SCost.costSPlan(orNode.inputs, costMemo)
+        val minCost = costs.min()!!
+        val minCostAlt = orNode.inputs[costs.indexOf(minCost)]
+        val iter = orNode.inputs.iterator()
+        while (iter.hasNext()) {
+            val alt = iter.next()
+            if (alt === minCostAlt)
+                continue
+            alt.parents -= orNode
+            stripDead(alt)
+            iter.remove()
         }
     }
 
@@ -282,6 +307,8 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
             val collisionNode = nfhashTable[hash]!!
             if( collisionNode === node )
                 throw AssertionError("should not visit same node twice")
+            // reinstate the collision node, in case it was dead-stripped
+            unstripDead(collisionNode)
             // wire to existing enumerated normal form
             moveParentsToEquivalentNode(node, collisionNode)
             collisionNode
@@ -336,6 +363,17 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
             orNode
         } else node
     }
+
+    private fun replaceOrNodeWithChild(orNode: OrNode): SNode {
+        val child = orNode.inputs.single()
+        child.parents -= orNode
+        orNode.parents.forEach { it.inputs[it.inputs.indexOf(orNode)] = child; child.parents += it }
+        val hash = nfhashTable.inverse().remove(orNode)
+        if (hash != null)
+            nfhashTable[hash] = child
+        return child
+    }
+
 
     /**
      * Move parents of [node] to [collisionNode], with an unbind/bind in between the [collisionNode] and [node]'s parents if necessary.

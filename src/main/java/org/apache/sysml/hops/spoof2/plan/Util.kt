@@ -205,6 +205,18 @@ private tailrec fun rStripDead(toRemove: MutableSet<SNode>, noStrip: Set<SNode>)
     return rStripDead(toRemove, noStrip)
 }
 
+/**
+ * Undo dead code elimination.
+ * Used to resurrect nodes that were thrown away during plan enumeration
+ * but still cached in case they are explored again.
+ */
+fun unstripDead(node: SNode) {
+    node.inputs.filter { node !in it.parents }.forEach {
+        it.parents += node
+        unstripDead(it)
+    }
+}
+
 fun Iterable<Long>.prod(): Long {
     var accumulator = 1L
     for (element in this) accumulator *= element
