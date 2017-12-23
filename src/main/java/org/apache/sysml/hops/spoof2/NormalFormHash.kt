@@ -1,5 +1,6 @@
 package org.apache.sysml.hops.spoof2
 
+import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.spoof2.enu.ENode
 import org.apache.sysml.hops.spoof2.enu2.OrNode
 import org.apache.sysml.hops.spoof2.plan.*
@@ -314,6 +315,41 @@ object NormalFormHash {
 ////        println("(${node.id}) $node ==> $h")
 //        memo[node.id] = h
 //        return h */
+    }
+
+    fun copyToNormalFormAndHash(node: SNode, memo: MutableMap<Id, String>, attrPosMemo: MutableMap<Id, List<AB>>): Hash {
+        if (isNormalForm(node))
+            return hashNormalForm(node, memo, attrPosMemo)
+        return TODO("copyToNormalForm")
+    }
+
+    fun isNormalForm(node: SNode): Boolean {
+        return checkPlus(node)
+    }
+
+    private fun checkPlus(node: SNode): Boolean {
+        return if (node is SNodeNary && node.op == SNodeNary.NaryOp.PLUS) {
+            node.inputs.all { checkAgg(it) }
+        } else checkAgg(node)
+    }
+
+    private fun checkAgg(node: SNode): Boolean {
+        return if (node is SNodeAggregate && node.op == Hop.AggOp.SUM) {
+            checkMult(node.input)
+        } else checkMult(node)
+    }
+
+    private fun checkMult(node: SNode): Boolean {
+        return if (node is SNodeNary && node.op == SNodeNary.NaryOp.MULT) {
+            node.inputs.all { checkBase(it) }
+        } else checkBase(node)
+    }
+
+    private fun checkBase(node: SNode): Boolean {
+        val okNode = !(node is SNodeNary && node.op == SNodeNary.NaryOp.PLUS ||
+                node is SNodeAggregate && node.op == Hop.AggOp.SUM ||
+                node is SNodeNary && node.op == SNodeNary.NaryOp.MULT)
+        return okNode && node.inputs.all { checkPlus(it) }
     }
 
     fun hashNormalFormKeepAttrPosTop(node: SNode): Pair<Hash, List<AB>> {

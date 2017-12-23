@@ -69,8 +69,54 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
     }
 
     private fun expandNaryPlus(plus: SNodeNary) {
+
         return plus.inputs.forEach { expand(it) }
     }
+
+    private fun expandNaryPlus(plus: SNodeNary, i: Int, j: Int) {
+        // get multiply parent and multiply terms for plus inputs i and j
+        val (mpi, msi) = getMultiplyTerms(plus, i)
+        val (mpj, msj) = getMultiplyTerms(plus, j)
+        // get aggNames in plus inputs i and j
+        val aggsi = getAggNames(plus.inputs[i])
+        val aggsj = getAggNames(plus.inputs[j])
+        // intersect them - get pairs of terms that have the same input
+        // todo - need smarter method - need to consider nodes that can be renamed
+        // maybe rename the aggregates in the two plus terms?
+
+        // map an SNode in common to the i and j plus term's multiply terms, to how many times it occurs in each
+        val commonToIJCount = msi.groupingBy { it }.eachCount().zipIntersect(msj.groupingBy { it }.eachCount())
+        for ((term, cntPair) in commonToIJCount) {
+            val (ni, nj) = cntPair
+            if (LOG.isDebugEnabled)
+                LOG.debug("at plus term (${plus.id}) $plus, common term $term occurs $ni times in plus input $i and $nj times in plus input $j")
+        }
+        TODO()
+    }
+
+    private fun getAggNames(agg: SNode): Set<AB> {
+        @Suppress("UNCHECKED_CAST")
+        return if (agg is SNodeAggregate) agg.aggs.names as Set<AB>
+        else setOf()
+    }
+
+    /** Return parent of multiply terms and the terms themselves, underneath a plus. */
+    private fun getMultiplyTerms(plus: SNodeNary, idx: Int): Pair<SNode, List<SNode>> {
+        var top: SNode = plus
+        var bot = plus.inputs[idx]
+        if (bot is SNodeAggregate && bot.op == Hop.AggOp.SUM) {
+            top = bot
+            bot = bot.input
+        }
+        if (bot is SNodeNary && bot.op == SNodeNary.NaryOp.MULT) {
+            top = bot
+        }
+        return top to
+                if (top === plus) listOf(plus.inputs[idx])
+                else top.inputs
+    }
+
+
 
     private fun expandNaryMult(mult: SNodeNary) {
         // Multiply within groups. If there are more than 2 inputs, see if we can group them into sub-*s.
@@ -124,12 +170,24 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
         if (mult.parents.size == 1 && mult.parents[0] is SNodeAggregate) {
             val parent = mult.parents[0] as SNodeAggregate
             // heuristic: the first inputs to multiply should be the ones with the most things to aggregate.
-            mult.inputs.sortWith(
-                    compareBy<SNode> { parent.aggs.names.intersect(it.schema.names).count() }
-                            .thenComparing<Int> { -(it.schema.names - parent.aggs).size }
-            )
+            val comparator = compareBy<SNode> { parent.aggs.names.intersect(it.schema.names).count() }
+                    .thenComparing<Int> { -(it.schema.names - parent.aggs).size }!!
+            //mult.inputs.sortWith(comparator)
+            // decided to just put the smallest one at the front
+            val minInput = mult.inputs.minWith(comparator)!!
+            val minInputIdx = mult.inputs.indexOf(minInput)
+            if (minInputIdx != 0) {
+                mult.inputs.removeAt(minInputIdx)
+                mult.inputs.add(0, minInput)
+            }
         } else {
-            mult.inputs.sortBy { -it.schema.size }
+//            mult.inputs.sortBy { -it.schema.size }
+            val minInput = mult.inputs.minBy { -it.schema.size }!!
+            val minInputIdx = mult.inputs.indexOf(minInput)
+            if (minInputIdx != 0) {
+                mult.inputs.removeAt(minInputIdx)
+                mult.inputs.add(0, minInput)
+            }
         }
         if (LOG.isDebugEnabled)
             LOG.debug("Reorder inputs of (${mult.id}) $mult as ${mult.inputs.map { it.schema }}")

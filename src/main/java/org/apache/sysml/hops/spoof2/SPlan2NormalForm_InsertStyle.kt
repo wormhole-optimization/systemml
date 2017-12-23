@@ -37,8 +37,8 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
         var changed = false
         SNode.resetVisited(roots)
         for (root in roots) {
-            val result = toNormalForm(root, roots)
-            changed = result || changed
+            val (newChanged, result) = toNormalForm(root, roots, false)
+            changed = newChanged || changed
         }
         SNode.resetVisited(roots)
         if( CHECK )
@@ -55,21 +55,29 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
     }
 
     /**
-     *
+     * @param copyOnChange Whether to clone the node if there is a significant change. False means change in place. True means copy and apply the change to the copy, then return the copy.
+     * @return whether there was a change, and the new node if [copyOnChange] is true and there is any change.
      */
-    private fun toNormalForm(node: SNode, allRoots: List<SNode>): Boolean {
+    private fun toNormalForm(_node: SNode, allRoots: List<SNode>, copyOnChange: Boolean): Pair<Boolean, SNode> {
+        var node = _node
 //        // wait until all children processed
 //        if( !node.inputs.all { it.id in resultMap } )
 //            return false
         if (node.visited) {
 //            SPlanValidator.checkAtBelowVisited(node)
-            return false
+            return false to node
         }
 //        if( LOG.isTraceEnabled )
 //            LOG.trace("enter children of (${node.id} $node ${node.schema}")
         var changed = false
+        val returnedChildren = ArrayList<SNode>(node.inputs.size)
         for (i in node.inputs.indices) {
-            changed = toNormalForm(node.inputs[i], allRoots)
+            val (thisChange, retNode) = toNormalForm(node.inputs[i], allRoots, copyOnChange)
+            changed = changed || thisChange
+            returnedChildren += retNode
+        }
+        if (copyOnChange && changed) {
+            node = node.shallowCopy(returnedChildren)
         }
 //        if( LOG.isTraceEnabled )
 //            LOG.trace("at (${node.id}) $node ${node.schema}")
@@ -84,33 +92,32 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
         // inductive hypothesis: each input is in normal form
 
         // Split input CSEs only if we would modify them. Otherwise allow inputs to have multiple parents.
-        val newChanged = when (node) {
+        val (newChanged, newNode) = when (node) {
             is SNodeNary -> {
                 if (node.op == SNodeNary.NaryOp.PLUS) {
-                    insertPlus(node)
+                    insertPlus(node) //!copyOnChange || !changed
                 } else if (node.op == SNodeNary.NaryOp.MULT) {
-                    insertMult(node)
-                } else false
+                    insertMult(node) //!copyOnChange || !changed
+                } else false to node
             }
             is SNodeAggregate -> {
                 if (node.op == Hop.AggOp.SUM)
-                    insertAgg(node)
-                else false
+                    insertAgg(node) //!copyOnChange || !changed
+                else false to node
             }
             is SNodeBind -> {
                 if (node.bindings.isEmpty()) {
-                    eliminateNode(node)
-                    true
-                } else insertBind(node)
+                    true to eliminateNode(node)
+                } else insertBind(node, false) //!copyOnChange || !changed
             }
             is SNodeUnbind -> {
                 if (node.unbindings.isEmpty()) {
-                    eliminateNode(node)
-                    true
-                } else insertUnbind(node)
+                    true to eliminateNode(node)
+                } else insertUnbind(node, false) //!copyOnChange || !changed
             }
-            else -> false
+            else -> false to node
         }
+        node = newNode
         node.visited = true
 //        SPlanValidator.checkAtBelowVisited(node)
 
@@ -119,16 +126,17 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
         if (CHECK_DURING_RECURSION && newChanged)
             SPlanValidator.validateSPlan(allRoots, false)
 
-        return changed || newChanged && node !is SNodeBind && node !is SNodeUnbind // bind/unbind changes are not real changes
+        // bind/unbind changes are not real changes
+        return (changed || newChanged && (copyOnChange || node !is SNodeBind && node !is SNodeUnbind)) to node
     }
 
-    private tailrec fun insertUnbind(unbind: SNodeUnbind): Boolean {
+    private tailrec fun insertUnbind(unbind: SNodeUnbind, changed: Boolean): Pair<Boolean, SNode> {
         val modify = checkModifyConditionsOnInputs(unbind) { input ->
             input is SNodeUnbind ||
                     (input is SNodeBind && !input.bindings.keys.disjoint(unbind.unbindings.keys))
         }
         if( !modify )
-            return false
+            return changed to unbind
         val bind = unbind.input
         when (bind) {
             is SNodeUnbind -> { // unbind-unbind
@@ -137,6 +145,7 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
                 eliminateNode(unbind)
                 if (LOG.isTraceEnabled)
                     LOG.trace("SPlan2NormalForm_InsertStyle: Insert Unbind: simplify (${unbind.id})unbind-(${bind.id})unbind")
+                return true to bind
             }
             is SNodeBind -> { // unbind-bind
                 val commonBindings = unbind.unbindings.intersectEntries(bind.bindings)
@@ -151,20 +160,19 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
                         eliminateNode(bind)
                     else bind.refreshSchema()
                     return if( unbind.unbindings.isEmpty() ) {
-                        eliminateNode(unbind)
-                        true
+                        true to eliminateNode(unbind)
                     } else {
                         unbind.refreshSchema()
-                        insertUnbind(unbind)
+                        insertUnbind(unbind, true)
                     }
                 }
                 // the rest are unbind-bind with disjoint keys
             }
         }
-        return true
+        return true to unbind
     }
 
-    private tailrec fun insertBind(bind: SNodeBind): Boolean {
+    private tailrec fun insertBind(bind: SNodeBind, changed: Boolean): Pair<Boolean, SNode> {
         // idea: compute a ModifyCode that is an enum and pass that below.
         val modify = checkModifyConditionsOnInputs(bind) { input ->
             input is SNodeBind ||
@@ -178,7 +186,7 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
                             )
         } // eliminates CSE if true
         if( !modify )
-            return false
+            return changed to bind
         val unbind = bind.input
         when (unbind) {
             is SNodeBind -> { // bind-bind
@@ -187,6 +195,7 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
                 eliminateNode(bind)
                 if (LOG.isTraceEnabled)
                     LOG.trace("SPlan2NormalForm_InsertStyle: Insert Bind: simplify (${bind.id})bind-(${unbind.id})bind")
+                return true to unbind
             }
             is SNodeUnbind -> { // bind-unbind
                 val commonBindings = bind.bindings.intersectEntries(unbind.unbindings)
@@ -199,8 +208,8 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
                         LOG.trace("SPlan2NormalForm_InsertStyle: Insert Bind: simplify (${bind.id})bind-(${unbind.id})unbind common bindings $commonBindings")
                     if( unbind.unbindings.isEmpty() ) eliminateNode(unbind)
                     else unbind.refreshSchema()
-                    return if( bind.bindings.isEmpty() ) { eliminateNode(bind); true }
-                    else { bind.refreshSchema(); insertBind(bind) }
+                    return if( bind.bindings.isEmpty() ) { true to eliminateNode(bind) }
+                    else { bind.refreshSchema(); insertBind(bind, true) }
                 }
                 // push down bind-unbind
                 val renamings = mutableMapOf<AB, AB>()
@@ -224,12 +233,12 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
                     // when would we end up with a bind-unbind that is disjoint? Never?
                     if( unbind.unbindings.isEmpty() ) eliminateNode(unbind)
                     else unbind.refreshSchema()
-                    return if( bind.bindings.isEmpty() ) { eliminateNode(bind); true }
-                    else { bind.refreshSchema(); insertBind(bind) }
+                    return if( bind.bindings.isEmpty() ) { true to eliminateNode(bind) }
+                    else { bind.refreshSchema(); insertBind(bind, true) }
                 }
             }
         }
-        return true
+        return true to bind
     }
 
     private fun renameDownSplitCse(node: SNode, renaming: Map<AB, AB>, nodeParent: SNode) {
@@ -282,13 +291,13 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
         node.inputs.toSet().filter { !it.schema.names.disjoint(renaming.keys) }.forEach { renameDownSplitCse(it, renaming, seen, bindsToRename) }
     }
 
-    private fun insertMult(mult: SNodeNary): Boolean {
+    private fun insertMult(mult: SNodeNary): Pair<Boolean, SNode> {
         val modify = checkModifyConditionsOnInputs(mult) { input ->
             input is SNodeNary && (input.op == SNodeNary.NaryOp.PLUS || input.op == SNodeNary.NaryOp.MULT) ||
                     input is SNodeAggregate && input.op == Hop.AggOp.SUM
         }
         if (!modify)
-            return false
+            return false to mult
         val (inPlus, inNotPlus) = mult.inputs.partition { it is SNodeNary && it.op == SNodeNary.NaryOp.PLUS }
         if( inPlus.isNotEmpty() ) {
             if (LOG.isTraceEnabled)
@@ -311,7 +320,7 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
                 newPlus.parents += it
             }
             newPlusInputs.forEach { insertMult(it) }
-            return true
+            return true to newPlus
         }
         val inAgg = mult.inputs.filter { it is SNodeAggregate && it.op == Hop.AggOp.SUM }
         if( inAgg.isNotEmpty() ) {
@@ -329,7 +338,7 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
             insertAgg(topAgg)
             below.visited = true
             topAgg.visited = true
-            return true
+            return true to topAgg
         }
         if (LOG.isTraceEnabled)
             LOG.trace("SPlan2NormalForm_InsertStyle: Insert * (${mult.id}): combine into * children")
@@ -347,17 +356,17 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
         mult.inputs.clear()
         mult.inputs += multInputs
         mult.inputs.forEach { it.parents += mult }
-        return true
+        return true to mult
     }
 
-    private fun insertAgg(agg: SNodeAggregate): Boolean {
+    private fun insertAgg(agg: SNodeAggregate): Pair<Boolean, SNode> {
         val modify = checkModifyConditionsOnInputs(agg) { input ->
             input is SNodeNary && input.op == SNodeNary.NaryOp.PLUS ||
                     input is SNodeAggregate && input.op == Hop.AggOp.SUM ||
                     agg.aggsNotInInputSchema().isNotEmpty()
         }
         if (!modify)
-            return false
+            return false to agg
         // push Σ below +, combine Σ
         val aggInput = agg.input
         if( aggInput is SNodeNary && aggInput.op == SNodeNary.NaryOp.PLUS ) {
@@ -391,7 +400,7 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
 
             plus.inputs.forEach { insertAgg(it as SNodeAggregate) }
             plus.refreshSchema()
-            return true
+            return true to plus
         } else if (aggInput is SNodeAggregate && aggInput.op == Hop.AggOp.SUM) {
             if (LOG.isTraceEnabled)
                 LOG.trace("SPlan2NormalForm_InsertStyle: Insert Σ (${agg.id}): combine into Σ child")
@@ -400,7 +409,7 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
             agg.refreshSchema()
             eliminateNode(aggInput)
             if( agg.aggsNotInInputSchema().isEmpty() )
-                return true
+                return true to agg
         }
         val notInInput = agg.aggsNotInInputSchema()
         if( notInInput.isNotEmpty() ) {
@@ -459,11 +468,11 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
                 agg.aggs -= notInInput
             }
             if( agg.aggs.isEmpty() ) {
-                eliminateNode(agg)
+                return true to eliminateNode(agg)
             }
         }
 
-        return true
+        return true to agg
     }
 
     private fun putAggIntoPlusInput(agg: SNodeAggregate, plus: SNodeNary, pi: SNode) {
@@ -477,13 +486,13 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
         }
     }
 
-    private fun insertPlus(plus: SNodeNary): Boolean {
+    private fun insertPlus(plus: SNodeNary): Pair<Boolean, SNode> {
         // put all +s together among the inputs
         val modify = checkModifyConditionsOnInputs(plus) { input ->
             input is SNodeNary && input.op == SNodeNary.NaryOp.PLUS
         }
         if (!modify)
-            return false
+            return false to plus
         if (LOG.isTraceEnabled)
             LOG.trace("SPlan2NormalForm_InsertStyle: Insert + (${plus.id}): combine into + children")
         val plusInputs = plus.inputs.flatMap { input ->
@@ -498,7 +507,7 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
         plus.inputs.clear()
         plus.inputs += plusInputs
         plus.inputs.forEach { it.parents += plus }
-        return true
+        return true to plus
     }
 
     private inline fun checkModifyConditionsOnInputs(parent: SNode, modifyCond: (SNode) -> Boolean): Boolean {

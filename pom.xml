@@ -69,7 +69,7 @@
 		<jcuda.version>0.8.0</jcuda.version>
 		<!-- OS-specific JVM arguments for running integration tests -->
 		<integrationTestExtraJVMArgs />
-        <kotlin.version>1.1.60</kotlin.version>
+        <kotlin.version>1.2.10</kotlin.version>
     </properties>
 
 	<repositories>
@@ -215,14 +215,6 @@
 						</configuration>
 					</execution>
 				</executions>
-			</plugin>
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-compiler-plugin</artifactId>
-				<configuration>
-					<source>1.8</source>
-					<target>1.8</target>
-				</configuration>
 			</plugin>
 			<plugin>
 				<groupId>net.alchim31.maven</groupId>
@@ -638,36 +630,48 @@
                 <executions>
                     <execution>
                         <id>compile</id>
-                        <phase>process-sources</phase>
+                        <phase>compile</phase>
                         <goals>
                             <goal>compile</goal>
                         </goals>
                         <configuration>
-                            <sourceDirs>
-                                <source>src/main/java</source>
-                                <source>src/main/scala</source>
-                            </sourceDirs>
+							<sourceDirs>
+								<source>src/main/java</source>
+								<source>src/main/scala</source>
+								<source>target/generated-sources</source>
+							</sourceDirs>
 							<jvmTarget>1.8</jvmTarget>
                         </configuration>
                     </execution>
                     <execution>
                         <id>test-compile</id>
-                        <phase>process-test-sources</phase>
+                        <phase>test-compile</phase>
                         <goals>
                             <goal>test-compile</goal>
                         </goals>
                         <configuration>
-                            <sourceDirs>
-                                <source>src/test/java</source>
-                                <source>src/test/scala</source>
-                                <source>src/test_suites/java</source>
-                            </sourceDirs>
+							<sourceDirs>
+								<source>src/test/java</source>
+								<source>src/test/scala</source>
+								<source>src/test_suites/java</source>
+							</sourceDirs>
 							<jvmTarget>1.8</jvmTarget>
                         </configuration>
                     </execution>
                 </executions>
-            </plugin>
-            <plugin>
+				<configuration>
+					<jvmTarget>1.8</jvmTarget>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<configuration>
+					<source>1.8</source>
+					<target>1.8</target>
+				</configuration>
+			</plugin>
+			<plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <executions>
@@ -1638,11 +1642,6 @@
 			<version>1.9.5</version>
 			<scope>test</scope>
 		</dependency>
-        <dependency>
-            <groupId>org.jetbrains.kotlin</groupId>
-            <artifactId>kotlin-stdlib-jre8</artifactId>
-            <version>${kotlin.version}</version>
-        </dependency>
 		<dependency>
             <groupId>org.jetbrains.kotlin</groupId>
             <artifactId>kotlin-runtime</artifactId>
@@ -1654,6 +1653,17 @@
             <version>${kotlin.version}</version>
             <scope>test</scope>
         </dependency>
-    </dependencies>
+		<dependency>
+			<groupId>org.jetbrains.kotlin</groupId>
+			<artifactId>kotlin-stdlib-jdk8</artifactId>
+			<version>${kotlin.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.jetbrains.kotlin</groupId>
+			<artifactId>kotlin-test</artifactId>
+			<version>${kotlin.version}</version>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
 
 </project>
