@@ -1,5 +1,6 @@
 package org.apache.sysml.hops.spoof2.plan
 
+import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.HopsException
 import org.apache.sysml.hops.spoof2.enu.EPath
 import org.apache.sysml.hops.spoof2.enu.SPCost
@@ -316,4 +317,18 @@ fun <T : SNode> T.deepCopy(): T = deepCopy(mutableMapOf())
 @Suppress("UNCHECKED_CAST")
 private fun <T : SNode> T.deepCopy(memo: MutableMap<Long, SNode>): T {
     return (memo[this.id] ?: this.shallowCopy(this.inputs.map { it.deepCopy(memo) })) as T
+}
+
+/** Deep copy this sub-tree until reaching a non-Σ_+_* node. */
+fun <T : SNode> T.deepCopyToBase(): T = deepCopyToBase(mutableMapOf())
+
+@Suppress("UNCHECKED_CAST")
+private fun <T : SNode> T.deepCopyToBase(memo: MutableMap<Long, SNode>): T {
+    if (!isPlusAggTimes(this)) return this
+    return (memo[this.id] ?: this.shallowCopy(this.inputs.map { it.deepCopy(memo) })) as T
+}
+
+private fun isPlusAggTimes(node: SNode): Boolean {
+   return node is SNodeNary && (node.op == SNodeNary.NaryOp.PLUS || node.op == SNodeNary.NaryOp.MULT)
+        || node is SNodeAggregate && node.op == Hop.AggOp.SUM
 }

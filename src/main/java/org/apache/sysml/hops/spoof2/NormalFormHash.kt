@@ -320,7 +320,12 @@ object NormalFormHash {
     fun copyToNormalFormAndHash(node: SNode, memo: MutableMap<Id, String>, attrPosMemo: MutableMap<Id, List<AB>>): Hash {
         if (isNormalForm(node))
             return hashNormalForm(node, memo, attrPosMemo)
-        return TODO("copyToNormalForm")
+        // copy all nodes down to the base nodes (non-*/Σ/+).
+        val newCopy = node.deepCopyToBase()
+        assert(newCopy !== node)
+        val h = hashNormalForm(newCopy, memo, attrPosMemo)
+        stripDead(newCopy)
+        return h
     }
 
     fun isNormalForm(node: SNode): Boolean {
