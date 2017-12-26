@@ -18,6 +18,7 @@ typealias SPB = SumProduct.Block
 typealias ESP = SumProduct.EBlock
 typealias SP = SumProduct
 typealias SPI = SumProduct.Input
+typealias Nnz = Long
 
 /**
  * Modify the elements of a List in place.
@@ -219,6 +220,11 @@ fun unstripDead(node: SNode) {
 
 fun Iterable<Long>.prod(): Long {
     var accumulator = 1L
+    for (element in this) accumulator *= element
+    return accumulator
+}
+fun Iterable<Double>.prod(): Double {
+    var accumulator = 1.0
     for (element in this) accumulator *= element
     return accumulator
 }
