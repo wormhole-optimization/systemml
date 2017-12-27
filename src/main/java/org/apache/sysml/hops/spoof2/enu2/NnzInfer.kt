@@ -48,6 +48,7 @@ object NnzInfer {
     }
 
     /**
+     * Worst case estimates, assumes nz overlap completely.
      * *: min of sparsities.
      * +: min(1, sum of sparsities).
      */

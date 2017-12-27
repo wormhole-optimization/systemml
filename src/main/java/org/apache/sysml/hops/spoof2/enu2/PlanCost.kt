@@ -11,7 +11,7 @@ class PlanCost {
     val nnzMemo: MutableMap<Id, Nnz> = mutableMapOf()
 
     companion object {
-        const val COST_SPARSITY = true
+        private const val COST_SPARSITY = true
     }
 
     fun costSPlan(roots: List<SNode>): List<Double> {

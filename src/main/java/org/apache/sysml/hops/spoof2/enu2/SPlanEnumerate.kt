@@ -12,7 +12,6 @@ import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.RewriteBindElim.Companion.eliminateNode
 
 class SPlanEnumerate(initialRoots: Collection<SNode>) {
-
     constructor(vararg inputs: SNode) : this(inputs.asList())
 
     // todo - configuration parameters for whether to expand +, prune, etc.
@@ -20,7 +19,7 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
 //    private val seen = HashSet<Id>()
     private val nfhashTable: BiMap<Hash, SNode> = HashBiMap.create()
     // invariant: nodes in the hash table are in normal form
-    private val costMemo: MutableMap<Id, Double> = mutableMapOf()
+    private val planCost = PlanCost()
 
     private val LOG = LogFactory.getLog(SPlanEnumerate::class.java)!!
 
@@ -295,7 +294,7 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
         // initial pruning policy: throw away alternatives that are not the cheapest
         if (orNode.inputs.size == 1)
             return
-        val costs = SCost.costSPlan(orNode.inputs, costMemo)
+        val costs = planCost.costSPlan(orNode.inputs)
         val minCost = costs.min()!!
         val minCostAlt = orNode.inputs[costs.indexOf(minCost)]
         val iter = orNode.inputs.iterator()
