@@ -2,7 +2,7 @@ package org.apache.sysml.test.integration.functions.spoof2
 
 import org.apache.sysml.hops.DataOp
 import org.apache.sysml.hops.Hop
-import org.apache.sysml.hops.spoof2.NormalFormHash
+import org.apache.sysml.hops.spoof2.SHash
 import org.apache.sysml.hops.spoof2.SPlan2NormalForm
 import org.apache.sysml.hops.spoof2.SPlanCseEliminator
 import org.apache.sysml.hops.spoof2.enu2.SPlanEnumerate
@@ -164,8 +164,8 @@ class HandTest {
         AB.resetVisited()
         println("Explain2: "+Explain.explain(BA))
         BA.resetVisited()
-        val hash1 = NormalFormHash.hashNormalForm(AB)
-        val hash2 = NormalFormHash.hashNormalForm(BA)
+        val hash1 = SHash.hash(AB)
+        val hash2 = SHash.hash(BA)
         println("Explain1: "+Explain.explain(AB))
         AB.resetVisited()
         println("Explain2: "+Explain.explain(BA))
@@ -244,10 +244,10 @@ class HandTest {
     // todo test the case of independent connected components
 
     private fun testHash(n1: SNode, n2: SNode) {
-        val s1 = NormalFormHash.prettyPrintByPosition(n1)
-        val s2 = NormalFormHash.prettyPrintByPosition(n2)
-        val h1 = NormalFormHash.hashNormalForm(n1)
-        val h2 = NormalFormHash.hashNormalForm(n2)
+        val s1 = SHash.prettyPrintByPosition(n1)
+        val s2 = SHash.prettyPrintByPosition(n2)
+        val h1 = SHash.hash(n1)
+        val h2 = SHash.hash(n2)
         println(s1)
         assertEquals(s1, s2)
         assertEquals(h1, h2)
@@ -313,13 +313,13 @@ class HandTest {
                 { it.second },
                 { it.third }
         )
-        val stillConfused = mutableListOf<NormalFormHash.IntSlice>()
-        val sortIdxs = NormalFormHash.sortIndicesHierarchical(data, sortFuns, stillConfused)
+        val stillConfused = mutableListOf<SHash.IntSlice>()
+        val sortIdxs = SHash.sortIndicesHierarchical(data, sortFuns, stillConfused)
         assertEquals(listOf(1, 3, 2, 0, 4), sortIdxs)
         val actual = data.permute(sortIdxs)
         val expected = data.sortedWith(compareTriple())
         assertEquals(expected, actual)
-        assertEquals(listOf(NormalFormHash.IntSlice(3, 4)), stillConfused)
+        assertEquals(listOf(SHash.IntSlice(3, 4)), stillConfused)
     }
 
     private fun <A:Comparable<A>,B:Comparable<B>,C:Comparable<C>> compareTriple(): Comparator<Triple<A,B,C>> {
@@ -327,7 +327,7 @@ class HandTest {
     }
 
     /**
-     * Test [NormalFormHash.sortIndicesHierarchical] on randomly generated lists of data.
+     * Test [SHash.sortIndicesHierarchical] on randomly generated lists of data.
      */
     @Test
     fun testRandomSortHierarchical() {
@@ -337,9 +337,9 @@ class HandTest {
 
         // dimension is RANGES.size
         val RANGES = listOf(
-                NormalFormHash.IntSlice(10, 15),
-                NormalFormHash.IntSlice(20, 25),
-                NormalFormHash.IntSlice(30, 35)
+                SHash.IntSlice(10, 15),
+                SHash.IntSlice(20, 25),
+                SHash.IntSlice(30, 35)
         )
         val NUM_POINTS = 50
 
@@ -357,8 +357,8 @@ class HandTest {
             sortFuns += { it[i] }
         }
 
-        val stillConfused = mutableListOf<NormalFormHash.IntSlice>()
-        val sortIdxs = NormalFormHash.sortIndicesHierarchical(data, sortFuns, stillConfused)
+        val stillConfused = mutableListOf<SHash.IntSlice>()
+        val sortIdxs = SHash.sortIndicesHierarchical(data, sortFuns, stillConfused)
         val actual = data.permute(sortIdxs)
         val expect = data.sortedWith(listComparator())
         assertEquals(expect, actual)

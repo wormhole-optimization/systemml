@@ -8,7 +8,7 @@ import org.apache.sysml.hops.spoof2.plan.*
 private typealias InputIdx = Int
 private typealias AttrPosition = Int
 
-object NormalFormHash {
+object SHash {
 
     fun createAttributePositionList(node: SNode, memo: MutableMap<Id, List<AB>> = mutableMapOf()): List<AB> {
         if( node.id in memo )
@@ -81,7 +81,7 @@ object NormalFormHash {
                 val body = naryInputsToString(node.inputs, inputsHashes, inputAttributePositions)
                 return "${node.op}($body)"
             }
-            is ENode -> throw IllegalStateException("There should not be an ENode present during hashNormalForm")
+            is ENode -> throw IllegalStateException("There should not be an ENode present during hash")
             else -> throw IllegalStateException("Unrecognized: $node")
         }
 //        println("(${node.id}) $node ==> $h")
@@ -239,15 +239,15 @@ object NormalFormHash {
      *
      * This method modifies the order of inputs to commutative SNodeNary nodes into a canonical order.
      */
-    fun hashNormalForm(node: SNode): Hash {
-        return hashNormalForm(node, mutableMapOf(), mutableMapOf())
+    fun hash(node: SNode): Hash {
+        return hash(node, mutableMapOf(), mutableMapOf())
     }
 
-    fun hashNormalForm(node: SNode, memo: MutableMap<Id, String>, attrPosMemo: MutableMap<Id, List<AB>>): Hash {
-        return prettyPrintByPosition(node, memo, attrPosMemo).hashCode()
+    fun hash(node: SNode, memo: MutableMap<Id, String>, attrPosMemo: MutableMap<Id, List<AB>>): Hash {
+        return prettyPrintByPosition(node, memo, attrPosMemo)
 /*        if( node.id in memo )
 //            return memo[node.id]!!
-//        val inputsHashes = node.inputs.map { hashNormalForm(it, memo, attrPosMemo) }
+//        val inputsHashes = node.inputs.map { hash(it, memo, attrPosMemo) }
 //
 //        val h = when (node) {
 //            is SNodeData -> (node.hop.opString + inputsHashes.joinToString(prefix = " (", postfix = ")", separator = "_", transform = Int::toString)).hashCode()
@@ -309,7 +309,7 @@ object NormalFormHash {
 ////                        .also { println(it) }
 //                        .hashCode()
 //            }
-//            is ENode -> throw IllegalStateException("There should not be an ENode present during hashNormalForm")
+//            is ENode -> throw IllegalStateException("There should not be an ENode present during hash")
 //            else -> throw IllegalStateException("Unrecognized: $node")
 //        }
 ////        println("(${node.id}) $node ==> $h")
@@ -319,11 +319,11 @@ object NormalFormHash {
 
     fun copyToNormalFormAndHash(node: SNode, memo: MutableMap<Id, String>, attrPosMemo: MutableMap<Id, List<AB>>): Hash {
         if (isNormalForm(node))
-            return hashNormalForm(node, memo, attrPosMemo)
+            return hash(node, memo, attrPosMemo)
         // copy all nodes down to the base nodes (non-*/Σ/+).
         val newCopy = node.deepCopyToBase()
         assert(newCopy !== node)
-        val h = hashNormalForm(newCopy, memo, attrPosMemo)
+        val h = hash(newCopy, memo, attrPosMemo)
         stripDead(newCopy)
         return h
     }
@@ -359,7 +359,7 @@ object NormalFormHash {
 
     fun hashNormalFormKeepAttrPosTop(node: SNode): Pair<Hash, List<AB>> {
         val attrPosMemo = mutableMapOf<Id, List<AB>>()
-        val hash = hashNormalForm(node, mutableMapOf(), attrPosMemo)
+        val hash = hash(node, mutableMapOf(), attrPosMemo)
         return hash to createAttributePositionList(node, attrPosMemo)
     }
 

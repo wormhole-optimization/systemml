@@ -11,16 +11,20 @@ import org.apache.sysml.hops.spoof2.enu.ENode
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.RewriteBindElim.Companion.eliminateNode
 
-class SPlanEnumerate(initialRoots: Collection<SNode>) {
+class SPlanEnumerate2(initialRoots: Collection<SNode>) {
     constructor(vararg inputs: SNode) : this(inputs.asList())
+    private val LOG = LogFactory.getLog(SPlanEnumerate2::class.java)!!
+    companion object {
+        private const val PRUNE_TENSOR_INTERMEDIATE = true
+    }
 
     // todo - configuration parameters for whether to expand +, prune, etc.
     private val remainingToExpand = HashSet(initialRoots)
-    private val nfhashTable: BiMap<Hash, SNode> = HashBiMap.create()
+    //    private val seen = HashSet<Id>()
+    private val ht: BiMap<Hash, SNode> = HashBiMap.create()
+
     // invariant: nodes in the hash table are in normal form
     private val planCost = PlanCost()
-
-    private val LOG = LogFactory.getLog(SPlanEnumerate::class.java)!!
 
     fun expandAll() {
         while( remainingToExpand.isNotEmpty() )
@@ -32,12 +36,8 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
     }
 
     private fun expand(node: SNode) {
-        if( node in nfhashTable.values ) // todo replace with visit flag
+        if( node in ht.values ) // todo replace with visit flag
             return
-//        seen += node.id
-
-        // todo - start bottom up? Then we recgonize when we have a sub-normal form?
-        // go through algorithm with +, Σ, *
 
         when( node ) {
             is SNodeData -> return node.inputs.forEach { expand(it) }
@@ -46,16 +46,83 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
             is SNodeBind -> return expand(node.input)
             is OrNode -> return // OrNodes are already expanded.
             is ENode -> throw AssertionError("unexpected ENode")
+            is SNodeAggregate -> if (node.op != Hop.AggOp.SUM ) return expand(node.input)
+            is SNodeNary -> if (node.op != SNodeNary.NaryOp.MULT && node.op != SNodeNary.NaryOp.PLUS) return node.inputs.forEach { expand(it) }
         }
 
-        // node is SNodeNary or SNodeAggregate in normal form. Check if a semantically equivalent node is in hash table.
-        val nn = addToHashTable(node)
-        if( nn === node ) { // node was not in the hash table; we need to explore it
-            when (node) {
-                is SNodeNary -> expandNary(node)
-                is SNodeAggregate -> expandAggregate(node)
-            }
+        // strip away parents, add parents to result, in same input location
+        val pa: List<SNode> = ArrayList(node.parents)
+        val paIdx = pa.map {
+            val idx = it.inputs.indexOf(node)
+            it.inputs.removeAt(idx)
+            idx
         }
+        node.parents.clear()
+        val r = factorPlus(node)
+        pa.zip(paIdx).forEach { (p, i) ->
+            p.inputs.add(i, r)
+            r.parents.add(p)
+        }
+    }
+
+    private fun factorPlus(plus: SNode): SNode {
+        if (plus !is SNodeNary || plus.op != SNodeNary.NaryOp.PLUS)
+            return factorAgg(plus)
+        val h = SHash.hash(plus)
+        if (h in ht) return ht[h]!!
+        val r = factorPlusRec(plus, listOf(), plus.inputs, listOf(), 0, 1)
+        ht[h] = r; return r
+    }
+
+    private fun factorPlusRec(plus: SNodeNary, Bold: List<SNode>, Bcur: List<SNode>, Bnew: List<SNode>, i0: Int, j0: Int): SNode {
+        if (Bcur.isEmpty() && Bnew.isEmpty()) return factorPlusBase(plus)
+        val i: Int; val j: Int
+        if (j0 > Bold.size + Bcur.size) { i=i0+1; j = i+1 }
+        else { i=i0; j=j0 }
+        if (i > Bcur.size) return factorPlusRec(plus, Bold + Bcur, Bnew, listOf(), 0, 1)
+        val alts = mutableListOf<SNode>()
+        // 1. Explore not factoring common terms
+        alts += factorPlusRec(plus, Bold, Bcur, Bnew, i, j+1)
+        // 2. Explore factoring out
+        val Gi = Bcur[i]
+        val Gj = if (j < Bcur.size) Bcur[j] else Bold[j-Bcur.size]
+        for ((Gf, hi, hj) in enumFactorization(Gi, Gj)) {
+            // Copy to new plus
+            val newGi = Gi.shallowCopyNoParentsYesInputs()
+            val newGj = Gj.shallowCopyNoParentsYesInputs()
+
+            val Bpl = mutableListOf<SNode>()
+            // if factoring out results in a single edge and it is a factored graphbag, then add all its graphs to Bp
+            // otherwise add the graph resulting from factoring out
+            Bpl += factorOutTerms(Gf, hi, newGi) // lines 11 to 19
+            Bpl += factorOutTerms(Gf, hj, newGj)
+            val Bp0 = SNodeNary(SNodeNary.NaryOp.PLUS, Bpl)
+
+            if (PRUNE_TENSOR_INTERMEDIATE && outputAttributes(Bpl).size > 2) {
+                stripDead(newGi); stripDead(newGj)
+                stripDead(Gf); stripDead(Bp0)
+                continue
+            }
+            val h = SHash.hash(Bp0)
+            val Bp: SNode
+            if (h in ht) { Bp = ht[h]!! } else { Bp = Bp0; ht[h] = Bp }
+            val Gp = SNodeNary(SNodeNary.NaryOp.MULT, Gf, Bp)
+
+            val newPlus = plus.shallowCopy(plus.inputs - Gi - Gj + Gp)
+            val newBold: List<SNode>; val newBcur: List<SNode>
+            if (j < Bcur.size) { newBold = Bold; newBcur = Bcur - Gi - Gj }
+            else { newBold = Bold - Gj; newBcur = Bcur - Gi }
+            alts += factorPlusRec(newPlus, newBold, newBcur, Bnew + Gp, i, i+1)
+        }
+        return OrNode(alts)
+    }
+
+    private fun outputAttributes(B: List<SNode>): List<Name> = B.flatMap { it.schema.names }
+
+    private fun replaceOneChild(node: SNode, oldChild: SNode, newChild: SNode) {
+        node.inputs[node.inputs.indexOf(oldChild)] = newChild
+        oldChild.parents -= node
+        newChild.parents += node
     }
 
     private fun expandNary(nary: SNodeNary) {
@@ -216,8 +283,8 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
                 assert(agg.aggs.isEmpty())
                 eliminateNode(agg)
                 // change hash table entry to mult.
-                val hash = nfhashTable.inverse().remove(agg)!!
-                nfhashTable[hash] = mult
+                val hash = ht.inverse().remove(agg)!!
+                ht[hash] = mult
                 // continue to each partition
                 return expandNaryMult(mult)
             }
@@ -410,8 +477,8 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
      */
     private fun addToHashTable(node: SNode): SNode {
         val hash = SHash.hash(node)
-        return if( hash in nfhashTable ) {
-            val collisionNode = nfhashTable[hash]!!
+        return if( hash in ht) {
+            val collisionNode = ht[hash]!!
             if( collisionNode === node )
                 throw AssertionError("should not visit same node twice")
             // reinstate the collision node, in case it was dead-stripped
@@ -420,7 +487,7 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
             moveParentsToEquivalentNode(node, collisionNode)
             collisionNode
         } else {
-            nfhashTable[hash] = node
+            ht[hash] = node
             node
         }
     }
@@ -453,7 +520,7 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
     }
 
     /** Replace [node] with an [OrNode], having [node] as its only child. Move parents of [node] to the [OrNode].
-     *  If [node] is in [nfhashTable], move its hash table entry to the OrNode. */
+     *  If [node] is in [ht], move its hash table entry to the OrNode. */
     private fun replaceWithOrNode(node: SNode): OrNode {
         return if( node !is OrNode ) {
             val parents = ArrayList(node.parents)
@@ -464,9 +531,9 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
             }
             orNode.parents += parents
 
-            val hash = nfhashTable.inverse().remove(node)
+            val hash = ht.inverse().remove(node)
             if (hash != null)
-                nfhashTable[hash] = orNode
+                ht[hash] = orNode
             orNode
         } else node
     }
@@ -475,9 +542,9 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
         val child = orNode.inputs.single()
         child.parents -= orNode
         orNode.parents.forEach { it.inputs[it.inputs.indexOf(orNode)] = child; child.parents += it }
-        val hash = nfhashTable.inverse().remove(orNode)
+        val hash = ht.inverse().remove(orNode)
         if (hash != null)
-            nfhashTable[hash] = child
+            ht[hash] = child
         return child
     }
 
