@@ -86,7 +86,7 @@ class SPlanEnumerate2(initialRoots: Collection<SNode>) {
         // 2. Explore factoring out
         val Gi = Bcur[i]
         val Gj = if (j < Bcur.size) Bcur[j] else Bold[j-Bcur.size]
-        for ((Gf, hi, hj) in enumFactorization(Gi, Gj)) {
+        for ((Gf: SNode, hi: Map<Name,Name>, hj: Map<Name,Name>) in enumFactorization(Gi, Gj)) {
             // Copy to new plus
             val newGi = Gi.shallowCopyNoParentsYesInputs()
             val newGj = Gj.shallowCopyNoParentsYesInputs()
@@ -94,7 +94,7 @@ class SPlanEnumerate2(initialRoots: Collection<SNode>) {
             val Bpl = mutableListOf<SNode>()
             // if factoring out results in a single edge and it is a factored graphbag, then add all its graphs to Bp
             // otherwise add the graph resulting from factoring out
-            Bpl += factorOutTerms(Gf, hi, newGi) // lines 11 to 19
+            Bpl += factorOutTerms(Gf, hi, newGi) // lines 11 to 19; can alter newGi in place
             Bpl += factorOutTerms(Gf, hj, newGj)
             val Bp0 = SNodeNary(SNodeNary.NaryOp.PLUS, Bpl)
 
@@ -115,6 +115,20 @@ class SPlanEnumerate2(initialRoots: Collection<SNode>) {
             alts += factorPlusRec(newPlus, newBold, newBcur, Bnew + Gp, i, i+1)
         }
         return OrNode(alts)
+    }
+
+    private fun factorOutTerms(Gf: SNode, h: Map<Name, Name>, G: SNode): List<SNode> {
+        val Ef = if (Gf is SNodeNary && Gf.op == SNodeNary.NaryOp.MULT) Gf.inputs else listOf(Gf)
+        val E = if (G is SNodeNary && G.op == SNodeNary.NaryOp.MULT) G.inputs else listOf(G)
+        val Ep = rename(h, E) - Ef // TODO subtraction definition
+        if (Ep.size == 1 && Ep[0] is SNodeNary && (Ep[0] as SNodeNary).op == SNodeNary.NaryOp.PLUS) {
+            return Ep[0].inputs
+        }
+        return TODO()
+    }
+
+    private fun rename(h: Map<Name, Name>, nodes: List<SNode>): List<SNode> {
+        TODO("not implemented")
     }
 
     private fun outputAttributes(B: List<SNode>): List<Name> = B.flatMap { it.schema.names }

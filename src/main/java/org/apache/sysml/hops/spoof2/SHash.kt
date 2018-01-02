@@ -81,7 +81,7 @@ object SHash {
                 val body = naryInputsToString(node.inputs, inputsHashes, inputAttributePositions)
                 return "${node.op}($body)"
             }
-            is ENode -> throw IllegalStateException("There should not be an ENode present during hash")
+            is ENode -> throw IllegalStateException("There should not be an ENode present during canonize")
             else -> throw IllegalStateException("Unrecognized: $node")
         }
 //        println("(${node.id}) $node ==> $h")
@@ -144,14 +144,46 @@ object SHash {
         return "$nodeStr~$jcStr"
     }
 
+
+//    fun hash(B0: GraphBag, memo: CanonMemo): Hash {
+//        if( B0 in memo ) return memo[B0]
+//        var B = B0
+//        var inputsHashes = B.map { hash(it, memo) }
+//        // return a new GraphBag (list) with the canonical order.
+//
+//        if( inputsHashes.size > 1 ) {
+//            val perm = normalizeCommutativeNaryInputOrder(B, inputsHashes)
+//            if( perm != 0 until B.size ) {
+//                B = B.permute(perm)
+//                inputsHashes = inputsHashes.permute(perm)
+//            }
+//        }
+//
+//        val body = naryInputsToString(B, inputsHashes)
+//        val h = "+($body)"
+//
+////        println("(${node.id}) $node ==> $h")
+//        memo[B] = h
+//        return h
+//    }
+
+
+
     /**
      * Compute the sort indices of data by sorting with the provided sort functions.
      * Used the each sort function after the first to break ties made by the previous sort function.
      *
      * @param stillConfused An output variable appended with the ranges of positions in the returned array that the [sortFuns] failed to distinguish.
+     *                      Sorts!
+     * @param returnPerm An output list filled with the permutation found by sorting.
+     * @param permCi Confusion indices to sort. Defaults to all the indices.
+     * @return [returnPerm]
      */
-    fun <T, C: Comparable<C>> sortIndicesHierarchical(data: List<T>, sortFuns: List<(T) -> C>,
-                                                      stillConfused: MutableList<IntSlice>? = null): List<Int> {
+    fun <T, C: Comparable<C>> sortIndicesHierarchical(
+            data: List<T>, sortFuns: List<(T) -> C>, stillConfused: MutableList<IntSlice>? = null,
+            returnPerm: MutableList<Int>? = null, permCi: List<Int>? = null): List<Int> {
+        if (returnPerm != null) require(returnPerm.size == data.size)
+        if (permCi != null) require(permCi.size == data.size)
         // Turns out there is a standard implementation of this method.
 //        if( sortFuns.isEmpty() )
 //            return data.indices.toList()
@@ -163,34 +195,39 @@ object SHash {
 //        return data.withIndex().sortedWith(Comparator.comparing<IndexedValue<T>,T>(f, c)).map(IndexedValue<T>::index)
 
         // this is my own implementation, which should be more efficient in that it evaluates the sortFuns no more than necessary
-        val ret = data.indices.toMutableList()
+        val ret = returnPerm ?: data.indices.toMutableList()
         if( sortFuns.isEmpty() ) {
             if( stillConfused != null )
                 stillConfused += IntSlice(0, data.size-1)
             return ret
         }
-        val ci = data.indices.toList() // confusion indices
+        val ci = permCi ?: data.indices.toList() // confusion indices
         rSortIndicesHierarchical(data, sortFuns, ret, ci, stillConfused)
+        // TODO check if this is already sorted
+        stillConfused?.sort()
         return ret
     }
 
     /**
      * Used for a slice of array indices, from [first] to [last] inclusive.
      */
-    data class IntSlice(
-            val first: Int,
-            val last: Int
-    ) {
+    data class IntSlice(val first: Int, val last: Int): Comparable<IntSlice> {
         inline fun <R> map(transform: (Int) -> R): List<R> = (first..last).map(transform)
         inline fun mapSlice(transform: (Int) -> Int): IntSlice = IntSlice(transform(first), transform(last))
+        fun toRange() = first..last
+        override fun compareTo(other: IntSlice): Int {
+            val c = first.compareTo(other.first)
+            if (c != 0) return c
+            return last.compareTo(other.last)
+        }
+        operator fun contains(i: Int) = i in first..last
     }
 
-    private fun <T, C : Comparable<C>> rSortIndicesHierarchical(data: List<T>, sortFuns: List<(T) -> C>,
-                                                                ret: MutableList<Int>, ci: List<Int>,
-                                                                stillConfused: MutableList<IntSlice>?) {
-        val sortFun = sortFuns[0]
+    private fun <T, C : Comparable<C>> rSortIndicesHierarchical(
+            data: List<T>, sortFuns: List<(T) -> C>, ret: MutableList<Int>, ci: List<Int>,
+            stillConfused: MutableList<IntSlice>?) {
         val dataSub = ci.map { data[ret[it]] }
-        val prox = dataSub.map(sortFun)
+        val prox = dataSub.map(sortFuns[0])
         val sp = prox.withIndex().sortedBy { it.value }
         val oldRet: List<Int> = ArrayList(ret)
         sp.indices.forEach { i ->
@@ -205,7 +242,7 @@ object SHash {
         }
         rangesOfSameProx.forEach { range ->
             val newCi = range.map { ci[it] }
-            rSortIndicesHierarchical(data, sortFuns.drop(1), ret, newCi, stillConfused)
+            rSortIndicesHierarchical(data, remainingSortFuns, ret, newCi, stillConfused)
         }
     }
 
@@ -435,7 +472,7 @@ object SHash {
 
     /**
      * Partition the inputs of an SNodeNary into connected components,
-     * wherein two inputs are in the same component if the overlap in at least one name.
+     * wherein two inputs are in the same component if they overlap in at least one name.
      */
     private fun partitionInputIndicesByJoinConditions(inputs: List<SNode>): List<List<InputIdx>> {
         val components: MutableList<List<InputIdx>> = mutableListOf()
@@ -468,5 +505,7 @@ object SHash {
         } while (modify)
         return component
     }
+
+
 
 }

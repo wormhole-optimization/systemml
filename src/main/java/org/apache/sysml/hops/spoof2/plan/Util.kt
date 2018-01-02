@@ -290,3 +290,58 @@ fun <E> MutableCollection<E>.removeFirst(): E? {
     else this.first().also { this.remove(it) }
 }
 
+fun <A:Comparable<A>,B:Comparable<B>> pairComparator(): Comparator<Pair<A,B>> {
+    return Comparator.comparing<Pair<A,B>,A> { it.first }.thenBy {it.second}
+}
+
+fun <A:Comparable<A>> listComparator(): Comparator<List<A>> = ListComparator<A>()
+
+private class ListComparator<C:Comparable<C>>: Comparator<List<C>> {
+    override fun compare(o1: List<C>, o2: List<C>): Int {
+        val i1 = o1.iterator()
+        val i2 = o2.iterator()
+        while (i1.hasNext() && i2.hasNext()) {
+            val c = i1.next().compareTo(i2.next())
+            if (c != 0) return c
+        }
+        return i1.hasNext().compareTo(i2.hasNext())
+    }
+
+}
+
+fun <V> findCCs(edges: Map<V, Set<V>>, verts: Set<V> = edges.keys.toSet()): Set<Set<V>> {
+    val ret = mutableSetOf<Set<V>>()
+    val vertsRemain = verts.toMutableSet()
+    while (vertsRemain.isNotEmpty()) {
+        val a = vertsRemain.first()
+        val component = findCC(verts, a, edges)
+        vertsRemain -= component
+        ret += component
+    }
+    return ret
+}
+
+private fun <V> findCC(verts: Set<V>, v: V, edges: Map<V, Set<V>>): Set<V> {
+    var toExplore = setOf(v)
+    val explored = mutableSetOf<V>()
+    do {
+        val found = toExplore.flatMap { edges[it] ?: setOf() }.toSet()
+        explored += toExplore
+        toExplore = found - explored
+    } while (toExplore.isNotEmpty())
+    return explored
+}
+
+inline fun <T> Iterable<T>.partitionIndexed(predicate: (IndexedValue<T>) -> Boolean): Pair<List<T>, List<T>> {
+    val first = ArrayList<T>()
+    val second = ArrayList<T>()
+    for (element in this.withIndex()) {
+        if (predicate(element)) {
+            first.add(element.value)
+        } else {
+            second.add(element.value)
+        }
+    }
+    return Pair(first, second)
+}
+
