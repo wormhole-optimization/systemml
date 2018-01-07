@@ -1,10 +1,9 @@
 package org.apache.sysml.test.integration.functions.spoof2
 
-import org.apache.sysml.hops.spoof2.enu2.NaturalSubsetStream
-import org.apache.sysml.hops.spoof2.enu2.PrefixRejectStream
+import org.apache.sysml.hops.spoof2.enu2.*
 import org.apache.sysml.hops.spoof2.enu2.PrefixRejectStream.PrefixRejectZone
-import org.apache.sysml.hops.spoof2.enu2.noDups
 import org.junit.Test
+import java.util.*
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -33,6 +32,24 @@ class UtilTest {
         for (i in n-k+1..n) r *= i
         for (i in 2..k) r /= i
         return r
+    }
+
+    @Test
+    fun testPairNaturalSubsetIterator() {
+        for (m in 0..5) {
+            for (n in 0..m) {
+                val s = PairTopIterator(NaturalSubsetStream(m, n), NaturalSubsetStream(m, n))
+                val l = s.map { (a1, a2) -> Arrays.copyOf(a1,a1.size) to Arrays.copyOf(a2,a2.size) }
+                val ec = countComb(m,n)
+                assertEquals(ec*ec, l.size, "m=$m, n=$n")
+                assertTrue(l.noDups())
+                s.reset()
+                assertNotNull(s.top())
+//                if (m == 4 && n == 2) {
+//                    println(l.joinToString { it.contentToString() })
+//                }
+            }
+        }
     }
 
     @Test

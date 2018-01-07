@@ -2,13 +2,29 @@ package org.apache.sysml.hops.spoof2.enu2
 
 import java.util.*
 
+interface TopIterator<out T:Any> {
+    fun reset()
+    fun next(): T?
+    fun top(): T?
+}
+
+inline fun <T:Any,R> TopIterator<T>.map(f: (T) -> R): List<R> {
+    var t = top()
+    val r = mutableListOf<R>()
+    while (t != null) {
+        r += f(t)
+        t = next()
+    }
+    return r
+}
+
 /**
  * Iterates over subsets of size [n] of the natural numbers `0..[m]-1` (these represent [m] data points).
  *
  * Returns **the same array** on each iteration. Copy out the results of the array if you need to resuse them past calls to next.
  * Do NOT change the contents of the array.
  */
-open class NaturalSubsetStream(val m: Int, val n: Int) {
+open class NaturalSubsetStream(val m: Int, val n: Int): TopIterator<IntArray> {
     init { require(m >= n) {"cannot take subsets of size $n from $m points"} }
 
     protected val p = IntArray(n)
@@ -18,12 +34,12 @@ open class NaturalSubsetStream(val m: Int, val n: Int) {
 
 //    fun hasTop(): Boolean = !finish
 
-    open fun reset() {
+    override fun reset() {
         for (i in p.indices) p[i] = i
         finish = false // last = m == n
     }
 
-    open fun next(): IntArray? {
+    override fun next(): IntArray? {
 //        if (finish) return null //throw NoSuchElementException("finished iterating subsets of size $n from $m points")
         if (finish || isLast()) { finish = true; return null }
         var i = n-1
@@ -38,7 +54,7 @@ open class NaturalSubsetStream(val m: Int, val n: Int) {
 
     private fun isLast() = n == 0 || p[0] == m-n //p.withIndex().all { (i,pv) -> pv == m-n+i }
 
-    open fun top(): IntArray? = if (finish) null else p
+    override fun top(): IntArray? = if (finish) null else p
 
     /** Put all subsets as separate [IntArray]s in a list. */
     fun drainCopiesTo(): List<IntArray> = drainCopiesTo(mutableListOf())
@@ -138,5 +154,26 @@ class PrefixRejectStream(m: Int, n: Int,
         for (j in i+1 until n) p[j] = p[i] + j-i
         // stop condition on last one:
 //        if (i == 0 && p[0] == m-n) finish = true
+    }
+}
+
+class PairTopIterator<out T:Any>(val iter1: TopIterator<T>, val iter2: TopIterator<T>): TopIterator<Pair<T,T>> {
+    override fun reset() {
+        iter1.reset(); iter2.reset()
+    }
+
+    override fun next(): Pair<T, T>? {
+        var v1 = iter1.top() ?: return null
+        val v2 = iter2.next()
+        if (v2 != null) return v1 to v2
+        v1 = iter1.next() ?: return null
+        iter2.reset()
+        return v1 to (iter2.top() ?: return null)
+    }
+
+    override fun top(): Pair<T, T>? {
+        val v1 = iter1.top() ?: return null
+        val v2 = iter2.top() ?: return null
+        return v1 to v2
     }
 }
