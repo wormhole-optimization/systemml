@@ -6,7 +6,6 @@ import org.apache.sysml.hops.LiteralOp
 import org.apache.sysml.hops.spoof2.*
 import org.apache.sysml.hops.spoof2.enu.ENode
 import org.apache.sysml.hops.spoof2.plan.*
-import org.apache.sysml.hops.spoof2.rewrite.RewriteBindElim.Companion.eliminateNode
 import java.util.*
 import kotlin.NoSuchElementException
 
@@ -390,7 +389,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         // 2. Explore factoring out
         val Gi = Bcur[i]
         val Gj = if (j < Bcur.size) Bcur[j] else Bold[j-Bcur.size]
-        for ((Gf: Graph, hi: Monomorph, hj: Monomorph) in enumFactorization(Gi, Gj)) {
+        for ((Gf: Graph, hi: Monomorph, hj: Monomorph) in enumPlusFactor(Gi, Gj)) {
             checkPlusFactorization(Gf, hi, Gi)
             checkPlusFactorization(Gf, hj, Gj)
             val Bp = mutableListOf<Graph>()
@@ -405,7 +404,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
             // put output vertices in order of canonical graph order
             val BpSortedC = memo.canonize(Bp).orderCanon()
             val BpEdge = Edge.F(BpSortedC.orig, BpSortedC.orderOuts())
-            // todo - make sure this BpEdge is compatible with enumFactorization so that it can be factored out later
+            // todo - make sure this BpEdge is compatible with enumPlusFactor so that it can be factored out later
             assert(Gf.outs+Op == Gi.outs+Gj.outs)
             val Gp = Graph(Gf.outs + Op, Gf.edges + BpEdge)
 
@@ -415,6 +414,10 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
             factorPlusRec(newBold, newBcur, Bnew + Gp, i, i+1).tryApply { alts += it }
         }
         return optionOrNode(alts)
+    }
+
+    private fun enumPlusFactor(g1: Graph, g2: Graph): Iterator<Triple<Graph, Monomorph, Monomorph>> {
+        TODO() //return EnumPlusFactor(g1, g2)
     }
 
     private fun factorOutTerms(Gf: Graph, h: Monomorph, G: Graph): List<Graph> {
@@ -577,3 +580,4 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     }
 
 }
+
