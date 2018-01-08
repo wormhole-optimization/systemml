@@ -1,7 +1,7 @@
 package org.apache.sysml.hops.spoof2
 
 import org.apache.sysml.hops.spoof2.enu2.*
-import org.apache.sysml.hops.spoof2.plan.Hash
+import org.apache.sysml.hops.spoof2.plan.Rep
 import org.apache.sysml.hops.spoof2.plan.listComparator
 import org.apache.sysml.hops.spoof2.plan.pairComparator
 import org.apache.sysml.hops.spoof2.plan.permute
@@ -12,13 +12,13 @@ private typealias E = Edge
 
 // The perm represents a Monomorph from the original graph's vertices to the canonical graph's vertices.
 data class GraphCanon(val orig: Graph, val verts: List<V>,
-                      val perm: List<Int>, val hash: Hash, val v2ns: Map<V,Set<V>>) {
+                      val perm: List<Int>, val rep: Rep, val v2ns: Map<V,Set<V>>) {
     fun orderVertsCanon(vs: Set<V>): List<V> = vs.sortedBy { v -> perm[verts.indexOf(v)] }
 }
 data class GraphBagCanon(val orig: GraphBag, val vertCanons: List<GraphCanon>,
-                         val perm: List<Int>, val hash: Hash) {
+                         val perm: List<Int>, val rep: Rep) {
     /** Given an isomorphic graphbag [biso], return [biso] with graphs reordered to canonical order. */
-    fun orderCanon() = GraphBagCanon(orig.permute(perm), vertCanons.permute(perm), perm.indices.toList(), hash)
+    fun orderCanon() = GraphBagCanon(orig.permute(perm), vertCanons.permute(perm), perm.indices.toList(), rep)
 //            orig.sortedBy { g ->
 //        val idx = vertCanons.indexOfFirst { hash == it.hash }
 //        perm[idx] // into canonical order
@@ -45,7 +45,7 @@ data class GraphBagCanon(val orig: GraphBag, val vertCanons: List<GraphCanon>,
 
 class GraphCanonizer(val graph: Graph, val memo: CanonMemo) {
 
-    val elab: Map<Edge, Hash> = graph.edges.map { it to memo.canonize(it) }.toMap()
+    val elab: Map<Edge, Rep> = graph.edges.map { it to memo.canonize(it) }.toMap()
 //    val v2c: MutableMap<V, C> = graph.verts.map { it to 0 }.toMap().toMutableMap()
 //    val c2vs: MutableMap<C, MutableSet<V>> = mutableMapOf(1 to graph.verts.toMutableSet())
     val verts: List<V> = graph.verts.toList()
@@ -55,7 +55,7 @@ class GraphCanonizer(val graph: Graph, val memo: CanonMemo) {
     val v2ns: Map<V, Set<V>> = graph.buildOneHopMap()
     val stillConfused: MutableList<SHash.IntSlice> = mutableListOf()
 
-    private fun readCanonicalString(): String {
+    private fun readCanonicalString(): Rep {
         // first 0-edges
         val (zeroEdges, regEdges) = graph.edges.partition { it.verts.isEmpty() }
         var s = zeroEdges.map { elab[it]!! }.sorted().joinToString(";") + "|" + graph.outs.size + "|"
@@ -123,7 +123,7 @@ class GraphCanonizer(val graph: Graph, val memo: CanonMemo) {
 
 
     companion object {
-        val comparePairEdgeHash = pairComparator<Hash,Int>()
+        val comparePairEdgeHash = pairComparator<Rep,Int>()
         val compareIntList = listComparator<Int>()
     }
 

@@ -276,11 +276,11 @@ object SHash {
      *
      * This method modifies the order of inputs to commutative SNodeNary nodes into a canonical order.
      */
-    fun hash(node: SNode): Hash {
+    fun hash(node: SNode): Rep {
         return hash(node, mutableMapOf(), mutableMapOf())
     }
 
-    fun hash(node: SNode, memo: MutableMap<Id, String>, attrPosMemo: MutableMap<Id, List<AB>>): Hash {
+    fun hash(node: SNode, memo: MutableMap<Id, String>, attrPosMemo: MutableMap<Id, List<AB>>): Rep {
         return prettyPrintByPosition(node, memo, attrPosMemo)
 /*        if( node.id in memo )
 //            return memo[node.id]!!
@@ -354,7 +354,7 @@ object SHash {
 //        return h */
     }
 
-    fun copyToNormalFormAndHash(node: SNode, memo: MutableMap<Id, String>, attrPosMemo: MutableMap<Id, List<AB>>): Hash {
+    fun copyToNormalFormAndHash(node: SNode, memo: MutableMap<Id, String>, attrPosMemo: MutableMap<Id, List<AB>>): Rep {
         if (isNormalForm(node))
             return hash(node, memo, attrPosMemo)
         // copy all nodes down to the base nodes (non-*/Σ/+).
@@ -394,7 +394,7 @@ object SHash {
         return okNode && node.inputs.all { checkPlus(it) }
     }
 
-    fun hashNormalFormKeepAttrPosTop(node: SNode): Pair<Hash, List<AB>> {
+    fun hashNormalFormKeepAttrPosTop(node: SNode): Pair<Rep, List<AB>> {
         val attrPosMemo = mutableMapOf<Id, List<AB>>()
         val hash = hash(node, mutableMapOf(), attrPosMemo)
         return hash to createAttributePositionList(node, attrPosMemo)

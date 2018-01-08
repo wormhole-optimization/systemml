@@ -16,7 +16,7 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
 
     // todo - configuration parameters for whether to expand +, prune, etc.
     private val remainingToExpand = HashSet(initialRoots)
-    private val nfhashTable: BiMap<Hash, SNode> = HashBiMap.create()
+    private val nfhashTable: BiMap<Rep, SNode> = HashBiMap.create()
     // invariant: nodes in the hash table are in normal form
     private val planCost = PlanCost()
 

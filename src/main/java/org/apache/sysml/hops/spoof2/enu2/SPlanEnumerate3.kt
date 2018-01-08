@@ -157,8 +157,8 @@ private fun checkPlusFactorization(Gf: Graph, h: Monomorph, G: Graph) {
 data class CanonMemo(
         val ctb: MutableMap<GraphBag, GraphBagCanon> = mutableMapOf(),
         val ctg: MutableMap<Graph, GraphCanon> = mutableMapOf(),
-        val ntb: MutableMap<Hash, Pair<GraphBagCanon, SNodeOption>> = mutableMapOf(),
-        val ntg: MutableMap<Hash, Pair<GraphCanon, SNodeOption>> = mutableMapOf()
+        val ntb: MutableMap<Rep, Pair<GraphBagCanon, SNodeOption>> = mutableMapOf(),
+        val ntg: MutableMap<Rep, Pair<GraphCanon, SNodeOption>> = mutableMapOf()
 ) {
     val literalOne by lazy { SNodeData(LiteralOp(1.0)) }
 //    operator fun get(B: GraphBag): GraphBagCanon = canonize(B)
@@ -176,20 +176,20 @@ data class CanonMemo(
 
     fun canonize(b: GraphBag): GraphBagCanon = this.getOrPut(b) {
         val beforeSort = b.map { canonize(it) }//.sorted().joinToString("~")
-        val perm = SHash.sortIndicesHierarchical(beforeSort, listOf<(GraphCanon) -> Hash>({ it.hash }))
-        val hash = beforeSort.permute(perm).joinToString("~")
-        GraphBagCanon(b, beforeSort, perm, hash)
+        val perm = SHash.sortIndicesHierarchical(beforeSort, listOf<(GraphCanon) -> Rep>({ it.rep }))
+        val rep: Rep = beforeSort.permute(perm).joinToString("~")
+        GraphBagCanon(b, beforeSort, perm, rep)
     }
     fun canonize(g: Graph): GraphCanon = this.getOrPut(g) {
         val gc = GraphCanonizer(g, this)
         gc.canonize()
     }
-    fun canonize(e: Edge): Hash = when (e) {
+    fun canonize(e: Edge): Rep = when (e) {
         is Edge.C -> canonize(e)
         is Edge.F -> canonize(e)
     }
-    fun canonize(e: Edge.C): Hash = e.base.id.toString()
-    fun canonize(e: Edge.F): Hash = canonize(e.base).hash
+    fun canonize(e: Edge.C): Rep = e.base.id.toString()
+    fun canonize(e: Edge.F): Rep = canonize(e.base).rep
 
     /** If [b] was previously explored and a node was memoized representing its alternatives,
      * then adapt the node to the output indices of [b] and return it.
@@ -197,7 +197,7 @@ data class CanonMemo(
      * Returns null if the canonical form of [b] is not in the memo. */
     fun adaptFromMemo(b: GraphBag): SNodeOption? {
         val bc = canonize(b)
-        return ntb[bc.hash]?.let { (sc, no) ->
+        return ntb[bc.rep]?.let { (sc, no) ->
             no.map { adaptFromMemo(bc, sc, it) }
         }
     }
@@ -205,7 +205,7 @@ data class CanonMemo(
      * then adapt the node to the output indices of [g] and return it. */
     fun adaptFromMemo(g: Graph): SNodeOption? {
         val gc = canonize(g)
-        return ntg[gc.hash]?.let { (sc, no) ->
+        return ntg[gc.rep]?.let { (sc, no) ->
             when (no) {
                 SNodeOption.None -> no
                 is SNodeOption.Some -> no.map { adaptFromMemo(gc, sc, it) }
@@ -215,11 +215,11 @@ data class CanonMemo(
 
     fun memoize(b: GraphBag, n: SNodeOption) {
         val bc = canonize(b)
-        ntb[bc.hash] = bc to n
+        ntb[bc.rep] = bc to n
     }
     fun memoize(g: Graph, n: SNodeOption) {
         val gc = canonize(g)
-        ntg[gc.hash] = gc to n
+        ntg[gc.rep] = gc to n
     }
 
     private fun findPairIndex(newOut: ABS, gc: GraphCanon, sc: GraphCanon): ABS {
@@ -449,12 +449,8 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     }
 
     // further optimization - detect when some elements in list are equal; don't enumerate the same state more than once
-    private fun <T> enumPartition(l: List<T>): Sequence<Pair<List<T>,List<T>>> {
-        return object : Sequence<Pair<List<T>,List<T>>> {
-            override fun iterator(): Iterator<Pair<List<T>, List<T>>> {
-                return EnumPartition(l)
-            }
-        }
+    private fun <T> enumPartition(l: List<T>): Iterator<Pair<List<T>,List<T>>> {
+         return EnumPartition(l)
     }
 
     class EnumPartition<out T>(val l: List<T>) : Iterator<Pair<List<T>, List<T>>> {
@@ -501,7 +497,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     }
 
     private fun factorAgg(g: Graph): SNodeOption {
-        if (g.aggs.isEmpty()) return factorMult(g.edges, true)
+        if (g.aggs.isEmpty()) return factorMult(g.edges)
         memo.adaptFromMemo(g)?.let { return it }
         val partitions: List<Graph> = partitionByAggCC(g)
         if (partitions.size > 1) {
@@ -510,13 +506,13 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
                 val gc = memo.canonize(p)
                 Edge.F(listOf(p), gc.orderVertsCanon(p.outs))
             }
-            val r = factorMult(ep, false)
+            val r = factorMult(ep)
             memo.memoize(g, r)
             return r
         }
         if (SOUND_PRUNE_TENSOR_INTERMEDIATE && g.outs.size > 2) return SNodeOption.None
         if (g.aggs.size == 1 || g.edgeGroups().size == 1) {
-            val mult = factorMult(g.edges, true).toNode() ?: return SNodeOption.None
+            val mult = factorMult(g.edges).toNode() ?: return SNodeOption.None
             val agg = SNodeAggregate(Hop.AggOp.SUM, mult, g.aggs.map(ABS::a))
             val r = agg.toOption()
             memo.memoize(g, r)
@@ -531,7 +527,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         for (v in aggsEnu) {
             val gbelow = Graph(g.outs + v, g.edges)
             val below = factorAgg(gbelow)
-            below.tryApply { alts += it }
+            below.tryApply { alts += SNodeAggregate(Hop.AggOp.SUM, it, v.a) }
         }
         val r = optionOrNode(alts)
         memo.memoize(g, r)
@@ -552,7 +548,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         }
     }
 
-    private fun factorMult(es: List<Edge>, useMemo: Boolean): SNodeOption {
+    private fun factorMult(es: List<Edge>): SNodeOption {
         // TODO - memo for edges - not as complicated as Graphs
         //if (useMemo) memo.adaptFromMemo(es)?.let { return it }
         if (es.isEmpty()) return memo.literalOne.toOption()
@@ -565,8 +561,8 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         }
         val alts: MutableList<SNode> = mutableListOf()
         for ((es1, es2) in enumPartition(es)) {
-            val r1 = factorMult(es1, true).toNode() ?: continue
-            val r2 = factorMult(es2, true).toNode() ?: continue
+            val r1 = factorMult(es1).toNode() ?: continue
+            val r2 = factorMult(es2).toNode() ?: continue
             alts += SNodeNary(SNodeNary.NaryOp.MULT, r1, r2)
         }
         val r = optionOrNode(alts)

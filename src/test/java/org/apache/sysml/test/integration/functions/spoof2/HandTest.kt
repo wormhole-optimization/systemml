@@ -6,6 +6,7 @@ import org.apache.sysml.hops.spoof2.SHash
 import org.apache.sysml.hops.spoof2.SPlan2NormalForm
 import org.apache.sysml.hops.spoof2.SPlanCseEliminator
 import org.apache.sysml.hops.spoof2.enu2.SPlanEnumerate
+import org.apache.sysml.hops.spoof2.enu2.SPlanEnumerate3
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.*
 import org.apache.sysml.parser.Expression
