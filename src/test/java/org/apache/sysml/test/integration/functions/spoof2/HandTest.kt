@@ -5,7 +5,6 @@ import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.spoof2.SHash
 import org.apache.sysml.hops.spoof2.SPlan2NormalForm
 import org.apache.sysml.hops.spoof2.SPlanCseEliminator
-import org.apache.sysml.hops.spoof2.enu2.SPlanEnumerate
 import org.apache.sysml.hops.spoof2.enu2.SPlanEnumerate3
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.*
@@ -179,7 +178,7 @@ class HandTest {
                 SNodeUnbind(BA, mapOf(AU.U0 to c, AU.U1 to e)))
         val roots = listOf(r0, r1)
         println("Explain before enu: "+Explain.explainSPlan(roots))
-        val enu = SPlanEnumerate(roots)
+        val enu = SPlanEnumerate3(roots)
         enu.expandAll()
         println("Explain after enu : "+Explain.explainSPlan(roots))
         val aggs = countPred(roots) { it is SNodeAggregate }

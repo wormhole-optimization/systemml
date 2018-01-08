@@ -41,7 +41,7 @@ fun GraphBag.rename(h: Monomorph): GraphBag = this.map { it.rename(h) }
 fun GraphBag.toSNode(): SNode {
     if (this.size == 1)
         return this[0].toSNode()
-    return SNodeNary(SNodeNary.NaryOp.PLUS, this.map { it.toSNode() })
+    return makePlusAbove(this.map { it.toSNode() })
 }
 fun Schema.toABS() = this.map { (a,s) ->
     ABS(a as AB,s)
@@ -67,7 +67,7 @@ sealed class Edge(open val base: Any, val verts: List<ABS>) {
             if (verts.isEmpty())
                 return base
             val bindings = verts.mapIndexed { i, v -> AU(i) to v.a }.toMap()
-            return SNodeBind(base, bindings)
+            return makeBindAbove(base, bindings)
         }
         override fun toString() = "Edge.C$verts(${base.id}@$base)"
     }
@@ -116,9 +116,9 @@ data class Graph(val outs: Set<ABS>, val edges: List<Edge>) {
     fun toSNode(): SNode {
         if (edges.isEmpty()) return SNodeData(LiteralOp(1.0))
         val mult = if (edges.size == 1) edges[0].toSNode()
-        else SNodeNary(SNodeNary.NaryOp.MULT, edges.map { it.toSNode() })
+        else makeMultAbove(edges.map { it.toSNode() })
         val agg = if (aggs.isEmpty()) mult
-        else SNodeAggregate(Hop.AggOp.SUM, mult, aggs.map(ABS::a))
+        else makeAggAbove(mult, aggs.map(ABS::a).toSet())
         return agg
     }
     fun edgeGroups(): List<Set<ABS>> {
@@ -248,9 +248,8 @@ data class CanonMemo(
         val new2old = gc.orig.outs.map { it to findPairIndex(it, gc, sc) }
         val i2old = new2old.mapIndexed { i, (_,o) -> AU(i) to o.a}.toMap()
         val i2new = new2old.mapIndexed { i, (n,_) -> AU(i) to n.a}.toMap()
-        val u = SNodeUnbind(n, i2old)
-        val b = SNodeBind(u, i2new)
-        return b
+        val u = makeUnbindAbove(n, i2old)
+        return makeBindAbove(u, i2new)
     }
     /** Adapt node [n] created with [sc] to the isomorphic new canon [bc]. */
     private fun adaptFromMemo(bc: GraphBagCanon, sc: GraphBagCanon, n: SNode): SNode {
@@ -273,9 +272,8 @@ data class CanonMemo(
         }
         val i2old = new2old.mapIndexed { i, (_,o) -> AU(i) to o.a}.toMap()
         val i2new = new2old.mapIndexed { i, (n,_) -> AU(i) to n.a}.toMap()
-        val u = SNodeUnbind(n, i2old)
-        val b = SNodeBind(u, i2new)
-        return b
+        val u = makeUnbindAbove(n, i2old)
+        return makeBindAbove(u, i2new)
     }
 }
 
@@ -453,7 +451,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         for ((B1, B2) in enumPartition(B)) {
             val r1 = factorPlusBase(B1).toNode() ?: continue
             val r2 = factorPlusBase(B2).toNode() ?: continue
-            alts += SNodeNary(SNodeNary.NaryOp.PLUS, r1, r2)
+            alts += makePlusAbove(r1, r2)
         }
         val r = optionOrNode(alts)
         memo.memoize(B, r)
@@ -526,7 +524,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         if (SOUND_PRUNE_TENSOR_INTERMEDIATE && g.outs.size > 2) return SNodeOption.None
         if (g.aggs.size == 1 || g.edgeGroups().size == 1) {
             val mult = factorMult(g.edges).toNode() ?: return SNodeOption.None
-            val agg = SNodeAggregate(Hop.AggOp.SUM, mult, g.aggs.map(ABS::a))
+            val agg = makeAggAbove(mult, g.aggs.map(ABS::a).toSet())
             val r = agg.toOption()
             memo.memoize(g, r)
             return r
@@ -540,7 +538,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         for (v in aggsEnu) {
             val gbelow = Graph(g.outs + v, g.edges)
             val below = factorAgg(gbelow)
-            below.tryApply { alts += SNodeAggregate(Hop.AggOp.SUM, it, v.a) }
+            below.tryApply { alts += makeAggAbove(it, v.a) }
         }
         val r = optionOrNode(alts)
         memo.memoize(g, r)
@@ -578,7 +576,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         for ((es1, es2) in enumPartition(es)) {
             val r1 = factorMult(es1).toNode() ?: continue
             val r2 = factorMult(es2).toNode() ?: continue
-            alts += SNodeNary(SNodeNary.NaryOp.MULT, r1, r2)
+            alts += makeMultAbove(r1, r2)
         }
         val r = optionOrNode(alts)
 //        if (useMemo) memo.memoize(es, r)
@@ -587,8 +585,10 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
 
     private fun edgeToSNode(e: Edge.C): SNode {
         val tgtMap = e.verts.mapIndexed{i,abs -> AU(i) to abs.a}.toMap()
-        return e.base.parents.find { it is SNodeBind && it.bindings == tgtMap } ?: SNodeBind(e.base, tgtMap)
+        return makeBindAbove(e.base, tgtMap)
     }
+
+
 
     private fun optionOrNode(alts: List<SNode>): SNodeOption = when(alts.size) {
         0 -> SNodeOption.None
