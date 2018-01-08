@@ -356,7 +356,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     private fun toEdge(node: SNode): Edge.C {
         val base = getBase(node)
         val attrPosList = SHash.createAttributePositionList(node) // todo: cache memo
-        val verts = attrPosList.map { ABS(it, base.schema[it]!!) }
+        val verts = attrPosList.map { ABS(it, node.schema[it]!!) }
         return Edge.C(base, verts)
     }
 
@@ -390,6 +390,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         val Gi = Bcur[i]
         val Gj = if (j < Bcur.size) Bcur[j] else Bold[j-Bcur.size]
         for ((Gf: Graph, hi: Monomorph, hj: Monomorph) in enumPlusFactor(Gi, Gj)) {
+            if (Gf.edges.isEmpty()) continue
             checkPlusFactorization(Gf, hi, Gi)
             checkPlusFactorization(Gf, hj, Gj)
             val Bp = mutableListOf<Graph>()
@@ -417,7 +418,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     }
 
     private fun enumPlusFactor(g1: Graph, g2: Graph): Iterator<Triple<Graph, Monomorph, Monomorph>> {
-        TODO() //return EnumPlusFactor(g1, g2)
+        return EnumPlusFactorAdapter(EnumPlusFactor(g1, g2))
     }
 
     private fun factorOutTerms(Gf: Graph, h: Monomorph, G: Graph): List<Graph> {
@@ -456,7 +457,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         }
     }
 
-    class EnumPartition<T>(val l: List<T>) : Iterator<Pair<List<T>, List<T>>> {
+    class EnumPartition<out T>(val l: List<T>) : Iterator<Pair<List<T>, List<T>>> {
         private val asn = BooleanArray(l.size) // true means in first partition
         private var sz1 = 1
         init { asn[0] = true }

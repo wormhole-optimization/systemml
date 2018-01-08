@@ -1,7 +1,7 @@
 package org.apache.sysml.test.integration.functions.spoof2
 
 import org.apache.sysml.hops.spoof2.enu2.*
-import org.apache.sysml.hops.spoof2.enu2.PrefixRejectStream.PrefixRejectZone
+import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone
 import org.junit.Test
 import java.util.*
 import kotlin.test.assertEquals
@@ -11,10 +11,10 @@ import kotlin.test.assertTrue
 class UtilTest {
 
     @Test
-    fun testNaturalSubsetStream() {
+    fun testNaturalSubsetTopIter() {
         for (m in 0..6) {
             for (n in 0..m) {
-                val s = NaturalSubsetStream(m, n)
+                val s = NaturalSubsetTopIter(m, n)
                 val l = s.drainCopiesTo()
                 assertEquals(countComb(m, n), l.size, "m=$m, n=$n")
                 assertTrue(l.noDups())
@@ -35,10 +35,10 @@ class UtilTest {
     }
 
     @Test
-    fun testPairNaturalSubsetIterator() {
+    fun testPairNaturalSubsetTopIter() {
         for (m in 0..5) {
             for (n in 0..m) {
-                val s = PairTopIterator(NaturalSubsetStream(m, n), NaturalSubsetStream(m, n))
+                val s = PairTopIterator(NaturalSubsetTopIter(m, n), NaturalSubsetTopIter(m, n))
                 val l = s.map { (a1, a2) -> Arrays.copyOf(a1,a1.size) to Arrays.copyOf(a2,a2.size) }
                 val ec = countComb(m,n)
                 assertEquals(ec*ec, l.size, "m=$m, n=$n")
@@ -53,12 +53,12 @@ class UtilTest {
     }
 
     @Test
-    fun testPrefixRejectStream() {
+    fun testPrefixRejectTopIter() {
         for (m in 2..7) {
             for (n in 0..m) {
                 for (nrz in 1..n/2) {
                     for (rzs in genRzs(m, nrz)) {
-                        val s = PrefixRejectStream(m,n, rzs)
+                        val s = PrefixRejectTopIter(m,n, rzs)
                         val l = s.drainCopiesTo()
 //                        if (m == 5) {
 //                            println("n=$n | ["+l.joinToString(",") { it.contentToString() } + "]| Reject "+rzs)

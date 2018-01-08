@@ -345,3 +345,4 @@ inline fun <T> Iterable<T>.partitionIndexed(predicate: (IndexedValue<T>) -> Bool
     return Pair(first, second)
 }
 
+inline fun <A,R> Pair<A,A>.map(f: (A) -> R): Pair<R,R> = f(this.first) to f(this.second)

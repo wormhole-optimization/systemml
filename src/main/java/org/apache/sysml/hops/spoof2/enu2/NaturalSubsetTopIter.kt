@@ -1,5 +1,6 @@
 package org.apache.sysml.hops.spoof2.enu2
 
+import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone
 import java.util.*
 
 interface TopIterator<out T:Any> {
@@ -24,7 +25,7 @@ inline fun <T:Any,R> TopIterator<T>.map(f: (T) -> R): List<R> {
  * Returns **the same array** on each iteration. Copy out the results of the array if you need to resuse them past calls to next.
  * Do NOT change the contents of the array.
  */
-open class NaturalSubsetStream(val m: Int, val n: Int): TopIterator<IntArray> {
+open class NaturalSubsetTopIter(val m: Int, val n: Int): TopIterator<IntArray> {
     init { require(m >= n) {"cannot take subsets of size $n from $m points"} }
 
     protected val p = IntArray(n)
@@ -69,13 +70,13 @@ open class NaturalSubsetStream(val m: Int, val n: Int): TopIterator<IntArray> {
 }
 
 /**
- * A [NaturalSubsetStream] that rejects subsets which overlap with one of the [rejectZones] in a non-prefix way.
+ * A [NaturalSubsetTopIter] that rejects subsets which overlap with one of the [rejectZones] in a non-prefix way.
  * For example, if a rejectZone starts at item 2 and has size 3, then `00110` is accepted while `00101` and `00010` is rejected.
  * Used to prevent enumerating identical items more than once in the same way.
  */
-class PrefixRejectStream(m: Int, n: Int,
-                         rejectZones: List<PrefixRejectZone>
-): NaturalSubsetStream(m,n) {
+class PrefixRejectTopIter(m: Int, n: Int,
+                          rejectZones: List<PrefixRejectZone>
+): NaturalSubsetTopIter(m,n) {
     data class PrefixRejectZone(val start: Int, val size: Int): Comparable<PrefixRejectZone> {
         init { require(start >= 0 && size >= 2) {"improper reject zone of size $size (and start $start)"} }
         override fun compareTo(other: PrefixRejectZone): Int {
@@ -157,18 +158,16 @@ class PrefixRejectStream(m: Int, n: Int,
     }
 }
 
-class PairTopIterator<out T:Any>(val iter1: TopIterator<T>, val iter2: TopIterator<T>): TopIterator<Pair<T,T>> {
+open class PairTopIterator<out T:Any>(private val iter1: TopIterator<T>, private val iter2: TopIterator<T>): TopIterator<Pair<T,T>> {
     override fun reset() {
         iter1.reset(); iter2.reset()
     }
 
     override fun next(): Pair<T, T>? {
-        var v1 = iter1.top() ?: return null
+        val v1 = iter1.top() ?: return null
         val v2 = iter2.next()
         if (v2 != null) return v1 to v2
-        v1 = iter1.next() ?: return null
-        iter2.reset()
-        return v1 to (iter2.top() ?: return null)
+        return nextFirstIter()
     }
 
     override fun top(): Pair<T, T>? {
@@ -176,4 +175,15 @@ class PairTopIterator<out T:Any>(val iter1: TopIterator<T>, val iter2: TopIterat
         val v2 = iter2.top() ?: return null
         return v1 to v2
     }
+
+    fun nextFirstIter(): Pair<T,T>? {
+        val v1 = iter1.next() ?: return null
+        iter2.reset()
+        return v1 to (iter2.top() ?: return null)
+    }
 }
+
+class PairPrefixRejectTopIter(
+        val n: Int, val m1: Int, val m2: Int,
+        val prz1: List<PrefixRejectZone>, val prz2: List<PrefixRejectZone>
+): PairTopIterator<IntArray>(PrefixRejectTopIter(m1, n, prz1), PrefixRejectTopIter(m2, n, prz2))
