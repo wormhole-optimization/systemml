@@ -52,7 +52,7 @@ class GraphCanonizer(val graph: Graph, val memo: CanonMemo) {
     val perm = verts.indices.toMutableList()
     val colorBars = BooleanArray(verts.size) // presence of bar starts a new color
     val colorToExpand = BooleanArray(verts.size) // which colors are in the queue
-    val v2ns: Map<V, Set<V>> = graph.buildOneHopMap()
+    val v2ns: Map<V, Set<V>> = graph.buildOneHopMapUndirected()
     val stillConfused: MutableList<SHash.IntSlice> = mutableListOf()
 
     private fun readCanonicalString(): Rep {
@@ -64,8 +64,12 @@ class GraphCanonizer(val graph: Graph, val memo: CanonMemo) {
 //            return e.verts.map { newVertOrder.indexOf(it) }
 //        }
         val sortEdges: (Edge) -> List<Int> = { it.verts.map { newVertOrder.indexOf(it) } }
-        val f: java.util.function.Function<Edge, List<Int>> = sortEdges as java.util.function.Function<Edge, List<Int>> //{ it.verts.map { newVertOrder.indexOf(it) } }
-        val edgesSorted = graph.edges.sortedWith(Comparator.comparing<Edge,List<Int>>(f, compareIntList))
+        val sortEdgesList = graph.edges.map(sortEdges).map { it.joinToString("_") }
+        val perm = SHash.sortIndicesHierarchical(sortEdgesList, listOf({ it: String -> it }))
+        // todo make it easier to get the sort indices
+//        val f: java.util.function.Function<Edge, List<Int>> = sortEdges as java.util.function.Function<Edge, List<Int>> //{ it.verts.map { newVertOrder.indexOf(it) } }
+//        val edgesSorted = graph.edges.sortedWith(Comparator.comparing<Edge,List<Int>>(f, compareIntList))
+        val edgesSorted = graph.edges.permute(perm)
         return edgesSorted.joinToString("|") { elab[it] + "_" + edgeIncidenceString(newVertOrder, it) }
     }
 
@@ -82,7 +86,7 @@ class GraphCanonizer(val graph: Graph, val memo: CanonMemo) {
 //                    .sortedWith(comparePairEdgeHash) // should I sort the string instead?
                     .map { (h,i) -> "$h.$i" }
                     .sorted()
-                    .reduce(String::plus)
+                    .joinToString("_")
         }.toMap()
         val sortByEdge: (V) -> String = { s[it]!! }
 
@@ -111,7 +115,7 @@ class GraphCanonizer(val graph: Graph, val memo: CanonMemo) {
             while (next != null && next.last < i)
                 next = if (iter.hasNext()) iter.next() else null
             when {
-                next == null -> colorBars.fill(true, i, last)
+                next == null -> return colorBars.fill(true, i, last)
                 i !in next -> {
                     colorBars.fill(true, i, minOf(next.first-1, last))
                     i = next.last+1

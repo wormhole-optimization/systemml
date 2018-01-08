@@ -43,12 +43,15 @@ fun GraphBag.toSNode(): SNode {
         return this[0].toSNode()
     return SNodeNary(SNodeNary.NaryOp.PLUS, this.map { it.toSNode() })
 }
-fun Schema.toABS() = this.map { (a,s) -> ABS(a as AB,s) }.toSet()
+fun Schema.toABS() = this.map { (a,s) ->
+    ABS(a as AB,s)
+}.toSet()
 /** Does this list not contain a duplicate (according to equals())? */
 fun <T> List<T>.noDups() = this.size == this.toSet().size
 
 data class AttributeBoundShape(val a: AB, val s: Shape) {
-//    fun rename(aNew: AB) = AttributeBoundShape(aNew, s)
+    //    fun rename(aNew: AB) = AttributeBoundShape(aNew, s)
+    override fun toString() = "ABS($a)"
 }
 typealias ABS = AttributeBoundShape
 
@@ -66,6 +69,7 @@ sealed class Edge(open val base: Any, val verts: List<ABS>) {
             val bindings = verts.mapIndexed { i, v -> AU(i) to v.a }.toMap()
             return SNodeBind(base, bindings)
         }
+        override fun toString() = "Edge.C$verts(${base.id}@$base)"
     }
     class F(override val base: GraphBag, outs: List<ABS>): Edge(base, outs) {
         init { require(outs.toSet() == base.outs()) }
@@ -73,6 +77,7 @@ sealed class Edge(open val base: Any, val verts: List<ABS>) {
         override fun rename(h: Monomorph) = F(base.rename(h), verts.map { h[it] ?: it })
         override fun toSNode(): SNode = base.toSNode()
         // Careful with equals() and hashCode() on Edge.F
+        override fun toString() = "Edge.F$verts($base)"
     }
 
     override fun equals(other: Any?): Boolean {
@@ -119,16 +124,23 @@ data class Graph(val outs: Set<ABS>, val edges: List<Edge>) {
     fun edgeGroups(): List<Set<ABS>> {
         return edges.map { it.verts.toSet() }.distinct()
     }
-    fun buildOneHopMap(vertSubset: Set<ABS> = verts): Map<ABS, Set<ABS>> {
+    fun buildOneHopMapUndirected(vertSubset: Set<ABS> = verts): Map<ABS, Set<ABS>> {
         val tmp = mutableMapOf<ABS, MutableSet<ABS>>()
         edges.forEach {
             // v to neighbors of v
-            for (i in it.verts.indices)
-                for (j in i+1 until it.verts.size)
-                    tmp.getOrPut(it.verts[i], ::mutableSetOf) += it.verts[j]
+            for ((i,vi) in it.verts.withIndex()) {
+                if (vi !in vertSubset) continue
+                for (j in i + 1 until it.verts.size) {
+                    val vj = it.verts[j]
+                    if (vj !in vertSubset) continue
+                    tmp.getOrPut(vi, ::mutableSetOf) += vj
+                    tmp.getOrPut(vj, ::mutableSetOf) += vi
+                }
+            }
         }
         return tmp
     }
+    override fun toString() = "Graph$outs($edges)"
 }
 
 //data class GraphBag(val graphs: List<Graph>) {
@@ -503,6 +515,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         if (partitions.size > 1) {
             val ep = partitions.map { p ->
                 val l = factorAgg(p)
+                memo.memoize(p, l)
                 val gc = memo.canonize(p)
                 Edge.F(listOf(p), gc.orderVertsCanon(p.outs))
             }
@@ -519,7 +532,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
             return r
         }
         val aggsEnu = if (UNSOUND_PRUNE_MAX_DEGREE) {
-            val dmap: Map<ABS, Int> = memo.canonize(g).v2ns.mapValues { (_,v) -> v.size }
+            val dmap: Map<ABS, Int> = memo.canonize(g).v2ns.filterKeys { it in g.aggs }.mapValues { (_,v) -> v.size }
             val dmax = dmap.values.max()!!
             g.aggs.filter { dmap[it] == dmax }.toSet()
         } else g.aggs
@@ -535,17 +548,19 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     }
 
     private fun partitionByAggCC(g: Graph): List<Graph> {
-        val aggOneHop = g.buildOneHopMap(g.aggs)
-        val aggCCs = findCCs(aggOneHop)
-        return aggCCs.map { aggCC ->
-            val ei = g.edges.filter { !it.verts.disjoint(aggCC) }
-            val oi = g.outs.intersect(ei.flatMap { it.verts })
-            Graph(oi, ei)
-        } + run {
+        val aggOneHop = g.buildOneHopMapUndirected(g.aggs)
+        val aggCCs = findCCs(aggOneHop, g.aggs)
+        val g0 = run {
             val e0 = g.edges.filter { it.verts.disjoint(g.aggs) }
             val o0 = e0.flatMap { it.verts }.toSet()
             Graph(o0, e0)
         }
+        val gs = aggCCs.map { aggCC ->
+            val ei = g.edges.filter { !it.verts.disjoint(aggCC) }
+            val oi = g.outs.intersect(ei.flatMap { it.verts })
+            Graph(oi, ei)
+        }
+        return if (g0.edges.isEmpty()) gs else gs+g0
     }
 
     private fun factorMult(es: List<Edge>): SNodeOption {
@@ -555,7 +570,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         if (es.size == 1) {
             val e = es[0]
             return when (e) {
-                is Edge.C -> e.base.toOption()
+                is Edge.C -> edgeToSNode(e).toOption()
                 is Edge.F -> factorPlusBase(e.base)
             }
         }
@@ -568,6 +583,11 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         val r = optionOrNode(alts)
 //        if (useMemo) memo.memoize(es, r)
         return r
+    }
+
+    private fun edgeToSNode(e: Edge.C): SNode {
+        val tgtMap = e.verts.mapIndexed{i,abs -> AU(i) to abs.a}.toMap()
+        return e.base.parents.find { it is SNodeBind && it.bindings == tgtMap } ?: SNodeBind(e.base, tgtMap)
     }
 
     private fun optionOrNode(alts: List<SNode>): SNodeOption = when(alts.size) {

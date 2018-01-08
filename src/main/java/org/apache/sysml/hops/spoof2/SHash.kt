@@ -183,7 +183,7 @@ object SHash {
             data: List<T>, sortFuns: List<(T) -> C>, stillConfused: MutableList<IntSlice>? = null,
             returnPerm: MutableList<Int>? = null, permCi: List<Int>? = null): List<Int> {
         if (returnPerm != null) require(returnPerm.size == data.size)
-        if (permCi != null) require(permCi.size == data.size)
+//        if (permCi != null) require(permCi.size == data.size)
         // Turns out there is a standard implementation of this method.
 //        if( sortFuns.isEmpty() )
 //            return data.indices.toList()

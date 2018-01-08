@@ -309,7 +309,7 @@ private class ListComparator<C:Comparable<C>>: Comparator<List<C>> {
 
 }
 
-fun <V> findCCs(edges: Map<V, Set<V>>, verts: Set<V> = edges.keys.toSet()): Set<Set<V>> {
+fun <V> findCCs(edges: Map<V, Set<V>>, verts: Set<V>): Set<Set<V>> {
     val ret = mutableSetOf<Set<V>>()
     val vertsRemain = verts.toMutableSet()
     while (vertsRemain.isNotEmpty()) {

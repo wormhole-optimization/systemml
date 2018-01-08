@@ -234,7 +234,7 @@ class HandTest {
         testHash(w1.inputs[0], w2.inputs[0])
 
         println("Explain before enu: "+Explain.explainSPlan(roots))
-        val enu = SPlanEnumerate(roots)
+        val enu = SPlanEnumerate3(roots)
         enu.expandAll()
         println("Explain after enu : "+Explain.explainSPlan(roots))
         val aggs = countPred(roots) { it is SNodeAggregate }
