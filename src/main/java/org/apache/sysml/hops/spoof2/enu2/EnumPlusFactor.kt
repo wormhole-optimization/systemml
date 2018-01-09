@@ -15,8 +15,12 @@ data class SubgraphIso(val vertMap: VMap, val edgeMap: List<Pair<Edge,Edge>>)
 
 class EnumPlusFactor(val g1: Graph, val g2: Graph) : TopIterator<SubgraphIso> {
     private sealed class AggStatus {
-        object Agg: AggStatus()
-        data class NoAgg(val outVert: V): AggStatus()
+        object Agg: AggStatus() {
+            override fun toString() = "Agg"
+        }
+        data class NoAgg(val outVert: V): AggStatus() {
+            override fun toString() = "NoAgg($outVert)"
+        }
     }
     private data class BaseAggStats(val base: Any, val aggStats: List<AggStatus>)
     // the PRZs signify identical edges. No point in considering them twice.
@@ -92,15 +96,15 @@ class EnumPlusFactor(val g1: Graph, val g2: Graph) : TopIterator<SubgraphIso> {
         val (z1,z2) = zip.unzip()
         if(!z1.noDups()) return false
         if(!z2.noDups()) return false
-        val lmap = zip.toMap()
-        lmap.forEach { (v1, v2) ->
+        val lmap = zip.toMap().filter { (v1, v2) ->
             when {
-                v1 in vertMap -> if(vertMap[v1] != v2) return false
+                v1 in vertMap -> if(vertMap[v1] != v2) return false else false
                 vertMap.containsValue(v2) -> return false
+                else -> true
             }
         }
         vertMap.putAll(lmap)
-        arrVertMap[i].putAll(vertMap)
+        arrVertMap[i].putAll(lmap)
         return true
     }
     fun unassign(i: Int) {

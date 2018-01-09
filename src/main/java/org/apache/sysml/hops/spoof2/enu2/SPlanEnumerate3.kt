@@ -391,8 +391,8 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
 
     private fun factorPlusRec(Bold: GraphBag, Bcur: GraphBag, Bnew: GraphBag, i0: Int, j0: Int): SNodeOption {
         if (Bcur.isEmpty() && Bnew.isEmpty()) return factorPlusBase(Bold)
-        val (i, j) = if (j0 > Bold.size + Bcur.size) i0+1 to i0+2 else i0 to j0
-        if (i > Bcur.size) return factorPlusRec(Bold + Bcur, Bnew, listOf(), 0, 1)
+        val (i, j) = if (j0 >= Bold.size + Bcur.size) i0+1 to i0+2 else i0 to j0
+        if (i >= Bcur.size || i == Bcur.size-1 && Bold.isEmpty()) return factorPlusRec(Bold + Bcur, Bnew, listOf(), 0, 1)
         val alts = mutableListOf<SNode>()
         // 1. Explore not factoring common terms
         factorPlusRec(Bold, Bcur, Bnew, i, j+1).tryApply { alts += it }
@@ -416,8 +416,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
             val BpSortedC = memo.canonize(Bp).orderCanon()
             val BpEdge = Edge.F(BpSortedC.orig, BpSortedC.orderOuts())
             // todo - make sure this BpEdge is compatible with enumPlusFactor so that it can be factored out later
-            assert(Gf.outs+Op == Gi.outs+Gj.outs)
-            val Gp = Graph(Gf.outs + Op, Gf.edges + BpEdge)
+            val Gp = Graph(Gi.outs+Gj.outs, Gf.edges + BpEdge)
 
             val newBold: GraphBag; val newBcur: GraphBag
             if (j < Bcur.size) { newBold = Bold; newBcur = Bcur - Gi - Gj }
@@ -432,7 +431,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     }
 
     private fun factorOutTerms(Gf: Graph, h: Monomorph, G: Graph): List<Graph> {
-        val Ep = G.rename(h).edges - Gf.edges
+        val Ep = G.rename(h.invert()).edges - Gf.edges
         if (Ep.size == 1 && Ep[0] is Edge.F) {
             return (Ep[0] as Edge.F).base
         }

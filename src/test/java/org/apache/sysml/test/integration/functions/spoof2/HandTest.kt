@@ -384,4 +384,214 @@ class HandTest {
     }
 
 
+    /**
+     * Test that AB*AB hashes the same no matter how we switch values around.
+     */
+    @Test
+    fun testUVUV() {
+        val A = SNodeData(createReadHop("U"))
+        val B = SNodeData(createReadHop("V"))
+        val i = AB() //"a1"
+        val j = AB() //"b2"
+        val k = AB() //"c3"
+        val l= AB() //"d4"
+        val p = Hop.AggOp.SUM
+        val m = SNodeNary.NaryOp.MULT
+
+        val ij = SNodeBind(A, mapOf(AU.U0 to i, AU.U1 to j))
+        val ik = SNodeBind(A, mapOf(AU.U0 to i, AU.U1 to k)) // also try A B A B
+        val lk = SNodeBind(B, mapOf(AU.U0 to l, AU.U1 to k))
+        val lj = SNodeBind(B, mapOf(AU.U0 to l, AU.U1 to j))
+        val UVj = SNodeAggregate(p,
+                SNodeNary(m, ij, lj)
+                , j)
+        val UVk = SNodeAggregate(p,
+                SNodeNary(m, ik, lk)
+                , k)
+        val UVUV1 = SNodeNary(m, UVj, UVk)
+        val UVUV2 = SNodeNary(m, UVk, UVj)
+
+//        listOf(UVj to UVk, UVUV1 to UVUV2).forEach { (n1, n2) ->
+//            testHash(n1, n2)
+//        }
+
+//        println("Explain1: "+Explain.explain(AB))
+//        AB.resetVisited()
+//        println("Explain2: "+Explain.explain(BA))
+//        BA.resetVisited()
+
+//        val w1 = SNodeData(createWriteHop("w1"), SNodeUnbind(UVUV1, mapOf(AU.U0 to i, AU.U1 to l)))
+//        val w2 = SNodeData(createWriteHop("w2"), SNodeUnbind(UVUV2, mapOf(AU.U0 to i, AU.U1 to l)))
+//        val roots = arrayListOf<SNode>(w1, w2)
+        val sum1 = SNodeAggregate(Hop.AggOp.SUM, UVUV1, i, l)
+        val sum2 = SNodeAggregate(Hop.AggOp.SUM, UVUV2, i, l)
+        val w1 = SNodeData(createWriteHop("w1"), sum1)
+        val w2 = SNodeData(createWriteHop("w2"), sum2)
+        val roots = arrayListOf<SNode>(w1, w2)
+
+        println(Explain.explainSPlan(roots))
+        SPlan2NormalForm.rewriteSPlan(roots)
+
+//        testHash(w1.inputs[0], w2.inputs[0]) // todo test GraphCanonizer
+
+        println("Explain before enu: "+Explain.explainSPlan(roots))
+        val enu = SPlanEnumerate3(roots)
+        enu.expandAll()
+        println("Explain after enu : "+Explain.explainSPlan(roots))
+        val aggs = countPred(roots) { it is SNodeAggregate }
+        val nary = countPred(roots) { it is SNodeNary }
+        println("result aggs nary: $aggs $nary")
+//        Assert.assertEquals("Plan Enumeration should unify semantically equivalent sub-expressions",1, aggs)
+//        Assert.assertEquals("Plan Enumeration should unify semantically equivalent sub-expressions",2, nary)
+    }
+
+    /**
+     * Test ABC
+     */
+    @Test
+    fun testABC() {
+        val A = SNodeData(createReadHop("A"))
+        val B = SNodeData(createReadHop("B"))
+        val C = SNodeData(createReadHop("C"))
+        val a = AB() //"a1"
+        val b = AB() //"b2"
+        val c = AB() //"c3"
+        val d = AB() //"d4"
+        val p = Hop.AggOp.SUM
+        val m = SNodeNary.NaryOp.MULT
+
+        val ab = SNodeBind(A, mapOf(AU.U0 to a, AU.U1 to b))
+        val bc = SNodeBind(B, mapOf(AU.U0 to b, AU.U1 to c))
+        val cd = SNodeBind(C, mapOf(AU.U0 to c, AU.U1 to d))
+        val AB = SNodeAggregate(p,
+                SNodeNary(m, ab, bc), b)
+        val ABC = SNodeAggregate(p,
+                SNodeNary(m, AB, cd), c)
+
+//        listOf(UVj to UVk, UVUV1 to UVUV2).forEach { (n1, n2) ->
+//            testHash(n1, n2)
+//        }
+//        println("Explain1: "+Explain.explain(AB))
+//        AB.resetVisited()
+
+        val w1 = SNodeData(createWriteHop("w1"), SNodeUnbind(ABC, mapOf(AU.U0 to a, AU.U1 to d)))
+        val roots = arrayListOf<SNode>(w1)
+
+        println(Explain.explainSPlan(roots))
+        SPlan2NormalForm.rewriteSPlan(roots)
+
+//        testHash(w1.inputs[0], w2.inputs[0]) // todo test GraphCanonizer
+
+        println("Explain before enu: "+Explain.explainSPlan(roots))
+        val enu = SPlanEnumerate3(roots)
+        enu.expandAll()
+        println("Explain after enu : "+Explain.explainSPlan(roots))
+        val aggs = countPred(roots) { it is SNodeAggregate }
+        val nary = countPred(roots) { it is SNodeNary }
+        println("result aggs nary: $aggs $nary")
+        Assert.assertEquals(4, aggs)
+        Assert.assertEquals(4, nary)
+    }
+
+    @Test
+    fun testABC_BCD() {
+        val A = SNodeData(createReadHop("A"))
+        val B = SNodeData(createReadHop("B"))
+        val C = SNodeData(createReadHop("C"))
+        val D = SNodeData(createReadHop("D"))
+        val a = AB() //"a1"
+        val b = AB() //"b2"
+        val c = AB() //"c3"
+        val d = AB() //"d4"
+        val p = Hop.AggOp.SUM
+        val m = SNodeNary.NaryOp.MULT
+
+        val ab = SNodeBind(A, mapOf(AU.U0 to a, AU.U1 to b))
+        val bc = SNodeBind(B, mapOf(AU.U0 to b, AU.U1 to c))
+        val cd = SNodeBind(C, mapOf(AU.U0 to c, AU.U1 to d))
+        val abB = SNodeBind(B, mapOf(AU.U0 to a, AU.U1 to b))
+        val bdC = SNodeBind(C, mapOf(AU.U0 to b, AU.U1 to d))
+        val dcD = SNodeBind(D, mapOf(AU.U0 to d, AU.U1 to c))
+        val AB = SNodeAggregate(p,
+                SNodeNary(m, ab, bc), b)
+        val ABC = SNodeAggregate(p,
+                SNodeNary(m, AB, cd), c)
+        val BC = SNodeAggregate(p,
+                SNodeNary(m, abB, bdC), b)
+        val BCD = SNodeAggregate(p,
+                SNodeNary(m, BC, dcD), d)
+//        listOf(UVj to UVk, UVUV1 to UVUV2).forEach { (n1, n2) ->
+//            testHash(n1, n2)
+//        }
+//        println("Explain1: "+Explain.explain(AB))
+//        AB.resetVisited()
+
+        val w1 = SNodeData(createWriteHop("w1"), SNodeUnbind(ABC, mapOf(AU.U0 to a, AU.U1 to d)))
+        val w2 = SNodeData(createWriteHop("w2"), SNodeUnbind(BCD, mapOf(AU.U0 to a, AU.U1 to c)))
+        val roots = arrayListOf<SNode>(w1, w2)
+
+        println(Explain.explainSPlan(roots))
+        SPlan2NormalForm.rewriteSPlan(roots)
+
+//        testHash(w1.inputs[0], w2.inputs[0]) // todo test GraphCanonizer
+
+        println("Explain before enu: "+Explain.explainSPlan(roots))
+        val enu = SPlanEnumerate3(roots)
+        enu.expandAll()
+        println("Explain after enu : "+Explain.explainSPlan(roots))
+        val aggs = countPred(roots) { it is SNodeAggregate }
+        val nary = countPred(roots) { it is SNodeNary }
+        println("result aggs nary: $aggs $nary")
+        Assert.assertEquals(7, aggs)
+        Assert.assertEquals(7, nary)
+    }
+
+    @Test
+    fun testABC_plus_DBC() {
+        val A = SNodeData(createReadHop("A"))
+        val B = SNodeData(createReadHop("B"))
+        val C = SNodeData(createReadHop("C"))
+        val D = SNodeData(createReadHop("D"))
+        val a = AB() //"a1"
+        val b = AB() //"b2"
+        val c = AB() //"c3"
+        val d = AB() //"c3"
+        val x = AB() //"d4"
+        val y = AB() //"d4"
+        val p = Hop.AggOp.SUM
+        val m = SNodeNary.NaryOp.MULT
+
+        val ab = SNodeBind(A, mapOf(AU.U0 to a, AU.U1 to b))
+        val bc = SNodeBind(B, mapOf(AU.U0 to b, AU.U1 to c))
+        val cd = SNodeBind(C, mapOf(AU.U0 to c, AU.U1 to d))
+        val ax = SNodeBind(D, mapOf(AU.U0 to a, AU.U1 to x))
+        val xy = SNodeBind(B, mapOf(AU.U0 to x, AU.U1 to y))
+        val yd = SNodeBind(C, mapOf(AU.U0 to y, AU.U1 to d))
+        val AB = SNodeAggregate(p,
+                SNodeNary(m, ab, bc), b)
+        val ABC = SNodeAggregate(p,
+                SNodeNary(m, AB, cd), c)
+        val DB = SNodeAggregate(p,
+                SNodeNary(m, ax, xy), x)
+        val DBC = SNodeAggregate(p,
+                SNodeNary(m, DB, yd), y)
+        val ABCDBC = SNodeNary(SNodeNary.NaryOp.PLUS, ABC, DBC)
+
+        val w1 = SNodeData(createWriteHop("w1"), SNodeUnbind(ABCDBC, mapOf(AU.U0 to a, AU.U1 to d)))
+        val roots = arrayListOf<SNode>(w1)
+
+        println(Explain.explainSPlan(roots))
+        SPlan2NormalForm.rewriteSPlan(roots)
+
+        println("Explain before enu: "+Explain.explainSPlan(roots))
+        val enu = SPlanEnumerate3(roots)
+        enu.expandAll()
+        println("Explain after enu : "+Explain.explainSPlan(roots))
+        val aggs = countPred(roots) { it is SNodeAggregate }
+        val nary = countPred(roots) { it is SNodeNary }
+        println("result aggs nary: $aggs $nary")
+//        Assert.assertEquals(7, aggs)
+//        Assert.assertEquals(7, nary)
+    }
+
 }

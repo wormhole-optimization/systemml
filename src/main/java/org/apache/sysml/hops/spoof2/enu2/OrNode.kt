@@ -5,6 +5,12 @@ import org.apache.sysml.hops.spoof2.plan.SNode
 class OrNode(
         inputs: List<SNode>
 ): SNode(inputs) {
+    init {
+        refreshSchema()
+        if (inputs.map(SNode::schema).toSet().size != 1)
+            println("oh")
+        check(inputs.map(SNode::schema).toSet().size == 1) {"schema inputs to OrNode disagree: $inputs, ${inputs.map(SNode::schema)}"}
+    }
 
     constructor(vararg inputs: SNode) : this(inputs.asList())
 
