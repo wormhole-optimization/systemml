@@ -372,7 +372,7 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
         if( aggInput is SNodeNary && aggInput.op == SNodeNary.NaryOp.PLUS ) {
             val plus = aggInput
             if (LOG.isTraceEnabled)
-                LOG.trace("SPlan2NormalForm_InsertStyle: Insert Σ (${agg.id}): push into child +")
+                LOG.trace("SPlan2NormalForm_InsertStyle: Insert Σ (${agg.id}): push into child + (${plus.id})")
             // push Σ into +
             // move all parents of Σ to be parents of +
             plus.parents -= agg
@@ -391,7 +391,7 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
             // remaining children get a newly constructed agg
             while( plusInputs.hasNext() ) {
                 val pi = plusInputs.next()
-                val newAgg = SNodeAggregate(Hop.AggOp.SUM, pi, agg.aggs).apply { visited = true }
+                val newAgg = SNodeAggregate(Hop.AggOp.SUM, pi, agg.aggs)
                 putAggIntoPlusInput(newAgg, plus, pi)
             }
 
@@ -452,7 +452,8 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
                 }
                 if (notInInput.isNotEmpty()) {
                     val mFactor = notInInput.shapes.prod()
-                    val lit = SNodeData(LiteralOp(mFactor))
+                    assert(mult.visited)
+                    val lit = SNodeData(LiteralOp(mFactor)).apply { visited = true }
 
                     mult.inputs += lit
                     lit.parents += mult
@@ -460,9 +461,10 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
                 }
             } else {
                 val mFactor = notInInput.shapes.prod()
-                val lit = SNodeData(LiteralOp(mFactor))
+                assert(agg.visited)
+                val lit = SNodeData(LiteralOp(mFactor)).apply { visited = true }
                 mult.parents -= agg
-                val m = SNodeNary(SNodeNary.NaryOp.MULT, mult, lit)
+                val m = SNodeNary(SNodeNary.NaryOp.MULT, mult, lit).apply { visited = true }
                 m.parents += agg
                 agg.input = m
                 agg.aggs -= notInInput
@@ -477,6 +479,7 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
 
     private fun putAggIntoPlusInput(agg: SNodeAggregate, plus: SNodeNary, pi: SNode) {
         // agg.input = pi; pi.parents += agg
+        agg.visited = pi.visited
         plus.inputs.mapInPlace {
             if( it == pi ) {
                 pi.parents -= plus

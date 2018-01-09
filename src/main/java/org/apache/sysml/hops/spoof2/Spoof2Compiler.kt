@@ -9,9 +9,12 @@ import org.apache.sysml.conf.DMLConfig
 import org.apache.sysml.hops.*
 import org.apache.sysml.hops.rewrite.*
 import org.apache.sysml.hops.spoof2.enu.NormalFormExploreEq
+import org.apache.sysml.hops.spoof2.enu2.RewriteSelectRandom
+import org.apache.sysml.hops.spoof2.enu2.SPlanEnumerate3
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriteRule
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter
+import org.apache.sysml.hops.spoof2.rewrite.SPlanTopDownRewriter
 import org.apache.sysml.parser.*
 import org.apache.sysml.runtime.DMLRuntimeException
 import org.apache.sysml.utils.Explain
@@ -241,8 +244,12 @@ object Spoof2Compiler {
 
         if( result2NormalForm != SPlanRewriter.RewriterResult.NoChange ) {
             sroots = NormalFormExploreEq().rewriteSPlan(sroots).replace(sroots)
+//            SPlanEnumerate3(sroots).expandAll()
+//            if( SPlanRewriteRule.LOG.isTraceEnabled )
+//                SPlanRewriteRule.LOG.trace("After plan enumeration: "+Explain.explainSPlan(sroots))
+//            SPlanTopDownRewriter.rewriteDown(sroots, RewriteSelectRandom())
             if( SPlanRewriteRule.LOG.isTraceEnabled )
-                SPlanRewriteRule.LOG.trace("After processing normal form: "+Explain.explainSPlan(sroots))
+                SPlanRewriteRule.LOG.trace("After plan selection: "+Explain.explainSPlan(sroots))
         }
 
         //re-construct modified HOP DAG
