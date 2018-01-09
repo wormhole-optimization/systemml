@@ -4,6 +4,7 @@ import com.google.common.collect.BiMap
 import com.google.common.collect.HashBiMap
 import com.google.common.collect.ImmutableBiMap
 import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone
+import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone.Companion.genEdgesPrz
 import org.apache.sysml.hops.spoof2.plan.AB
 import org.apache.sysml.hops.spoof2.plan.map
 import org.apache.sysml.hops.spoof2.plan.zipIntersect
@@ -133,20 +134,6 @@ class EnumPlusFactor(val g1: Graph, val g2: Graph) : TopIterator<SubgraphIso> {
                 else AggStatus.Agg
             }
             BaseAggStats(e.base, aggStats)
-        }
-        private fun genEdgesPrz(edgesSameBase: List<Edge>): Pair<List<Edge>, List<PrefixRejectZone>> {
-            val g1 = edgesSameBase.groupBy { it }.flatMap {
-                it.value.mapIndexed { i, e -> e to i}
-            }
-            val prz1: MutableList<PrefixRejectZone> = mutableListOf()
-            g1.foldIndexed(null as PrefixRejectZone?) { i, prz, (_,c) ->
-                when {
-                    c != 0 -> PrefixRejectZone(i-c, c)
-                    prz == null -> null
-                    else -> { prz1.add(prz); null }
-                }
-            }.let { if (it != null) prz1.add(it) }
-            return g1.map{it.first} to prz1
         }
 
         fun isoToNewGraphMonomorph(si: SubgraphIso, g1: Graph, g2: Graph): Triple<Graph,Monomorph,Monomorph> {

@@ -243,11 +243,11 @@ object Spoof2Compiler {
         sroots = result2NormalForm.replace(sroots)
 
         if( result2NormalForm != SPlanRewriter.RewriterResult.NoChange ) {
-            sroots = NormalFormExploreEq().rewriteSPlan(sroots).replace(sroots)
-//            SPlanEnumerate3(sroots).expandAll()
-//            if( SPlanRewriteRule.LOG.isTraceEnabled )
-//                SPlanRewriteRule.LOG.trace("After plan enumeration: "+Explain.explainSPlan(sroots))
-//            SPlanTopDownRewriter.rewriteDown(sroots, RewriteSelectRandom())
+//            sroots = NormalFormExploreEq().rewriteSPlan(sroots).replace(sroots)
+            SPlanEnumerate3(sroots).expandAll()
+            if( SPlanRewriteRule.LOG.isTraceEnabled )
+                SPlanRewriteRule.LOG.trace("After plan enumeration: "+Explain.explainSPlan(sroots))
+            SPlanTopDownRewriter.rewriteDown(sroots, RewriteSelectRandom())
             if( SPlanRewriteRule.LOG.isTraceEnabled )
                 SPlanRewriteRule.LOG.trace("After plan selection: "+Explain.explainSPlan(sroots))
         }

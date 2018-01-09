@@ -20,9 +20,8 @@ class UtilTest {
                 assertTrue(l.noDups())
                 s.reset()
                 assertNotNull(s.top())
-//                if (m == 4 && n == 2) {
-//                    println(l.joinToString { it.contentToString() })
-//                }
+                if (m == 4 && n == 2)
+                    println(l.joinToString { it.contentToString() })
             }
         }
     }
@@ -45,9 +44,8 @@ class UtilTest {
                 assertTrue(l.noDups())
                 s.reset()
                 assertNotNull(s.top())
-//                if (m == 4 && n == 2) {
+//                if (m == 4 && n == 2)
 //                    println(l.joinToString { it.contentToString() })
-//                }
             }
         }
     }

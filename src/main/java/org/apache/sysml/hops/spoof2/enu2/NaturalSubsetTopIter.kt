@@ -85,6 +85,22 @@ class PrefixRejectTopIter(m: Int, n: Int,
             else size.compareTo(other.size)
         }
         val limit: Int = start+size
+        companion object {
+            fun <T> genEdgesPrz(edgesSameBase: List<T>): Pair<List<T>, List<PrefixRejectZone>> {
+                val g1 = edgesSameBase.groupBy { it }.flatMap {
+                    it.value.mapIndexed { i, e -> e to i}
+                }
+                val prz1: MutableList<PrefixRejectZone> = mutableListOf()
+                g1.foldIndexed(null as PrefixRejectZone?) { i, prz, (_,c) ->
+                    when {
+                        c != 0 -> PrefixRejectZone(i-c, c+1)
+                        prz == null -> null
+                        else -> { prz1.add(prz); null }
+                    }
+                }.let { if (it != null) prz1.add(it) }
+                return g1.map{it.first} to prz1
+            }
+        }
     }
     private var first = true
     val rejectZones = rejectZones.sorted()

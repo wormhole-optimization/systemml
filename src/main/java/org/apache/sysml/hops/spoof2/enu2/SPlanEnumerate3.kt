@@ -5,9 +5,10 @@ import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.LiteralOp
 import org.apache.sysml.hops.spoof2.*
 import org.apache.sysml.hops.spoof2.enu.ENode
+import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone
+import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone.Companion.genEdgesPrz
 import org.apache.sysml.hops.spoof2.plan.*
 import java.util.*
-import kotlin.NoSuchElementException
 
 // optional SNode
 sealed class SNodeOption {
@@ -280,9 +281,11 @@ data class CanonMemo(
 
 
 class SPlanEnumerate3(initialRoots: Collection<SNode>) {
+    private val _origRoots = initialRoots.toList()
     constructor(vararg inputs: SNode) : this(inputs.asList())
     private val LOG = LogFactory.getLog(SPlanEnumerate3::class.java)!!
     companion object {
+        private const val CHECK_BETWEEN_EXPAND = true
         // todo - configuration parameters for whether to expand +, prune, etc.
         private const val SOUND_PRUNE_TENSOR_INTERMEDIATE = true
         private const val UNSOUND_PRUNE_MAX_DEGREE = true
@@ -303,6 +306,8 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
 
     private fun expand() {
         expand(remainingToExpand.removeFirst() ?: return)
+        if (CHECK_BETWEEN_EXPAND)
+            SPlanValidator.validateSPlan(_origRoots)
     }
 
     private fun expand(node: SNode) {
@@ -457,52 +462,36 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         return r
     }
 
-    // further optimization - detect when some elements in list are equal; don't enumerate the same state more than once
     private fun <T> enumPartition(l: List<T>): Iterator<Pair<List<T>,List<T>>> {
-         return EnumPartition(l)
+        val (listOrdered, przs) = genEdgesPrz(l)
+        return EnumPartition(listOrdered, przs)
     }
 
-    class EnumPartition<out T>(val l: List<T>) : Iterator<Pair<List<T>, List<T>>> {
-        private val asn = BooleanArray(l.size) // true means in first partition
-        private var sz1 = 1
-        init { asn[0] = true }
+    /**
+     * Given a list with duplicates grouped consecutively and marked by [przs],
+     * iterate over the partitionings of the list into two nonempty subsets, such that every partitioning is enumerated exactly once.
+     */
+    class EnumPartition<T>(val l: List<T>, val przs: List<PrefixRejectZone>): AbstractIterator<Pair<List<T>, List<T>>>() {
+        // detect when some elements in list are equal; don't enumerate the same state more than once
+        private var iter = PrefixRejectTopIter(l.size, 1, przs)
+        init { setNext(computeSubset()) }
 
-        override fun hasNext(): Boolean {
-            return sz1 <= (l.size/2)
+        private fun computeSubset(): Pair<List<T>, List<T>> {
+            val t = iter.top()!!
+            return l.partitionIndexed { (i, _) -> i in t }
         }
 
-        override fun next(): Pair<List<T>, List<T>> {
-            if (!hasNext()) throw NoSuchElementException()
-            val r = l.partitionIndexed { (i,_) -> asn[i] }
-
-            // update state to next
-            var c = 0 // count of trues at end
-            while (asn[asn.size - c - 1]) {
-                asn[asn.size - c - 1] = false
-                c++
+        override fun computeNext() {
+            if (iter.next() != null) {
+                // break symmetry on exact half split - don't enumerate same set twice
+                return if (l.size % 2 == 0 && iter.n == l.size/2 && iter.top()!![0] != 0) done()
+                else setNext(computeSubset())
             }
-            if (c == sz1) { // last for size
-//                    asn.fill(false, asn.size-sz1, asn.size)
-                sz1++
-                if (sz1 <= l.size / 2)
-                    asn.fill(true, 0, sz1)
-            } else {
-                // delete next true and add c+1 trues after it
-                var firstTrue = asn.size - c - 2
-                while (!asn[firstTrue]) firstTrue--
-                asn[firstTrue] = false
-                asn.fill(true, firstTrue + 1, firstTrue + 1 + c + 1)
-                if (l.size % 2 == 0 && sz1 == l.size/2 && firstTrue == 0)
-                    sz1++
-            }
-            return r
+            if (iter.n+1 > l.size/2)
+                return done()
+            iter = PrefixRejectTopIter(l.size, iter.n+1, przs)
+            return setNext(computeSubset())
         }
-
-//        private fun lastForSize(): Boolean {
-//            for (i in asn.size-sz1 until asn.size)
-//                if (!asn[i]) return false
-//            return true
-//        }
     }
 
     private fun factorAgg(g: Graph): SNodeOption {
