@@ -562,6 +562,9 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         }
         val alts: MutableSet<SNode> = mutableSetOf()
         for ((es1, es2) in enumPartition(es)) {
+            if (SOUND_PRUNE_TENSOR_INTERMEDIATE &&
+                    (es1.flatMap(Edge::verts).toSet().size > 2 || es2.flatMap(Edge::verts).toSet().size > 2))
+                continue
             val r1 = factorMult(es1).toNode() ?: continue
             val r2 = factorMult(es2).toNode() ?: continue
             alts += makeMultAbove(r1, r2)

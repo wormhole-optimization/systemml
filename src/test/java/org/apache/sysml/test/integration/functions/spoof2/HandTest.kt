@@ -5,6 +5,7 @@ import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.spoof2.SHash
 import org.apache.sysml.hops.spoof2.SPlan2NormalForm
 import org.apache.sysml.hops.spoof2.SPlanCseEliminator
+import org.apache.sysml.hops.spoof2.enu2.OrNode
 import org.apache.sysml.hops.spoof2.enu2.SPlanEnumerate3
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.*
@@ -24,6 +25,13 @@ class HandTest {
         }
         private fun createWriteHop(name: String): DataOp {
             return DataOp(name, Expression.DataType.MATRIX, Expression.ValueType.DOUBLE, Hop.DataOpTypes.TRANSIENTWRITE, name, 3, 3, 9, 3, 3)
+        }
+        private fun extractOrNodes(node: SNode, orNodes: MutableSet<OrNode> = mutableSetOf()): Set<OrNode> {
+            if (node.visited) return orNodes
+            node.visited = true
+            if (node is OrNode) orNodes += node
+            node.inputs.forEach { extractOrNodes(it, orNodes) }
+            return orNodes
         }
 
     }
@@ -592,6 +600,39 @@ class HandTest {
         println("result aggs nary: $aggs $nary")
 //        Assert.assertEquals(7, aggs)
 //        Assert.assertEquals(7, nary)
+    }
+
+    @Test
+    fun testAAA() {
+        val A = SNodeData(createReadHop("A"))
+        val a = AB() //"a1"
+        val b = AB() //"b2"
+        val p = Hop.AggOp.SUM
+        val m = SNodeNary.NaryOp.MULT
+
+        val ab = SNodeBind(A, mapOf(AU.U0 to a, AU.U1 to b))
+        val AAA = SNodeNary(SNodeNary.NaryOp.PLUS, ab, ab, ab)
+
+        val w1 = SNodeData(createWriteHop("w1"), SNodeUnbind(AAA, mapOf(AU.U0 to a, AU.U1 to b)))
+        val roots = arrayListOf<SNode>(w1)
+
+        println(Explain.explainSPlan(roots))
+        SPlan2NormalForm.rewriteSPlan(roots)
+
+        println("Explain before enu: "+Explain.explainSPlan(roots))
+        val enu = SPlanEnumerate3(roots)
+        enu.expandAll()
+        println("Explain after enu : "+Explain.explainSPlan(roots))
+        val aggs = countPred(roots) { it is SNodeAggregate }
+        val nary = countPred(roots) { it is SNodeNary }
+        println("result aggs nary: $aggs $nary")
+//        Assert.assertEquals(7, aggs)
+//        Assert.assertEquals(7, nary)
+
+        w1.resetVisited()
+        val orNodes = extractOrNodes(w1)
+        val orNode = orNodes.single()
+        assertEquals(3, orNode.inputs.size, "redundant factorings enumerated") // todo
     }
 
 }

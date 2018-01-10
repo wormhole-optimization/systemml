@@ -212,7 +212,7 @@ class Spoof2Test(
             val HOME = AutomatedTestBase.SCRIPT_DIR + TEST_DIR
             fullDMLScriptName = HOME + testname + ".dml"
 //            if ( rewrites ) // "-explain", "recompile_hops",
-            programArgs = arrayOf("-stats", //"-explain", "runtime",
+            programArgs = arrayOf("-stats", //"-explain", "recompile_hops",
                     "-args", output("S"))
 
             fullRScriptName = HOME + testname + ".R"
