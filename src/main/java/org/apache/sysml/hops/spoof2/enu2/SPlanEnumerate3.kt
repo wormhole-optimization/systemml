@@ -398,7 +398,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         if (Bcur.isEmpty() && Bnew.isEmpty()) return factorPlusBase(Bold)
         val (i, j) = if (j0 >= Bold.size + Bcur.size) i0+1 to i0+2 else i0 to j0
         if (i >= Bcur.size || i == Bcur.size-1 && Bold.isEmpty()) return factorPlusRec(Bold + Bcur, Bnew, listOf(), 0, 1)
-        val alts = mutableListOf<SNode>()
+        val alts = mutableSetOf<SNode>()
         // 1. Explore not factoring common terms
         factorPlusRec(Bold, Bcur, Bnew, i, j+1).tryApply { alts += it }
         // 2. Explore factoring out
@@ -451,7 +451,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     private fun factorPlusBase(B: GraphBag): SNodeOption {
         if (B.size == 1) return factorAgg(B[0])
         memo.adaptFromMemo(B)?.let { return it }
-        val alts: MutableList<SNode> = mutableListOf()
+        val alts = mutableSetOf<SNode>()
         for ((B1, B2) in enumPartition(B)) {
             val r1 = factorPlusBase(B1).toNode() ?: continue
             val r2 = factorPlusBase(B2).toNode() ?: continue
@@ -522,7 +522,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
             val dmax = dmap.values.max()!!
             g.aggs.filter { dmap[it] == dmax }.toSet()
         } else g.aggs
-        val alts: MutableList<SNode> = mutableListOf()
+        val alts = mutableSetOf<SNode>()
         for (v in aggsEnu) {
             val gbelow = Graph(g.outs + v, g.edges)
             val below = factorAgg(gbelow)
@@ -560,7 +560,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
                 is Edge.F -> factorPlusBase(e.base)
             }
         }
-        val alts: MutableList<SNode> = mutableListOf()
+        val alts: MutableSet<SNode> = mutableSetOf()
         for ((es1, es2) in enumPartition(es)) {
             val r1 = factorMult(es1).toNode() ?: continue
             val r2 = factorMult(es2).toNode() ?: continue
@@ -578,10 +578,13 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
 
 
 
-    private fun optionOrNode(alts: List<SNode>): SNodeOption = when(alts.size) {
-        0 -> SNodeOption.None
-        1 -> alts[0].toOption()
-        else -> OrNode(alts).toOption()
+    private fun optionOrNode(alts: Set<SNode>): SNodeOption {
+        val sNodeOption = when (alts.size) {
+            0 -> SNodeOption.None
+            1 -> alts.single().toOption()
+            else -> OrNode(alts).apply(OrNode::flatten).toOption()
+        }
+        return sNodeOption
     }
 
 }

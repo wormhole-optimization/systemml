@@ -59,9 +59,12 @@ class EnumPlusFactor(val g1: Graph, val g2: Graph) : TopIterator<SubgraphIso> {
 //    private val arrIter: MutableList<PairPrefixRejectTopIter> = arrMatch.map { it.iterateChoices(0) }.toMutableList()
     private val arrVertMap: List<VMap>  = arrMatch.map { HashBiMap.create<V,V>() }
     private val vertMap: VMap = HashBiMap.create()
+    /** If there are no Matchings, then this indicates whether the empty SubgraphIso has been enumerated yet. */
+    private var iteratedEmpty = false
 
     override fun next(): SubgraphIso? {
         var i = arrMatch.size-1
+        if (i == -1) { iteratedEmpty = true; return null }
         unassign(i)
         loop@while(true) {
             while (true) {
@@ -113,17 +116,17 @@ class EnumPlusFactor(val g1: Graph, val g2: Graph) : TopIterator<SubgraphIso> {
         arrVertMap[i].clear()
     }
 
-    fun topSubIso(): SubgraphIso? {
+    override fun top(): SubgraphIso? {
+        if (iteratedEmpty) return null
         val edgeMap = arrMatch.flatMap { match ->
             match.top() ?: return null
         }
         return SubgraphIso(vertMap, edgeMap)
     }
 
-    override fun top() = topSubIso()
-
     override fun reset() {
         arrMatch.forEach { it.reset() }
+        iteratedEmpty = false
     }
 
 

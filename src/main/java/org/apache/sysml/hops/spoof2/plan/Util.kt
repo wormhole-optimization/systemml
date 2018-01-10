@@ -347,11 +347,13 @@ inline fun <T> Iterable<T>.partitionIndexed(predicate: (IndexedValue<T>) -> Bool
 
 inline fun <A,R> Pair<A,A>.map(f: (A) -> R): Pair<R,R> = f(this.first) to f(this.second)
 
-fun makeBindAbove(n: SNode, tgtMap: Map<AU, AB>): SNodeBind {
-    return n.parents.find { it is SNodeBind && it.bindings == tgtMap } as SNodeBind? ?: SNodeBind(n, tgtMap)
+fun makeBindAbove(n: SNode, tgtMap: Map<AU, AB>): SNode {
+    return if (tgtMap.isEmpty()) n
+    else n.parents.find { it is SNodeBind && it.bindings == tgtMap } ?: SNodeBind(n, tgtMap)
 }
-fun makeUnbindAbove(n: SNode, tgtMap: Map<AU, AB>): SNodeUnbind {
-    return n.parents.find { it is SNodeUnbind && it.unbindings == tgtMap } as SNodeUnbind? ?: SNodeUnbind(n, tgtMap)
+fun makeUnbindAbove(n: SNode, tgtMap: Map<AU, AB>): SNode {
+    return if (tgtMap.isEmpty()) n
+    else n.parents.find { it is SNodeUnbind && it.unbindings == tgtMap } ?: SNodeUnbind(n, tgtMap)
 }
 fun makeMultAbove(vararg ns: SNode) = makeMultAbove(ns.asList())
 fun makeMultAbove(ns: Collection<SNode>) = makeNaryAbove(ns, SNodeNary.NaryOp.MULT)
@@ -360,7 +362,7 @@ fun makePlusAbove(ns: Collection<SNode>) = makeNaryAbove(ns, SNodeNary.NaryOp.PL
 private fun makeNaryAbove(ns: Collection<SNode>, op: SNodeNary.NaryOp): SNodeNary {
     require(ns.isNotEmpty())
     val nsl = ns.toList().sortedBy { it.id }
-    return ns.first().parents.find { it is SNodeNary && it.op == op && it.inputs.sortedBy { it.id } == nsl } as SNodeNary? ?: SNodeNary(SNodeNary.NaryOp.MULT, nsl)
+    return ns.first().parents.find { it is SNodeNary && it.op == op && it.inputs.sortedBy { it.id } == nsl } as SNodeNary? ?: SNodeNary(op, nsl)
 }
 fun makeAggAbove(n: SNode, aggs: Set<AB>): SNodeAggregate {
     return n.parents.find { it is SNodeAggregate && it.op == Hop.AggOp.SUM && it.aggs.keys == aggs } as SNodeAggregate? ?: SNodeAggregate(Hop.AggOp.SUM, n, aggs)
