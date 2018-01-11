@@ -70,7 +70,7 @@ open class NaturalSubsetTopIter(val m: Int, val n: Int): TopIterator<IntArray> {
 }
 
 /**
- * A [NaturalSubsetTopIter] that rejects subsets which overlap with one of the [rejectZones] in a non-prefix way.
+ * A [NaturalSubsetTopIter] that rejects subsets which overlap with one of the [przs] in a non-prefix way.
  * For example, if a rejectZone starts at item 2 and has size 3, then `00110` is accepted while `00101` and `00010` is rejected.
  * Used to prevent enumerating identical items more than once in the same way.
  */
@@ -85,8 +85,9 @@ class PrefixRejectTopIter(m: Int, n: Int,
             else size.compareTo(other.size)
         }
         val limit: Int = start+size
+        operator fun contains(i: Int) = i in start until limit
         companion object {
-            fun <T> genEdgesPrz(edgesSameBase: List<T>): Pair<List<T>, List<PrefixRejectZone>> {
+            fun <T> orderGenPrz(edgesSameBase: List<T>): Pair<List<T>, List<PrefixRejectZone>> {
                 val g1 = edgesSameBase.groupBy { it }.flatMap {
                     it.value.mapIndexed { i, e -> e to i}
                 }
@@ -103,7 +104,7 @@ class PrefixRejectTopIter(m: Int, n: Int,
         }
     }
     private var first = true
-    val rejectZones = rejectZones.sorted()
+    val przs = rejectZones.sorted()
     init {
         require(rejectZones.all { it.start+it.size <= m }) {"rejectZones out of range: m=$m, n=$n, rzs=$rejectZones"}
         for (i in 0 until rejectZones.size-1)
@@ -137,7 +138,7 @@ class PrefixRejectTopIter(m: Int, n: Int,
         loop@while (true) {
             if (finish) return
             var searchStart = 0
-            for (rz in rejectZones) {
+            for (rz in przs) {
                 // index of rz.start, or `-insertion_point - 1`;
                 // insertion point is index of first element greater than rz.start, or p.length if all p's elements less
                 var idx = Arrays.binarySearch(p, searchStart, n, rz.start)

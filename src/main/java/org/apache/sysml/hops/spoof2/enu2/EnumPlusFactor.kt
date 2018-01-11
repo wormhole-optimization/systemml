@@ -4,7 +4,7 @@ import com.google.common.collect.BiMap
 import com.google.common.collect.HashBiMap
 import com.google.common.collect.ImmutableBiMap
 import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone
-import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone.Companion.genEdgesPrz
+import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone.Companion.orderGenPrz
 import org.apache.sysml.hops.spoof2.plan.AB
 import org.apache.sysml.hops.spoof2.plan.map
 import org.apache.sysml.hops.spoof2.plan.zipIntersect
@@ -51,8 +51,8 @@ class EnumPlusFactor(val g1: Graph, val g2: Graph) : TopIterator<SubgraphIso> {
         val map2 = buildMapBaseAggToEdges(g2)
         map1.zipIntersect(map2).map { (bas, p) ->
             // put alike values side-by-side
-            val (g1, prz1) = genEdgesPrz(p.first)
-            val (g2, prz2) = genEdgesPrz(p.second)
+            val (g1, prz1) = orderGenPrz(p.first)
+            val (g2, prz2) = orderGenPrz(p.second)
             Matching(bas, g1, g2, prz1, prz2)
         }
     }

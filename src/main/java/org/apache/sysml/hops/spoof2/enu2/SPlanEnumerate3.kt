@@ -6,7 +6,7 @@ import org.apache.sysml.hops.LiteralOp
 import org.apache.sysml.hops.spoof2.*
 import org.apache.sysml.hops.spoof2.enu.ENode
 import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone
-import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone.Companion.genEdgesPrz
+import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone.Companion.orderGenPrz
 import org.apache.sysml.hops.spoof2.plan.*
 import java.util.*
 
@@ -389,15 +389,110 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
             return factorAgg(b[0])
         // compute canonical form, check if canonical form has an SNode, if so adapt the SNode to this one
         memo.adaptFromMemo(b)?.let { return it }
-        val r = factorPlusRec(listOf(), b, listOf(), 0, 1)
+        val r = factorPlusRec(listOf(), b.groupSame(), listOf(), 0, 1)
         memo.memoize(b, r)
         return r
     }
 
+    private fun <T> List<T>.groupSame() = this.groupBy { it }.flatMap { it.value }
+
+    // after we use up a Graph from Gcur, set t[0] to same i and t[1] to i+1
+    // adjust PRZ - those that contain i have their size reduced by 1 (size 1 is eliminated)
+    //              other PRZ reduce their start by 1
+
+//    private fun factorPlusRec2(_Bold: GraphBag, _Bcur: GraphBag, Bnew: GraphBag): SNodeOption {
+//        if (_Bcur.isEmpty() && Bnew.isEmpty()) return factorPlusBase(_Bold)
+//        val (Bcur: GraphBag, przCur) = orderGenPrz(_Bcur)
+//        val (Bold: GraphBag, BoldDistinct) = run {
+//            val first: GraphBag = _Bold.distinct()
+//            val dups = first.fold(_Bold) { bcur, fi -> bcur - fi }
+//            (first + dups) to first.size
+//        }
+//        val iter = PrefixRejectTopIter(Bcur.size+BoldDistinct, 2, przCur)
+//        val alts = mutableSetOf<SNode>()
+//
+//        return factorPlusRec(Bold + Bcur, Bnew, listOf(), 0, 1)
+//    }
+//
+//    private fun factorPlusRec2Inner(Bold: GraphBag, Bcur: GraphBag, Bnew: GraphBag,
+//                                    i0: Int, j0: Int, alts: MutableList<SNode>): SNodeOption {
+//        while (t != null && t[0] < Bcur.size) {
+//            val i = t[0]; val j = t[1]
+//
+//            // 2. Explore factoring out
+//            val Gi = Bcur[i]
+//            val Gj = if (j < Bcur.size) Bcur[j] else Bold[j-Bcur.size]
+//            for ((Gf: Graph, hi: Monomorph, hj: Monomorph) in enumPlusFactor(Gi, Gj)) {
+//                if (Gf.edges.isEmpty()) continue
+//                checkPlusFactorization(Gf, hi, Gi)
+//                checkPlusFactorization(Gf, hj, Gj)
+//                val Bp = mutableListOf<Graph>()
+//                // if factoring out results in a single edge and it is a factored graphbag, then add all its graphs to Bp
+//                // otherwise add the graph resulting from factoring out
+//                Bp += factorOutTerms(Gf, hi, Gi) // lines 11 to 19
+//                Bp += factorOutTerms(Gf, hj, Gj)
+//
+//                val Op = Bp.outs()
+//                if (SOUND_PRUNE_TENSOR_INTERMEDIATE && Op.size > 2) continue
+//
+//                // put output vertices in order of canonical graph order
+//                val BpSortedC = memo.canonize(Bp).orderCanon()
+//                val BpEdge = Edge.F(BpSortedC.orig, BpSortedC.orderOuts())
+//                // todo - make sure this BpEdge is compatible with enumPlusFactor so that it can be factored out later
+//                val Gp = Graph(Gi.outs+Gj.outs, Gf.edges + BpEdge)
+//
+//                val newBold: GraphBag; val newBcur: GraphBag
+//                if (j < Bcur.size) { newBold = Bold; newBcur = Bcur - Gi - Gj }
+//                else { newBold = Bold - Gj; newBcur = Bcur - Gi }
+//
+//                // change of plan - keep the first item of Bcur separate, pass it to Bold once done.
+//
+//                // adjust iter to the removal of the items
+//                val newPrzs = iter.przs.flatMap { prz ->
+//                    var (start,size) = prz
+//                    when {
+//                        j in prz -> size--
+//                        j < start -> start--
+//                    }
+//                    when {
+//                        i in prz -> size--
+//                        i < start -> start--
+//                    }
+//                    if (size <= 1) listOf()
+//                    else listOf(PrefixRejectZone(start,size))
+//                }
+//                val newIter = TODO()
+//                factorPlusRec2Inner(newBold, newBcur, Bnew + Gp, )
+//                factorPlusRec(newBold, newBcur, Bnew + Gp, i, i+1).tryApply { alts += it }
+//            }
+//
+//            t = iter.next()
+//        }
+//
+//    }
+
+
+
     private fun factorPlusRec(Bold: GraphBag, Bcur: GraphBag, Bnew: GraphBag, i0: Int, j0: Int): SNodeOption {
         if (Bcur.isEmpty() && Bnew.isEmpty()) return factorPlusBase(Bold)
-        val (i, j) = if (j0 >= Bold.size + Bcur.size) i0+1 to i0+2 else i0 to j0
-        if (i >= Bcur.size || i == Bcur.size-1 && Bold.isEmpty()) return factorPlusRec(Bold + Bcur, Bnew, listOf(), 0, 1)
+        val (i,j) = run {
+            // This section prevents enumerating the same factorizations multiple times.
+            // The input bags to factorPlusRec are ordered so that identical items appear consecutively.
+            // If an item at position i (or j) is the same as the one before it that we chose NOT to factor out,
+            // then don't repeat that choice. Move to the next different item instead.
+            var i = i0; var j = j0
+            while(i < Bcur.size) {
+                while (i > 0 && i < Bcur.size && Bcur[i-1] == Bcur[i]) { i++; j = i+1 }
+                while (j > i+1 && j < Bcur.size && Bcur[j - 1] == Bcur[j]) j++
+                while (j > Bcur.size && j < Bcur.size + Bold.size && Bold[j - Bcur.size - 1] == Bold[j - Bcur.size]) j++
+                if (j >= Bcur.size + Bold.size) {
+                    i++; j = i+1
+                } else break
+            }
+            i to j
+        }
+        if (i >= Bcur.size || i == Bcur.size-1 && Bold.isEmpty())
+            return factorPlusRec((Bold + Bcur).groupSame(), Bnew.groupSame(), listOf(), 0, 1)
         val alts = mutableSetOf<SNode>()
         // 1. Explore not factoring common terms
         factorPlusRec(Bold, Bcur, Bnew, i, j+1).tryApply { alts += it }
@@ -463,7 +558,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     }
 
     private fun <T> enumPartition(l: List<T>): Iterator<Pair<List<T>,List<T>>> {
-        val (listOrdered, przs) = genEdgesPrz(l)
+        val (listOrdered, przs) = orderGenPrz(l)
         return EnumPartition(listOrdered, przs)
     }
 
