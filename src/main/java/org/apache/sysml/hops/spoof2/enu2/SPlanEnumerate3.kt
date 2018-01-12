@@ -192,6 +192,7 @@ data class CanonMemo(
     private inline fun getOrPut(b: Graph, f: (Graph) -> GraphCanon): GraphCanon = if (b in ctg) ctg[b]!! else f(b).also { ctg[b] = it }
 //    inline fun getOrPut(b: Edge.F, f: (Edge.F) -> Hash): Hash = if (b in htEF) htEF[b]!! else f(b).also { htEF[b] = it }
 
+    // A GraphBag of size 1 has the same rep as its sigle Graph.
     fun canonize(b: GraphBag): GraphBagCanon = this.getOrPut(b) {
         val beforeSort = b.map { canonize(it) }//.sorted().joinToString("~")
         val perm = SHash.sortIndicesHierarchical(beforeSort, listOf<(GraphCanon) -> Rep>({ it.rep }))
@@ -394,7 +395,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
             return factorAgg(b[0])
         // compute canonical form, check if canonical form has an SNode, if so adapt the SNode to this one
         memo.adaptFromMemo(b)?.let { return it }
-        val alts = mutableSetOf<SNode>().also{ factorPlusRec(listOf(), b.groupSame(), listOf(), 0, 1, 1, it) }
+        val alts: Set<SNode> = mutableSetOf<SNode>().also{ factorPlusRec(listOf(), b.groupSame(), listOf(), 0, 1, 0, it, mutableSetOf()) }
         val r = optionOrNode(alts)
         memo.memoize(b, r)
         return r
@@ -405,11 +406,12 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
 
     /**
      * [Bold] and [Bcur] should be ordered so that identical items appear consecutively.
-     * [depth] counts frontiers considered, which advances when i and j finish in a frontier.
+     * [depth] is frontier #; advances when i and j finish in a frontier.
      *
      * Output parameter: [alts], the alternatives for computing the GraphBag of [Bold]+[Bcur]+[Bnew].
      */
-    private fun factorPlusRec(Bold: GraphBag, Bcur: GraphBag, Bnew: GraphBag, i0: Int, j0: Int, depth: Int, alts: MutableSet<SNode>) {
+    private fun factorPlusRec(Bold: GraphBag, Bcur: GraphBag, Bnew: GraphBag, i0: Int, j0: Int, depth: Int,
+                              alts: MutableSet<SNode>, factorPlusMemo: MutableSet<Rep>) {
         if (Bcur.isEmpty() && Bnew.isEmpty()) {
             if (LOG.isTraceEnabled)
                 LOG.trace("finish+: $Bold")
@@ -432,11 +434,11 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
             i to j
         }
         if (i >= Bcur.size || i == Bcur.size-1 && Bold.isEmpty())
-            return factorPlusRec((Bold + Bcur).groupSame(), Bnew.groupSame(), listOf(), 0, 1, depth+1, alts)
+            return factorPlusRec((Bold + Bcur).groupSame(), Bnew.groupSame(), listOf(), 0, 1, depth+1, alts, factorPlusMemo)
         if (LOG.isTraceEnabled)
             LOG.trace("depth=$depth, i=$i, j=$j\n\tBold=$Bold\n\tBcur=$Bcur\n\tBnew=$Bnew")
         // 1. Explore not factoring common terms
-        factorPlusRec(Bold, Bcur, Bnew, i, j+1, depth, alts)
+        factorPlusRec(Bold, Bcur, Bnew, i, j+1, depth, alts, factorPlusMemo)
         // 2. Explore factoring out
         val Gi = Bcur[i]
         val Gj = if (j < Bcur.size) Bcur[j] else Bold[j-Bcur.size]
@@ -462,7 +464,17 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
             val newBold: GraphBag; val newBcur: GraphBag
             if (j < Bcur.size) { newBold = Bold; newBcur = Bcur - Gi - Gj }
             else { newBold = Bold - Gj; newBcur = Bcur - Gi }
-            factorPlusRec(newBold, newBcur, Bnew + Gp, i, i+1, depth, alts)
+            val newBnew: GraphBag = Bnew + Gp
+
+            // new term formed. See if we already explored this form.
+            if (depth >= 1) {
+                val newB: GraphBag = newBold + newBcur + newBnew
+                val newBcannon = memo.canonize(newB)
+                if (newBcannon.rep in factorPlusMemo) continue
+                else factorPlusMemo += newBcannon.rep
+            }
+            // we did not explore this factoring yet
+            factorPlusRec(newBold, newBcur, newBnew, i, i+1, depth, alts, factorPlusMemo)
         }
 //        return optionOrNode(alts)
     }
@@ -483,6 +495,8 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         assert(aggs == Gp.aggs)
         return listOf(Gp)
     }
+
+
 
     private fun factorPlusBase(B: GraphBag): SNodeOption {
         if (B.size == 1) return factorAgg(B[0])

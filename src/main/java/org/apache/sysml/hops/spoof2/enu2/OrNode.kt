@@ -40,7 +40,10 @@ class OrNode private constructor(
             set.forEach { inOr ->
                 while (this.inputs.remove(inOr) && inOr.parents.remove(this)) ;
                 inOr.parents.forEach { paOr -> paOr.inputs[paOr.inputs.indexOf(inOr)] = this; this.parents += paOr }
-                inOr.inputs.forEach { inOrIn -> inOrIn.parents[inOrIn.parents.indexOf(inOr)] = this; this.inputs += inOrIn }
+                inOr.inputs.forEach { inOrIn ->
+                    if (inOrIn !in this.inputs) // no duplicates
+                        inOrIn.parents[inOrIn.parents.indexOf(inOr)] = this; this.inputs += inOrIn
+                }
             }
         } while (set.isNotEmpty())
     }
