@@ -58,19 +58,19 @@ class GraphCanonizer(val graph: Graph, val memo: CanonMemo) {
     private fun readCanonicalString(): Rep {
         // first 0-edges
         val (zeroEdges, regEdges) = graph.edges.partition { it.verts.isEmpty() }
-        var s = zeroEdges.map { elab[it]!! }.sorted().joinToString(";") + "|" + graph.outs.size + "|"
+        val s0 = zeroEdges.map { elab[it]!! }.sorted().joinToString(";") + "|" + graph.outs.size + "|"
         val newVertOrder = verts.permute(perm)
 //        fun se(e: E): List<Int> {
 //            return e.verts.map { newVertOrder.indexOf(it) }
 //        }
         val sortEdges: (Edge) -> List<Int> = { it.verts.map { newVertOrder.indexOf(it) } }
-        val sortEdgesList = graph.edges.map(sortEdges).map { it.joinToString("_") }
+        val sortEdgesList = regEdges.map(sortEdges).map { it.joinToString("_") }
         val perm = SHash.sortIndicesHierarchical(sortEdgesList, listOf({ it: String -> it }))
         // todo make it easier to get the sort indices
 //        val f: java.util.function.Function<Edge, List<Int>> = sortEdges as java.util.function.Function<Edge, List<Int>> //{ it.verts.map { newVertOrder.indexOf(it) } }
-//        val edgesSorted = graph.edges.sortedWith(Comparator.comparing<Edge,List<Int>>(f, compareIntList))
-        val edgesSorted = graph.edges.permute(perm)
-        return edgesSorted.joinToString("|") { elab[it] + "_" + edgeIncidenceString(newVertOrder, it) }
+//        val edgesSorted = regEdges.sortedWith(Comparator.comparing<Edge,List<Int>>(f, compareIntList))
+        val edgesSorted = regEdges.permute(perm)
+        return s0 + edgesSorted.joinToString("|") { elab[it] + "_" + edgeIncidenceString(newVertOrder, it) }
     }
 
     private fun edgeIncidenceString(vertOrder: List<V>, e: Edge): String {
@@ -98,6 +98,7 @@ class GraphCanonizer(val graph: Graph, val memo: CanonMemo) {
             SHash.sortIndicesHierarchical(verts, listOf(sortByEdge), stillConfused, perm, it.toRange().toList())
             addColorBars(it.first, it.last)
         }
+        println("stilConfused is $stillConfused")
     }
 
     fun canonize(): GraphCanon {

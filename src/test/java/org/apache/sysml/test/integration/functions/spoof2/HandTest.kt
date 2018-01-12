@@ -5,8 +5,7 @@ import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.spoof2.SHash
 import org.apache.sysml.hops.spoof2.SPlan2NormalForm
 import org.apache.sysml.hops.spoof2.SPlanCseEliminator
-import org.apache.sysml.hops.spoof2.enu2.OrNode
-import org.apache.sysml.hops.spoof2.enu2.SPlanEnumerate3
+import org.apache.sysml.hops.spoof2.enu2.*
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.*
 import org.apache.sysml.parser.Expression
@@ -634,5 +633,34 @@ class HandTest {
         val orNode = orNodes.single()
         assertEquals(3, orNode.inputs.size, "redundant factorings enumerated") // todo
     }
+
+
+    /**
+     * Test that AB*AB hashes the same no matter how we switch values around.
+     */
+    @Test
+    fun testUVUV_CanonGraph() {
+        val U = SNodeData(createReadHop("U"))
+        val V = SNodeData(createReadHop("V"))
+        val a7 = ABS(AB(), 9) //7
+        val a2 = ABS(AB(), 9) //2
+        val a3 = ABS(AB(), 9) //3
+        val a8 = ABS(AB(), 9) //8
+        val p = Hop.AggOp.SUM
+        val m = SNodeNary.NaryOp.MULT
+
+        val U72 = Edge.C(U, listOf(a7,a2)) //SNodeBind(U, mapOf(AU.U0 to a7, AU.U1 to a2)) // U 7,2
+        val U73 = Edge.C(U, listOf(a7,a3)) //SNodeBind(U, mapOf(AU.U0 to a7, AU.U1 to a3)) // U 7,3
+        val V83 = Edge.C(V, listOf(a8,a3)) //SNodeBind(V, mapOf(AU.U0 to a8, AU.U1 to a3)) // V 8,3
+        val V82 = Edge.C(V, listOf(a8,a2)) //SNodeBind(V, mapOf(AU.U0 to a8, AU.U1 to a2)) // V 8,2
+        val g1 = Graph(setOf(a7,a2), listOf(U72, V82, U73, V83))
+        val g2 = Graph(setOf(a7,a3), listOf(U72, V82, U73, V83))
+
+        val memo = CanonMemo()
+        val c1 = memo.canonize(g1)
+        val c2 = memo.canonize(g2)
+        assertEquals(c1.rep, c2.rep)
+    }
+
 
 }

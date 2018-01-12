@@ -243,8 +243,8 @@ data class CanonMemo(
 
     private fun findPairIndex(newOut: ABS, gc: GraphCanon, sc: GraphCanon): ABS {
         val gcVertIdx = gc.verts.indexOf(newOut)
-        val gcPos = gc.perm[gcVertIdx]
-        val scVertIdx = sc.perm.indexOf(gcPos)
+        val canonIdx = gc.perm.indexOf(gcVertIdx)
+        val scVertIdx = sc.perm[canonIdx]
         val oldOut = sc.verts[scVertIdx]
         return oldOut
     }
