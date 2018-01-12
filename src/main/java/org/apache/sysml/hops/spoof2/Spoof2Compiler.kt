@@ -12,6 +12,7 @@ import org.apache.sysml.hops.spoof2.enu.NormalFormExploreEq
 import org.apache.sysml.hops.spoof2.enu2.RewriteSelectRandom
 import org.apache.sysml.hops.spoof2.enu2.SPlanEnumerate3
 import org.apache.sysml.hops.spoof2.plan.*
+import org.apache.sysml.hops.spoof2.rewrite.RewriteFlattenOrNode
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriteRule
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter
 import org.apache.sysml.hops.spoof2.rewrite.SPlanTopDownRewriter
@@ -247,7 +248,8 @@ object Spoof2Compiler {
             SPlanEnumerate3(sroots).expandAll()
             if( SPlanRewriteRule.LOG.isTraceEnabled )
                 SPlanRewriteRule.LOG.trace("After plan enumeration: "+Explain.explainSPlan(sroots))
-            SPlanTopDownRewriter.rewriteDown(sroots, RewriteSelectRandom())
+            // after plan enumeration, we can throw away the memo tables and we can flatten chains of OrNodes
+            SPlanTopDownRewriter.rewriteDown(sroots, RewriteFlattenOrNode(), RewriteSelectRandom())
             if( SPlanRewriteRule.LOG.isTraceEnabled )
                 SPlanRewriteRule.LOG.trace("After plan selection: "+Explain.explainSPlan(sroots))
         }

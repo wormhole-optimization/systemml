@@ -34,18 +34,22 @@ class OrNode private constructor(
         return o is OrNode && inputs == o.inputs
     }
 
-    fun flatten() {
+    fun flatten(): Boolean {
+        var ret = false
         do {
             val set = inputs.filterIsInstance(OrNode::class.java).toSet()
-            set.forEach { inOr ->
-                while (this.inputs.remove(inOr) && inOr.parents.remove(this)) ;
-                inOr.parents.forEach { paOr -> paOr.inputs[paOr.inputs.indexOf(inOr)] = this; this.parents += paOr }
-                inOr.inputs.forEach { inOrIn ->
-                    if (inOrIn !in this.inputs) // no duplicates
-                        inOrIn.parents[inOrIn.parents.indexOf(inOr)] = this; this.inputs += inOrIn
+            set.forEach { or ->
+                while (this.inputs.remove(or)) or.parents.remove(this)
+                or.parents.forEach { pa -> pa.inputs[pa.inputs.indexOf(or)] = this; this.parents += pa }
+                or.inputs.forEach { inp ->
+                    inp.parents[inp.parents.indexOf(or)] = this
+                    if (inp !in this.inputs) // no duplicates
+                        this.inputs += inp
                 }
             }
+            ret = ret || set.isNotEmpty()
         } while (set.isNotEmpty())
+        return ret
     }
 
 }

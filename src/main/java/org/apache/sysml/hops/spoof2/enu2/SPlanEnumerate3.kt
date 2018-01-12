@@ -550,10 +550,14 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         val partitions: List<Graph> = partitionByAggCC(g)
         if (partitions.size > 1) {
             val ep = partitions.map { p ->
-                val l = factorAgg(p)
-                memo.memoize(p, l)
-                val gc = memo.canonize(p)
-                Edge.F(listOf(p), gc.orderVertsCanon(p.outs))
+                if (p.edges.size == 1 && p.aggs.isEmpty())
+                    p.edges[0]
+                else {
+                    val l = factorAgg(p)
+                    memo.memoize(p, l)
+                    val gc = memo.canonize(p)
+                    Edge.F(listOf(p), gc.orderVertsCanon(p.outs))
+                }
             }
             val r = factorMult(ep)
             memo.memoize(g, r)
@@ -635,7 +639,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         val sNodeOption = when (alts.size) {
             0 -> SNodeOption.None
             1 -> alts.single().toOption()
-            else -> OrNode(alts).apply(OrNode::flatten).toOption()
+            else -> OrNode(alts).toOption() //be careful about flattening - maybe it is okay. Check if a lower OrNode has pointers to it from the memo table; if so, need to rewire to top OrNode.
         }
         return sNodeOption
     }
