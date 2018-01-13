@@ -202,6 +202,7 @@ object SPlan2Hop {
             SNodeException.check(agg.aggs.size in 1..2, agg)
             {"don't know how to compile aggregate to Hop with aggregates ${agg.aggs}"}
             var dir = when {
+                agg.schema.isEmpty() -> Hop.Direction.RowCol
                 agg.aggs.size == 2 -> Hop.Direction.RowCol
             // change to RowCol when aggregating vectors, in order to create a scalar rather than a 1x1 matrix
                 hop0.dim2 == 1L -> Hop.Direction.RowCol // sum first dimension ==> row vector : Hop.Direction.Col

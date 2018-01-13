@@ -98,7 +98,7 @@ class GraphCanonizer(val graph: Graph, val memo: CanonMemo) {
             SHash.sortIndicesHierarchical(verts, listOf(sortByEdge), stillConfused, perm, it.toRange().toList())
             addColorBars(it.first, it.last)
         }
-        println("stilConfused is $stillConfused")
+//        println("stilConfused is $stillConfused")
     }
 
     fun canonize(): GraphCanon {

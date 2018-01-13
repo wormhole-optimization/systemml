@@ -253,6 +253,7 @@ data class CanonMemo(
     private fun adaptFromMemo(gc: GraphCanon, sc: GraphCanon, n: SNode): SNode {
         if (gc.orig.outs == n.schema.toABS()) return n
         val new2old = gc.orig.outs.map { it to findPairIndex(it, gc, sc) }
+        assert(!new2old.all {(k,v) -> k==v})
         val i2old = new2old.mapIndexed { i, (_,o) -> AU(i) to o.a}.toMap()
         val i2new = new2old.mapIndexed { i, (n,_) -> AU(i) to n.a}.toMap()
         val u = makeUnbindAbove(n, i2old)

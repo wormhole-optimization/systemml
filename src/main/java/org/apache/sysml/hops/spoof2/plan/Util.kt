@@ -365,7 +365,15 @@ private fun makeNaryAbove(ns: Collection<SNode>, op: SNodeNary.NaryOp): SNodeNar
     return ns.first().parents.find { it is SNodeNary && it.op == op && it.inputs.sortedBy { it.id } == nsl } as SNodeNary? ?: SNodeNary(op, nsl)
 }
 fun makeAggAbove(n: SNode, aggs: Set<AB>): SNodeAggregate {
-    return n.parents.find { it is SNodeAggregate && it.op == Hop.AggOp.SUM && it.aggs.keys == aggs } as SNodeAggregate? ?: SNodeAggregate(Hop.AggOp.SUM, n, aggs)
+    // todo do I need this?
+//    if (n is SNodeAggregate && n.op == Hop.AggOp.SUM) {
+//        @Suppress("UNCHECKED_CAST")
+//        val allAggs = aggs + n.aggs.names as Set<AB>
+//        return n.input.parents.find { it is SNodeAggregate && it.op == Hop.AggOp.SUM && it.aggs.keys == allAggs } as SNodeAggregate?
+//                ?: SNodeAggregate(Hop.AggOp.SUM, n.input, allAggs)
+//    }
+    return n.parents.find { it is SNodeAggregate && it.op == Hop.AggOp.SUM && it.aggs.keys == aggs } as SNodeAggregate?
+            ?: SNodeAggregate(Hop.AggOp.SUM, n, aggs)
 }
 fun makeAggAbove(n: SNode, vararg aggs: AB): SNodeAggregate {
     return makeAggAbove(n, aggs.toSet())
