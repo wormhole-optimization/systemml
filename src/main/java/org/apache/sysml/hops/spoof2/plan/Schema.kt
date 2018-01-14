@@ -25,6 +25,11 @@ class Schema private constructor(
     val shapes: Collection<Shape>
         get() = nameShapes.values
 
+    init {
+        check(shapes.all {it > 0}) {
+            "negative shape in schema: $this"}
+    }
+
 //    operator fun contains(name: Name) = name in names
     operator fun plusAssign(other: Schema) {
         putAll(other)

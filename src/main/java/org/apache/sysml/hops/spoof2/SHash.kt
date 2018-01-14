@@ -41,7 +41,8 @@ object SHash {
             is ENode -> throw IllegalStateException("There should not be an ENode present during createAttributePositionList")
             else -> throw IllegalStateException("Unrecognized: $node")
         }
-        
+
+//        println("attrPosList (${node.id}) $node: $map")
         memo[node.id] = map
         return map
     }

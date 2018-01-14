@@ -302,6 +302,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     //    private val seen = HashSet<Id>()
 //    private val ht: BiMap<Hash, SNode> = HashBiMap.create()
     private val memo: CanonMemo = CanonMemo()
+    private val attrPosListMemo: MutableMap<Id, List<AB>> = mutableMapOf()
     private val planCost = PlanCost()
 
 
@@ -376,8 +377,12 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     }
 
     private fun toEdge(node: SNode): Edge.C {
-        val base = getBase(node)
-        val attrPosList = SHash.createAttributePositionList(node) // todo: cache memo
+        var base = getBase(node)
+        val attrPosList = SHash.createAttributePositionList(node, attrPosListMemo)
+        // if the base has bound schema, then set the base to an Unbind above the base. Postcondition: base is unbound.
+        if (base.schema.names.any { it.isBound() }) {
+            base = makeUnbindAbove(base, attrPosList.filter { it in base.schema }.mapIndexed { i,a -> AU(i) to a }.toMap())
+        }
         val verts = attrPosList.map { ABS(it, node.schema[it]!!) }
         return Edge.C(base, verts)
     }
@@ -385,7 +390,8 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     private fun getBase(node0: SNode): SNode {
         var node = node0
         while (node is SNodeBind || node is SNodeUnbind) {
-            node.inputs[0].parents -= node
+            if (node.parents.isEmpty())
+                node.inputs[0].parents -= node
             node = node.inputs[0]
         }
         return node
