@@ -531,8 +531,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         val alts = mutableSetOf<SNode>()
         for ((B1, B2) in enumPartition(B)) {
             val r1 = factorPlusBase(B1).toNode() ?: continue
-            val r2 = factorPlusBase(B2).toNode()
-            if (r2 == null) { undo(r1); continue }
+            val r2 = factorPlusBase(B2).toNode() ?: continue // if this is None, then r1 will be dangling. It will be removed after expandAll()
             alts += makePlusAbove(r1, r2)
         }
 //        if (alts.isEmpty()) undo(B)
@@ -587,7 +586,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
                     val l = factorAgg(p)
                     memo.memoize(p, l)
                     when (l) {
-                        SNodeOption.None -> return@forEach // todo check if this does remaining iterations, hopefully not
+                        SNodeOption.None -> return@forEach
                         is SNodeOption.Some -> createdNodes += l.node
                     }
                     val gc = memo.canonize(p)
@@ -595,14 +594,14 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
                 }
             }
             if (ep.size != partitions.size) { // one of the Edges failed (None from factorAgg)
-                createdNodes.forEach { undo(it) }
+//                createdNodes.forEach { undo(it) }
                 return SNodeOption.None
             }
             val r = factorMult(ep)
             memo.memoize(g, r)
-            if (r == SNodeOption.None) {
-                createdNodes.forEach { undo(it) }
-            }
+//            if (r == SNodeOption.None) {
+////                createdNodes.forEach { undo(it) }
+//            }
             return r
         }
         if (SOUND_PRUNE_TENSOR_INTERMEDIATE && g.outs.size > 2) return SNodeOption.None
@@ -680,21 +679,13 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
                     (es1.flatMap(Edge::verts).toSet().size > 2 || es2.flatMap(Edge::verts).toSet().size > 2))
                 continue
             val r1 = factorMult(es1).toNode() ?: continue
-            val r2 = factorMult(es2).toNode() //?: continue
-            if (r2 == null) { undo(r1); continue }
+            val r2 = factorMult(es2).toNode() ?: continue // if this is None, then r1 will be dangling. It will be removed after expandAll()
             alts += makeMultAbove(r1, r2)
         }
-//        if (alts.isEmpty()) undo(es) // todo vv
-        val r = optionOrNode(alts) // TODO if size 0, undo the nodes from Edge.F factors.
+//        if (alts.isEmpty()) undo(es)
+        val r = optionOrNode(alts) // if size 0, indicates dangling nodes.
 //        if (useMemo) memo.memoize(es, r)
         return r
-    }
-
-    private fun isPlusAggMult(it: SNode) = it is SNodeNary && (it.op == SNodeNary.NaryOp.PLUS || it.op == SNodeNary.NaryOp.MULT)
-            || it is SNodeAggregate && it.op == Hop.AggOp.SUM
-
-    private fun undo(n: SNode) {
-//        stripDead(n, basesForExpand)
     }
 
 
