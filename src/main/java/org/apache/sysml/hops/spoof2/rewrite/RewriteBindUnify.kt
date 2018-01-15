@@ -104,7 +104,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
             val above = node.parents.find { it.isBindOrUnbind() && it.javaClass != node.javaClass
                     && it.agBindings().any { (p,n) -> node.agBindings()[p] == n }
             }
-            if( above != null ) {
+            if( node is SNodeBind && above != null ) {
                 val commonBindings = node.agBindings().intersectEntries(above.agBindings())
                 // above can only be a parent once because it is a bind/unbind
                 val otherNodeParents = node.parents.filter { it !== above }

@@ -367,7 +367,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         val rn = (r as SNodeOption.Some).node
 
         pa.zip(paIdx).forEach { (p, i) ->
-            p.inputs.add(i, rn)
+            p.inputs.add(i, rn) // adjust orientation?
             rn.parents.add(p)
         }
     }
@@ -375,20 +375,38 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     // normal form to graph bag
     private fun toGraphBag(node: SNode): GraphBag {
         return if (node is SNodeNary && node.op == SNodeNary.NaryOp.PLUS) {
-            node.inputs.map { it.parents -= node; toGraph(it) }
+            // if this node already exists in the memo's values, then it has already been explored.
+            // Don't remove parents because these won't be recreated due to memo table.
+            memo.ntb.values.find { (_, opt) -> opt is SNodeOption.Some && opt.node == node }
+                    ?.let { (existingB, _) ->
+                        existingB.orig
+                    } ?: node.inputs.map { it.parents -= node; toGraph(it) }
         } else listOf(toGraph(node))
     }
 
     private fun toGraph(node: SNode): Graph {
         val (aggs0, mult) = if (node is SNodeAggregate && node.op == Hop.AggOp.SUM) {
+            memo.ntg.values.find { (_,opt) -> opt is SNodeOption.Some && opt.node == node }
+                    ?.let { (existingG,_) ->
+                        return existingG.orig
+                    }
             node.input.parents -= node
             node.aggs to node.input
         } else Schema() to node
+        val aggs = aggs0.toABS()
         val bases = if (mult is SNodeNary && mult.op == SNodeNary.NaryOp.MULT) {
+            memo.ntg.values.find { (_,opt) -> opt is SNodeOption.Some && opt.node == mult }
+                    ?.let { (existingG,_) ->
+                        // there may be an aggregate attached
+                        if (aggs.isEmpty())
+                            return existingG.orig
+                        val newAggs = aggs + existingG.orig.aggs
+                        val newOuts = existingG.orig.outs - newAggs
+                        return Graph(newOuts, existingG.orig.edges)
+                    }
             mult.inputs.forEach { it.parents -= mult }
             mult.inputs
         } else listOf(mult)
-        val aggs = aggs0.toABS()
         val edges = bases.map { toEdge(it) }
         val outs = edges.flatMap { it.verts }.toSet() - aggs //bases.flatMap { it.schema.toABS() }.toSet() - aggs
         return Graph(outs, edges)

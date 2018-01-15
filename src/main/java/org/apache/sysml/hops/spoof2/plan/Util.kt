@@ -362,7 +362,8 @@ fun makePlusAbove(ns: Collection<SNode>) = makeNaryAbove(ns, SNodeNary.NaryOp.PL
 private fun makeNaryAbove(ns: Collection<SNode>, op: SNodeNary.NaryOp): SNodeNary {
     require(ns.isNotEmpty())
     val nsl = ns.toList().sortedBy { it.id }
-    return ns.first().parents.find { it is SNodeNary && it.op == op && it.inputs.sortedBy { it.id } == nsl } as SNodeNary? ?: SNodeNary(op, nsl)
+    val x = ns.first().parents.find { it is SNodeNary && it.op == op && it.inputs.sortedBy { it.id } == nsl } as SNodeNary? ?: SNodeNary(op, nsl)
+    return x
 }
 fun makeAggAbove(n: SNode, aggs: Set<AB>): SNodeAggregate {
     // todo do I need this?

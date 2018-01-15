@@ -7,7 +7,7 @@ import java.util.*
 
 
 class RewriteSelectRandom: SPlanRewriteRule() {
-    val rand = Random(2018L)
+    val rand = Random(2023L)
     override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
         if (node is OrNode) {
             val nn = node.inputs[rand.nextInt(node.inputs.size)]

@@ -8,8 +8,8 @@ class OrNode private constructor(
 ): SNode(inputs) {
     init {
         refreshSchema()
-        if (inputs.map(SNode::schema).toSet().size != 1)
-            println("oh")
+//        if (inputs.map(SNode::schema).toSet().size != 1)
+//            println("oh")
         check(inputs.map(SNode::schema).toSet().size == 1) {"schema inputs to OrNode disagree: $inputs, ${inputs.map(SNode::schema)}"}
     }
 

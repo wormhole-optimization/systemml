@@ -129,9 +129,10 @@ class Spoof2Test(
         //	TEST_NAME+83;  //A - B - B
         //	TEST_NAME+84;  //print ("test " + (i - 1) + " test");
         //	TEST_NAME+85;  //fragment from line 205 of mlogreg
-        //	TEST_NAME+86;  //nyi
+        //	TEST_NAME+86;  //sum( U%*%t(V)%*%U )
+        //	TEST_NAME+87;  //sum( (U%*%t(V))*U )
         private const val NUM_TESTS = 73
-        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..85)
+        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..87)
         private val _DO_DOT: List<Pair<Int, DC>> = listOf(
 //                85 to DC(arrayListOf(29, 30), performSpoofRewrites = false),
 //                85 to DC(arrayListOf(29, 30))
