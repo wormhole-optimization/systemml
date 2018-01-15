@@ -378,3 +378,18 @@ fun makeAggAbove(n: SNode, aggs: Set<AB>): SNodeAggregate {
 fun makeAggAbove(n: SNode, vararg aggs: AB): SNodeAggregate {
     return makeAggAbove(n, aggs.toSet())
 }
+
+/**
+ * Return all roots (0-parent nodes) that are ancestors of [n].
+ * Stops at nodes already in the [memo]; adds visited nodes to [memo].
+ */
+fun getRootsAbove(n: SNode, memo: MutableSet<SNode> = mutableSetOf()): Set<SNode> {
+    return mutableSetOf<SNode>().also { getRootsAbove(n, memo, it) }
+}
+fun getRootsAbove(n: SNode, memo: MutableSet<SNode>, roots: MutableSet<SNode>) {
+    if (n in memo) return
+    memo += n
+    if (n.parents.isEmpty()) roots += n
+    else n.parents.forEach { getRootsAbove(it, memo, roots) }
+}
+

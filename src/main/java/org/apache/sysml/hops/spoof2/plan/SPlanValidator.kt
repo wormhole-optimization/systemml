@@ -19,7 +19,7 @@ import org.apache.sysml.utils.Explain
 object SPlanValidator {
     private val LOG = LogFactory.getLog(SPlanValidator::class.java.name)
 
-    fun validateSPlan(roots: List<SNode>?, checkVisit: Boolean = true) {
+    fun validateSPlan(roots: List<SNode>?, checkVisit: Boolean = true, checkRoots: Boolean = true) {
         if (roots == null)
             return
         try {
@@ -30,7 +30,8 @@ object SPlanValidator {
                 rValidateNode(node, state)
             if (checkVisit)
                 SNode.resetVisited(roots)
-            checkAllRootsAreReal(roots, state)
+            if (checkRoots)
+                checkAllRootsAreReal(roots, state)
         } catch (ex: SNodeException) {
             try {
                 LOG.error("\n" + Explain.explainSPlan(roots, true), ex)
@@ -40,7 +41,7 @@ object SPlanValidator {
 
     }
 
-    fun validateSPlan(root: SNode?, checkVisit: Boolean = true) {
+    fun validateSPlan(root: SNode?, checkVisit: Boolean = true, checkRoots: Boolean = true) {
         if (root == null)
             return
         try {
@@ -50,7 +51,8 @@ object SPlanValidator {
             rValidateNode(root, state)
             if (checkVisit)
                 root.resetVisited()
-            checkAllRootsAreReal(listOf(root), state)
+            if (checkRoots)
+                checkAllRootsAreReal(listOf(root), state)
         } catch (ex: SNodeException) {
             try {
                 LOG.error("\n" + Explain.explain(root, true), ex)

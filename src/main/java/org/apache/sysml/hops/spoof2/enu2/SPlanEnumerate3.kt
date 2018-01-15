@@ -217,7 +217,12 @@ data class CanonMemo(
     fun adaptFromMemo(b: GraphBag): SNodeOption? {
         val bc = canonize(b)
         return ntb[bc.rep]?.let { (sc, no) ->
-            no.map { adaptFromMemo(bc, sc, it) }
+            no.map {
+//                if (it !in it.inputs[0].parents) { // restore parents
+//                    it.inputs.forEach { inp -> inp.parents += it }
+//                }
+                adaptFromMemo(bc, sc, it)
+            }
         }
     }
     /** If [g] was previously explored and a node was memoized representing its alternatives,
@@ -225,9 +230,11 @@ data class CanonMemo(
     fun adaptFromMemo(g: Graph): SNodeOption? {
         val gc = canonize(g)
         return ntg[gc.rep]?.let { (sc, no) ->
-            when (no) {
-                SNodeOption.None -> no
-                is SNodeOption.Some -> no.map { adaptFromMemo(gc, sc, it) }
+            no.map {
+//                if (it !in it.inputs[0].parents) { // restore parents
+//                    it.inputs.forEach { inp -> inp.parents += it }
+//                }
+                adaptFromMemo(gc, sc, it)
             }
         }
     }
@@ -302,20 +309,30 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     //    private val seen = HashSet<Id>()
 //    private val ht: BiMap<Hash, SNode> = HashBiMap.create()
     private val memo: CanonMemo = CanonMemo()
-    private val attrPosListMemo: MutableMap<Id, List<AB>> = mutableMapOf()
-    private val planCost = PlanCost()
+    private val attrPosListMemo = mutableMapOf<Id, List<AB>>()
+    private val basesForExpand = mutableSetOf<SNode>()
+//    private val planCost = PlanCost()
 
 
 
     fun expandAll() {
         while( remainingToExpand.isNotEmpty() )
             expand()
+        elimianteExcessRoots()
+    }
+
+    private fun elimianteExcessRoots() {
+        val roots = mutableSetOf<SNode>()
+        val memo = mutableSetOf<SNode>()
+        basesForExpand.forEach { getRootsAbove(it, memo, roots) }
+        roots -= _origRoots
+        roots.forEach { stripDead(it) }
     }
 
     private fun expand() {
         expand(remainingToExpand.removeFirst() ?: return)
         if (CHECK_BETWEEN_EXPAND)
-            SPlanValidator.validateSPlan(_origRoots)
+            SPlanValidator.validateSPlan(_origRoots, true, false)
     }
 
     private fun expand(node: SNode) {
@@ -323,14 +340,15 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
 //            return
 
         when( node ) {
-            is SNodeData -> return node.inputs.forEach { expand(it) }
-            is SNodeExt -> return node.inputs.forEach { expand(it) }
+            is SNodeData, is SNodeExt -> return node.inputs.forEach { expand(it) }
             is SNodeUnbind -> return expand(node.input)
             is SNodeBind -> return expand(node.input)
             is OrNode -> return // OrNodes are already expanded.
             is ENode -> throw AssertionError("unexpected ENode")
             is SNodeAggregate -> if (node.op != Hop.AggOp.SUM ) return expand(node.input)
-            is SNodeNary -> if (node.op != SNodeNary.NaryOp.MULT && node.op != SNodeNary.NaryOp.PLUS) return node.inputs.forEach { expand(it) }
+            is SNodeNary -> if (node.op != SNodeNary.NaryOp.MULT && node.op != SNodeNary.NaryOp.PLUS) {
+               return node.inputs.indices.forEach { expand(node.inputs[it]) }
+            }
         }
         // check ht here?
 
@@ -383,6 +401,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         if (base.schema.names.any { it.isBound() }) {
             base = makeUnbindAbove(base, attrPosList.filter { it in base.schema }.mapIndexed { i,a -> AU(i) to a }.toMap())
         }
+        basesForExpand += base
         val verts = attrPosList.map { ABS(it, node.schema[it]!!) }
         return Edge.C(base, verts)
     }
@@ -402,6 +421,8 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
             return factorAgg(b[0])
         // compute canonical form, check if canonical form has an SNode, if so adapt the SNode to this one
         memo.adaptFromMemo(b)?.let { return it }
+        if (LOG.isTraceEnabled)
+            LOG.trace("factorPlus B=$b")
         val alts: Set<SNode> = mutableSetOf<SNode>().also{ factorPlusRec(listOf(), b.groupSame(), listOf(), 0, 1, 0, it, mutableSetOf()) }
         val r = optionOrNode(alts)
         memo.memoize(b, r)
@@ -462,10 +483,9 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
             val Op = Bp.outs()
             if (SOUND_PRUNE_TENSOR_INTERMEDIATE && Op.size > 2) continue
 
-            // put output vertices in order of canonical graph order
+            // put output vertices in order of canonical graph order - ensures compatibility with enumPlusFactor so that it can be factored out later
             val BpSortedC = memo.canonize(Bp).orderCanon()
             val BpEdge = Edge.F(BpSortedC.orig, BpSortedC.orderOuts())
-            // todo - make sure this BpEdge is compatible with enumPlusFactor so that it can be factored out later
             val Gp = Graph(Gi.outs+Gj.outs, Gf.edges + BpEdge)
 
             val newBold: GraphBag; val newBcur: GraphBag
@@ -511,9 +531,11 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         val alts = mutableSetOf<SNode>()
         for ((B1, B2) in enumPartition(B)) {
             val r1 = factorPlusBase(B1).toNode() ?: continue
-            val r2 = factorPlusBase(B2).toNode() ?: continue
+            val r2 = factorPlusBase(B2).toNode()
+            if (r2 == null) { undo(r1); continue }
             alts += makePlusAbove(r1, r2)
         }
+//        if (alts.isEmpty()) undo(B)
         val r = optionOrNode(alts)
         memo.memoize(B, r)
         return r
@@ -556,18 +578,31 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         memo.adaptFromMemo(g)?.let { return it }
         val partitions: List<Graph> = partitionByAggCC(g)
         if (partitions.size > 1) {
-            val ep = partitions.map { p ->
+            val createdNodes = mutableSetOf<SNode>()
+            val ep = mutableListOf<Edge>()
+            partitions.forEach { p ->
                 if (p.edges.size == 1 && p.aggs.isEmpty())
-                    p.edges[0]
+                    ep += p.edges[0]
                 else {
                     val l = factorAgg(p)
                     memo.memoize(p, l)
+                    when (l) {
+                        SNodeOption.None -> return@forEach // todo check if this does remaining iterations, hopefully not
+                        is SNodeOption.Some -> createdNodes += l.node
+                    }
                     val gc = memo.canonize(p)
-                    Edge.F(listOf(p), gc.orderVertsCanon(p.outs))
+                    ep += Edge.F(listOf(p), gc.orderVertsCanon(p.outs))
                 }
+            }
+            if (ep.size != partitions.size) { // one of the Edges failed (None from factorAgg)
+                createdNodes.forEach { undo(it) }
+                return SNodeOption.None
             }
             val r = factorMult(ep)
             memo.memoize(g, r)
+            if (r == SNodeOption.None) {
+                createdNodes.forEach { undo(it) }
+            }
             return r
         }
         if (SOUND_PRUNE_TENSOR_INTERMEDIATE && g.outs.size > 2) return SNodeOption.None
@@ -617,8 +652,26 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         if (es.size == 1) {
             val e = es[0]
             return when (e) {
-                is Edge.C -> edgeToSNode(e).toOption()
-                is Edge.F -> factorPlusBase(e.base)
+                is Edge.C -> {
+                    val tgtMap = e.verts.mapIndexed{i,abs -> AU(i) to abs.a}.toMap()
+                    makeBindAbove(e.base, tgtMap).toOption()
+                }
+                is Edge.F -> {
+                    val opt = factorPlusBase(e.base)
+                    if (e.verts.size < 2) opt
+                    else opt.map { n ->
+                        // transpose if necessary
+                        val actual = SHash.createAttributePositionList(n, attrPosListMemo)
+                        val expect = e.verts.map(ABS::a)
+                        if (expect == actual) n
+                        else {
+                            // todo make sure this is working
+                            val tgt = expect.mapIndexed { i, a -> AU(i) to a }.toMap()
+                            val u = makeUnbindAbove(n, tgt)
+                            makeBindAbove(u, tgt)
+                        }
+                    }
+                }
             }
         }
         val alts: MutableSet<SNode> = mutableSetOf()
@@ -627,17 +680,21 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
                     (es1.flatMap(Edge::verts).toSet().size > 2 || es2.flatMap(Edge::verts).toSet().size > 2))
                 continue
             val r1 = factorMult(es1).toNode() ?: continue
-            val r2 = factorMult(es2).toNode() ?: continue
+            val r2 = factorMult(es2).toNode() //?: continue
+            if (r2 == null) { undo(r1); continue }
             alts += makeMultAbove(r1, r2)
         }
-        val r = optionOrNode(alts)
+//        if (alts.isEmpty()) undo(es) // todo vv
+        val r = optionOrNode(alts) // TODO if size 0, undo the nodes from Edge.F factors.
 //        if (useMemo) memo.memoize(es, r)
         return r
     }
 
-    private fun edgeToSNode(e: Edge.C): SNode {
-        val tgtMap = e.verts.mapIndexed{i,abs -> AU(i) to abs.a}.toMap()
-        return makeBindAbove(e.base, tgtMap)
+    private fun isPlusAggMult(it: SNode) = it is SNodeNary && (it.op == SNodeNary.NaryOp.PLUS || it.op == SNodeNary.NaryOp.MULT)
+            || it is SNodeAggregate && it.op == Hop.AggOp.SUM
+
+    private fun undo(n: SNode) {
+//        stripDead(n, basesForExpand)
     }
 
 
