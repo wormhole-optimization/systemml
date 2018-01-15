@@ -243,7 +243,7 @@ object Spoof2Compiler {
         val result2NormalForm = SPlan2NormalForm_InsertStyle.rewriteSPlan(sroots) // SPlan2NormalForm.rewriteSPlan(sroots)
         sroots = result2NormalForm.replace(sroots)
 
-        if( result2NormalForm != SPlanRewriter.RewriterResult.NoChange ) {
+//        if( result2NormalForm != SPlanRewriter.RewriterResult.NoChange ) {
 //            sroots = NormalFormExploreEq().rewriteSPlan(sroots).replace(sroots)
             SPlanEnumerate3(sroots).expandAll()
             if( SPlanRewriteRule.LOG.isTraceEnabled )
@@ -252,7 +252,7 @@ object Spoof2Compiler {
             SPlanTopDownRewriter.rewriteDown(sroots, RewriteFlattenOrNode(), RewriteSelectRandom())
             if( SPlanRewriteRule.LOG.isTraceEnabled )
                 SPlanRewriteRule.LOG.trace("After plan selection: "+Explain.explainSPlan(sroots))
-        }
+//        }
 
         //re-construct modified HOP DAG
 //        sroots = SPlan2HopReady.rewriteSPlan(sroots).replace(sroots) // put in SPlan2Hop

@@ -340,7 +340,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
 //            return
 
         when( node ) {
-            is SNodeData, is SNodeExt -> return node.inputs.forEach { expand(it) }
+            is SNodeData, is SNodeExt -> return node.inputs.indices.forEach { expand(node.inputs[it]) }
             is SNodeUnbind -> return expand(node.input)
             is SNodeBind -> return expand(node.input)
             is OrNode -> return // OrNodes are already expanded.
@@ -529,7 +529,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     }
 
     private fun factorOutTerms(Gf: Graph, h: Monomorph, G: Graph): List<Graph> {
-        val Ep = G.rename(h.invert()).edges - Gf.edges
+        val Ep = G.rename(h.invert()).edges.bagMinus(Gf.edges)
         if (Ep.size == 1 && Ep[0] is Edge.F) {
             return (Ep[0] as Edge.F).base
         }

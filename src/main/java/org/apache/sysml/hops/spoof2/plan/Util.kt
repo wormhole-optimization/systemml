@@ -394,3 +394,8 @@ fun getRootsAbove(n: SNode, memo: MutableSet<SNode>, roots: MutableSet<SNode>) {
     else n.parents.forEach { getRootsAbove(it, memo, roots) }
 }
 
+fun <T> List<T>.bagMinus(subAll: List<T>): List<T> {
+    return subAll.fold(this) { acc, sub ->
+        acc - sub
+    }
+}
