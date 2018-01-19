@@ -159,7 +159,7 @@ public class AggBinaryOp extends Hop implements MultiThreadedHop
 			      input2.getDim1(), input2.getDim2(), mmtsj, chain, _hasLeftPMInput );
 		switch( _method ){
 			case TSMM: 
-				return true;
+				return false; // TODO: Disabling any fused transa optimization in 1.0 release. 
 			case MAPMM_CHAIN:
 				return false;
 			case PMM:
@@ -433,14 +433,14 @@ public class AggBinaryOp extends Hop implements MultiThreadedHop
 	}
 	
 	@Override
-	protected ExecType optFindExecType() 
+	protected ExecType optFindExecType()
 		throws HopsException 
 	{	
 		checkAndSetForcedPlatform();
 
 		ExecType REMOTE = OptimizerUtils.isSparkExecutionMode() ? ExecType.SPARK : ExecType.MR;
 		
-		if( _etypeForced != null ) 			
+		if( _etypeForced != null )
 		{
 			_etype = _etypeForced;
 		}
@@ -474,8 +474,9 @@ public class AggBinaryOp extends Hop implements MultiThreadedHop
 		
 		//spark-specific decision refinement (execute binary aggregate w/ left or right spark input and 
 		//single parent also in spark because it's likely cheap and reduces data transfer)
-		if( _etype == ExecType.CP && _etypeForced != ExecType.CP &&
-			(isApplicableForTransitiveSparkExecType(true) || isApplicableForTransitiveSparkExecType(false)) )    
+		if( _etype == ExecType.CP && _etypeForced != ExecType.CP 
+			&& (isApplicableForTransitiveSparkExecType(true) 
+			|| isApplicableForTransitiveSparkExecType(false)) )
 		{
 			//pull binary aggregate into spark 
 			_etype = ExecType.SPARK;
@@ -491,9 +492,10 @@ public class AggBinaryOp extends Hop implements MultiThreadedHop
 		throws HopsException 
 	{
 		int index = left ? 0 : 1;
-		return !(getInput().get(index) instanceof DataOp && ((DataOp)getInput().get(index)).requiresCheckpoint())  
-			&& !HopRewriteUtils.isTransposeOperation(getInput().get(index))
-			&& getInput().get(index).getParent().size()==1 //bagg is only parent	
+		return !(getInput().get(index) instanceof DataOp && ((DataOp)getInput().get(index)).requiresCheckpoint())
+			&& (!HopRewriteUtils.isTransposeOperation(getInput().get(index))
+				|| (left && !isLeftTransposeRewriteApplicable(true, false)))
+			&& getInput().get(index).getParent().size()==1 //bagg is only parent
 			&& !getInput().get(index).areDimsBelowThreshold() 
 			&& getInput().get(index).optFindExecType() == ExecType.SPARK
 			&& getInput().get(index).getOutputMemEstimate()>getOutputMemEstimate();
@@ -662,35 +664,25 @@ public class AggBinaryOp extends Hop implements MultiThreadedHop
 
 	private void constructCPLopsMM(ExecType et) 
 		throws HopsException, LopsException
-	{	
+	{
 		Lop matmultCP = null;
-
+		
 		if (et == ExecType.GPU) {
 			Hop h1 = getInput().get(0);
 			Hop h2 = getInput().get(1);
-			Lop left; Lop right;
-			boolean isLeftTransposed; boolean isRightTransposed;
-			if( HopRewriteUtils.isTransposeOperation(h1) ) {
-				isLeftTransposed = true;
-				left = h1.getInput().get(0).constructLops();
-			}
-			else {
-				isLeftTransposed = false;
-				left = h1.constructLops();
-			}
-			if( HopRewriteUtils.isTransposeOperation(h2) ) {
-				isRightTransposed = true;
-				right = h2.getInput().get(0).constructLops();
-			}
-			else {
-				isRightTransposed = false;
-				right = h2.constructLops();
-			}
-			
-			matmultCP = new Binary(left, right, 
-									 Binary.OperationTypes.MATMULT, getDataType(), getValueType(), et, isLeftTransposed, isRightTransposed);
+			// Since GPU backend is in experimental mode, rewrite optimization can be skipped.
+			// CuSPARSE's cusparsecsrmm2 fails with only following parameters, but passes for all other settings:
+			// transa=1 transb=1 m=300 n=300 k=300 ldb=300 ldc=300
+			// Hence, we disable hope rewrite optimization.
+			boolean leftTrans = false; // HopRewriteUtils.isTransposeOperation(h1);
+			boolean rightTrans = false; // HopRewriteUtils.isTransposeOperation(h2);
+			Lop left = !leftTrans ? h1.constructLops() :
+				h1.getInput().get(0).constructLops();
+			Lop right = !rightTrans ? h2.constructLops() :
+				h2.getInput().get(0).constructLops();
+			matmultCP = new Binary(left, right, Binary.OperationTypes.MATMULT,
+				getDataType(), getValueType(), et, leftTrans, rightTrans);
 			setOutputDimensions(matmultCP);
-			setNnz(-1);
 		}
 		else {
 			if( isLeftTransposeRewriteApplicable(true, false) ) {
@@ -698,8 +690,8 @@ public class AggBinaryOp extends Hop implements MultiThreadedHop
 			}
 			else { 
 				int k = OptimizerUtils.getConstrainedNumThreads(_maxNumThreads);
-				matmultCP = new Binary(getInput().get(0).constructLops(),getInput().get(1).constructLops(), 
-										 Binary.OperationTypes.MATMULT, getDataType(), getValueType(), et, k);
+				matmultCP = new Binary(getInput().get(0).constructLops(),getInput().get(1).constructLops(),
+					Binary.OperationTypes.MATMULT, getDataType(), getValueType(), et, k);
 			}
 			setOutputDimensions(matmultCP);
 		}

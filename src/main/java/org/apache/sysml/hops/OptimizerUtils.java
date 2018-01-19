@@ -22,8 +22,6 @@ package org.apache.sysml.hops;
 import java.util.Arrays;
 import java.util.HashMap;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.sysml.api.DMLScript;
@@ -62,8 +60,6 @@ import org.apache.sysml.yarn.ropt.YarnClusterAnalyzer;
 
 public class OptimizerUtils 
 {
-	private static final Log LOG = LogFactory.getLog(OptimizerUtils.class.getName());
-	
 	////////////////////////////////////////////////////////
 	// Optimizer constants and flags (incl tuning knobs)  //
 	////////////////////////////////////////////////////////
@@ -263,12 +259,13 @@ public class OptimizerUtils
 		return (getOptLevel() == level);
 	}
 	
-	public static CompilerConfig constructCompilerConfig( DMLConfig dmlconf ) 
+	public static CompilerConfig constructCompilerConfig( DMLConfig dmlconf ) throws DMLRuntimeException {
+		return constructCompilerConfig(new CompilerConfig(), dmlconf);
+	}
+	
+	public static CompilerConfig constructCompilerConfig( CompilerConfig cconf, DMLConfig dmlconf ) 
 		throws DMLRuntimeException
 	{
-		//create default compiler configuration
-		CompilerConfig cconf = new CompilerConfig();
-		
 		//each script sets its own block size, opt level etc
 		cconf.set(ConfigType.BLOCK_SIZE, dmlconf.getIntValue( DMLConfig.DEFAULT_BLOCK_SIZE ));
 
@@ -319,13 +316,13 @@ public class OptimizerUtils
 			case 3:
 				cconf.set(ConfigType.OPT_LEVEL, OptimizationLevel.O3_LOCAL_RESOURCE_TIME_MEMORY.ordinal());
 			break;
-							
+			
 			// opt level 3: global, time- and memory-based (all advanced rewrites)
 			case 4:
 				cconf.set(ConfigType.OPT_LEVEL, OptimizationLevel.O4_GLOBAL_TIME_MEMORY.ordinal());
 				break;
 			// opt level 4: debug mode (no interfering rewrites)
-			case 5:				
+			case 5:
 				cconf.set(ConfigType.OPT_LEVEL, OptimizationLevel.O5_DEBUG_MODE.ordinal());
 				ALLOW_CONSTANT_FOLDING = false;
 				ALLOW_COMMON_SUBEXPRESSION_ELIMINATION = false;
@@ -348,12 +345,12 @@ public class OptimizerUtils
 				cconf.set(ConfigType.OPT_LEVEL, OptimizationLevel.O2_LOCAL_MEMORY_DEFAULT.ordinal());
 				ALLOW_AUTO_VECTORIZATION = false;
 				break;
-			case 7:				
+			case 7:
 				cconf.set(ConfigType.OPT_LEVEL, OptimizationLevel.O2_LOCAL_MEMORY_DEFAULT.ordinal());
 				ALLOW_OPERATOR_FUSION = false;
 				ALLOW_AUTO_VECTORIZATION = false;
 				ALLOW_SUM_PRODUCT_REWRITES = false;
-				break;	
+				break;
 		}
 		
 		//handle parallel text io (incl awareness of thread contention in <jdk8)
@@ -363,20 +360,32 @@ public class OptimizerUtils
 			cconf.set(ConfigType.PARALLEL_CP_READ_BINARYFORMATS, false);
 			cconf.set(ConfigType.PARALLEL_CP_WRITE_BINARYFORMATS, false);
 		}
-		else if(   InfrastructureAnalyzer.isJavaVersionLessThanJDK8() 
-			    && InfrastructureAnalyzer.getLocalParallelism() > 1   )
-		{
-			LOG.warn("Auto-disable multi-threaded text read for 'text' and 'csv' due to thread contention on JRE < 1.8"
-					+ " (java.version="+ System.getProperty("java.version")+").");			
-			cconf.set(ConfigType.PARALLEL_CP_READ_TEXTFORMATS, false);
-		}
 
 		//handle parallel matrix mult / rand configuration
 		if (!dmlconf.getBooleanValue(DMLConfig.CP_PARALLEL_OPS)) {
 			cconf.set(ConfigType.PARALLEL_CP_MATRIX_OPERATIONS, false);
-		}	
+		}
 		
 		return cconf;
+	}
+	
+	public static void resetStaticCompilerFlags() {
+		//TODO this is a workaround for MLContext to avoid a major refactoring before the release; this method 
+		//should be removed as soon all modified static variables are properly handled in the compiler config
+		ALLOW_ALGEBRAIC_SIMPLIFICATION = true;
+		ALLOW_AUTO_VECTORIZATION = true;
+		ALLOW_BRANCH_REMOVAL = true;
+		ALLOW_CONSTANT_FOLDING = true;
+		ALLOW_COMMON_SUBEXPRESSION_ELIMINATION = true;
+		ALLOW_INTER_PROCEDURAL_ANALYSIS = true;
+		ALLOW_LOOP_UPDATE_IN_PLACE = true;
+		ALLOW_OPERATOR_FUSION = true;
+		ALLOW_RAND_JOB_RECOMPILE = true;
+		ALLOW_SIZE_EXPRESSION_EVALUATION = true;
+		ALLOW_SPLIT_HOP_DAGS = true;
+		ALLOW_SUM_PRODUCT_REWRITES = true;
+		ALLOW_WORSTCASE_SIZE_EXPRESSION_EVALUATION = true;
+		IPA_NUM_REPETITIONS = 3;
 	}
 
 	public static long getDefaultSize() {

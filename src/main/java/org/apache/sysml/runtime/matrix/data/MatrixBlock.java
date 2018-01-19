@@ -29,6 +29,7 @@ import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.stream.LongStream;
 
@@ -553,7 +554,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		
 		//check for existing sparse block: return empty list
 		if( sparseBlock==null )
-			return new ArrayList<IJV>().iterator();
+			return Collections.EMPTY_LIST.iterator();
 		
 		//get iterator over sparse block
 		return sparseBlock.getIterator(rl, ru);
@@ -738,7 +739,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 				int aix = rowoffset+i;
 				
 				//single block append (avoid re-allocations)
-				if( sparseBlock.isEmpty(aix) && coloffset==0 ) { 
+				if( !sparseBlock.isAllocated(aix) && coloffset==0 ) { 
 					//note: the deep copy flag is only relevant for MCSR due to
 					//shallow references of b.get(i); other block formats do not
 					//require a redundant copy because b.get(i) created a new row.
@@ -1033,7 +1034,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 	{
 		//determine target representation
 		boolean sparseDst = evalSparseFormatInMemory(); 
-				
+		
 		//check for empty blocks (e.g., sparse-sparse)
 		if( isEmptyBlock(false) )
 			cleanupBlock(true, true);
@@ -1041,9 +1042,9 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		//change representation if required (also done for 
 		//empty blocks in order to set representation flags)
 		if( sparse && !sparseDst)
-			sparseToDense(opcode);
+			sparseToDense();
 		else if( !sparse && sparseDst )
-			denseToSparse(opcode);
+			denseToSparse();
 	}
 	
 	/**
@@ -1095,74 +1096,48 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 	
 	
 	////////
-	// basic block handling functions	
-
-	void denseToSparse() 
-	{
-		denseToSparse(null);
-	}
+	// basic block handling functions
 	
-	void denseToSparse(String opcode) 
-	{	
-		long t1 = opcode != null && DMLScript.STATISTICS && DMLScript.FINEGRAINED_STATISTICS ? System.nanoTime() : 0;
-		
-		//set target representation
+	private void denseToSparse()
+	{
+		//set target representation, early abort on empty blocks
 		sparse = true;
-		
-		//early abort on empty blocks
-		if(denseBlock==null)
+		if( denseBlock==null )
 			return;
 		
-		//allocate sparse target block (reset required to maintain nnz again)
-		allocateSparseRowsBlock();
-		reset();
-		
-		//copy dense to sparse with (1) row pre-allocation to avoid repeated 
-		//allocation on append, and (2) nnz re-computation 
 		double[] a = denseBlock;
-		SparseBlock c = sparseBlock;
 		final int m = rlen;
 		final int n = clen;
 		
-		long nnz = 0;
-		for( int i=0, aix=0; i<m; i++, aix+=n ) {
-			//recompute nnz per row (not via recomputeNonZeros as sparse allocated)
-			int lnnz = 0;
-			for(int j=0; j<n; j++)
-				lnnz += (a[aix+j]!=0) ? 1 : 0;
-			if( lnnz <= 0 ) continue;
-			
-			//allocate sparse row and append non-zero values
-			c.allocate(i, lnnz); 
-			for(int j=0; j<n; j++) {
-				double val = a[aix+j];
-				if( val != 0 )
-					c.append(i, j, val);
+		//allocate target in memory-efficient CSR format
+		int nnz = (int) nonZeros;
+		int[] rptr = new int[m+1];
+		int[] indexes = new int[nnz];
+		double[] values = new double[nnz];
+		for( int i=0, pos=0, aix=0; i<m; i++ ) {
+			for(int j=0; j<n; j++, aix++) {
+				double aval = a[aix];
+				if( aval != 0 ) {
+					indexes[pos] = j;
+					values[pos] = aval;
+					pos++;
+				}
 			}
-			nnz += lnnz;
+			rptr[i+1]=pos;
 		}
-				
+		sparseBlock = new SparseBlockCSR(
+			rptr, indexes, values, nnz);
+		
 		//update nnz and cleanup dense block
 		nonZeros = nnz;
 		denseBlock = null;
-		if(opcode != null && DMLScript.STATISTICS && DMLScript.FINEGRAINED_STATISTICS) {
-			long t2 = System.nanoTime();
-			GPUStatistics.maintainCPMiscTimes(opcode, CPInstruction.MISC_TIMER_DENSE_TO_SPARSE, t2-t1);
-		}
 	}
 	
-	public void sparseToDense() throws DMLRuntimeException {
-		sparseToDense(null);
-	}
-
-	public void sparseToDense(String opcode) 
+	public void sparseToDense()
 		throws DMLRuntimeException 
 	{
-		long t1 = opcode != null && DMLScript.STATISTICS && DMLScript.FINEGRAINED_STATISTICS ? System.nanoTime() : 0;
-		//set target representation
+		//set target representation, early abort on empty blocks
 		sparse = false;
-		
-		//early abort on empty blocks
 		if(sparseBlock==null)
 			return;
 		
@@ -1192,10 +1167,6 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 		
 		//cleanup sparse rows
 		sparseBlock = null;
-		if(opcode != null && DMLScript.STATISTICS && DMLScript.FINEGRAINED_STATISTICS) {
-			long t2 = System.nanoTime();
-			GPUStatistics.maintainCPMiscTimes(opcode, CPInstruction.MISC_TIMER_SPARSE_TO_DENSE, t2-t1);
-		}
 	}
 
 	/**
@@ -1312,9 +1283,13 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 				int apos = sparseBlock.pos(i);
 				int alen = sparseBlock.size(i);
 				int[] aix = sparseBlock.indexes(i);
+				double[] avals = sparseBlock.values(i);
 				for( int k=apos+1; k<apos+alen; k++ )
 					if( aix[k-1] >= aix[k] )
 						throw new RuntimeException("Wrong sparse row ordering: "+k+" "+aix[k-1]+" "+aix[k]);
+				for( int k=apos; k<apos+alen; k++ )
+					if( avals[k] == 0 )
+						throw new RuntimeException("Wrong sparse row: zero at "+k);
 			}
 	}
 
@@ -1349,7 +1324,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 			copyDenseToDense(that);
 	}
 	
-	public void copyShallow(MatrixBlock that) {
+	public MatrixBlock copyShallow(MatrixBlock that) {
 		rlen = that.rlen;
 		clen = that.clen;
 		nonZeros = that.nonZeros;
@@ -1358,6 +1333,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 			denseBlock = that.denseBlock;
 		else
 			sparseBlock = that.sparseBlock;
+		return this;
 	}
 	
 	private void copySparseToSparse(MatrixBlock that)
@@ -2982,7 +2958,7 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 			denseToSparse();
 		else if(!resultSparse.sparse && this.sparse)
 			sparseToDense();
-				
+		
 		//core binary cell operation
 		LibMatrixBincell.bincellOpInPlace(this, that, op);
 	}
@@ -3757,9 +3733,9 @@ public class MatrixBlock extends MatrixValue implements CacheBlock, Externalizab
 			//ensure that the current block adheres to the sparsity estimate
 			//and thus implicitly the memory budget used by the compiler
 			if( result.sparse && !sp )
-				result.sparseToDense(opcode);
+				result.sparseToDense();
 			else if( !result.sparse && sp )
-				result.denseToSparse(opcode);	
+				result.denseToSparse();
 			
 			//ensure right sparse block representation to prevent serialization
 			if( result.sparse && update != UpdateType.INPLACE_PINNED ) {
