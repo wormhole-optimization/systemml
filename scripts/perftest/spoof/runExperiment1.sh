@@ -8,8 +8,8 @@ script_start="$(date '+%Y%m%d.%H%M%S')"
 
 sparsity=1.0
 addOpts="--stats --explain2 hops" # --explain2 hops"
-genData=0
-reps=3
+genData=1
+reps=1
 saveTimes=1
 
 algs=() # linregcg kmeans l2svm mlogreg ) #linregcg kmeans mlogreg l2svm ) #glm-binomial-probit )
@@ -30,8 +30,8 @@ if [ "${#confs[@]}" == "0" ]; then
 fi
 
 
-num_rowsArr=( 10000000 )
-num_rowsArr_reduced=( 10000 )
+num_rowsArr=( 1000000 )
+num_rowsArr_reduced=( 5000 )
 # num_rowsArr_expanded=( 500000000 )
 for alg in "${algs[@]}"; do
 case "${alg}" in

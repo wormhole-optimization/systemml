@@ -77,8 +77,9 @@ class PlanCost {
         val constantAggCost = if( constantAggs.isNotEmpty() ) { // treat like multiply by constant
             agg.input.schema.shapes.prod().toDouble()
         } else 0.0
-        val aggs = agg.aggs - constantAggs
-        val cost = constantAggCost + aggs.shapes.prod().toDouble()
+//        val aggs = agg.aggs - constantAggs
+        var cost = constantAggCost + agg.input.schema.shapes.prod().toDouble()
+        if (COST_SPARSITY) cost *= nnzMemo[agg.input.id]!!.toDouble() // don't reduce by sparsity of agg at top level
         costMemo[agg.id] = cost
         return listOf(agg.input) to cost
     }
@@ -99,7 +100,10 @@ class PlanCost {
 
         if( nary.inputs.map { it.schema.names }.toSet().size == nary.inputs.size ) {
             // all schema equal; it's a big element-wise multiply/add
-            val cost = nary.inputs.size * nary.inputs[0].schema.shapes.prod().toDouble()
+            // only count multiplying scalars once
+            val countScalars = nary.inputs.count { it.schema.isEmpty() }
+            val multiplyInputCount = nary.inputs.size - 1 - maxOf(countScalars - 1, 0)
+            val cost = multiplyInputCount * nary.schema.shapes.prod().toDouble()
             costMemo[nary.id] = cost
             return nary.inputs to cost
         }
