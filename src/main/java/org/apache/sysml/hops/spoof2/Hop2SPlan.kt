@@ -49,6 +49,12 @@ object Hop2SPlan {
         if( SPlanRewriteRule.LOG.isTraceEnabled )
             SPlanRewriteRule.LOG.trace("After bind elim (count=$count0): "+ Explain.explainSPlan(sroots))
 
+        // Deal with 0
+        val resultMPS = RewriteMultiplyPlusSimplify().rewriteSPlan(sroots)
+
+        if( SPlanRewriteRule.LOG.isTraceEnabled )
+            SPlanRewriteRule.LOG.trace("After MPS simplify (resultMPS=$resultMPS): "+ Explain.explainSPlan(sroots))
+
         return sroots
     }
 
