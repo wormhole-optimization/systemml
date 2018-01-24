@@ -29,6 +29,8 @@ object SPlan2Hop {
     private const val CHECK = true
 
     fun splan2Hop(sroots: ArrayList<SNode>): ArrayList<Hop> {
+        RewriteMultiplyPlusSimplify().rewriteSPlan(sroots)
+
         rewriteToHopReady(sroots)
 
         val roots2 = ArrayList<Hop>()

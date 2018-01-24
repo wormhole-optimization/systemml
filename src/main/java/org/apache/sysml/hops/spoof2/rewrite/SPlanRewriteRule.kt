@@ -12,7 +12,9 @@ abstract class SPlanRewriteRule {
 
     sealed class RewriteResult {
         data class NewNode(val newNode: SNode) : RewriteResult()
-        object NoChange : RewriteResult()
+        object NoChange : RewriteResult() {
+            override fun toString() = "NoChange"
+        }
     }
 
 

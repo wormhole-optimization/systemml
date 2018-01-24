@@ -9,7 +9,7 @@ import org.apache.sysml.hops.spoof2.plan.*
 import java.util.ArrayList
 
 /**
- * Multiply by 0, Add 0.
+ * Multiply by 0, Add 0, Σ 0. Multiply by 1.
  */
 class RewriteMultiplyPlusSimplify: SPlanRewriter {
 
@@ -17,19 +17,24 @@ class RewriteMultiplyPlusSimplify: SPlanRewriter {
     val zeroCache = mutableMapOf<List<Shape>, SNodeData>()
 
 
-    private fun extractZeroes(node: SNode, zeroes: MutableSet<SNodeData> = mutableSetOf()): Set<SNodeData> {
-        if (node.visited) return zeroes
+    private fun extractZeroesOnes(node: SNode, zeroes: MutableSet<SNodeData> = mutableSetOf(), ones: MutableSet<SNodeData> = mutableSetOf()): Pair<Set<SNodeData>, Set<SNodeData>> {
+        if (node.visited) return zeroes to ones
         node.visited = true
-        if (node is SNodeData && node.isLiteral && HopRewriteUtils.isLiteralOfValue(node.hop, 0.0)) { zeroes += node }
-        else node.inputs.forEach { extractZeroes(it, zeroes) }
-        return zeroes
+        if (node is SNodeData && node.isLiteral) {
+            if (HopRewriteUtils.isLiteralOfValue(node.hop, 0.0)) { zeroes += node }
+            else if (HopRewriteUtils.isLiteralOfValue(node.hop, 1.0)) { ones += node }
+        }
+        else node.inputs.forEach { extractZeroesOnes(it, zeroes, ones) }
+        return zeroes to ones
     }
 
     override fun rewriteSPlan(roots: ArrayList<SNode>): SPlanRewriter.RewriterResult {
         val zeroes = mutableSetOf<SNodeData>()
-        roots.forEach { r -> extractZeroes(r, zeroes) }
-        val anyChanged = zeroes.map { bubbleUpZero(it, true) }.fold(false, Boolean::or)
-        return if (anyChanged) SPlanRewriter.RewriterResult.NewRoots(roots)
+        val ones = mutableSetOf<SNodeData>()
+        roots.forEach { r -> extractZeroesOnes(r, zeroes, ones) }
+        val anyZeroChanged = zeroes.map { bubbleUpZero(it, true) }.fold(false, Boolean::or)
+        val anyOneChanged = ones.map { handleOne(it) }.fold(false, Boolean::or)
+        return if (anyZeroChanged || anyOneChanged) SPlanRewriter.RewriterResult.NewRoots(roots)
         else SPlanRewriter.RewriterResult.NoChange
     }
 
@@ -80,6 +85,27 @@ class RewriteMultiplyPlusSimplify: SPlanRewriter {
             zero.parents.clear()
             stripDead(zero)
         }
+        return changed
+    }
+
+    private fun handleOne(one: SNodeData): Boolean {
+        var changed = false
+        one.parents.toSet().forEach { pa ->
+            if (pa is SNodeNary && pa.op == SNodeNary.NaryOp.MULT) {
+                changed = true
+                one.parents.removeIf { it == pa }
+                pa.inputs.removeIf { it == one }
+                if (pa.inputs.isEmpty()) {
+                    pa.parents.forEach { it.inputs[it.inputs.indexOf(pa)] = one; one.parents += it }
+                } else if (pa.inputs.size == 1) {
+                    val inp = pa.inputs[0]
+                    inp.parents -= pa
+                    pa.parents.forEach { it.inputs[it.inputs.indexOf(pa)] = inp; inp.parents += it }
+                }
+            }
+        }
+        if (changed && SPlanRewriteRule.LOG.isDebugEnabled)
+            SPlanRewriteRule.LOG.debug("RewriteMultiplyPlusSimplify * by 1; bubble up 1 from (${one.id}) $one ${one.schema}")
         return changed
     }
 

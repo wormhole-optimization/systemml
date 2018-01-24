@@ -135,9 +135,10 @@ class Spoof2Test(
         //	TEST_NAME+89;  //(C %*% X) + rowSums (C);
         //	TEST_NAME+90;  //0 * v + v + Σ(v * 0)
         //	TEST_NAME+91;  //cbind(0 * v,v)
-        //	TEST_NAME+92;  //exp0 * v)
+        //	TEST_NAME+92;  //exp(0 * v)
+        //	TEST_NAME+93;  //1 * v + v + Σ(v * 1)
         private const val NUM_TESTS = 73
-        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..92)
+        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..93)
         private val _DO_DOT: List<Pair<Int, DC>> = listOf(
 //                85 to DC(arrayListOf(29, 30), performSpoofRewrites = false),
 //                85 to DC(arrayListOf(29, 30))

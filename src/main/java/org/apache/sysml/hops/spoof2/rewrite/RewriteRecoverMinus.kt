@@ -2,6 +2,7 @@ package org.apache.sysml.hops.spoof2.rewrite
 
 import org.apache.sysml.hops.LiteralOp
 import org.apache.sysml.hops.spoof2.plan.*
+import org.apache.sysml.parser.Expression
 
 /**
  * Rewrite +s whose inputs contain a *(-1) into a -.
@@ -94,11 +95,36 @@ class RewriteRecoverMinus : SPlanRewriteRule() {
                     }
 
                     if (LOG.isTraceEnabled)
-                        LOG.trace("RewriteSplitMultiplyPlus: split negative added terms from (${plus.id}) into a minus (${minus.id})")
+                        LOG.trace("RewriteRecoverMinus: split negative added terms from (${plus.id}) into a minus (${minus.id})")
                     return minus
                 }
+
+                // check for X + -c
+                if (plus.inputs.size == 2 && plus.inputs[0] != plus.inputs[1]) {
+                    val negInIdx = plus.inputs.indexOfFirst { it is SNodeData && it.isLiteral && it.literalDouble < 0 }
+                    if (negInIdx != -1) {
+                        val negIn = plus.inputs[negInIdx]
+                        val other = plus.inputs[if (negInIdx == 0) 1 else 0]
+                        negIn.parents -= plus
+                        other.parents -= plus
+                        val minus = SNodeNary(SNodeNary.NaryOp.MINUS, other, negate(negIn as SNodeData))
+                        plus.parents.forEach { it.inputs[it.inputs.indexOf(plus)] = minus; minus.parents += it }
+                        if (LOG.isTraceEnabled)
+                            LOG.trace("RewriteRecoverMinus: change X + (-c) to X - c from plus (${plus.id}) to minus (${minus.id})")
+                        return minus
+                    }
+                }
+
             }
             return plus
+        }
+
+        private fun negate(lit: SNodeData): SNodeData {
+            val litop = when (lit.hop.valueType) {
+                Expression.ValueType.INT -> LiteralOp(-lit.literalLong)
+                else -> LiteralOp(-lit.literalDouble) // Expression.ValueType.DOUBLE
+            }
+            return SNodeData(litop)
         }
 
         /**
@@ -122,7 +148,7 @@ class RewriteRecoverMinus : SPlanRewriteRule() {
                             mult.inputs.removeAt(idxNegOne)
                             other.parents -= mult
                             if (LOG.isTraceEnabled)
-                                LOG.trace("RewriteSplitMultiplyPlus: eliminate -1 * -1 as (${other.id}) * (${input.id}) underneath a +")
+                                LOG.trace("RewriteRecoverMinus: eliminate -1 * -1 as (${other.id}) * (${input.id}) underneath a +")
                             idxNegOne = -2
                             idx--
                         }

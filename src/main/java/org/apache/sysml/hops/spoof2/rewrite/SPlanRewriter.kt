@@ -17,6 +17,7 @@ interface SPlanRewriter {
         object NoChange : RewriterResult() {
             override fun map(rr: RewriterResult) = rr
             override fun replace(roots: ArrayList<SNode>) = roots
+            override fun toString() = "NoChange"
         }
 
         abstract fun map(rr: RewriterResult): RewriterResult
