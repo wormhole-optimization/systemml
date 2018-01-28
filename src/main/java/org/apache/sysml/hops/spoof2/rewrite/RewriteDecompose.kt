@@ -28,7 +28,7 @@ class RewriteDecompose : SPlanRewriteRule() {
         }
         else if( node is SNodeNary && node.op == SNodeNary.NaryOp.POW ) {
             val lit = node.inputs[1]
-            if( lit is SNodeData && lit.isLiteral && lit.literalDouble == 2.0 ) { // todo more powers
+            if( lit is SNodeData && lit.isLiteralNumeric && lit.literalDouble == 2.0 ) { // todo more powers
                 val left = node.inputs[0]
 
                 left.parents.remove(node)

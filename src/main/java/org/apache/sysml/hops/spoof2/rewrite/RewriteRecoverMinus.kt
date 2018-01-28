@@ -101,7 +101,7 @@ class RewriteRecoverMinus : SPlanRewriteRule() {
 
                 // check for X + -c
                 if (plus.inputs.size == 2 && plus.inputs[0] != plus.inputs[1]) {
-                    val negInIdx = plus.inputs.indexOfFirst { it is SNodeData && it.isLiteral && it.literalDouble < 0 }
+                    val negInIdx = plus.inputs.indexOfFirst { it is SNodeData && it.isLiteralNumeric && it.literalDouble < 0 }
                     if (negInIdx != -1) {
                         val negIn = plus.inputs[negInIdx]
                         val other = plus.inputs[if (negInIdx == 0) 1 else 0]

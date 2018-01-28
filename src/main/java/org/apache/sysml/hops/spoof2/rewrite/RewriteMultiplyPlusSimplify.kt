@@ -20,7 +20,7 @@ class RewriteMultiplyPlusSimplify: SPlanRewriter {
     private fun extractZeroesOnes(node: SNode, zeroes: MutableSet<SNodeData> = mutableSetOf(), ones: MutableSet<SNodeData> = mutableSetOf()): Pair<Set<SNodeData>, Set<SNodeData>> {
         if (node.visited) return zeroes to ones
         node.visited = true
-        if (node is SNodeData && node.isLiteral) {
+        if (node is SNodeData && node.isLiteralNumeric) {
             if (HopRewriteUtils.isLiteralOfValue(node.hop, 0.0)) { zeroes += node }
             else if (HopRewriteUtils.isLiteralOfValue(node.hop, 1.0)) { ones += node }
         }
@@ -112,7 +112,7 @@ class RewriteMultiplyPlusSimplify: SPlanRewriter {
     // create literalop if scalar
     private fun createConstantZero(zero: SNode): SNode {
         if (zero.schema.isEmpty()) {
-            if (zero is SNodeData && zero.isLiteral && HopRewriteUtils.isLiteralOfValue(zero.hop, 0.0)) {
+            if (zero is SNodeData && zero.isLiteralNumeric && HopRewriteUtils.isLiteralOfValue(zero.hop, 0.0)) {
                 zeroCache[listOf()] = zero
                 return zero
             }

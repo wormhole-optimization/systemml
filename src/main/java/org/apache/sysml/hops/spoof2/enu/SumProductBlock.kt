@@ -212,7 +212,7 @@ sealed class SumProduct {
             val ss = when(snode) {
                 is SNodeBind -> "bi(${snode.id})"
                 is SNodeUnbind -> "ub(${snode.id})"
-                is SNodeData -> if( snode.isLiteral ) snode.literalDouble.toString() else snode.toString()
+                is SNodeData -> if( snode.isLiteralNumeric ) snode.literalDouble.toString() else snode.toString()
                 else -> snode.toString()
             }
             return "$ss:${schema.names}"
