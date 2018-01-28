@@ -9,9 +9,10 @@ import org.apache.sysml.utils.Explain
 /**
  * Put an SPlan DAG in normal form.
  */
+@Deprecated("use the new InsertStyle version in place of this", ReplaceWith("SPlan2NormalForm_InsertStyle"))
 object SPlan2NormalForm {
     private val _rulesToNormalForm: List<SPlanRewriteRule> = listOf(
-            RewriteMultiplyPlusSimplify(),
+//            RewriteMultiplyPlusSimplify(), // todo now a standalone rewriter
             RewriteSplitCSE(),          // split CSEs when they would block a sum-product rearrangement
             RewritePullAggAboveMult(),
             RewriteAggregateElim(),
