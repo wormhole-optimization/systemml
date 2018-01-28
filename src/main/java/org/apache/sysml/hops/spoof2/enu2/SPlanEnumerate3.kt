@@ -303,6 +303,9 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         // todo - configuration parameters for whether to expand +, prune, etc.
         private const val SOUND_PRUNE_TENSOR_INTERMEDIATE = true
         private const val UNSOUND_PRUNE_MAX_DEGREE = true
+        /** Whether to prune the partitioning of + in factorPlusBase and * in factorMult,
+         * only considering the paritioning that is left-deep, add/mulitply in order of sparsity, with densest last. */
+        private const val PRUNE_INSIGNIFICANT = true
     }
 
     private val remainingToExpand = HashSet(initialRoots)
@@ -310,6 +313,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
 //    private val ht: BiMap<Hash, SNode> = HashBiMap.create()
     private val memo: CanonMemo = CanonMemo()
     private val attrPosListMemo = mutableMapOf<Id, List<AB>>()
+    private val nnzMemo = mutableMapOf<Id, Nnz>()
     private val basesForExpand = mutableSetOf<SNode>()
 //    private val planCost = PlanCost()
 
@@ -546,16 +550,46 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     private fun factorPlusBase(B: GraphBag): SNodeOption {
         if (B.size == 1) return factorAgg(B[0])
         memo.adaptFromMemo(B)?.let { return it }
-        val alts = mutableSetOf<SNode>()
-        for ((B1, B2) in enumPartition(B)) {
-            val r1 = factorPlusBase(B1).toNode() ?: continue
-            val r2 = factorPlusBase(B2).toNode() ?: continue // if this is None, then r1 will be dangling. It will be removed after expandAll()
-            alts += makePlusAbove(r1, r2)
-        }
+
+        val result: SNodeOption
+        if (PRUNE_INSIGNIFICANT) {
+            result = plusOrderGraphsBySparsity(B)
+        } else {
+            val alts = mutableSetOf<SNode>()
+            for ((B1, B2) in enumPartition(B)) {
+                val r1 = factorPlusBase(B1).toNode() ?: continue
+                val r2 = factorPlusBase(B2).toNode()
+                        ?: continue // if this is None, then r1 will be dangling. It will be removed after expandAll()
+                alts += makePlusAbove(r1, r2)
+            }
 //        if (alts.isEmpty()) undo(B)
-        val r = optionOrNode(alts)
-        memo.memoize(B, r)
-        return r
+            result = optionOrNode(alts)
+        }
+
+        memo.memoize(B, result)
+        return result
+    }
+
+
+    /**
+     * For each edge group (e.g. matrices, col vectors, row vectors, scalars), add within the group by increasing nnz.
+     * Then add across groups, starting with matrices, then vectors, then scalars.
+     * @see multOrderEdgesBySparsity
+     */
+    private fun plusOrderGraphsBySparsity(b: GraphBag): SNodeOption {
+        assert(b.size >= 2)
+        val ns = b.map { factorAgg(it).toNode() ?: return SNodeOption.None }
+        val groups = ns.groupBy { it.schema.names }
+        val groupsSorted = groups.mapValues { it.value.sortedBy { NnzInfer.inferNnz(it, nnzMemo) } }
+        val groupsAdded = groupsSorted.mapValues { (_,nodes) ->
+            nodes.subList(1,nodes.size).fold(nodes[0]) { acc, next ->
+                makePlusAbove(acc, next)
+            }
+        }
+        val groupsAddedOrdered = groupsAdded.toList().sortedByDescending { (schema,_) -> schema.size }.map { it.second }
+        return groupsAddedOrdered.subList(1,groupsAddedOrdered.size).fold(groupsAddedOrdered[0]) { acc, next ->
+            makePlusAbove(acc, next)
+        }.toOption()
     }
 
     private fun <T> enumPartition(l: List<T>): Iterator<Pair<List<T>,List<T>>> {
@@ -682,7 +716,6 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
                         val expect = e.verts.map(ABS::a)
                         if (expect == actual) n
                         else {
-                            // todo make sure this is working
                             val tgt = expect.mapIndexed { i, a -> AU(i) to a }.toMap()
                             val u = makeUnbindAbove(n, tgt)
                             makeBindAbove(u, tgt)
@@ -691,19 +724,46 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
                 }
             }
         }
-        val alts: MutableSet<SNode> = mutableSetOf()
-        for ((es1, es2) in enumPartition(es)) {
-            if (SOUND_PRUNE_TENSOR_INTERMEDIATE &&
-                    (es1.flatMap(Edge::verts).toSet().size > 2 || es2.flatMap(Edge::verts).toSet().size > 2))
-                continue
-            val r1 = factorMult(es1).toNode() ?: continue
-            val r2 = factorMult(es2).toNode() ?: continue // if this is None, then r1 will be dangling. It will be removed after expandAll()
-            alts += makeMultAbove(r1, r2)
-        }
+        val r: SNodeOption
+        if (PRUNE_INSIGNIFICANT) {
+            r = multOrderEdgesBySparsity(es)
+        } else {
+            val alts: MutableSet<SNode> = mutableSetOf()
+            for ((es1, es2) in enumPartition(es)) {
+                if (SOUND_PRUNE_TENSOR_INTERMEDIATE &&
+                        (es1.flatMap(Edge::verts).toSet().size > 2 || es2.flatMap(Edge::verts).toSet().size > 2))
+                    continue
+                val r1 = factorMult(es1).toNode() ?: continue
+                val r2 = factorMult(es2).toNode()
+                        ?: continue // if this is None, then r1 will be dangling. It will be removed after expandAll()
+                alts += makeMultAbove(r1, r2)
+            }
 //        if (alts.isEmpty()) undo(es)
-        val r = optionOrNode(alts) // if size 0, indicates dangling nodes.
+            r = optionOrNode(alts) // if size 0, indicates dangling nodes.
+        }
 //        if (useMemo) memo.memoize(es, r)
         return r
+    }
+
+    /**
+     * For each edge group (e.g. matrices, col vectors, row vectors, scalars), multiply within the group by increasing nnz.
+     * Then multiply across groups, starting with matrices, then vectors, then scalars.
+     * @see plusOrderGraphsBySparsity
+     */
+    private fun multOrderEdgesBySparsity(es: List<Edge>): SNodeOption {
+        assert(es.size >= 2)
+        val ns = es.map { factorMult(listOf(it)).toNode() ?: return SNodeOption.None }
+        val groups = ns.groupBy { it.schema.names }
+        val groupsSorted = groups.mapValues { it.value.sortedBy { NnzInfer.inferNnz(it, nnzMemo) } }
+        val groupsMult = groupsSorted.mapValues { (_,nodes) ->
+            nodes.subList(1,nodes.size).fold(nodes[0]) { acc, next ->
+                makeMultAbove(acc, next)
+            }
+        }
+        val groupsMultOrdered = groupsMult.toList().sortedByDescending { (schema,_) -> schema.size }.map { it.second }
+        return groupsMultOrdered.subList(1,groupsMultOrdered.size).fold(groupsMultOrdered[0]) { acc, next ->
+            makeMultAbove(acc, next)
+        }.toOption()
     }
 
 

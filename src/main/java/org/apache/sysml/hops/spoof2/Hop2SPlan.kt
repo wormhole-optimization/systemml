@@ -46,8 +46,8 @@ object Hop2SPlan {
             val changed = SPlanTopDownRewriter.rewriteDown(sroots, _ruleBindElim)
         } while (changed)
 
-        if( SPlanRewriteRule.LOG.isTraceEnabled )
-            SPlanRewriteRule.LOG.trace("After bind elim (count=$count0): "+ Explain.explainSPlan(sroots))
+//        if( SPlanRewriteRule.LOG.isTraceEnabled )
+//            SPlanRewriteRule.LOG.trace("After bind elim (count=$count0): "+ Explain.explainSPlan(sroots))
 
         // Deal with 0
         val resultMPS = RewriteMultiplyPlusSimplify().rewriteSPlan(sroots)

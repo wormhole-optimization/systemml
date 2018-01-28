@@ -16,6 +16,9 @@ object NnzInfer {
     }
 
     fun inferNnz(node: SNode, memo: MutableMap<Id, Nnz>): Nnz {
+        // OrNode: maybe need to take min of all children, because some may have more accurate estimates than others
+        if (node is SNodeBind || node is SNodeUnbind || node is OrNode)
+            return inferNnz(node.inputs[0], memo)
         if (node.id in memo)
             return memo[node.id]!!
         val nodeNnz: Nnz = when( node ) {
@@ -27,7 +30,6 @@ object NnzInfer {
             is SNodeExt -> node.hop.nnz
             is SNodeNary -> inferNnzNary(node, memo)
             is SNodeAggregate -> inferNnzAgg(node, memo)
-            is OrNode -> return inferNnz(node.inputs.first(), memo) // maybe need to take min of all children, because some may have more accurate estimates than others
             else -> throw AssertionError("unexpected: $node")
         }
         memo[node.id] = nodeNnz
