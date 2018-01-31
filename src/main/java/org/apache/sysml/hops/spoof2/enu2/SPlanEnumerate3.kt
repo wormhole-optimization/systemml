@@ -19,10 +19,16 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         // todo - configuration parameters for whether to expand +, prune, etc.
         private const val SOUND_PRUNE_TENSOR_INTERMEDIATE = true
         private const val UNSOUND_PRUNE_MAX_DEGREE = true
-        /** Whether to prune the partitioning of + in factorPlusBase and * in factorMult,
+        /** Whether to prune the partitioning of + in factorPlusBase
          * only considering the paritioning that is left-deep, add/mulitply in order of sparsity, with densest last. */
         private const val PRUNE_INSIGNIFICANT_PLUS = true
+        /** Whether to prune the partitioning of * in factorMult,
+         * only considering the paritioning that is left-deep, add/mulitply in order of sparsity, with densest last. */
         private const val PRUNE_INSIGNIFICANT_TIMES = true
+        /** Whether to prune expressions at the end of factorPlusRec that contain the same Graph added multiple times.
+         * This should always be inferior to factoring out the repeated term.
+         * For example, `A + A` is strictly worse than `A * (1 + 1)`. */
+        private const val SOUND_PRUNE_SAME_PLUS = true
     }
 
     private val remainingToExpand = HashSet(initialRoots)
@@ -180,6 +186,11 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     private fun factorPlusRec(Bold: GraphBag, Bcur: GraphBag, Bnew: GraphBag, i0: Int, j0: Int, depth: Int,
                               alts: MutableSet<SNode>, factorPlusMemo: MutableSet<Rep>) {
         if (Bcur.isEmpty() && Bnew.isEmpty()) {
+            if (SOUND_PRUNE_SAME_PLUS && !Bold.noDups()) {
+                if (LOG.isTraceEnabled)
+                    LOG.trace("SOUND_PRUNE_SAME_PLUS: $Bold")
+                return
+            }
             if (LOG.isTraceEnabled)
                 LOG.trace("finish+: $Bold")
             factorPlusBase(Bold).tryApply { alts += it }
