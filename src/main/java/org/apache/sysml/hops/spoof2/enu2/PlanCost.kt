@@ -1,50 +1,72 @@
 package org.apache.sysml.hops.spoof2.enu2
 
 import org.apache.sysml.hops.Hop
-import org.apache.sysml.hops.spoof2.enu.SPCost
 import org.apache.sysml.hops.spoof2.plan.*
 
-class PlanCost {
+object PlanCost {
 //    override fun compareTo(other: SCost): Int = flops.compareTo(other.flops)
 //    operator fun plus(c: SCost) = if( c == SCost.ZERO_COST ) this else SCost(this.flops + c.flops)
-    val costMemo: MutableMap<Id, Double> = mutableMapOf()
-    val nnzMemo: MutableMap<Id, Nnz> = mutableMapOf()
+//    val costMemo: MutableMap<Id, Double> = mutableMapOf()
+//    val nnzMemo: MutableMap<Id, Nnz> = mutableMapOf()
 
-    companion object {
+//    companion object {
         private const val COST_SPARSITY = true
+//    }
+
+    // Removed in favor of calculating the cost non-recursively, due to sharing.
+//    fun costSPlan(roots: List<SNode>,
+//                  costMemo: MutableMap<Id, Double>, nnzMemo: MutableMap<Id, Nnz>): List<Double> {
+//        if (COST_SPARSITY) {
+//            NnzInfer.inferNnz(roots, nnzMemo)
+//        }
+//        return roots.map { costSPlan(it, costMemo, nnzMemo) }
+//    }
+//
+//    private fun costSPlan(node: SNode,
+//                          costMemo: MutableMap<Id, Double>, nnzMemo: MutableMap<Id, Nnz>): Double {
+//        if( node.id in costMemo )
+//            return costMemo[node.id]!!
+//        var (nextNodes, nodeCost) = when( node ) {
+//            is SNodeAggregate -> costAgg(node)
+//            is SNodeNary -> costNary(node)
+//            else -> node.inputs to 0.0
+//        }
+//        if (COST_SPARSITY && nodeCost != 0.0 && nodeCost != Double.POSITIVE_INFINITY && node.id in nnzMemo) {
+//            nodeCost *= (nnzMemo[node.id]!!.toDouble() / node.schema.shapes.prod())
+//            costMemo[node.id] = nodeCost
+//        }
+//        return nodeCost + nextNodes.sumByDouble { costSPlan(it, costMemo, nnzMemo) }
+//    }
+
+    fun costNonRec(node: SNode,
+                   costMemo: MutableMap<Id, Double>, nnzMemo: MutableMap<Id, Nnz>): Double {
+        if (node.id in costMemo) return costMemo[node.id]!!
+        val cost = when(node) {
+            is SNodeAggregate -> costAgg(node, costMemo, nnzMemo)
+            is SNodeNary -> costNary(node, costMemo, nnzMemo)
+            else -> 0.0
+        }
+        costMemo[node.id] = cost
+        return cost
     }
 
-    fun costSPlan(roots: List<SNode>): List<Double> {
-        if (COST_SPARSITY) {
-            NnzInfer.inferNnz(roots, nnzMemo)
-        }
-        return roots.map { costSPlan(it) }
+    private fun getNnz(node: SNode, nnzMemo: MutableMap<Id, Nnz>): Nnz {
+        return if (COST_SPARSITY) {
+            NnzInfer.inferNnz(node, nnzMemo)
+        } else node.schema.shapes.prod()
     }
 
-    private fun costSPlan(node: SNode): Double {
-        if( node.id in costMemo )
-            return costMemo[node.id]!!
-        var (nextNodes, nodeCost) = when( node ) {
-            is SNodeAggregate -> costAgg(node)
-            is SNodeNary -> costNary(node)
-            else -> node.inputs to 0.0
-        }
-        if (COST_SPARSITY && nodeCost != 0.0 && nodeCost != Double.POSITIVE_INFINITY && node.id in nnzMemo) {
-            nodeCost *= (nnzMemo[node.id]!!.toDouble() / node.schema.shapes.prod())
-            costMemo[node.id] = nodeCost
-        }
-        return nodeCost + nextNodes.sumByDouble { costSPlan(it) }
-    }
 
-    private fun costAgg(agg: SNodeAggregate): Pair<List<SNode>, Double> {
+    private fun costAgg(agg: SNodeAggregate,
+                        costMemo: MutableMap<Id, Double>, nnzMemo: MutableMap<Id, Nnz>): Double {
         if( agg.op != Hop.AggOp.SUM) // only cost SUM aggregates
-            return listOf(agg.input) to 0.0
+            return 0.0
 
         // check MxM
         val mult = agg.input
         if( mult is SNodeNary && mult.op == SNodeNary.NaryOp.MULT
                 && mult.inputs.size == 2
-                && agg.aggs.size == 1
+                && agg.aggs.size == 1 // todo check this - what about rowSums after MxM?
                 && mult.inputs[0].schema.names.intersect(mult.inputs[1].schema.names).first() == agg.aggs.names.first() // forbear element-wise multiplication followed by agg
                 ) {
             var mult0 = mult.inputs[0]
@@ -62,75 +84,55 @@ class PlanCost {
                 else if( mult0.schema.size == 1 && mult1.schema.size == 2 ) {
                     mult0.let { mult0 = mult1; mult1 = it }
                 } else {
-                    costMemo[agg.id] = Double.POSITIVE_INFINITY
-                    return listOf<SNode>() to Double.POSITIVE_INFINITY
+                    return Double.POSITIVE_INFINITY
                 }
             }
-            val flops = mult.schema.shapes.prod().toDouble()
-            costMemo[agg.id] = flops
-            costMemo[mult.id] = flops
-            return listOf(mult0, mult1) to flops
+            val flops = getNnz(mult, nnzMemo).toDouble()
+            costMemo[mult.id] = flops // in addition to agg
+            return flops
         }
 
         // general agg - sums over all data
+        val aggInputNnz = getNnz(agg.input, nnzMemo).toDouble()
         val constantAggs = agg.aggsNotInInputSchema()
         val constantAggCost = if( constantAggs.isNotEmpty() ) { // treat like multiply by constant
-            agg.input.schema.shapes.prod().toDouble()
+            aggInputNnz
         } else 0.0
-//        val aggs = agg.aggs - constantAggs
-        var cost = constantAggCost + agg.input.schema.shapes.prod().toDouble()
-        if (COST_SPARSITY) cost *= nnzMemo[agg.input.id]!!.toDouble() // don't reduce by sparsity of agg at top level
-        costMemo[agg.id] = cost
-        return listOf(agg.input) to cost
+        return constantAggCost + aggInputNnz
     }
 
-    private fun costNary(nary: SNodeNary): Pair<List<SNode>, Double> {
-        if (nary.op == SNodeNary.NaryOp.POW) {
-            val cost = nary.schema.shapes.prod().toDouble()
-            costMemo[nary.id] = cost
-            return nary.inputs to cost
-        }
+    private fun costNary(nary: SNodeNary,
+                         costMemo: MutableMap<Id, Double>, nnzMemo: MutableMap<Id, Nnz>): Double {
+        if (nary.op == SNodeNary.NaryOp.POW)
+            return getNnz(nary, nnzMemo).toDouble()
         if( nary.op != SNodeNary.NaryOp.MULT && nary.op != SNodeNary.NaryOp.PLUS )
-            return nary.inputs to 0.0
-
-        if( nary.schema.size >= 3 ) {
-            costMemo[nary.id] = Double.POSITIVE_INFINITY
-            return listOf<SNode>() to Double.POSITIVE_INFINITY
-        }
+            return 0.0
+        if( nary.schema.size >= 3 )
+            return Double.POSITIVE_INFINITY
 
         if( nary.inputs.map { it.schema.names }.toSet().size == nary.inputs.size ) {
             // all schema equal; it's a big element-wise multiply/add
             // only count multiplying scalars once
             val countScalars = nary.inputs.count { it.schema.isEmpty() }
             val multiplyInputCount = nary.inputs.size - 1 - maxOf(countScalars - 1, 0)
-            val cost = multiplyInputCount * nary.schema.shapes.prod().toDouble()
-            costMemo[nary.id] = cost
-            return nary.inputs to cost
+            return multiplyInputCount * getNnz(nary, nnzMemo).toDouble()
         }
 
         if( nary.schema.size == 2 && nary.inputs.size == 2 ) {
             val sizes = nary.inputs.map { it.schema.size }.sorted()
             if (sizes == listOf(1, 1)) { // Outer
-                val cost = nary.schema.shapes.prod().toDouble()
-                costMemo[nary.id] = cost
-                return nary.inputs to cost
+                return getNnz(nary, nnzMemo).toDouble()
             }
 
             if( sizes == listOf(1, 2)) { // MeV or VeM
-                val cost = nary.schema.shapes.prod().toDouble()
-                costMemo[nary.id] = cost
-                return nary.inputs to cost
+                return getNnz(nary, nnzMemo).toDouble()
             }
 
             if( sizes[0] == 0 ) { // multiply with constant
-                val cost = nary.schema.shapes.prod().toDouble()
-                costMemo[nary.id] = cost
-                return nary.inputs to cost
+                return getNnz(nary, nnzMemo).toDouble()
             }
         }
-
-        costMemo[nary.id] = Double.POSITIVE_INFINITY
-        return listOf<SNode>() to Double.POSITIVE_INFINITY
+        return Double.POSITIVE_INFINITY
     }
 
 }

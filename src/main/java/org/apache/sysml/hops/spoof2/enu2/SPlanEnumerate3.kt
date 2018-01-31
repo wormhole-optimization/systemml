@@ -29,6 +29,9 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
          * This should always be inferior to factoring out the repeated term.
          * For example, `A + A` is strictly worse than `A * (1 + 1)`. */
         private const val SOUND_PRUNE_SAME_PLUS = true
+        /** If true, at each OR node, immediately select the one that is cheapest locally.
+         * Cost is determined by [PlanCost] by adding the cost of every unique child once, via a set. */
+        private const val UNSOUND_PRUNE_LOCAL_BYCOST = true
     }
 
     private val remainingToExpand = HashSet(initialRoots)
@@ -38,7 +41,6 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     private val attrPosListMemo = mutableMapOf<Id, List<AB>>()
     private val nnzMemo = mutableMapOf<Id, Nnz>()
     private val basesForExpand = mutableSetOf<SNode>()
-//    private val planCost = PlanCost()
 
 
 
@@ -161,6 +163,50 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         return node
     }
 
+    private val recChildrenMemo: MutableMap<Id, Set<SNode>> = mutableMapOf()
+    private val recCostMemo: MutableMap<Id, Double> = mutableMapOf()
+    private val costMemo: MutableMap<Id, Double> = mutableMapOf()
+
+    /** Derived a new alternative to add to the list of alternatives [alts].
+     * If we have a policy to incrementally prune like [UNSOUND_PRUNE_LOCAL_BYCOST],
+     * then apply it here. */
+    private fun addNewAlternative(alts: MutableSet<SNode>, newAlt: SNode) {
+        if (alts.isEmpty()) {
+            alts += newAlt
+            return
+        }
+        if (UNSOUND_PRUNE_LOCAL_BYCOST) {
+            val a1 = alts.first()
+            val c1 = getRecCost(a1)
+            val c2 = getRecCost(newAlt)
+            if (c1 <= c2)
+                return
+            alts.clear()
+        }
+        alts += newAlt
+        return
+    }
+
+    private fun getChildrenAtBelow(node: SNode, set: MutableSet<SNode>) {
+        if (node !in set) {
+            set += node
+            node.inputs.forEach { getChildrenAtBelow(it, set) }
+        }
+    }
+
+    private fun getRecCost(node: SNode): Double {
+        return recCostMemo.getOrPut(node.id) {
+            val recChildren = recChildrenMemo.getOrPut(node.id) {
+                mutableSetOf<SNode>().also { getChildrenAtBelow(node, it) }
+            }
+            recChildren.sumByDouble { PlanCost.costNonRec(node, costMemo, nnzMemo) }
+        }
+    }
+
+
+
+
+
     private fun factorPlus(b: GraphBag): SNodeOption {
         if (b.size == 1)
             return factorAgg(b[0])
@@ -193,7 +239,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
             }
             if (LOG.isTraceEnabled)
                 LOG.trace("finish+: $Bold")
-            factorPlusBase(Bold).tryApply { alts += it }
+            factorPlusBase(Bold).tryApply { addNewAlternative(alts, it) }
             return
         }
         val (i,j) = run {

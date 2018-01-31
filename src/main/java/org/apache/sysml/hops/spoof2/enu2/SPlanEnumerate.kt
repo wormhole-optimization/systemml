@@ -18,7 +18,6 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
     private val remainingToExpand = HashSet(initialRoots)
     private val nfhashTable: BiMap<Rep, SNode> = HashBiMap.create()
     // invariant: nodes in the hash table are in normal form
-    private val planCost = PlanCost()
 
     private val LOG = LogFactory.getLog(SPlanEnumerate::class.java)!!
 
@@ -293,7 +292,7 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
         // initial pruning policy: throw away alternatives that are not the cheapest
         if (orNode.inputs.size == 1)
             return
-        val costs = planCost.costSPlan(orNode.inputs)
+        val costs = orNode.inputs.map { 0.0 } // todo changed api //planCost.costSPlan(orNode.inputs)
         val minCost = costs.min()!!
         val minCostAlt = orNode.inputs[costs.indexOf(minCost)]
         val iter = orNode.inputs.iterator()
