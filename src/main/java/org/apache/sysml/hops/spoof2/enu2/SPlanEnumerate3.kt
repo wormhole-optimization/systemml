@@ -38,7 +38,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
 //    private val ht: BiMap<Hash, SNode> = HashBiMap.create()
     private val memo: CanonMemo = CanonMemo()
     private val attrPosListMemo = mutableMapOf<Id, List<AB>>()
-    private val nnzMemo = mutableMapOf<Id, Nnz>()
+    private val planCost = PlanCost(NnzInfer(WorstCaseNnz))
     private val basesForExpand = mutableSetOf<SNode>()
 
 
@@ -163,7 +163,6 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
 
     private val recChildrenMemo: MutableMap<Id, Set<SNode>> = mutableMapOf()
     private val recCostMemo: MutableMap<Id, Double> = mutableMapOf()
-    private val costMemo: MutableMap<Id, Double> = mutableMapOf()
 
     /** Derived a new alternative to add to the list of alternatives [alts].
      * If we have a policy to incrementally prune like [UNSOUND_PRUNE_LOCAL_BYCOST],
@@ -197,7 +196,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
             val recChildren = recChildrenMemo.getOrPut(node.id) {
                 mutableSetOf<SNode>().also { getChildrenAtBelow(node, it) }
             }
-            recChildren.sumByDouble { PlanCost.costNonRec(node, costMemo, nnzMemo) }
+            recChildren.sumByDouble { planCost.costNonRec(node) }
         }
     }
 
@@ -238,7 +237,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     private fun factorPlusRec(Bold: GraphBag, Bcur: GraphBag, Bnew: GraphBag, i0: Int, j0: Int, depth: Int,
                               alts: MutableSet<SNode>, factorPlusMemo: MutableSet<Rep>) {
         if (Bcur.isEmpty() && Bnew.isEmpty()) {
-            if (SOUND_PRUNE_SAME_PLUS && !Bold.noDups()) {
+            if (SOUND_PRUNE_SAME_PLUS && !Bold.noDups() && !Bold.getDuplicated().all { it.verts.isEmpty() }) {
                 if (LOG.isTraceEnabled)
                     LOG.trace("SOUND_PRUNE_SAME_PLUS: $Bold")
                 return
@@ -359,7 +358,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
      */
     private fun plusOrderGraphsBySparsity(ns: List<SNode>): SNode {
         val groups = ns.groupBy { it.schema.names }
-        val groupsSorted = groups.mapValues { it.value.sortedBy { NnzInfer.inferNnz(it, nnzMemo) } }
+        val groupsSorted = groups.mapValues { it.value.sortedBy { planCost.nnzInfer.infer(it) } }
         val groupsAdded = groupsSorted.mapValues { (_,nodes) ->
             nodes.subList(1,nodes.size).fold(nodes[0]) { acc, next ->
                 makePlusAbove(acc, next)
@@ -533,7 +532,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         assert(es.size >= 2)
         val ns = es.map { factorMult(listOf(it)).toNode() ?: return SNodeOption.None }
         val groups = ns.groupBy { it.schema.names }
-        val groupsSorted = groups.mapValues { it.value.sortedBy { NnzInfer.inferNnz(it, nnzMemo) } }
+        val groupsSorted = groups.mapValues { it.value.sortedBy { planCost.nnzInfer.infer(it) } }
         val groupsMult = groupsSorted.mapValues { (_,nodes) ->
             nodes.subList(1,nodes.size).fold(nodes[0]) { acc, next ->
                 makeMultAbove(acc, next)

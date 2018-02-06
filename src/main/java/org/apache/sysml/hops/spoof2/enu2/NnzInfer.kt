@@ -2,23 +2,19 @@ package org.apache.sysml.hops.spoof2.enu2
 
 import org.apache.sysml.hops.spoof2.plan.*
 
-/**
- * Pass in a memo map, that will be updated with the nnz estimates not already memoized.
- *
- * Σ nodes followed by a * (matrix-multiply-like) will have their nnz estimated with a better formula.
- * OR nodes get the nnz estimate of their first child.
- * All nodes receive an nnz estimate.
- */
-object NnzInfer {
+class NnzInfer(
+        val inferer: NnzInferer
+) {
+    val memo: MutableMap<Id, Nnz> = mutableMapOf()
 
-    fun inferNnz(roots: List<SNode>, memo: MutableMap<Id, Nnz>) {
-        roots.forEach { inferNnz(it, memo) }
+    fun infer(roots: List<SNode>) {
+        roots.forEach { infer(it) }
     }
 
-    fun inferNnz(node: SNode, memo: MutableMap<Id, Nnz>): Nnz {
+    fun infer(node: SNode): Nnz {
         // OrNode: maybe need to take min of all children, because some may have more accurate estimates than others
         if (node is SNodeBind || node is SNodeUnbind || node is OrNode)
-            return inferNnz(node.inputs[0], memo)
+            return infer(node.inputs[0])
         if (node.id in memo)
             return memo[node.id]!!
         val nodeNnz: Nnz = when( node ) {
@@ -28,47 +24,43 @@ object NnzInfer {
                 else node.hop.nnz
             }
             is SNodeExt -> node.hop.nnz
-            is SNodeNary -> inferNnzNary(node, memo)
-            is SNodeAggregate -> inferNnzAgg(node, memo)
+            is SNodeNary -> inferNnzNary(node)
+            is SNodeAggregate -> inferNnzAgg(node)
             else -> throw AssertionError("unexpected: $node")
         }
         memo[node.id] = nodeNnz
-        node.inputs.forEach { inferNnz(it, memo) }
+        node.inputs.forEach { infer(it) }
         return nodeNnz
     }
 
-    /**
-     * Worst case estimates, assumes nz divided evenly among output cells:
-     * If input is *: Π_{*-inputs} min(1, nnz/Π_{shapes-in-output}).  ((Matrix multiply))
-     * If input is not *: min(1, nnz/Π_{shapes-in-output}).
-     */
-    private fun inferNnzAgg(node: SNodeAggregate, memo: MutableMap<Id, Nnz>): Nnz {
-        val below = if (node.input is SNodeNary && (node.input as SNodeNary).op == SNodeNary.NaryOp.MULT)
-            node.input.inputs else listOf(node.input)
-        val sp = below.map {
-            minOf(1.0, inferNnz(it, memo).toDouble() /
-                    it.schema.filter { n, _ -> n in node.schema }.shapes.prod())
-        }.prod()
-        return (sp * node.schema.shapes.prod()).toLong()
+    private fun inferNnzAgg(node: SNodeAggregate): Nnz {
+        val d = node.schema
+        if (node.input is SNodeNary && (node.input as SNodeNary).op == SNodeNary.NaryOp.MULT) {
+            val (cz, cd) = node.input.inputs.map { infer(it) to it.schema }.unzip()
+            return inferer.inferMatrixMult(d, cz, cd)
+        }
+        val cz = infer(node.input)
+        val cd = node.input.schema
+        return inferer.inferAgg(d, cz, cd)
     }
 
-    /**
-     * Worst case estimates, assumes nz overlap completely.
-     * *: min of sparsities.
-     * +: min(1, sum of sparsities).
-     */
-    private fun inferNnzNary(node: SNodeNary, memo: MutableMap<Id, Nnz>): Nnz {
-        val inputSparsities = node.inputs.map { inferNnz(it, memo).toDouble() / it.schema.shapes.prod() }
-        val sp = when (node.op) {
-            SNodeNary.NaryOp.MULT, SNodeNary.NaryOp.AND -> inputSparsities.min()!!
+    private fun inferNnzNary(node: SNodeNary): Nnz {
+        val d = node.schema
+        val (cz, cd) = node.inputs.map { infer(it) to it.schema }.unzip()
+        return when (node.op) {
+            SNodeNary.NaryOp.MULT, SNodeNary.NaryOp.AND -> inferer.inferMult(d, cz, cd)
             SNodeNary.NaryOp.PLUS, SNodeNary.NaryOp.MINUS,
             SNodeNary.NaryOp.LESS, SNodeNary.NaryOp.GREATER, SNodeNary.NaryOp.NOTEQUAL,
             SNodeNary.NaryOp.MIN, SNodeNary.NaryOp.MAX,
-            SNodeNary.NaryOp.OR -> minOf(1.0, inputSparsities.sum())
-            SNodeNary.NaryOp.DIV, SNodeNary.NaryOp.MODULUS, SNodeNary.NaryOp.POW -> inputSparsities.first()
-            else -> 1.0
+            SNodeNary.NaryOp.OR -> inferer.inferAdd(d, cz, cd)
+            SNodeNary.NaryOp.DIV, SNodeNary.NaryOp.MODULUS, SNodeNary.NaryOp.POW -> cz[0]
+            else -> d.values.prod()
         }
-        return (sp*node.schema.shapes.prod()).toLong()
     }
 
+    fun infer(graph: Graph): Nnz {
+        // collapse each edge group via Mult
+        // across group nnz infer
+        TODO()
+    }
 }

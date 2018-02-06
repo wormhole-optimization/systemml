@@ -92,7 +92,7 @@ class EnumPlusFactor(val g1: Graph, val g2: Graph) : TopIterator<SubgraphIso> {
                 break
             }
             si = top()
-        } while (si != null && acceptTop(si))
+        } while (si != null && !acceptTop(si))
         return si
     }
 
@@ -101,7 +101,7 @@ class EnumPlusFactor(val g1: Graph, val g2: Graph) : TopIterator<SubgraphIso> {
      * If false, don't emit the top one and call next instead.
      */
     private fun acceptTop(si: SubgraphIso): Boolean {
-        return !PRUNE_ONLY_SCALAR || si.edgeMap.isEmpty() || si.vertMap.isNotEmpty() // reject non-trivial isomorphisms of only scalars
+        return !PRUNE_ONLY_SCALAR || (!PRUNE_TRIVIAL && si.edgeMap.isEmpty()) || si.vertMap.isNotEmpty() // reject non-trivial isomorphisms of only scalars
     }
 
 
@@ -148,6 +148,8 @@ class EnumPlusFactor(val g1: Graph, val g2: Graph) : TopIterator<SubgraphIso> {
     companion object {
         /** Whether to prune non-trivial (at least one edge) subgraph isomorphisms that consist of only scalar edges. */
         const val PRUNE_ONLY_SCALAR = true
+        /** Prune empty subgraph isomorphisms. */
+        const val PRUNE_TRIVIAL = true
 
 
         private fun buildMapBaseAggToEdges(g: Graph): Map<BaseAggStats,List<Edge>> = g.edges.groupBy { e ->

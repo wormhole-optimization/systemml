@@ -48,6 +48,9 @@ fun Schema.toABS() = this.map { (a,s) ->
 }.toSet()
 /** Does this list not contain a duplicate (according to equals())? */
 fun <T> List<T>.noDups() = this.size == this.toSet().size
+fun <T> List<T>.getDuplicated(): Set<T> {
+    return this.groupBy { it }.filter { (_,b) -> b.size > 1 }.map { (a,_) -> a }.toSet()
+}
 
 data class AttributeBoundShape(val a: AB, val s: Shape) {
     //    fun rename(aNew: AB) = AttributeBoundShape(aNew, s)
