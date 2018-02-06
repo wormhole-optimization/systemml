@@ -146,6 +146,14 @@ data class Graph(val outs: Set<ABS>, val edges: List<Edge>) {
         return tmp
     }
     override fun toString() = "Graph<${outs.joinToString(",")}>$edges"
+    fun getBases(): Set<SNode> {
+        return edges.flatMap { e ->
+            when (e) {
+                is Edge.C -> listOf(e.base)
+                is Edge.F -> e.base.flatMap { it.getBases() }
+            }
+        }.toSet()
+    }
 }
 
 //data class GraphBag(val graphs: List<Graph>) {
@@ -305,3 +313,21 @@ data class CanonMemo(
     }
 }
 
+
+fun GraphBag.connectedComponents(): List<GraphBag> {
+    val bases = mutableListOf<MutableSet<SNode>>()
+    val components = mutableListOf<MutableList<Graph>>()
+    loop@for (g in this) {
+        val gb = g.getBases().filter { it.schema.isNotEmpty() } // exclude scalar bases
+        for (i in bases.indices) {
+            if (!gb.disjoint(bases[i]) || gb.isEmpty() && bases[i].isEmpty()) { // empty case
+                components[i].add(g)
+                bases[i].addAll(gb)
+                continue@loop
+            }
+        }
+        components.add(mutableListOf(g))
+        bases.add(gb.toMutableSet())
+    }
+    return components
+}

@@ -212,6 +212,14 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         memo.adaptFromMemo(b)?.let { return it }
         if (LOG.isTraceEnabled)
             LOG.trace("factorPlus B=$b")
+
+        // breakup the + inputs into connected components. Factor each connected component separately, then combine as factored edges.
+        val components = b.connectedComponents()
+        if (components.size > 1) {
+            val ns = components.map { factorPlus(it).toNode() ?: return SNodeOption.None }
+            return plusOrderGraphsBySparsity(ns).toOption()
+        }
+
         val alts: Set<SNode> = mutableSetOf<SNode>().also{ factorPlusRec(listOf(), b.groupSame(), listOf(), 0, 1, 0, it, mutableSetOf()) }
         val r = optionOrNode(alts)
         memo.memoize(b, r)
@@ -325,7 +333,8 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
 
         val result: SNodeOption
         if (PRUNE_INSIGNIFICANT_PLUS) {
-            result = plusOrderGraphsBySparsity(B)
+            val ns = B.map { factorAgg(it).toNode() ?: return SNodeOption.None }
+            result = plusOrderGraphsBySparsity(ns).toOption()
         } else {
             val alts = mutableSetOf<SNode>()
             for ((B1, B2) in enumPartition(B)) {
@@ -348,9 +357,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
      * Then add across groups, starting with matrices, then vectors, then scalars.
      * @see multOrderEdgesBySparsity
      */
-    private fun plusOrderGraphsBySparsity(b: GraphBag): SNodeOption {
-        assert(b.size >= 2)
-        val ns = b.map { factorAgg(it).toNode() ?: return SNodeOption.None }
+    private fun plusOrderGraphsBySparsity(ns: List<SNode>): SNode {
         val groups = ns.groupBy { it.schema.names }
         val groupsSorted = groups.mapValues { it.value.sortedBy { NnzInfer.inferNnz(it, nnzMemo) } }
         val groupsAdded = groupsSorted.mapValues { (_,nodes) ->
@@ -361,7 +368,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         val groupsAddedOrdered = groupsAdded.toList().sortedByDescending { (schema,_) -> schema.size }.map { it.second }
         return groupsAddedOrdered.subList(1,groupsAddedOrdered.size).fold(groupsAddedOrdered[0]) { acc, next ->
             makePlusAbove(acc, next)
-        }.toOption()
+        }
     }
 
     private fun <T> enumPartition(l: List<T>): Iterator<Pair<List<T>,List<T>>> {
