@@ -7,6 +7,7 @@ import org.apache.sysml.hops.spoof2.GraphCanonizer
 import org.apache.sysml.hops.spoof2.SHash
 import org.apache.sysml.hops.spoof2.plan.*
 import java.util.ArrayList
+import kotlin.math.roundToInt
 
 // optional SNode
 sealed class SNodeOption {
@@ -208,12 +209,17 @@ data class CanonMemo(
     fun canonize(e: Edge.C): Rep = e.base.id.toString()
     fun canonize(e: Edge.F): Rep = canonize(e.base).rep
 
+    private var repToNode_access = 0L
+    private var repToNode_hit = 0L
+
     /** If [b] was previously explored and a node was memoized representing its alternatives,
      * then adapt the node to the output indices of [b] and return it.
      * Returns an [SNodeOption] if it is in the memo (whose node is adapted if the option is Some).
      * Returns null if the canonical form of [b] is not in the memo. */
     fun adaptFromMemo(b: GraphBag): SNodeOption? {
         val bc = canonize(b)
+        if (bc.rep in ntb) repToNode_hit++
+        countAccess()
         return ntb[bc.rep]?.let { (sc, no) ->
             no.map {
                 //                if (it !in it.inputs[0].parents) { // restore parents
@@ -223,10 +229,13 @@ data class CanonMemo(
             }
         }
     }
+
     /** If [g] was previously explored and a node was memoized representing its alternatives,
      * then adapt the node to the output indices of [g] and return it. */
     fun adaptFromMemo(g: Graph): SNodeOption? {
         val gc = canonize(g)
+        if (gc.rep in ntg) repToNode_hit++
+        countAccess()
         return ntg[gc.rep]?.let { (sc, no) ->
             no.map {
                 //                if (it !in it.inputs[0].parents) { // restore parents
@@ -235,6 +244,12 @@ data class CanonMemo(
                 adaptFromMemo(gc, sc, it)
             }
         }
+    }
+
+    private fun countAccess() {
+        repToNode_access++
+        if (repToNode_access % 2000L == 0L)
+            println("repToNode hit rate: $repToNode_hit/$repToNode_access = ${(repToNode_hit.toDouble()/repToNode_access * 100).roundToInt()}%")
     }
 
     fun memoize(b: GraphBag, n: SNodeOption) {

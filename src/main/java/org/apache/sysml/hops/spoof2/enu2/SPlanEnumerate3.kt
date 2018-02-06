@@ -2,7 +2,6 @@ package org.apache.sysml.hops.spoof2.enu2
 
 import org.apache.commons.logging.LogFactory
 import org.apache.sysml.hops.Hop
-import org.apache.sysml.hops.LiteralOp
 import org.apache.sysml.hops.spoof2.*
 import org.apache.sysml.hops.spoof2.enu.ENode
 import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone
@@ -79,7 +78,6 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
                return node.inputs.indices.forEach { expand(node.inputs[it]) }
             }
         }
-        // check ht here?
 
         // strip away parents, add parents to result, in same input location
         val pa: List<SNode> = ArrayList(node.parents)
@@ -142,7 +140,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     }
 
     private fun toEdge(node: SNode): Edge.C {
-        var base = getBase(node)
+        var base = toBase(node)
         val attrPosList = SHash.createAttributePositionList(node, attrPosListMemo)
         // if the base has bound schema, then set the base to an Unbind above the base. Postcondition: base is unbound.
         if (base.schema.names.any { it.isBound() }) {
@@ -153,7 +151,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         return Edge.C(base, verts)
     }
 
-    private fun getBase(node0: SNode): SNode {
+    private fun toBase(node0: SNode): SNode {
         var node = node0
         while (node is SNodeBind || node is SNodeUnbind) {
             if (node.parents.isEmpty())
@@ -237,8 +235,8 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
                     LOG.trace("SOUND_PRUNE_SAME_PLUS: $Bold")
                 return
             }
-            if (LOG.isTraceEnabled)
-                LOG.trace("finish+: $Bold")
+//            if (LOG.isTraceEnabled)
+//                LOG.trace("finish+: $Bold")
             factorPlusBase(Bold).tryApply { addNewAlternative(alts, it) }
             return
         }
@@ -259,8 +257,8 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         }
         if (i >= Bcur.size || i == Bcur.size-1 && Bold.isEmpty())
             return factorPlusRec((Bold + Bcur).groupSame(), Bnew.groupSame(), listOf(), 0, 1, depth+1, alts, factorPlusMemo)
-        if (LOG.isTraceEnabled)
-            LOG.trace("depth=$depth, i=$i, j=$j\n\tBold=$Bold\n\tBcur=$Bcur\n\tBnew=$Bnew")
+//        if (LOG.isTraceEnabled)
+//            LOG.trace("depth=$depth, i=$i, j=$j\n\tBold=$Bold\n\tBcur=$Bcur\n\tBnew=$Bnew")
         // 1. Explore not factoring common terms
         factorPlusRec(Bold, Bcur, Bnew, i, j+1, depth, alts, factorPlusMemo)
         // 2. Explore factoring out

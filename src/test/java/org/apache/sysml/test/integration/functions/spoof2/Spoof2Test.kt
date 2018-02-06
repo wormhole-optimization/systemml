@@ -137,8 +137,9 @@ class Spoof2Test(
         //	TEST_NAME+91;  //cbind(0 * v,v)
         //	TEST_NAME+92;  //exp(0 * v)
         //	TEST_NAME+93;  //1 * v + v + Σ(v * 1)
+        //	TEST_NAME+94;  //l2svm inner loop - memory test. Modified to use max(out, 1) instead of out * (out > 0)
         private const val NUM_TESTS = 73
-        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..93)
+        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..94)
         private val _DO_DOT: List<Pair<Int, DC>> = listOf(
 //                85 to DC(arrayListOf(29, 30), performSpoofRewrites = false),
 //                85 to DC(arrayListOf(29, 30))
