@@ -63,32 +63,47 @@ class EnumPlusFactor(val g1: Graph, val g2: Graph) : TopIterator<SubgraphIso> {
     private var iteratedEmpty = false
 
     override fun next(): SubgraphIso? {
-        var i = arrMatch.size-1
-        if (i == -1) { iteratedEmpty = true; return null }
-        unassign(i)
-        loop@while(true) {
-            while (true) {
-                while (arrMatch[i].next() == null) {
-                    i--; if (i >= 0) unassign(i) else return null
+        var si: SubgraphIso?
+        do {
+            var i = arrMatch.size - 1
+            if (i == -1) {
+                iteratedEmpty = true; return null
+            }
+            unassign(i)
+            loop@ while (true) {
+                while (true) {
+                    while (arrMatch[i].next() == null) {
+                        i--; if (i >= 0) unassign(i) else return null
+                    }
+                    while (!assign(i) && arrMatch[i].next() != null);
+                    if (arrMatch[i].top() == null) {
+                        i--; if (i >= 0) unassign(i) else return null
+                        continue
+                    }
+                    break
                 }
-                while (!assign(i) && arrMatch[i].next() != null);
-                if (arrMatch[i].top() == null) {
-                    i--; if (i >= 0) unassign(i) else return null
-                    continue
+                for (j in i + 1 until arrMatch.size) {
+                    arrMatch[j].reset()
+                    if (!assign(j)) {
+                        i = j
+                        continue@loop
+                    }
                 }
                 break
             }
-            for (j in i + 1 until arrMatch.size) {
-                arrMatch[j].reset()
-                if (!assign(j)) {
-                    i = j
-                    continue@loop
-                }
-            }
-            break
-        }
-        return top()
+            si = top()
+        } while (si != null && acceptTop(si))
+        return si
     }
+
+    /**
+     * Filter conditions on the subgraph isomorphisms accepted.
+     * If false, don't emit the top one and call next instead.
+     */
+    private fun acceptTop(si: SubgraphIso): Boolean {
+        return !PRUNE_ONLY_SCALAR || si.edgeMap.isEmpty() || si.vertMap.isNotEmpty() // reject non-trivial isomorphisms of only scalars
+    }
+
 
     /** Atomically assign arrMatch[i] if possible, or if there is a conflict return false. */
     fun assign(i: Int): Boolean {
@@ -131,6 +146,10 @@ class EnumPlusFactor(val g1: Graph, val g2: Graph) : TopIterator<SubgraphIso> {
 
 
     companion object {
+        /** Whether to prune non-trivial (at least one edge) subgraph isomorphisms that consist of only scalar edges. */
+        const val PRUNE_ONLY_SCALAR = true
+
+
         private fun buildMapBaseAggToEdges(g: Graph): Map<BaseAggStats,List<Edge>> = g.edges.groupBy { e ->
             val aggStats = e.verts.map { v ->
                 if (v in g.outs) AggStatus.NoAgg(v)
