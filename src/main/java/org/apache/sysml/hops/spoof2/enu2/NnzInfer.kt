@@ -58,9 +58,27 @@ class NnzInfer(
         }
     }
 
-    fun infer(graph: Graph): Nnz {
-        // collapse each edge group via Mult
-        // across group nnz infer
-        TODO()
+    fun infer(bag: GraphBag): Nnz {
+        val (cz, cd) = bag.map { g ->
+            infer(g) to g.outs.map { it.a as Name to it.s }.toMap()
+        }.unzip()
+        val d = cd.reduce { a, b -> a+b }
+        return inferer.inferAdd(d, cz, cd)
+    }
+
+    fun infer(graph: Graph, onlyBeforeAgg: Boolean = false): Nnz {
+        // crude estimate: a graph is a Σ-*. Just do those
+        val (cz, cd) = graph.edges.map { e ->
+            when (e) {
+                is Edge.C -> infer(e.base)
+                is Edge.F -> infer(e.base)
+            } to e.verts.map { it.a as Name to it.s }.toMap()
+        }.unzip()
+        val md = cd.reduce { a, b -> a+b }
+        val mz = inferer.inferMult(md, cz, cd)
+        if (onlyBeforeAgg)
+            return mz
+        val d = graph.outs.map { it.a as Name to it.s }.toMap()
+        return inferer.inferAgg(d, mz, md)
     }
 }

@@ -10,6 +10,8 @@ class PlanCost(
 //    operator fun plus(c: SCost) = if( c == SCost.ZERO_COST ) this else SCost(this.flops + c.flops)
     val costMemo: MutableMap<Id, Double> = mutableMapOf()
     val nnzMemo: MutableMap<Id, Nnz> = nnzInfer.memo
+    val recCostMemo: MutableMap<Id, Double> = mutableMapOf()
+    val recChildrenMemo: MutableMap<Id, Set<SNode>> = mutableMapOf()
 
     // Removed in favor of calculating the cost non-recursively, due to sharing.
 //    fun costSPlan(roots: List<SNode>,
@@ -47,9 +49,9 @@ class PlanCost(
         return cost
     }
 
-    private fun getNnz(node: SNode): Nnz {
-        return nnzInfer.infer(node)
-    }
+    private fun getNnz(node: SNode): Nnz = nnzInfer.infer(node)
+    private fun getNnz(g: Graph): Nnz = nnzInfer.infer(g)
+    private fun getNnz(b: GraphBag): Nnz = nnzInfer.infer(b)
 
 
     private fun costAgg(agg: SNodeAggregate): Double {
@@ -126,6 +128,39 @@ class PlanCost(
             }
         }
         return Double.POSITIVE_INFINITY
+    }
+
+    fun costRecUpperBound(b: GraphBag): Double {
+        return getNnz(b) * (b.size - 1) + b.sumByDouble { costRecUpperBound(it) }
+    }
+
+    fun costRecUpperBound(g: Graph): Double {
+        // multiply edges to big tensor, then aggregate
+        val (edgesVM, edgesScalar) = g.edges.partition { it.verts.isEmpty() }
+        val multFactor = edgesVM.size + if (edgesScalar.isEmpty()) 0 else 1
+        val nnzBigTensor = nnzInfer.infer(g, true)
+        val multCost = nnzBigTensor * multFactor
+        val aggCost = if (g.aggs.isNotEmpty()) multCost else 0
+        val thisCost = aggCost + multCost.toDouble()
+        val belowCost = g.edges.sumByDouble { e -> when (e) {
+            is Edge.C -> costRec(e.base)
+            is Edge.F -> costRecUpperBound(e.base)
+        } }
+        return thisCost + belowCost
+    }
+
+    fun costRec(node: SNode): Double {
+        return recCostMemo.getOrPut(node.id) {
+            val recChildren = getChildrenAtBelow(node)
+            recChildren.sumByDouble { costNonRec(it) }
+        }
+    }
+
+    private fun getChildrenAtBelow(node: SNode): Set<SNode> {
+        if (node.inputs.isEmpty()) return setOf(node)
+        return recChildrenMemo.getOrPut(node.id) {
+            node.inputs.map { getChildrenAtBelow(it) }.reduce { a, b -> a+b } + node
+        }
     }
 
 }

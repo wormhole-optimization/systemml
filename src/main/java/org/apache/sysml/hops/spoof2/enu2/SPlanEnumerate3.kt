@@ -161,8 +161,6 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         return node
     }
 
-    private val recChildrenMemo: MutableMap<Id, Set<SNode>> = mutableMapOf()
-    private val recCostMemo: MutableMap<Id, Double> = mutableMapOf()
 
     /** Derived a new alternative to add to the list of alternatives [alts].
      * If we have a policy to incrementally prune like [UNSOUND_PRUNE_LOCAL_BYCOST],
@@ -174,8 +172,8 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         }
         if (UNSOUND_PRUNE_LOCAL_BYCOST) {
             val a1 = alts.first()
-            val c1 = getRecCost(a1)
-            val c2 = getRecCost(newAlt)
+            val c1 = planCost.costRec(a1)
+            val c2 = planCost.costRec(newAlt)
             if (c1 <= c2)
                 return
             alts.clear()
@@ -184,21 +182,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         return
     }
 
-    private fun getChildrenAtBelow(node: SNode, set: MutableSet<SNode>) {
-        if (node !in set) {
-            set += node
-            node.inputs.forEach { getChildrenAtBelow(it, set) }
-        }
-    }
 
-    private fun getRecCost(node: SNode): Double {
-        return recCostMemo.getOrPut(node.id) {
-            val recChildren = recChildrenMemo.getOrPut(node.id) {
-                mutableSetOf<SNode>().also { getChildrenAtBelow(node, it) }
-            }
-            recChildren.sumByDouble { planCost.costNonRec(node) }
-        }
-    }
 
 
 
@@ -219,7 +203,9 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
             return plusOrderGraphsBySparsity(ns).toOption()
         }
 
-        val alts: Set<SNode> = mutableSetOf<SNode>().also{ factorPlusRec(listOf(), b.groupSame(), listOf(), 0, 1, 0, it, mutableSetOf()) }
+        val alts = mutableSetOf<SNode>()
+//        val alpha = MutableDouble(planCost.costRecUpperBound(b))
+        factorPlusRec(listOf(), b.groupSame(), listOf(), 0, 1, 0, alts, mutableSetOf())
         val r = optionOrNode(alts)
         memo.memoize(b, r)
         return r
@@ -227,10 +213,12 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
 
     private fun <T> List<T>.groupSame() = this.groupBy { it }.flatMap { it.value }
 
+    private data class MutableDouble(var v: Double)
+
 
     /**
      * [Bold] and [Bcur] should be ordered so that identical items appear consecutively.
-     * [depth] is frontier #; advances when i and j finish in a frontier.
+     * [depth] is frontier #; advances when iaddNewAlternative and j finish in a frontier.
      *
      * Output parameter: [alts], the alternatives for computing the GraphBag of [Bold]+[Bcur]+[Bnew].
      */
@@ -409,21 +397,22 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         if (partitions.size > 1) {
             val createdNodes = mutableSetOf<SNode>()
             val ep = mutableListOf<Edge>()
+            var ok = true
             partitions.forEach { p ->
-                if (p.edges.size == 1 && p.aggs.isEmpty())
-                    ep += p.edges[0]
+                if (p.aggs.isEmpty())
+                    ep += p.edges
                 else {
                     val l = factorAgg(p)
                     memo.memoize(p, l)
                     when (l) {
-                        SNodeOption.None -> return@forEach
+                        SNodeOption.None -> { ok = false; return@forEach }
                         is SNodeOption.Some -> createdNodes += l.node
                     }
                     val gc = memo.canonize(p)
                     ep += Edge.F(listOf(p), gc.orderVertsCanon(p.outs))
                 }
             }
-            if (ep.size != partitions.size) { // one of the Edges failed (None from factorAgg)
+            if (!ok) { // one of the Edges failed (None from factorAgg)
 //                createdNodes.forEach { undo(it) }
                 return SNodeOption.None
             }
@@ -451,7 +440,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         for (v in aggsEnu) {
             val gbelow = Graph(g.outs + v, g.edges)
             val below = factorAgg(gbelow)
-            below.tryApply { alts += makeAggAbove(it, v.a) }
+            below.tryApply { addNewAlternative(alts, makeAggAbove(it, v.a)) }
         }
         val r = optionOrNode(alts)
         memo.memoize(g, r)
@@ -530,16 +519,35 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
      */
     private fun multOrderEdgesBySparsity(es: List<Edge>): SNodeOption {
         assert(es.size >= 2)
-        val ns = es.map { factorMult(listOf(it)).toNode() ?: return SNodeOption.None }
-        val groups = ns.groupBy { it.schema.names }
-        val groupsSorted = groups.mapValues { it.value.sortedBy { planCost.nnzInfer.infer(it) } }
-        val groupsMult = groupsSorted.mapValues { (_,nodes) ->
-            nodes.subList(1,nodes.size).fold(nodes[0]) { acc, next ->
-                makeMultAbove(acc, next)
+        val remain = kotlin.run {
+            val ns = es.map { factorMult(listOf(it)).toNode() ?: return SNodeOption.None }
+            val groups = ns.groupBy { it.schema.names }
+            val groupsSorted = groups.mapValues { it.value.sortedBy { planCost.nnzInfer.infer(it) } }
+            val groupsMult = groupsSorted.mapValues { (_,nodes) ->
+                nodes.subList(1,nodes.size).fold(nodes[0]) { acc, next ->
+                    makeMultAbove(acc, next)
+                }
             }
+            groupsMult.toMutableMap()
         }
-        val groupsMultOrdered = groupsMult.toList().sortedByDescending { (schema,_) -> schema.size }.map { it.second }
-        return groupsMultOrdered.subList(1,groupsMultOrdered.size).fold(groupsMultOrdered[0]) { acc, next ->
+        // vector that overlaps with matrix - multiply these first, for cases like Aij vj Bjk
+        // get names that have a vector on them. Multiply with a matrix that shares that name.
+        val fins: MutableList<SNode> = mutableListOf()
+        val namesWithVector = remain.filter { it.key.size == 1 }
+        for ((ns, v) in namesWithVector) {
+            val n = ns.single()
+            val ms = remain.keys.find { it.size == 2 && n in it } ?: continue
+            val m = remain[ms]!!
+            fins += makeMultAbove(v, m)
+            remain.remove(ns)
+            remain.remove(ms)
+        }
+        val groupsMultOrdered = remain.toList().sortedByDescending { (schema,_) -> schema.size }.map { it.second }.toMutableList()
+        fins.sortBy { planCost.nnzInfer.infer(it) }
+        val f1 = if (fins.isEmpty()) {
+            groupsMultOrdered.removeAt(0)
+        } else fins.reduce { a, b -> makeMultAbove(a,b) }
+        return groupsMultOrdered.fold(f1) { acc, next ->
             makeMultAbove(acc, next)
         }.toOption()
     }
