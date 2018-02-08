@@ -8,6 +8,7 @@ import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone
 import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone.Companion.orderGenPrz
 import org.apache.sysml.hops.spoof2.plan.*
 import java.util.*
+import kotlin.math.sign
 
 class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     private val _origRoots = initialRoots.toList()
@@ -35,6 +36,8 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         private const val UNSOUND_PRUNE_PF_BYNNZ = true
         /** Whether to spend extra time checking the correctness of + factorizations. */
         private const val CHECK = false
+        /** Remove all + terms from factorPlus consideration that have an nnz (before Σ) of < this amount. */
+        private const val UNSOUND_PRUNE_PF_NNZMIN = 40000
     }
 
     private val remainingToExpand = HashSet(initialRoots)
@@ -197,8 +200,8 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
             return factorAgg(b[0])
         // compute canonical form, check if canonical form has an SNode, if so adapt the SNode to this one
         memo.adaptFromMemo(b)?.let { return it }
-        if (LOG.isTraceEnabled)
-            LOG.trace("factorPlus B=$b")
+//        if (LOG.isTraceEnabled)
+//            LOG.trace("factorPlus B=$b")
 
         // breakup the + inputs into connected components. Factor each connected component separately, then combine as factored edges.
         val components = b.connectedComponents()
@@ -207,10 +210,32 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
             return plusOrderGraphsBySparsity(ns).toOption()
         }
 
-        val alts = mutableSetOf<SNode>()
+        val (insignificant, significant) = b.groupSame().partition { g ->
+            planCost.nnzInfer.infer(g, true) < UNSOUND_PRUNE_PF_NNZMIN
+        }
+        if (LOG.isTraceEnabled && insignificant.isNotEmpty()) {
+            LOG.trace("UNSOUND_PRUNE_PF_NNZMIN: insignificant plans: ${insignificant.size} / ${b.size}")
+        }
+
+        val insigNodes = insignificant.map { factorAgg(it).toNode() ?: return SNodeOption.None }
+        val insigSum = if (insigNodes.isEmpty()) null else plusOrderGraphsBySparsity(insigNodes)
+
+
+        val sigSum = if (significant.isEmpty()) null else run {
+            if (LOG.isTraceEnabled)
+                LOG.trace("Factoring significant:\n\t" + significant.joinToString("\n\t"))
+            val alts = mutableSetOf<SNode>()
 //        val alpha = MutableDouble(planCost.costRecUpperBound(b))
-        factorPlusRec(listOf(), b.groupSame(), listOf(), 0, 1, 0, alts, mutableSetOf())
-        val r = optionOrNode(alts)
+            factorPlusRec(listOf(), significant, listOf(), 0, 1, 0, alts, mutableSetOf())
+            optionOrNode(alts).toNode() ?: return SNodeOption.None
+        }
+
+        val r = when {
+            insigSum == null -> sigSum!!
+            sigSum == null -> insigSum
+            else -> makePlusAbove(insigSum, sigSum)
+        }.toOption()
+
         memo.memoize(b, r)
         return r
     }
