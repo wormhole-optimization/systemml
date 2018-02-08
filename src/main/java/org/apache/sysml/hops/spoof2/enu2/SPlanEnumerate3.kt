@@ -31,6 +31,10 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         /** If true, at each OR node, immediately select the one that is cheapest locally.
          * Cost is determined by [PlanCost] by adding the cost of every unique child once, via a set. */
         private const val UNSOUND_PRUNE_LOCAL_BYCOST = true
+        /** Prune away all but the + factorization that factor the most nonzeros out. */
+        private const val UNSOUND_PRUNE_PF_BYNNZ = true
+        /** Whether to spend extra time checking the correctness of + factorizations. */
+        private const val CHECK = false
     }
 
     private val remainingToExpand = HashSet(initialRoots)
@@ -259,10 +263,13 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         // 2. Explore factoring out
         val Gi = Bcur[i]
         val Gj = if (j < Bcur.size) Bcur[j] else Bold[j-Bcur.size]
-        for ((Gf: Graph, hi: Monomorph, hj: Monomorph) in enumPlusFactor(Gi, Gj)) {
+        val PFITER = if (UNSOUND_PRUNE_PF_BYNNZ) enumOnlyBestPf(Gi, Gj) else enumPlusFactor(Gi, Gj)
+        for ((Gf: Graph, hi: Monomorph, hj: Monomorph) in PFITER) {
             if (Gf.edges.isEmpty()) continue
-            checkPlusFactorization(Gf, hi, Gi)
-            checkPlusFactorization(Gf, hj, Gj)
+            if (CHECK) {
+                checkPlusFactorization(Gf, hi, Gi)
+                checkPlusFactorization(Gf, hj, Gj)
+            }
             val Bp = mutableListOf<Graph>()
             // if factoring out results in a single edge and it is a factored graphbag, then add all its graphs to Bp
             // otherwise add the graph resulting from factoring out
@@ -311,6 +318,39 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         assert(aggs == Gp.aggs)
         return listOf(Gp)
     }
+
+    private fun enumOnlyBestPf(g1: Graph, g2: Graph): Iterator<Triple<Graph, Monomorph, Monomorph>> {
+        return retainBestPf(EnumPlusFactor(g1, g2)).iterator()
+    }
+
+    /**
+     * (Unsound) Prune away all but the + factorization that factor the most nonzeros out.
+     */
+    private fun retainBestPf(epf: EnumPlusFactor): List<Triple<Graph,Monomorph,Monomorph>> {
+
+        fun adapt(si: SubgraphIso): Triple<Graph, Monomorph, Monomorph> =
+                EnumPlusFactor.isoToNewGraphMonomorph(si, epf.g1, epf.g2)
+        fun sumEdgeNnz(g: Graph): Nnz = g.edges.sumByLong { e ->
+            planCost.nnzInfer.infer(e)
+        }
+
+        var bestTrip = adapt(epf.top() ?: return listOf())
+        var bestNnzFactor = sumEdgeNnz(bestTrip.first)
+
+        while (epf.next() != null) {
+            val trip = adapt(epf.top()!!)
+            val nnzFactor = sumEdgeNnz(trip.first)
+            if (nnzFactor > bestNnzFactor) {
+                bestTrip = trip
+                bestNnzFactor = nnzFactor
+            }
+        }
+
+        return listOf(bestTrip)
+    }
+
+
+
 
 
 

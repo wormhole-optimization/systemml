@@ -7,6 +7,7 @@ import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone
 import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone.Companion.orderGenPrz
 import org.apache.sysml.hops.spoof2.plan.AB
 import org.apache.sysml.hops.spoof2.plan.map
+import org.apache.sysml.hops.spoof2.plan.sumByLong
 import org.apache.sysml.hops.spoof2.plan.zipIntersect
 
 //private typealias MatchingChoice = Pair<IntArray,IntArray>
@@ -181,14 +182,15 @@ class EnumPlusFactor(val g1: Graph, val g2: Graph) : TopIterator<SubgraphIso> {
     }
 }
 
-class EnumPlusFactorAdapter(private val epf: EnumPlusFactor): AbstractIterator<Triple<Graph,Monomorph,Monomorph>>() {
+internal class EnumPlusFactorAdapter(private val epf: EnumPlusFactor): AbstractIterator<Triple<Graph,Monomorph,Monomorph>>() {
     init { setNext(adapt(epf.top()!!)) }
 
-    private fun adapt(si: SubgraphIso): Triple<Graph, Monomorph, Monomorph> {
-        return EnumPlusFactor.isoToNewGraphMonomorph(si, epf.g1, epf.g2)
-    }
+    private fun adapt(si: SubgraphIso): Triple<Graph, Monomorph, Monomorph> =
+            EnumPlusFactor.isoToNewGraphMonomorph(si, epf.g1, epf.g2)
 
     override fun computeNext() {
         setNext(adapt(epf.next() ?: return done()))
     }
 }
+
+

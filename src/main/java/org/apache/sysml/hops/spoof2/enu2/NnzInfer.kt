@@ -19,9 +19,11 @@ class NnzInfer(
             return memo[node.id]!!
         val nodeNnz: Nnz = when( node ) {
             is SNodeData -> {
-                if (node.isLiteral)
-                    if (node.isLiteralNumeric && node.literalDouble == 0.0) 0L else 1L
-                else node.hop.nnz
+                when {
+                    node.isLiteral -> if (node.isLiteralNumeric && node.literalDouble == 0.0) 0L else 1L
+                    node.hop.nnz >= 0 -> node.hop.nnz
+                    else -> node.schema.shapes.prod() // use dense if unknown
+                }
             }
             is SNodeExt -> node.hop.nnz
             is SNodeNary -> inferNnzNary(node)
@@ -67,12 +69,11 @@ class NnzInfer(
     }
 
     fun infer(graph: Graph, onlyBeforeAgg: Boolean = false): Nnz {
+        if (graph.edges.isEmpty())
+            return 1L
         // crude estimate: a graph is a Σ-*. Just do those
         val (cz, cd) = graph.edges.map { e ->
-            when (e) {
-                is Edge.C -> infer(e.base)
-                is Edge.F -> infer(e.base)
-            } to e.verts.map { it.a as Name to it.s }.toMap()
+            infer(e) to e.verts.map { it.a as Name to it.s }.toMap()
         }.unzip()
         val md = cd.reduce { a, b -> a+b }
         val mz = inferer.inferMult(md, cz, cd)
@@ -81,4 +82,10 @@ class NnzInfer(
         val d = graph.outs.map { it.a as Name to it.s }.toMap()
         return inferer.inferAgg(d, mz, md)
     }
+
+    fun infer(e: Edge): Nnz = when (e) {
+        is Edge.C -> infer(e.base)
+        is Edge.F -> infer(e.base)
+    }
+
 }
