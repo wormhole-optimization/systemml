@@ -139,7 +139,8 @@ object SPlanValidator {
             }
         }
         if( node is SNodeUnbind )
-            node.check(node.unbindings.values.all { it in node.input.schema }) {"attempt to unbind ${node.unbindings} on input schema ${node.input.schema}"}
+            node.check(node.unbindings.values.all { it in node.input.schema }) {
+                "attempt to unbind ${node.unbindings} on input schema ${node.input.schema}"}
 
         if( state.checkVisit )
             node.visited = true

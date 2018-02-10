@@ -8,7 +8,6 @@ import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone
 import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone.Companion.orderGenPrz
 import org.apache.sysml.hops.spoof2.plan.*
 import java.util.*
-import kotlin.math.sign
 
 class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     private val _origRoots = initialRoots.toList()
@@ -31,13 +30,15 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         private const val SOUND_PRUNE_SAME_PLUS = true
         /** If true, at each OR node, immediately select the one that is cheapest locally.
          * Cost is determined by [PlanCost] by adding the cost of every unique child once, via a set. */
-        private const val UNSOUND_PRUNE_LOCAL_BYCOST = true
+        const val UNSOUND_PRUNE_LOCAL_BYCOST = true
         /** Prune away all but the + factorization that factor the most nonzeros out. */
         private const val UNSOUND_PRUNE_PF_BYNNZ = true
         /** Whether to spend extra time checking the correctness of + factorizations. */
         private const val CHECK = false
         /** Remove all + terms from factorPlus consideration that have an nnz (before Σ) of < this amount. */
         private const val UNSOUND_PRUNE_PF_NNZMIN = 40000
+
+        private const val UNSOUND_PRUNE_PF_EXP = true
     }
 
     private val remainingToExpand = HashSet(initialRoots)
@@ -171,22 +172,24 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
 
     /** Derived a new alternative to add to the list of alternatives [alts].
      * If we have a policy to incrementally prune like [UNSOUND_PRUNE_LOCAL_BYCOST],
-     * then apply it here. */
-    private fun addNewAlternative(alts: MutableSet<SNode>, newAlt: SNode) {
+     * then apply it here.
+     * @return if the newAlt was added to alts
+     */
+    private fun addNewAlternative(alts: MutableSet<SNode>, newAlt: SNode): Boolean {
         if (alts.isEmpty()) {
             alts += newAlt
-            return
+            return true
         }
         if (UNSOUND_PRUNE_LOCAL_BYCOST) {
             val a1 = alts.first()
             val c1 = planCost.costRec(a1)
             val c2 = planCost.costRec(newAlt)
             if (c1 <= c2)
-                return
+                return false
             alts.clear()
         }
         alts += newAlt
-        return
+        return true
     }
 
 
@@ -226,7 +229,13 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
                 LOG.trace("Factoring significant:\n\t" + significant.joinToString("\n\t"))
             val alts = mutableSetOf<SNode>()
 //        val alpha = MutableDouble(planCost.costRecUpperBound(b))
-            factorPlusRec(listOf(), significant, listOf(), 0, 1, 0, alts, mutableSetOf())
+            if (UNSOUND_PRUNE_PF_EXP) {
+                factorPlusRec(listOf(), significant, listOf(), significant.size - 2, significant.size, 0, alts, mutableSetOf(), false)
+                assert(alts.isNotEmpty())
+                factorPlusRec(listOf(), significant, listOf(), 0, 1, 0, alts, mutableSetOf(), true)
+            } else {
+                factorPlusRec(listOf(), significant, listOf(), 0, 1, 0, alts, mutableSetOf(), false)
+            }
             optionOrNode(alts).toNode() ?: return SNodeOption.None
         }
 
@@ -252,17 +261,18 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
      * Output parameter: [alts], the alternatives for computing the GraphBag of [Bold]+[Bcur]+[Bnew].
      */
     private fun factorPlusRec(Bold: GraphBag, Bcur: GraphBag, Bnew: GraphBag, i0: Int, j0: Int, depth: Int,
-                              alts: MutableSet<SNode>, factorPlusMemo: MutableSet<Rep>) {
+                              alts: MutableSet<SNode>, factorPlusMemo: MutableSet<Rep>, onlyFactor: Boolean): Boolean {
+        var foundOneGood = false
         if (Bcur.isEmpty() && Bnew.isEmpty()) {
             if (SOUND_PRUNE_SAME_PLUS && !Bold.noDups() && !Bold.getDuplicated().all { it.verts.isEmpty() }) {
                 if (LOG.isTraceEnabled)
                     LOG.trace("SOUND_PRUNE_SAME_PLUS: $Bold")
-                return
+                return false
             }
 //            if (LOG.isTraceEnabled)
 //                LOG.trace("finish+: $Bold")
-            factorPlusBase(Bold).tryApply { addNewAlternative(alts, it) }
-            return
+            factorPlusBase(Bold).tryApply { foundOneGood = true; addNewAlternative(alts, it) }
+            return foundOneGood
         }
         val (i,j) = run {
             // This section prevents enumerating the same factorizations multiple times.
@@ -279,16 +289,19 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
             }
             i to j
         }
-        if (i >= Bcur.size || i == Bcur.size-1 && Bold.isEmpty())
-            return factorPlusRec((Bold + Bcur).groupSame(), Bnew.groupSame(), listOf(), 0, 1, depth+1, alts, factorPlusMemo)
+        if (i >= Bcur.size || i == Bcur.size-1 && Bold.isEmpty()) {
+            return factorPlusRec((Bold + Bcur).groupSame(), Bnew.groupSame(), listOf(), 0, 1, depth+1, alts, factorPlusMemo, onlyFactor)
+        }
 //        if (LOG.isTraceEnabled)
 //            LOG.trace("depth=$depth, i=$i, j=$j\n\tBold=$Bold\n\tBcur=$Bcur\n\tBnew=$Bnew")
         // 1. Explore not factoring common terms
-        factorPlusRec(Bold, Bcur, Bnew, i, j+1, depth, alts, factorPlusMemo)
+        if (!onlyFactor)
+            foundOneGood = factorPlusRec(Bold, Bcur, Bnew, i, j+1, depth, alts, factorPlusMemo, onlyFactor)
         // 2. Explore factoring out
         val Gi = Bcur[i]
         val Gj = if (j < Bcur.size) Bcur[j] else Bold[j-Bcur.size]
-        val PFITER = if (UNSOUND_PRUNE_PF_BYNNZ) enumOnlyBestPf(Gi, Gj) else enumPlusFactor(Gi, Gj)
+        val PFITER = if (UNSOUND_PRUNE_PF_EXP) pfDecreasingNnzFactor(EnumPlusFactor(Gi,Gj)).iterator()
+                                                            else if (UNSOUND_PRUNE_PF_BYNNZ) enumOnlyBestPf(Gi, Gj) else enumPlusFactor(Gi, Gj)
         for ((Gf: Graph, hi: Monomorph, hj: Monomorph) in PFITER) {
             if (Gf.edges.isEmpty()) continue
             if (CHECK) {
@@ -322,9 +335,16 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
                 else factorPlusMemo += newBcannon.rep
             }
             // we did not explore this factoring yet
-            factorPlusRec(newBold, newBcur, newBnew, i, i+1, depth, alts, factorPlusMemo)
+            foundOneGood = factorPlusRec(newBold, newBcur, newBnew, i, i+1, depth, alts, factorPlusMemo, onlyFactor) || foundOneGood
+
+            // keep going until we hit this point - one of the + factorizations was accepted.
+            if (UNSOUND_PRUNE_PF_EXP && foundOneGood)
+                break
         }
+        if (!onlyFactor && !foundOneGood)
+            foundOneGood = factorPlusRec(Bold, Bcur, Bnew, i, j+1, depth, alts, factorPlusMemo, onlyFactor)
 //        return optionOrNode(alts)
+        return foundOneGood
     }
 
     private fun enumPlusFactor(g1: Graph, g2: Graph): Iterator<Triple<Graph, Monomorph, Monomorph>> {
@@ -342,6 +362,26 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         val Gp = Graph(outs, Ep)
         assert(aggs == Gp.aggs)
         return listOf(Gp)
+    }
+
+    // provide all the choices in order of decreasing nnz factored out
+    private fun pfDecreasingNnzFactor(epf: EnumPlusFactor): List<Triple<Graph,Monomorph,Monomorph>> {
+        fun adapt(si: SubgraphIso): Triple<Graph, Monomorph, Monomorph> =
+                EnumPlusFactor.isoToNewGraphMonomorph(si, epf.g1, epf.g2)
+        fun sumEdgeNnz(g: Graph): Nnz = g.edges.sumByLong { e ->
+            planCost.nnzInfer.infer(e)
+        }
+
+        val trips = mutableListOf<Triple<Graph,Monomorph,Monomorph>>()
+        trips += adapt(epf.top() ?: return listOf())
+
+        while (epf.next() != null) {
+            trips += adapt(epf.top()!!)
+        }
+
+        trips.sortByDescending { sumEdgeNnz(it.first) }
+
+        return trips
     }
 
     private fun enumOnlyBestPf(g1: Graph, g2: Graph): Iterator<Triple<Graph, Monomorph, Monomorph>> {
@@ -577,44 +617,45 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         return r
     }
 
+    fun multOrderBySparsity(ns: List<SNode>): SNode {
+        // multiply within groups
+        val r1 =
+            ns.groupBy { it.schema.names }.mapValues { (_,nodes) ->
+                nodes.sortedBy { planCost.nnzInfer.infer(it) }.let { nso ->
+                    nso.subList(1, nodes.size)
+                            .fold(nso[0]) { acc, next -> makeMultAbove(acc, next) }
+                }
+            }.values.toMutableList()
+
+        // matrix-vector multiply
+        val vectors = r1.filter { it.schema.size == 1 }
+        val matrices = r1.filter { it.schema.size == 2 }.toMutableList()
+        vectors.sortedByDescending { v -> matrices.count { v.schema.names.single() in it.schema } }.forEach { v ->
+                val n = v.schema.names.single()
+                val ms = matrices.filter { n in it.schema }
+                if (ms.isNotEmpty()) {
+                    val m = ms.minBy { planCost.nnzInfer.infer(it) }!!
+                    r1 -= v
+                    r1 -= m
+                    val construct = makeMultAbove(v, m)
+                    matrices -= m
+                    r1 += construct
+                    matrices += construct
+                }
+        }
+
+        r1.sortByDescending { it.schema.size }
+        return r1.subList(1,r1.size).fold(r1[0]) { a, b -> makeMultAbove(a, b) }
+    }
+
     /**
      * For each edge group (e.g. matrices, col vectors, row vectors, scalars), multiply within the group by increasing nnz.
      * Then multiply across groups, starting with matrices, then vectors, then scalars.
      * @see plusOrderGraphsBySparsity
      */
     private fun multOrderEdgesBySparsity(es: List<Edge>): SNodeOption {
-        assert(es.size >= 2)
-        val remain = kotlin.run {
-            val ns = es.map { factorMult(listOf(it)).toNode() ?: return SNodeOption.None }
-            val groups = ns.groupBy { it.schema.names }
-            val groupsSorted = groups.mapValues { it.value.sortedBy { planCost.nnzInfer.infer(it) } }
-            val groupsMult = groupsSorted.mapValues { (_,nodes) ->
-                nodes.subList(1,nodes.size).fold(nodes[0]) { acc, next ->
-                    makeMultAbove(acc, next)
-                }
-            }
-            groupsMult.toMutableMap()
-        }
-        // vector that overlaps with matrix - multiply these first, for cases like Aij vj Bjk
-        // get names that have a vector on them. Multiply with a matrix that shares that name.
-        val fins: MutableList<SNode> = mutableListOf()
-        val namesWithVector = remain.filter { it.key.size == 1 }
-        for ((ns, v) in namesWithVector) {
-            val n = ns.single()
-            val ms = remain.keys.find { it.size == 2 && n in it } ?: continue
-            val m = remain[ms]!!
-            fins += makeMultAbove(v, m)
-            remain.remove(ns)
-            remain.remove(ms)
-        }
-        val groupsMultOrdered = remain.toList().sortedByDescending { (schema,_) -> schema.size }.map { it.second }.toMutableList()
-        fins.sortBy { planCost.nnzInfer.infer(it) }
-        val f1 = if (fins.isEmpty()) {
-            groupsMultOrdered.removeAt(0)
-        } else fins.reduce { a, b -> makeMultAbove(a,b) }
-        return groupsMultOrdered.fold(f1) { acc, next ->
-            makeMultAbove(acc, next)
-        }.toOption()
+        val ns = es.map { factorMult(listOf(it)).toNode() ?: return SNodeOption.None }
+        return multOrderBySparsity(ns).toOption()
     }
 
 

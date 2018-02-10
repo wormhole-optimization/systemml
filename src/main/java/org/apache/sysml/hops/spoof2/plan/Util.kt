@@ -355,15 +355,17 @@ fun makeUnbindAbove(n: SNode, tgtMap: Map<AU, AB>): SNode {
     return if (tgtMap.isEmpty()) n
     else n.parents.find { it is SNodeUnbind && it.unbindings == tgtMap } ?: SNodeUnbind(n, tgtMap)
 }
-fun makeMultAbove(vararg ns: SNode) = makeMultAbove(ns.asList())
+fun makeMultAbove(vararg ns: SNode): SNodeNary {
+    //    Spoof2Compiler.LOG.trace("make *: (${m.id}) ${m.schema} -- [${ns.joinToString { "${it.id} $it ${it.schema}" }}]")
+    return makeMultAbove(ns.asList())
+}
 fun makeMultAbove(ns: Collection<SNode>) = makeNaryAbove(ns, SNodeNary.NaryOp.MULT)
 fun makePlusAbove(vararg ns: SNode) = makePlusAbove(ns.asList())
 fun makePlusAbove(ns: Collection<SNode>) = makeNaryAbove(ns, SNodeNary.NaryOp.PLUS)
 private fun makeNaryAbove(ns: Collection<SNode>, op: SNodeNary.NaryOp): SNodeNary {
     require(ns.isNotEmpty())
     val nsl = ns.toList().sortedBy { it.id }
-    val x = ns.first().parents.find { it is SNodeNary && it.op == op && it.inputs.sortedBy { it.id } == nsl } as SNodeNary? ?: SNodeNary(op, nsl)
-    return x
+    return ns.first().parents.find { it is SNodeNary && it.op == op && it.inputs.sortedBy { it.id } == nsl } as SNodeNary? ?: SNodeNary(op, nsl)
 }
 fun makeAggAbove(n: SNode, aggs: Set<AB>): SNodeAggregate {
     // todo do I need this?

@@ -39,8 +39,8 @@ out = 1 - Y * (tmp_Xw)
 sv = (out > 0)
 out = out * sv
 g = wd + step_sz*dd - sum(out * Y * Xd)
-h = dd + sum(Xd * sv * Xd)
-step_sz = step_sz - g/h
+#h = dd + sum(Xd * sv * Xd)
+#step_sz = step_sz - g/h
 
 R= as.matrix(g*g)
 

@@ -2,8 +2,9 @@ package org.apache.sysml.test.integration.functions.spoof2
 
 import org.apache.sysml.hops.DataOp
 import org.apache.sysml.hops.Hop
+import org.apache.sysml.hops.LiteralOp
 import org.apache.sysml.hops.spoof2.SHash
-import org.apache.sysml.hops.spoof2.SPlan2NormalForm
+import org.apache.sysml.hops.spoof2.SPlan2NormalForm_InsertStyle
 import org.apache.sysml.hops.spoof2.SPlanCseEliminator
 import org.apache.sysml.hops.spoof2.enu2.*
 import org.apache.sysml.hops.spoof2.plan.*
@@ -11,6 +12,7 @@ import org.apache.sysml.hops.spoof2.rewrite.*
 import org.apache.sysml.parser.Expression
 import org.apache.sysml.utils.Explain
 import org.junit.Assert
+import org.junit.Assume
 import org.junit.Test
 import java.util.*
 import kotlin.test.assertEquals
@@ -19,8 +21,8 @@ import kotlin.test.assertTrue
 class HandTest {
 
     companion object {
-        private fun createReadHop(name: String): DataOp {
-            return DataOp(name, Expression.DataType.MATRIX, Expression.ValueType.DOUBLE, Hop.DataOpTypes.TRANSIENTREAD, "$name.csv", 3, 3, 9, 3, 3)
+        private fun createReadHop(name: String, r: Long = 3, c: Long = 3): DataOp {
+            return DataOp(name, Expression.DataType.MATRIX, Expression.ValueType.DOUBLE, Hop.DataOpTypes.TRANSIENTREAD, "$name.csv", r, c, 9, 3, 3)
         }
         private fun createWriteHop(name: String): DataOp {
             return DataOp(name, Expression.DataType.MATRIX, Expression.ValueType.DOUBLE, Hop.DataOpTypes.TRANSIENTWRITE, name, 3, 3, 9, 3, 3)
@@ -77,7 +79,7 @@ class HandTest {
 
         var cnt = 0
         do {
-            val result = SPlanCseEliminator.rewriteSPlan(roots, SPlanCseEliminator.Params())
+            val result = SPlanCseEliminator.rewriteSPlan(roots, SPlanCseEliminator.Params(true))
             cnt++
         } while( result != SPlanRewriter.RewriterResult.NoChange )
         System.out.print("After (count=$cnt):")
@@ -235,7 +237,7 @@ class HandTest {
         val roots = arrayListOf<SNode>(w1, w2)
 
         println(Explain.explainSPlan(roots))
-        SPlan2NormalForm.rewriteSPlan(roots)
+        SPlan2NormalForm_InsertStyle.rewriteSPlan(roots)
 
         testHash(w1.inputs[0], w2.inputs[0])
 
@@ -437,7 +439,7 @@ class HandTest {
         val roots = arrayListOf<SNode>(w1, w2)
 
         println(Explain.explainSPlan(roots))
-        SPlan2NormalForm.rewriteSPlan(roots)
+        SPlan2NormalForm_InsertStyle.rewriteSPlan(roots)
 
 //        testHash(w1.inputs[0], w2.inputs[0]) // todo test GraphCanonizer
 
@@ -485,7 +487,7 @@ class HandTest {
         val roots = arrayListOf<SNode>(w1)
 
         println(Explain.explainSPlan(roots))
-        SPlan2NormalForm.rewriteSPlan(roots)
+        SPlan2NormalForm_InsertStyle.rewriteSPlan(roots)
 
 //        testHash(w1.inputs[0], w2.inputs[0]) // todo test GraphCanonizer
 
@@ -496,6 +498,7 @@ class HandTest {
         val aggs = countPred(roots) { it is SNodeAggregate }
         val nary = countPred(roots) { it is SNodeNary }
         println("result aggs nary: $aggs $nary")
+        Assume.assumeFalse(SPlanEnumerate3.UNSOUND_PRUNE_LOCAL_BYCOST)
         Assert.assertEquals(4, aggs)
         Assert.assertEquals(4, nary)
     }
@@ -538,7 +541,7 @@ class HandTest {
         val roots = arrayListOf<SNode>(w1, w2)
 
         println(Explain.explainSPlan(roots))
-        SPlan2NormalForm.rewriteSPlan(roots)
+        SPlan2NormalForm_InsertStyle.rewriteSPlan(roots)
 
 //        testHash(w1.inputs[0], w2.inputs[0]) // todo test GraphCanonizer
 
@@ -549,6 +552,7 @@ class HandTest {
         val aggs = countPred(roots) { it is SNodeAggregate }
         val nary = countPred(roots) { it is SNodeNary }
         println("result aggs nary: $aggs $nary")
+        Assume.assumeFalse(SPlanEnumerate3.UNSOUND_PRUNE_LOCAL_BYCOST)
         Assert.assertEquals(7, aggs)
         Assert.assertEquals(7, nary)
     }
@@ -588,7 +592,7 @@ class HandTest {
         val roots = arrayListOf<SNode>(w1)
 
         println(Explain.explainSPlan(roots))
-        SPlan2NormalForm.rewriteSPlan(roots)
+        SPlan2NormalForm_InsertStyle.rewriteSPlan(roots)
 
         println("Explain before enu: "+Explain.explainSPlan(roots))
         val enu = SPlanEnumerate3(roots)
@@ -616,7 +620,7 @@ class HandTest {
         val roots = arrayListOf<SNode>(w1)
 
         println(Explain.explainSPlan(roots))
-        SPlan2NormalForm.rewriteSPlan(roots)
+        SPlan2NormalForm_InsertStyle.rewriteSPlan(roots)
 
         println("Explain before enu: "+Explain.explainSPlan(roots))
         val enu = SPlanEnumerate3(roots)
@@ -630,6 +634,7 @@ class HandTest {
 
         w1.resetVisited()
         val orNodes = extractOrNodes(w1)
+        Assume.assumeTrue(orNodes.size == 1)
         val orNode = orNodes.single()
         assertEquals(3, orNode.inputs.size, "redundant factorings enumerated") // todo
     }
@@ -646,8 +651,6 @@ class HandTest {
         val a2 = ABS(AB(), 9) //2
         val a3 = ABS(AB(), 9) //3
         val a8 = ABS(AB(), 9) //8
-        val p = Hop.AggOp.SUM
-        val m = SNodeNary.NaryOp.MULT
 
         val U72 = Edge.C(U, listOf(a7,a2)) //SNodeBind(U, mapOf(AU.U0 to a7, AU.U1 to a2)) // U 7,2
         val U73 = Edge.C(U, listOf(a7,a3)) //SNodeBind(U, mapOf(AU.U0 to a7, AU.U1 to a3)) // U 7,3
@@ -660,6 +663,37 @@ class HandTest {
         val c1 = memo.canonize(g1)
         val c2 = memo.canonize(g2)
         assertEquals(c1.rep, c2.rep)
+    }
+
+
+    @Test
+    fun testMultOrderBySparsity() {
+        val A = SNodeData(createReadHop("A"))
+        val B = SNodeData(createReadHop("B"))
+        val u1 = SNodeData(createReadHop("u", 1, 3))
+        val u2 = SNodeData(createReadHop("u", 1, 3))
+        val v1 = SNodeData(createReadHop("v", 1, 3))
+        val v2 = SNodeData(createReadHop("v", 1, 3))
+        val w1 = SNodeData(createReadHop("w", 1, 3))
+        val w2 = SNodeData(createReadHop("w", 1, 3))
+        val z1 = SNodeData(LiteralOp(2.5))
+        val z2 = SNodeData(LiteralOp(3.5))
+        val a = AB() //"a1"
+        val b = AB() //"b2"
+        val c = AB() //"c3"
+
+        val Aab = SNodeBind(A, mapOf(AU.U0 to a, AU.U1 to b))
+        val Bbc = SNodeBind(B, mapOf(AU.U0 to b, AU.U1 to c))
+        val u1a = SNodeBind(u1, mapOf(AU.U0 to a))
+        val u2a = SNodeBind(u2, mapOf(AU.U0 to a))
+        val v1b = SNodeBind(v1, mapOf(AU.U0 to b))
+        val v2b = SNodeBind(v2, mapOf(AU.U0 to b))
+        val w1c = SNodeBind(w1, mapOf(AU.U0 to c))
+        val w2c = SNodeBind(w2, mapOf(AU.U0 to c))
+
+        val list = listOf(Aab, Bbc, u1a, u2a, v1b, v2b, w1c, w2c, z1, z2)
+        val r = SPlanEnumerate3().multOrderBySparsity(list)
+        println(Explain.explainSPlan(listOf(r), true))
     }
 
 

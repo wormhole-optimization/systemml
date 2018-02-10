@@ -38,6 +38,9 @@ object Hop2SPlan {
         // perform one-time Hop Rewrites
         SPlanTopDownRewriter.rewriteDown(sroots, _rulesFirstOnce)
 
+//        if( SPlanRewriteRule.LOG.isTraceEnabled )
+//            SPlanRewriteRule.LOG.trace("Before bind elim: "+ Explain.explainSPlan(sroots))
+
         // one-time bind elim
         var count0 = 0
         do {

@@ -36,8 +36,8 @@ out1 = 1 - Y * (tmp_Xw)
 sv = (out1 > 0)
 out = max(out1, 0) # out1 * sv
 g = wd + step_sz*dd - sum(out * Y * Xd)
-h = dd + sum(Xd * sv * Xd)
-step_sz = step_sz - g/h
+#h = dd + sum(Xd * sv * Xd)
+#step_sz = step_sz - g/h
 
 R= as.matrix(g*g)
 

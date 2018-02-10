@@ -32,6 +32,7 @@ class RewriteMultiplyPlusSimplify: SPlanRewriter {
         val zeroes = mutableSetOf<SNodeData>()
         val ones = mutableSetOf<SNodeData>()
         roots.forEach { r -> extractZeroesOnes(r, zeroes, ones) }
+        SNode.resetVisited(roots)
         val anyZeroChanged = zeroes.map { bubbleUpZero(it, true) }.fold(false, Boolean::or)
         val anyOneChanged = ones.map { handleOne(it) }.fold(false, Boolean::or)
         return if (anyZeroChanged || anyOneChanged) SPlanRewriter.RewriterResult.NewRoots(roots)

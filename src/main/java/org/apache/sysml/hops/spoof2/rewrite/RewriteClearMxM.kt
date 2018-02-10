@@ -56,6 +56,16 @@ class RewriteClearMxM : SPlanRewriteRule() {
                     oldAggName
                 }
             }
+            // check to see if AU positions were shifted
+            while (unbind.unbindings.isNotEmpty() && AU.U0 !in unbind.unbindings) {
+                // subtract 1 from all keys
+                val newUnbindings = unbind.unbindings.mapKeys { (k,_) -> AU(k.dim-1) }
+                val newBindings = bind.bindings.mapKeys { (k,_) -> AU(k.dim-1) }
+                unbind.unbindings.clear()
+                unbind.unbindings.putAll(newUnbindings)
+                bind.bindings.clear()
+                bind.bindings.putAll(newBindings)
+            }
 
             //wire agg to unbind.input and place bind and unbind above; dead code elim
             val aggParents = ArrayList(agg.parents)
