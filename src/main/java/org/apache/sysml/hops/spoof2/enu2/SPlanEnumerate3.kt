@@ -431,9 +431,8 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
             val alts = mutableSetOf<SNode>()
             for ((B1, B2) in enumPartition(B)) {
                 val r1 = factorPlusBase(B1).toNode() ?: continue
-                val r2 = factorPlusBase(B2).toNode()
-                        ?: continue // if this is None, then r1 will be dangling. It will be removed after expandAll()
-                alts += makePlusAbove(r1, r2)
+                val r2 = factorPlusBase(B2).toNode() ?: continue // if this is None, then r1 will be dangling. It will be removed after expandAll()
+                addNewAlternative(alts, makeMultAbove(r1, r2))
             }
 //        if (alts.isEmpty()) undo(B)
             result = optionOrNode(alts)
@@ -606,9 +605,8 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
                         (es1.flatMap(Edge::verts).toSet().size > 2 || es2.flatMap(Edge::verts).toSet().size > 2))
                     continue
                 val r1 = factorMult(es1).toNode() ?: continue
-                val r2 = factorMult(es2).toNode()
-                        ?: continue // if this is None, then r1 will be dangling. It will be removed after expandAll()
-                alts += makeMultAbove(r1, r2)
+                val r2 = factorMult(es2).toNode() ?: continue // if this is None, then r1 will be dangling. It will be removed after expandAll()
+                addNewAlternative(alts, makeMultAbove(r1, r2))
             }
 //        if (alts.isEmpty()) undo(es)
             r = optionOrNode(alts) // if size 0, indicates dangling nodes.
