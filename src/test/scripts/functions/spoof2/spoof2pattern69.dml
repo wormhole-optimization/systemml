@@ -21,5 +21,5 @@
 
 X= matrix( "1 2 3 4 5 6 7 8 9", rows=3, cols=3)
 while(FALSE) {}
-R = X - colSums(X)
+R = X + colSums(X)
 write(R,$1)

@@ -172,10 +172,14 @@ internal fun checkPlusFactorization(Gf: Graph, h: Monomorph, G: Graph) {
         val vp = h[v]!!
         check(v.s == vp.s) {"h maps an index to a different shape: $v to $vp"}
         check(vp in G.verts) {"h maps $v to $vp which is not in G: $G"}
-        if (v in Gf.outs)
+        if (v in Gf.outs) {
             check(vp == v) {"non-stationary output under h: $v maps to $vp"}
-        else
+            check(vp in G.outs) {"output index $v maps to non-output index $vp under $h for Gf $Gf to G $G"}
+        }
+        else {
             check(G.verts.none { it.a == v.a }) {"non-fresh agg. index $v; overlaps with graph $G"}
+            check(vp !in G.outs) {"aggregated index $v maps to non-aggregated index $vp under $h for Gf $Gf to G $G"}
+        }
     }
     for (e in Gf.edges) {
         check(e.rename(h) in G.edges) {"an edge in Gf does not map to an edge in G under h: $e is not in $G"}

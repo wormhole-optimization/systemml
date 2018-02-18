@@ -111,7 +111,7 @@ class Spoof2Test(
         //	TEST_NAME+66;  //t(X + colSums(X)) %*% (X + colSums(X))  // evil example...
         //	TEST_NAME+67;  //t(X) %*% (P * (X %*% V) - P * rowSums(P * (X %*% V)))
         //	TEST_NAME+68;  //t(colSums(X)) %*% (colSums(X))
-        //	TEST_NAME+69;  //X - colSums(X)
+        //	TEST_NAME+69;  //X + colSums(X)
         //	TEST_NAME+70;  //(X + colSums(X)) %*% Y
         //	TEST_NAME+71;  //t(X)%*%X + 2*t(colSums(X))%*%colSums(X) + 3*t(colSums(X))%*%colSums(X) // expanded form of 66
         //	TEST_NAME+72;  //C %*% S #C is a col vector; S is a scalar; no algebraic rewrites
@@ -138,8 +138,9 @@ class Spoof2Test(
         //	TEST_NAME+92;  //exp(0 * v)
         //	TEST_NAME+93;  //1 * v + v + Σ(v * 1)
         //	TEST_NAME+94;  //l2svm inner loop - memory test. Modified to use max(out, 1) instead of out * (out > 0)
+        //	TEST_NAME+95;  //X - colSums(X)
         private const val NUM_TESTS = 73
-        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..94)
+        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..95)
         private val _DO_DOT: List<Pair<Int, DC>> = listOf(
 //                85 to DC(arrayListOf(29, 30), performSpoofRewrites = false),
 //                85 to DC(arrayListOf(29, 30))
@@ -241,7 +242,7 @@ class Spoof2Test(
 
             //ensure full aggregates for certain patterns
             val testnum = testname.substring(TEST_NAME.length, testname.length).toInt()
-            if ("-stats" in programArgs && testnum in listOf(82, 84))
+            if ("-stats" in programArgs && testnum in listOf(82, 84, 95))
                 Assert.assertTrue(heavyHittersContainsSubString("-"))
 
         } finally {
