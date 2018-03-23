@@ -9,8 +9,7 @@ import org.apache.sysml.conf.DMLConfig
 import org.apache.sysml.hops.*
 import org.apache.sysml.hops.rewrite.*
 import org.apache.sysml.hops.spoof2.enu.NormalFormExploreEq
-import org.apache.sysml.hops.spoof2.enu2.RewriteSelectRandom
-import org.apache.sysml.hops.spoof2.enu2.SPlanEnumerate3
+import org.apache.sysml.hops.spoof2.enu2.*
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.RewriteFlattenOrNode
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriteRule
@@ -245,11 +244,15 @@ object Spoof2Compiler {
 
 //        if( result2NormalForm != SPlanRewriter.RewriterResult.NoChange ) {
 //            sroots = NormalFormExploreEq().rewriteSPlan(sroots).replace(sroots)
-            SPlanEnumerate3(sroots).expandAll()
-            if( SPlanRewriteRule.LOG.isTraceEnabled )
-                SPlanRewriteRule.LOG.trace("After plan enumeration: "+Explain.explainSPlan(sroots))
-            // after plan enumeration, we can throw away the memo tables and we can flatten chains of OrNodes
-            SPlanTopDownRewriter.rewriteDown(sroots, RewriteFlattenOrNode(), RewriteSelectRandom())
+
+//            SPlanEnumerate3(sroots).expandAll()
+//            if( SPlanRewriteRule.LOG.isTraceEnabled )
+//                SPlanRewriteRule.LOG.trace("After plan enumeration: "+Explain.explainSPlan(sroots))
+//            // after plan enumeration, we can throw away the memo tables and we can flatten chains of OrNodes
+//            SPlanTopDownRewriter.rewriteDown(sroots, RewriteFlattenOrNode(), RewriteSelectRandom())
+
+        SPlanEnumerate4(sroots).execute()
+
             if( SPlanRewriteRule.LOG.isTraceEnabled )
                 SPlanRewriteRule.LOG.trace("After plan selection: "+Explain.explainSPlan(sroots))
 //        }

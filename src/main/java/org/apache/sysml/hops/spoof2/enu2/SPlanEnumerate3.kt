@@ -39,6 +39,22 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         private const val UNSOUND_PRUNE_PF_NNZMIN = 40000
 
         private const val UNSOUND_PRUNE_PF_EXP = true
+
+        fun partitionByAggCC(g: Graph): List<Graph> {
+            val aggOneHop = g.buildOneHopMapUndirected(g.aggs)
+            val aggCCs = findCCs(aggOneHop, g.aggs)
+            val g0 = run {
+                val e0 = g.edges.filter { it.verts.disjoint(g.aggs) }
+                val o0 = e0.flatMap { it.verts }.toSet()
+                Graph(o0.toList(), e0)
+            }
+            val gs = aggCCs.map { aggCC ->
+                val ei = g.edges.filter { !it.verts.disjoint(aggCC) }
+                val oi = g.outs.intersect(ei.flatMap { it.verts })
+                Graph(oi.toList(), ei)
+            }
+            return if (g0.edges.isEmpty()) gs else gs+g0
+        }
     }
 
     private val remainingToExpand = HashSet(initialRoots)
@@ -144,7 +160,8 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         } else listOf(mult)
         val edges = bases.map { toEdge(it) }
         val outs = edges.flatMap { it.verts }.toSet() - aggs //bases.flatMap { it.schema.toABS() }.toSet() - aggs
-        return Graph(outs, edges)
+        // order of outs is not used in this class
+        return Graph(outs.toList(), edges)
     }
 
     private fun toEdge(node: SNode): Edge.C {
@@ -250,8 +267,6 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
     }
 
     private fun <T> List<T>.groupSame() = this.groupBy { it }.flatMap { it.value }
-
-    private data class MutableDouble(var v: Double)
 
 
     /**
@@ -359,7 +374,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         val Vp = Ep.flatMap { it.verts }.toSet()
         val outs = Vp.intersect(Gf.verts + G.outs)
         val aggs = G.aggs - h.values
-        val Gp = Graph(outs, Ep)
+        val Gp = Graph(outs.toList(), Ep) // order of outs should not matter
         assert(aggs == Gp.aggs)
         return listOf(Gp)
     }
@@ -513,7 +528,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
                         is SNodeOption.Some -> createdNodes += l.node
                     }
                     val gc = memo.canonize(p)
-                    ep += Edge.F(listOf(p), gc.orderVertsCanon(p.outs))
+                    ep += Edge.F(listOf(p), gc.orderVertsCanon(p.outs.toSet()))
                 }
             }
             if (!ok) { // one of the Edges failed (None from factorAgg)
@@ -549,22 +564,6 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         val r = optionOrNode(alts)
         memo.memoize(g, r)
         return r
-    }
-
-    private fun partitionByAggCC(g: Graph): List<Graph> {
-        val aggOneHop = g.buildOneHopMapUndirected(g.aggs)
-        val aggCCs = findCCs(aggOneHop, g.aggs)
-        val g0 = run {
-            val e0 = g.edges.filter { it.verts.disjoint(g.aggs) }
-            val o0 = e0.flatMap { it.verts }.toSet()
-            Graph(o0, e0)
-        }
-        val gs = aggCCs.map { aggCC ->
-            val ei = g.edges.filter { !it.verts.disjoint(aggCC) }
-            val oi = g.outs.intersect(ei.flatMap { it.verts })
-            Graph(oi, ei)
-        }
-        return if (g0.edges.isEmpty()) gs else gs+g0
     }
 
     private fun factorMult(es: List<Edge>): SNodeOption {

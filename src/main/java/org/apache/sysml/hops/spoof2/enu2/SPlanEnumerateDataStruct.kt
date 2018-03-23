@@ -1,10 +1,12 @@
 package org.apache.sysml.hops.spoof2.enu2
 
+import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.LiteralOp
 import org.apache.sysml.hops.spoof2.GraphBagCanon
 import org.apache.sysml.hops.spoof2.GraphCanon
 import org.apache.sysml.hops.spoof2.GraphCanonizer
 import org.apache.sysml.hops.spoof2.SHash
+import org.apache.sysml.hops.spoof2.enu.ENode
 import org.apache.sysml.hops.spoof2.plan.*
 import java.util.ArrayList
 import kotlin.math.roundToInt
@@ -46,6 +48,7 @@ fun GraphBag.toSNode(): SNode {
 fun Schema.toABS() = this.map { (a,s) ->
     ABS(a as AB,s)
 }.toSet()
+fun List<ABS>.toSchema(): Schema = Schema(this.map { it.a to it.s })
 /** Does this list not contain a duplicate (according to equals())? */
 fun <T> List<T>.noDups() = this.size == this.toSet().size
 fun <T> List<T>.getDuplicated(): Set<T> {
@@ -57,6 +60,10 @@ data class AttributeBoundShape(val a: AB, val s: Shape) {
     override fun toString() = "\$$a"
 }
 typealias ABS = AttributeBoundShape
+//data class AttributeUnboundShape(val a: AU, val s: Shape) {
+//    //    fun rename(aNew: AB) = AttributeBoundShape(aNew, s)
+//    override fun toString() = "\$$a"
+//}
 
 sealed class Edge(open val base: Any, val verts: List<ABS>) {
     abstract fun isCanonical(): Boolean
@@ -72,7 +79,7 @@ sealed class Edge(open val base: Any, val verts: List<ABS>) {
             val bindings = verts.mapIndexed { i, v -> Attribute.Unbound(i) to v.a }.toMap()
             return makeBindAbove(base, bindings)
         }
-        override fun toString() = "Edge.C<${verts.joinToString(",")}>(${base.id}@${
+        override fun toString() = "EC<${verts.joinToString(",")}>(${base.id}@${
         when(base) {
             is org.apache.sysml.hops.spoof2.plan.SNodeData -> base.hop.opString
             else -> base.toString()
@@ -85,7 +92,7 @@ sealed class Edge(open val base: Any, val verts: List<ABS>) {
         override fun rename(h: Monomorph) = F(base.rename(h), verts.map { h[it] ?: it })
         override fun toSNode(): SNode = base.toSNode()
         // Careful with equals() and hashCode() on Edge.F
-        override fun toString() = "Edge.F<${verts.joinToString(",")}>{{$base}}"
+        override fun toString() = "EF<${verts.joinToString(",")}>{{$base}}"
     }
 
     override fun equals(other: Any?): Boolean {
@@ -106,7 +113,7 @@ sealed class Edge(open val base: Any, val verts: List<ABS>) {
     }
 }
 
-data class Graph(val outs: Set<ABS>, val edges: List<Edge>) {
+data class Graph(val outs: List<ABS>, val edges: List<Edge>) {
     val verts = edges.flatMap { it.verts }.toSet()
     val aggs: Set<ABS> = verts - outs
     //    val outAtts = outs.map(ABS::a)
@@ -120,7 +127,7 @@ data class Graph(val outs: Set<ABS>, val edges: List<Edge>) {
 //        require(verts == edges.flatMap(Edge::verts).toSet()) {"vertices disagree with edges: $verts, $edges"}
     }
     fun isCanonical() = edges.all(Edge::isCanonical)
-    fun rename(h: Monomorph) = Graph(outs.map { h[it] ?: it }.toSet(), edges.map { it.rename(h) })
+    fun rename(h: Monomorph) = Graph(outs.map { h[it] ?: it }, edges.map { it.rename(h) })
     fun toSNode(): SNode {
         if (edges.isEmpty()) return SNodeData(LiteralOp(1.0))
         val mult = if (edges.size == 1) edges[0].toSNode()
@@ -148,7 +155,7 @@ data class Graph(val outs: Set<ABS>, val edges: List<Edge>) {
         }
         return tmp
     }
-    override fun toString() = "Graph<${outs.joinToString(",")}>$edges"
+    override fun toString() = "G<${outs.joinToString(",")}>$edges"
     fun getBases(): Set<SNode> {
         return edges.flatMap { e ->
             when (e) {
@@ -338,3 +345,170 @@ fun GraphBag.connectedComponents(): List<GraphBag> {
     }
     return components
 }
+
+
+
+
+
+
+
+
+
+class DagOfGraphBags private constructor(
+        val graphBags: List<GraphBag>,
+        val graphBagSchemaMaps: List<List<AB>>,
+        val graphBagParents: List<List<SNode>>,
+        val graphBagParentInputIndices: List<List<Int>>,
+        val memoAttrPosList: MutableMap<Id, List<AB>>
+) {
+    val bagBases = graphBags.map { it.flatMap { it.getBases() }.toSet() }
+
+    /** Two GraphBags are in the same connected component if either
+     * (1) both have no bases (empty GraphBags) or (2) their bases are not disjoint. */
+    fun decomposeByConnectedComponents(): List<DagOfGraphBags> {
+        val bases = mutableListOf<MutableSet<SNode>>()
+        val components: MutableList<MutableList<Int>> = mutableListOf()
+        loop@for (i in graphBags.indices) {
+            val bgBases = bagBases[i]
+            for (i2 in bases.indices) {
+                if (!bgBases.disjoint(bases[i2]) || bgBases.isEmpty() && bases[i2].isEmpty()) {
+                    components[i2].add(i)
+                    bases[i2].addAll(bgBases)
+                    continue@loop
+                }
+            }
+            components.add(mutableListOf(i))
+            bases.add(bgBases.toMutableSet())
+        }
+
+        if (components.size == 1)
+            return listOf(this)
+        return components.map { ilist ->
+            val n1 = graphBags.filterIndexed { i2, _ -> i2 in ilist }
+            val ns = graphBagSchemaMaps.filterIndexed { i2, _ -> i2 in ilist }
+            val n2 = graphBagParents.filterIndexed { i2, _ -> i2 in ilist }
+            val n3 = graphBagParentInputIndices.filterIndexed { i2, _ -> i2 in ilist }
+            DagOfGraphBags(n1, ns, n2, n3, memoAttrPosList)
+        }
+    }
+
+
+    companion object {
+
+        private class Builder {
+            val graphBags: MutableList<GraphBag> = mutableListOf()
+            val graphBagSchemaMaps: MutableList<List<AB>> = mutableListOf()
+            val graphBagParents: MutableList<List<SNode>> = mutableListOf()
+            val graphBagParentInputIndices: MutableList<List<Int>> = mutableListOf()
+            val memoGraph: MutableMap<Id, Graph> = mutableMapOf()
+            val memoAttrPosList: MutableMap<Id, List<AB>> = mutableMapOf()
+        }
+
+        fun form(initialRoots: Collection<SNode>): DagOfGraphBags {
+            val b = Builder()
+            for (r in initialRoots)
+                findGraphs(r, b)
+            return DagOfGraphBags(b.graphBags, b.graphBagSchemaMaps,
+                    b.graphBagParents, b.graphBagParentInputIndices,
+                    b.memoAttrPosList)
+        }
+
+        private fun findGraphs(n: SNode, b: Builder) {
+            when(n) {
+                is SNodeData, is SNodeExt -> return n.inputs.indices.forEach { findGraphs(n.inputs[it], b) }
+                is SNodeUnbind -> return findGraphs(n.input, b)
+                is SNodeBind -> return findGraphs(n.input, b)
+                is OrNode -> throw AssertionError("unexpected OrNode") // return // OrNodes are already expanded.
+                is ENode -> throw AssertionError("unexpected ENode")
+                is SNodeAggregate -> if (n.op != Hop.AggOp.SUM) return findGraphs(n.input, b)
+                is SNodeNary -> if (n.op != SNodeNary.NaryOp.MULT && n.op != SNodeNary.NaryOp.PLUS) {
+                    return n.inputs.indices.forEach { findGraphs(n.inputs[it], b) }
+                }
+            }
+
+            // strip away parents, add parents to result, in same input location
+            val pa: List<SNode> = ArrayList(n.parents)
+            val paIdx = pa.map {
+                val idx = it.inputs.indexOf(n)
+                it.inputs.removeAt(idx)
+                idx
+            }
+            n.parents.clear()
+
+            val bag = toGraphBag(n, b)
+            b.graphBags += bag
+            b.graphBagSchemaMaps += SHash.createAttributePositionList(n, b.memoAttrPosList)
+            b.graphBagParents += pa
+            b.graphBagParentInputIndices += paIdx
+        }
+
+        private fun toGraphBag(n: SNode, b: Builder): GraphBag {
+            return if (n is SNodeNary && n.op == SNodeNary.NaryOp.PLUS) {
+                n.inputs.map { it.parents -= n; toGraph(it, b) }
+            } else listOf(toGraph(n, b))
+        }
+
+        private fun toGraph(n: SNode, b: Builder): Graph {
+            if (n.id in b.memoGraph)
+                return b.memoGraph[n.id]!!
+
+            val (aggs0, mult) = if (n is SNodeAggregate && n.op == Hop.AggOp.SUM) {
+                n.input.parents -= n
+                n.aggs to n.input
+            } else Schema() to n
+            val aggs = aggs0.toABS()
+            val bases = if (mult is SNodeNary && mult.op == SNodeNary.NaryOp.MULT) {
+                if (mult.id in b.memoGraph) {
+                    val existingG = b.memoGraph[mult.id]!!
+                    // there may be an aggregate attached
+                    if (aggs.isEmpty())
+                        return existingG
+                    val newAggs = aggs + existingG.aggs
+                    val newOuts = existingG.outs - newAggs
+                    return Graph(newOuts, existingG.edges)
+                }
+                mult.inputs.forEach { it.parents -= mult }
+                mult.inputs
+            } else listOf(mult)
+            val edges = bases.map { toEdge(it, b) }
+            // ordered list of outs
+            val outs = run { //edges.flatMap { it.verts }.toSet() - aggs //bases.flatMap { it.schema.toABS() }.toSet() - aggs
+                val pn = SHash.createAttributePositionList(n, b.memoAttrPosList)
+                pn.map { ab -> ABS(ab, n.schema[ab]!!) }
+            }
+            assert(edges.flatMap { it.verts }.toSet() - aggs == outs.toSet()) {"$outs is incorrect"}
+            return Graph(outs, edges)
+        }
+
+        private fun toEdge(n: SNode, b: Builder): Edge.C {
+            var base = toBase(n)
+            val attrPosList = SHash.createAttributePositionList(n, b.memoAttrPosList)
+            // if the base has bound schema, then set the base to an Unbind above the base. Postcondition: base is unbound.
+            if (base.schema.names.any { it.isBound() }) {
+                base = makeUnbindAbove(base, attrPosList.filter { it in base.schema }.mapIndexed { i,a -> AU(i) to a }.toMap())
+            }
+//            basesForExpand += base
+            val verts = attrPosList.map { ABS(it, n.schema[it]!!) }
+            return Edge.C(base, verts)
+        }
+
+        private fun toBase(node0: SNode): SNode {
+            var node = node0
+            while (node is SNodeBind || node is SNodeUnbind) {
+                if (node.parents.isEmpty())
+                    node.inputs[0].parents -= node
+                node = node.inputs[0]
+            }
+            return node
+        }
+
+    }
+
+}
+
+
+
+
+
+
+

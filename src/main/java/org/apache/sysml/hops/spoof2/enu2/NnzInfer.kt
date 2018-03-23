@@ -25,7 +25,10 @@ class NnzInfer(
                     else -> node.schema.shapes.prod() // use dense if unknown
                 }
             }
-            is SNodeExt -> node.hop.nnz
+            is SNodeExt -> when {
+                node.hop.nnz >= 0 -> node.hop.nnz
+                else -> node.schema.shapes.prod() // use dense if unknown
+            }
             is SNodeNary -> inferNnzNary(node)
             is SNodeAggregate -> inferNnzAgg(node)
             else -> throw AssertionError("unexpected: $node")

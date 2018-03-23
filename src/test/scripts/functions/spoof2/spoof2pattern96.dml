@@ -19,11 +19,8 @@
 #
 #-------------------------------------------------------------
 
-X= matrix( "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15", rows=5, cols=3)
-Y= matrix( "9 8 7 6 5 4 3 2 1", rows=3, cols=3)
-Z= matrix( "9 8 7 6 5 4 3 2 1 2 3 4 5 6 7", rows=5, cols=3)
-#while (FALSE) {}
-
-R = ((X * X) %*% Y)
-
-write(R,$1)
+u= matrix( "9 1 8 2 7 3 6 4 5", rows=9, cols=1)
+v= matrix( "1 2 3 4 5 6 7 8 9", rows=9, cols=1)
+while (FALSE) {}
+S = cbind(u %*% t(v), v %*% t(u))
+write(S,$1)

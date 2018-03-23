@@ -2,6 +2,7 @@ package org.apache.sysml.hops.spoof2.rewrite
 
 import java.util.ArrayList
 import org.apache.sysml.hops.spoof2.plan.SNode
+import org.apache.sysml.hops.spoof2.plan.SNodeData
 import org.apache.sysml.hops.spoof2.plan.SNodeNary
 import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
 
@@ -63,5 +64,11 @@ object SNodeRewriteUtils {
 
     fun isSNodeNary(node: SNode, type: NaryOp): Boolean {
         return node is SNodeNary && node.op === type
+    }
+
+    fun isLiteralOfValue(node: SNode, value: Double): Boolean {
+        return if (node is SNodeData) {
+            node.isLiteralNumeric && node.literalDouble == value
+        } else false
     }
 }

@@ -125,16 +125,18 @@ while(continue & iter < maxiterations)  {
   dd = lambda * sum(s * s)
 
   continue1 = TRUE
-  while(continue1){
+  done=TRUE
+  while(continue1 & done){
     tmp_Xw = Xw + step_sz*Xd
     out = 1 - Y * (tmp_Xw)
     sv = (out > 0)
-    out = out * sv
+    out = max(out, 0) #out * sv
     g = wd + step_sz*dd - sum(out * Y * Xd)
     h = dd + sum(Xd * sv * Xd)
     step_sz = step_sz - g/h
 
     continue1 = (g*g/h >= 0.0000000001);
+    done = FALSE
   }
 
   #update weights
@@ -143,7 +145,7 @@ while(continue & iter < maxiterations)  {
 
   out = 1 - Y * Xw
   sv = (out > 0)
-  out = sv * out
+  out = max(out, 0) #sv * out
   obj = 0.5 * sum(out * out) + lambda/2 * sum(w * w)
   g_new = t(X) %*% (out * Y) - lambda * w
 

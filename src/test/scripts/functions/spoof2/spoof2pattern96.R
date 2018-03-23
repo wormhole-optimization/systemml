@@ -19,11 +19,10 @@
 #
 #-------------------------------------------------------------
 
-X= matrix( "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15", rows=5, cols=3)
-Y= matrix( "9 8 7 6 5 4 3 2 1", rows=3, cols=3)
-Z= matrix( "9 8 7 6 5 4 3 2 1 2 3 4 5 6 7", rows=5, cols=3)
-#while (FALSE) {}
-
-R = ((X * X) %*% Y)
-
-write(R,$1)
+args<-commandArgs(TRUE)
+options(digits=22)
+library(Matrix)
+u = matrix(  c(9,1,8,2,7,3,6,4,5), nrow=9, ncol=1, byrow = TRUE)
+v = matrix(  c(1,2,3,4,5,6,7,8,9), nrow=9, ncol=1, byrow = TRUE)
+S = cbind(u %*% t(v), v %*% t(u))
+writeMM(as(S, "CsparseMatrix"), paste(args[2], "S", sep=""));

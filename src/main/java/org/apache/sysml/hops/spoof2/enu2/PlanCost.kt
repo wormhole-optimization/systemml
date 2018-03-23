@@ -156,7 +156,7 @@ class PlanCost(
         }
     }
 
-    private fun getChildrenAtBelow(node: SNode): Set<SNode> {
+    fun getChildrenAtBelow(node: SNode): Set<SNode> {
         if (node.inputs.isEmpty()) return setOf(node)
         return recChildrenMemo.getOrPut(node.id) {
             node.inputs.map { getChildrenAtBelow(it) }.reduce { a, b -> a+b } + node

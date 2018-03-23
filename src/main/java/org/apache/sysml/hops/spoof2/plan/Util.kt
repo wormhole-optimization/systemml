@@ -176,6 +176,31 @@ fun <T> Iterable<T>.disjoint(b: Iterable<T>): Boolean {
     return this.all { it !in b }
 }
 
+fun BooleanArray.disjoint(b: BooleanArray): Boolean {
+    return this.indices.none { this[it] && b[it] }
+}
+
+fun BooleanArray.or(b: BooleanArray): BooleanArray {
+    require(size == b.size)
+    return BooleanArray(size) { i -> this[i] || b[i] }
+}
+
+/** Is evey true position in this also true in either [a] or [b]? */
+fun BooleanArray.coveredBy(a: BooleanArray, b: BooleanArray): Boolean {
+    require(size == a.size && size == b.size)
+    for (i in indices)
+        if (this[i] && !a[i] && !b[i])
+            return false
+    return true
+}
+
+fun other01(n: Int): Int = when (n) {
+    0 -> 1
+    1 -> 0
+    else -> throw AssertionError()
+}
+
+
 /** "Agnostic bindings", for SNodeBind or SNodeUnbind. */
 fun SNode.agBindings(): MutableMap<AU, AB> = when(this) {
     is SNodeBind -> this.bindings
@@ -332,6 +357,29 @@ private fun <V> findCC(verts: Set<V>, v: V, edges: Map<V, Set<V>>): Set<V> {
     return explored
 }
 
+fun Collection<Int>.toDenseArray(sz: Int): IntArray = IntArray(sz) { i -> this.count { i == it } }
+
+//fun <T> List<List<T>>.groupInnerWithOuterIndex(): Map<T, List<Int>> =
+//        this.withIndex().flatMap { (i, x) -> x.map { IndexedValue(i, it) } }
+//                .groupBy { it.value }
+//                .mapValues { (k, iv) -> iv.map { it.index } }
+//
+//fun <T> List<List<T>>.groupInnerWithOuterIndexDense(): Map<T, IntArray> =
+//        this.withIndex().flatMap { (i, x) -> x.map { IndexedValue(i, it) } }
+//                .groupBy { it.value }
+//                .mapValues { (_, iv) -> iv.map { it.index }.toDenseArray(this.size) }
+
+
+fun <T> List<List<T>>.groupInnerWithOuterIndexDense(): Pair<List<T>, List<IntArray>> {
+    val uniques = this.flatten().distinct()
+    val incl = this.map { l ->
+        IntArray(uniques.size) { i -> l.count { it == uniques[i] } }
+    }
+    return uniques to incl
+}
+
+
+
 inline fun <T> Iterable<T>.partitionIndexed(predicate: (IndexedValue<T>) -> Boolean): Pair<List<T>, List<T>> {
     val first = ArrayList<T>()
     val second = ArrayList<T>()
@@ -346,6 +394,15 @@ inline fun <T> Iterable<T>.partitionIndexed(predicate: (IndexedValue<T>) -> Bool
 }
 
 inline fun <A,R> Pair<A,A>.map(f: (A) -> R): Pair<R,R> = f(this.first) to f(this.second)
+
+fun makeRenameAbove(n: SNode, map: Map<AB, AB>): SNode {
+    if (map.all { (k,v) -> k == v })
+        return n
+    val (unbindMap, bindMap) = map.entries.mapIndexed { i, (k,v) ->
+        AU(i).let { (it to k) to (it to v) }
+    }.unzip()
+    return makeBindAbove(makeUnbindAbove(n, unbindMap.toMap()), bindMap.toMap())
+}
 
 fun makeBindAbove(n: SNode, tgtMap: Map<AU, AB>): SNode {
     return if (tgtMap.isEmpty()) n
@@ -401,3 +458,39 @@ fun <T> List<T>.bagMinus(subAll: List<T>): List<T> {
         acc - sub
     }
 }
+
+class EnumerateIndices(limitsExcl: IntArray): Iterator<IntArray> {
+    private val limitsIncl = IntArray(limitsExcl.size) { limitsExcl[it] - 1 }
+    val ret = IntArray(limitsIncl.size)
+    init {
+        require(limitsIncl.all { it >= 0 })
+    }
+    private var done = false
+    private var first = true
+
+    override fun hasNext(): Boolean {
+        return !done
+    }
+
+    override fun next(): IntArray {
+        if (first) {
+            first = false
+            done = limitsIncl.isNotEmpty()
+            return ret
+        }
+        increment()
+        return ret
+    }
+
+    private fun increment() {
+        var i = ret.size-1
+        while (i >= 0 && ret[i] == limitsIncl[i]) {
+            ret[i] = 0
+            i--
+        }
+        if (i >= 0)
+            ret[i]++
+        done = i < 0 || ret[i] == limitsIncl[i] && ret.indices.all { j -> ret[j] == limitsIncl[j] }
+    }
+}
+

@@ -2,9 +2,7 @@ package org.apache.sysml.hops.spoof2.plan
 
 import org.apache.sysml.runtime.controlprogram.parfor.util.IDSequence
 
-sealed class Attribute constructor(
-        // shape?
-): Comparable<Attribute> {
+sealed class Attribute : Comparable<Attribute> {
     fun isBound() = this is Bound
 
     class Unbound private constructor(
@@ -16,6 +14,7 @@ sealed class Attribute constructor(
             operator fun invoke(dim: Dim) = construct(dim)
             val U0 = construct(0)
             val U1 = construct(1)
+            val U2 = construct(2)
         }
 
         fun bindFresh() = Attribute.Bound()

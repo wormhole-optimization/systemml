@@ -656,8 +656,8 @@ class HandTest {
         val U73 = Edge.C(U, listOf(a7,a3)) //SNodeBind(U, mapOf(AU.U0 to a7, AU.U1 to a3)) // U 7,3
         val V83 = Edge.C(V, listOf(a8,a3)) //SNodeBind(V, mapOf(AU.U0 to a8, AU.U1 to a3)) // V 8,3
         val V82 = Edge.C(V, listOf(a8,a2)) //SNodeBind(V, mapOf(AU.U0 to a8, AU.U1 to a2)) // V 8,2
-        val g1 = Graph(setOf(a7,a2), listOf(U72, V82, U73, V83))
-        val g2 = Graph(setOf(a7,a3), listOf(U72, V82, U73, V83))
+        val g1 = Graph(listOf(a7,a2), listOf(U72, V82, U73, V83))
+        val g2 = Graph(listOf(a7,a3), listOf(U72, V82, U73, V83))
 
         val memo = CanonMemo()
         val c1 = memo.canonize(g1)

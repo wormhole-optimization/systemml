@@ -7,13 +7,12 @@ import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone
 import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone.Companion.orderGenPrz
 import org.apache.sysml.hops.spoof2.plan.AB
 import org.apache.sysml.hops.spoof2.plan.map
-import org.apache.sysml.hops.spoof2.plan.sumByLong
 import org.apache.sysml.hops.spoof2.plan.zipIntersect
 
 //private typealias MatchingChoice = Pair<IntArray,IntArray>
 private typealias V = ABS
-private typealias VMap = BiMap<V,V>
-data class SubgraphIso(val vertMap: VMap, val edgeMap: List<Pair<Edge,Edge>>)
+private typealias VV = BiMap<V,V>
+data class SubgraphIso(val vertMap: VV, val edgeMap: List<Pair<Edge,Edge>>)
 
 class EnumPlusFactor(val g1: Graph, val g2: Graph) : TopIterator<SubgraphIso> {
     private sealed class AggStatus {
@@ -58,8 +57,8 @@ class EnumPlusFactor(val g1: Graph, val g2: Graph) : TopIterator<SubgraphIso> {
         }
     }
 //    private val arrIter: MutableList<PairPrefixRejectTopIter> = arrMatch.map { it.iterateChoices(0) }.toMutableList()
-    private val arrVertMap: List<VMap>  = arrMatch.map { HashBiMap.create<V,V>() }
-    private val vertMap: VMap = HashBiMap.create()
+    private val arrVertMap: List<VV>  = arrMatch.map { HashBiMap.create<V,V>() }
+    private val vertMap: VV = HashBiMap.create()
     /** If there are no Matchings, then this indicates whether the empty SubgraphIso has been enumerated yet. */
     private var iteratedEmpty = false
 
@@ -176,7 +175,7 @@ class EnumPlusFactor(val g1: Graph, val g2: Graph) : TopIterator<SubgraphIso> {
                 assert(e1.base == e2.base)
                 e1.rename(h1.inverse())
             }
-            val gn = Graph(outs, edges)
+            val gn = Graph(outs.toList(), edges)
             return Triple(gn, h1, h2)
         }
     }
