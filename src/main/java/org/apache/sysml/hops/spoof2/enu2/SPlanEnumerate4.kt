@@ -6,7 +6,6 @@ import org.apache.sysml.hops.spoof2.plan.SNode
 class SPlanEnumerate4(initialRoots: Collection<SNode>) {
     constructor(vararg inputs: SNode) : this(inputs.asList())
     private val _origRoots = initialRoots.toList()
-    private val LOG = LogFactory.getLog(SPlanEnumerate4::class.java)!!
 
     fun execute() {
         val dogbs = DagOfGraphBags.form(_origRoots)

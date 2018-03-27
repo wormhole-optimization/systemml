@@ -1,5 +1,6 @@
 package org.apache.sysml.hops.spoof2.enu2
 
+import org.apache.commons.logging.LogFactory
 import org.apache.sysml.hops.spoof2.SHash
 import org.apache.sysml.hops.spoof2.enu2.BottomUpOptimize.Companion.buo
 import org.apache.sysml.hops.spoof2.plan.*
@@ -7,8 +8,10 @@ import org.apache.sysml.hops.spoof2.rewrite.SNodeRewriteUtils
 import org.apache.sysml.runtime.controlprogram.parfor.util.IDSequence
 
 
+typealias ABList = List<AB>
 typealias ShapeList = List<Shape>
 private fun ShapeList.toUnboundSchema(): Schema = Schema(this.mapIndexed { i, s -> AU(i) as Name to s })
+
 
 sealed class Construct(
         val children: List<Construct>,
@@ -17,6 +20,10 @@ sealed class Construct(
         val outer: ShapeList
 ) {
     val outerSchema = outer.toUnboundSchema() //Schema(outer.mapIndexed { i, s -> AU(i) as Name to s })
+
+    override fun toString(): String {
+        return "${javaClass.simpleName}: $cmaps" // <p:${parents.size}>
+    }
 
     val id: Id = _idSeq.nextID
     val height: Int // = if (children.isEmpty()) 0 else children.maxBy { it.height }!!.height + 1
@@ -73,17 +80,18 @@ sealed class Construct(
     }
 
     fun makeOuterAbove(c2: Construct): Outer {
+        // determine orientation in the Outer.construct method
         return parents.find {
             it is Outer && (it.a == c2 || it.b == c2)
         } as? Outer ?: Outer.construct(this, c2)
     }
 
-    fun makeCheckTransposeAbove(expectedOuts: List<ABS>): CheckTranspose {
-        return parents.find { it is CheckTranspose && it.expectedOuts == expectedOuts }
-                as? CheckTranspose ?: CheckTranspose(this, expectedOuts)
+    fun makeRenameAbove(schema: ABList): Rename {
+        return parents.find { it is Rename && it.schema == schema }
+                as? Rename ?: Rename(this, schema)
     }
 
-    fun makeMxMAbove(c2: Construct, aj: Int, bj: Int): MatrixMult {
+    fun makeMxMAbove(c2: Construct, aj: Int, bj: Int): MatrixMult { // TODO
         return parents.find { it ->
             when {
                 it !is MatrixMult -> false
@@ -115,26 +123,26 @@ sealed class Construct(
     }
 
 
-    private var cachedSNode: SNode? = null
+    private var cachedSNode: Pair<SNode, ABList>? = null
 
-    fun convertToSNode(memoAttrPosList: MutableMap<Id, List<AB>>): SNode {
+    fun convertToSNode(): Pair<SNode, ABList> { // returned list matches order of outer and order of all cmaps' vertMaps.
         return cachedSNode ?: run {
-            val inputs = children.map { it.convertToSNode(memoAttrPosList) }
-            val c = _convertToSNode(inputs, memoAttrPosList)
-            val r =
-                if (c.schema.isEmpty() || cmaps.isEmpty()) c
-                else {
-                    val pc = SHash.createAttributePositionList(c, memoAttrPosList)
-                    val rep = cmaps.first()
-                    makeRenameAbove(c, pc.zip(rep.vertMap).map { (x, y) -> x to y.a }.toMap())
-                }
+            val inputs = children.map { it.convertToSNode() }
+            val c = _convertToSNode(inputs)
+            val r = c
+//                if (c.schema.isEmpty() || cmaps.isEmpty()) c
+//                else {
+//                    val pc = SHash.createAttributePositionList(c, memoAttrPosList)
+//                    val rep = cmaps.first()
+//                    makeRenameAbove(c, pc.zip(rep.vertMap).map { (x, y) -> x to y.a }.toMap())
+//                }
             cachedSNode = r
             r
         }
     }
 
     // rename the inputs as necessary to apply the construct and obtain an output suitable for rep
-    protected abstract fun _convertToSNode(inputs: List<SNode>, memoAttrPosList: MutableMap<Id, List<AB>>): SNode
+    protected abstract fun _convertToSNode(inputs: List<Pair<SNode, ABList>>): Pair<SNode, ABList>
 
 
 
@@ -164,7 +172,8 @@ sealed class Construct(
             Status.EXPLORED -> {
                 cmaps.forEach { cmap ->
                     if (cmap.complete) {
-                        val idx = buo.tgs.invComplete[cmap.tgtGraph].indexOf(this)
+                        val above = this.makeRenameAbove(cmap.vertMap.map(ABS::a))
+                        val idx = buo.tgs.invComplete[cmap.tgtGraph].indexOf(above)
                         buo.tgs.invComplete[cmap.tgtGraph].removeAt(idx)
                     } else {
                         val im = buo.tgs.invMaps[cmap.tgtGraph]
@@ -211,6 +220,7 @@ sealed class Construct(
     companion object {
         private val _idSeq = IDSequence()
         protected val nnzInferer: NnzInferer = WorstCaseNnz
+        private val LOG = LogFactory.getLog(Construct::class.java)!!
 
         // order the inputs
         protected fun orderAB(a: Construct, b: Construct): Pair<Construct,Construct> {
@@ -266,15 +276,15 @@ sealed class Construct(
             // already filled in
         }
 
-        override fun _convertToSNode(inputs: List<SNode>, memoAttrPosList: MutableMap<Id, List<AB>>): SNode {
-            if (base.schema.isEmpty()) return base
-
+        override fun _convertToSNode(inputs: List<Pair<SNode, ABList>>): Pair<SNode, ABList> {
+            if (base.schema.isEmpty())
+                return base to listOf()
             // attempt smart binding selection, to reduce the number of renames
             val bindings =
                     if (cmaps.isEmpty()) base.schema.genAllBindings()
                     else cmaps.first().vertMap.mapIndexed { i, (a,_) -> AU(i) to a }.toMap()
-
-            return makeBindAbove(base, bindings)
+            val orderedSchema = bindings.toList().sortedBy { (au, _) -> au.dim }.map { (_, ab) -> ab }
+            return makeBindAbove(base, bindings) to orderedSchema
         }
     }
 
@@ -309,7 +319,6 @@ sealed class Construct(
                     2 -> require(a.outer == b.outer.reversed()) {"reversed ewise mult does not match outer schemas? $a, $b"}
                     1 -> require( a.outer[0] == b.outer[0]) {"reversed matrix-vector element-wise multiply does not match shapes? $a, $b"}
                 }
-                require(a.outer == b.outer.reversed()) {"ewise mult on different outer schemas? $a, $b"}
             }
         }
 
@@ -364,6 +373,7 @@ sealed class Construct(
                                 && (am.vertMap.last() == bm.vertMap.last()) == aligned
                                 && am.coveredEdges.disjoint(bm.coveredEdges)
                     }.map { bm ->
+                        // always take the vertMap of a.
                         CMap(this, tgi, am.vertMap, am.coveredEdges.or(bm.coveredEdges))
                     }
                 }.toSet() // not pretty, but does the job
@@ -371,17 +381,17 @@ sealed class Construct(
 
         }
 
-        override fun _convertToSNode(inputs: List<SNode>, memoAttrPosList: MutableMap<Id, List<AB>>): SNode {
+        override fun _convertToSNode(inputs: List<Pair<SNode, ABList>>): Pair<SNode, ABList> {
             // ensure that the inputs' attributes line up correctly.
-            val na = inputs[0]
-            val nb = inputs[1]
-            if (na.schema.isEmpty() || nb.schema.isEmpty())
-                return makeMultAbove(na, nb)
-            val pa = SHash.createAttributePositionList(na, memoAttrPosList)
-            val pb = SHash.createAttributePositionList(nb, memoAttrPosList)
+            val (na, pa) = inputs[0]
+            val (nb, pb) = inputs[1]
+            when {
+//                pa.isEmpty() -> return makeMultAbove(na, nb) to pb // not necessary; just second is okay because order
+                pb.isEmpty() -> return makeMultAbove(na, nb) to pa
+            }
             val ok = pb.all { it in pa } && (pa.last() == pb.last()) == aligned
             if (ok)
-                return makeMultAbove(na, nb)
+                return makeMultAbove(na, nb) to pa
             // rename second to match first
             val renameb = when (pa.size) {
                 2 -> when (pb.size) {
@@ -393,7 +403,7 @@ sealed class Construct(
                 else -> throw AssertionError()
             }
             val newb = makeRenameAbove(nb, renameb)
-            return makeMultAbove(na, newb)
+            return makeMultAbove(na, newb) to pa
         }
     }
 
@@ -407,7 +417,7 @@ sealed class Construct(
             if (this === other) return true
             if (javaClass != other?.javaClass) return false
 
-            other as Plus
+            other as Outer
 
             if (a != other.a) return false
             if (b != other.b) return false
@@ -425,7 +435,15 @@ sealed class Construct(
                 return a.nnz * b.nnz
             }
             fun construct(_a: Construct, _b: Construct): Outer {
-                // compare by dim (matrices before vectors), then nnz (denser first), then id (smallest first)
+                // Choose the order of A and B such that the outer schema is constructed correctly, given the graph we target
+//                val (a, b) = run {
+//                    when {
+//                        _a.outer.size != _b.outer.size -> if (_a.outer.size >= _b.outer.size) _a to _b else _b to _a
+//                        // both vectors
+//                        tgtA.outs == tgtMult.outs.subList(0, tgtA.outs.size) -> _a to _b
+//                        else -> _b to _a
+//                    }
+//                }
                 val (a, b) = orderAB(_a, _b)
                 val nnz = estimateNnz(a, b)
                 // Treat cost as 0 since we don't search over orders of vector and scalar multi
@@ -437,8 +455,8 @@ sealed class Construct(
             // no CMaps for Outer; used as glue from tgts to tgtMult
         }
 
-        override fun _convertToSNode(inputs: List<SNode>, memoAttrPosList: MutableMap<Id, List<AB>>): SNode {
-            return makeMultAbove(inputs)
+        override fun _convertToSNode(inputs: List<Pair<SNode, ABList>>): Pair<SNode, ABList> {
+            return makeMultAbove(inputs[0].first, inputs[1].first) to inputs[0].second + inputs[1].second
         }
     }
 
@@ -488,8 +506,8 @@ sealed class Construct(
             // currently do not use CMaps for Plus
         }
 
-        override fun _convertToSNode(inputs: List<SNode>, memoAttrPosList: MutableMap<Id, List<AB>>): SNode {
-            return makePlusAbove(inputs)
+        override fun _convertToSNode(inputs: List<Pair<SNode, ABList>>): Pair<SNode, ABList> {
+            return makePlusAbove(inputs[0].first, inputs[1].first) to inputs[0].second + inputs[1].second
         }
     }
 
@@ -536,6 +554,8 @@ sealed class Construct(
             result = 31 * result + type.hashCode()
             return result
         }
+
+        override fun toString(): String = "$type: $cmaps"
 
         companion object {
             fun construct(_a: Construct, _b: Construct, _aj: Int, _bj: Int): MatrixMult {
@@ -603,24 +623,29 @@ sealed class Construct(
             }
         }
 
-        override fun _convertToSNode(inputs: List<SNode>, memoAttrPosList: MutableMap<Id, List<AB>>): SNode {
-            val na = inputs[0]
-            val nb = inputs[1]
-            val pa = SHash.createAttributePositionList(na, memoAttrPosList)
-            val pb = SHash.createAttributePositionList(nb, memoAttrPosList)
-            val aj = type.aj; val bj = type.bj
+        override fun _convertToSNode(inputs: List<Pair<SNode, ABList>>): Pair<SNode, ABList> {
+            val (na, pa) = inputs[0]
+            val (nb, pb) = inputs[1]
 
-            val newb = if (pa.size == 2 && pb.size == 2) {
+            val aj = type.aj; val bj = type.bj
+            // rename pb: position bj to aj; ensure distinct bk from ak
+
+            val (newb, mxmSchema) = if (pa.size == 2 && pb.size == 2) {
                 val ai = other01(aj)
                 val bk = other01(bj)
-                val ok = pa[aj] == pb[bj] && pa[ai] != pb[bk]
-                if (ok) nb else makeRenameAbove(nb, mapOf(pb[aj] to pa[aj], pb[bk] to pb[bk].deriveFresh()))
+                val mapping =
+                        (if (pa[aj] != pb[bj]) mapOf(pb[bj] to pa[aj]) else mapOf()) +
+                                (if (pa[ai] == pb[bk] || pb[bk] == pa[aj]) mapOf(pb[bk] to pb[bk].deriveFresh()) else mapOf())
+                val newb = if (mapping.isEmpty()) nb else makeRenameAbove(nb, mapping)
+                val mxmSchema = listOf(pa[ai], mapping.getOrElse(pb[bk]) {pb[bk]})
+                newb to mxmSchema
             } else {
-                val ok = pa[aj] == pb[bj]
-                if (ok) nb else makeRenameAbove(nb, mapOf(pb[aj] to pa[aj]))
+                val newb = if (pa[aj] == pb[bj]) nb else makeRenameAbove(nb, mapOf(pb[aj] to pa[aj]))
+                val mxmSchema = if (pa.size == 2) listOf(pa[other01(aj)]) else listOf()
+                newb to mxmSchema
             }
 
-            return makeAggAbove(makeMultAbove(na, newb), pa[aj])
+            return makeAggAbove(makeMultAbove(na, newb), pa[aj]) to mxmSchema
         }
     }
 
@@ -679,47 +704,78 @@ sealed class Construct(
             }
         }
 
-        override fun _convertToSNode(inputs: List<SNode>, memoAttrPosList: MutableMap<Id, List<AB>>): SNode {
-            val n = inputs[0]
-            val p = SHash.createAttributePositionList(n, memoAttrPosList)
-            return makeAggAbove(n, p[aggPos])
+        override fun _convertToSNode(inputs: List<Pair<SNode, ABList>>): Pair<SNode, ABList> {
+            val (n, p) = inputs[0]
+            return makeAggAbove(n, p[aggPos]) to (p - p[aggPos])
         }
     }
 
 
-    class CheckTranspose(val a: Construct, val expectedOuts: List<ABS>): Construct(listOf(a), a.nnz, 0.0, a.outer.reversed()) {
-        override fun fillCMaps() {
-            // no CMaps; special use
-        }
+//    class Transpose(val a: Construct): Construct(listOf(a), a.nnz, 0.0, a.outer.reversed()) {
+//        init {
+//            require(a.outer.size == 2)
+//        }
+//
+//        override fun fillCMaps() {
+//            // no CMaps; special use
+//        }
+//
+//        override fun _convertToSNode(inputs: List<SNode>, memoAttrPosList: MutableMap<Id, ABList>): SNode {
+//            val n = inputs[0]
+//            assert(n.schema.size == 2)
+////            if (n.schema.size < 2)
+////                return n
+////            val p = SHash.createAttributePositionList(n, memoAttrPosList)
+////            if (p == expectedOuts.map(ABS::a))
+////                return n
+//
+//            @Suppress("UNCHECKED_CAST")
+//            val rename = n.schema.keys.toList().let { it as ABList; it.zip(it.reversed()).toMap() }
+//            return makeRenameAbove(n, rename)
+//        }
+//
+//        override fun equals(other: Any?): Boolean {
+//            if (this === other) return true
+//            if (javaClass != other?.javaClass) return false
+//
+//            other as Transpose
+//
+//            if (a != other.a) return false
+////            if (expectedOuts != other.expectedOuts) return false
+//
+//            return true
+//        }
+//        override fun hashCode(): Int {
+//            var result = a.hashCode()
+////            result = 31 * result + expectedOuts.hashCode()
+//            return result
+//        }
+//    }
 
-        override fun _convertToSNode(inputs: List<SNode>, memoAttrPosList: MutableMap<Id, List<AB>>): SNode {
-            val n = inputs[0]
-            if (n.schema.size < 2)
-                return n
-            val p = SHash.createAttributePositionList(n, memoAttrPosList)
-            if (p == expectedOuts.map(ABS::a))
-                return n
-            // otherwise need transpose
-            @Suppress("UNCHECKED_CAST")
-            val rename = n.schema.keys.toList().let { it as List<AB>; it.zip(it.reversed()).toMap() }
-            return makeRenameAbove(n, rename)
-        }
-
+    class Rename(val a: Construct, val schema: ABList): Construct(listOf(a), a.nnz, 0.0, a.outer) {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
             if (javaClass != other?.javaClass) return false
 
-            other as CheckTranspose
+            other as Rename
 
             if (a != other.a) return false
-            if (expectedOuts != other.expectedOuts) return false
+            if (schema != other.schema) return false
 
             return true
         }
         override fun hashCode(): Int {
             var result = a.hashCode()
-            result = 31 * result + expectedOuts.hashCode()
+            result = 31 * result + schema.hashCode()
             return result
+        }
+
+        override fun fillCMaps() {}
+
+        override fun _convertToSNode(inputs: List<Pair<SNode, ABList>>): Pair<SNode, ABList> {
+            val (n, p) = inputs[0]
+            val mapping = p.zip(schema).toMap()
+            return makeRenameAbove(n, mapping) to schema
         }
     }
 

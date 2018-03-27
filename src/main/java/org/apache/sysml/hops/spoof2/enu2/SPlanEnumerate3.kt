@@ -46,12 +46,12 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
             val g0 = run {
                 val e0 = g.edges.filter { it.verts.disjoint(g.aggs) }
                 val o0 = e0.flatMap { it.verts }.toSet()
-                Graph(o0.toList(), e0)
+                Graph(o0, e0)
             }
             val gs = aggCCs.map { aggCC ->
                 val ei = g.edges.filter { !it.verts.disjoint(aggCC) }
                 val oi = g.outs.intersect(ei.flatMap { it.verts })
-                Graph(oi.toList(), ei)
+                Graph(oi, ei)
             }
             return if (g0.edges.isEmpty()) gs else gs+g0
         }
@@ -161,7 +161,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         val edges = bases.map { toEdge(it) }
         val outs = edges.flatMap { it.verts }.toSet() - aggs //bases.flatMap { it.schema.toABS() }.toSet() - aggs
         // order of outs is not used in this class
-        return Graph(outs.toList(), edges)
+        return Graph(outs, edges)
     }
 
     private fun toEdge(node: SNode): Edge.C {
@@ -374,7 +374,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
         val Vp = Ep.flatMap { it.verts }.toSet()
         val outs = Vp.intersect(Gf.verts + G.outs)
         val aggs = G.aggs - h.values
-        val Gp = Graph(outs.toList(), Ep) // order of outs should not matter
+        val Gp = Graph(outs, Ep) // order of outs should not matter
         assert(aggs == Gp.aggs)
         return listOf(Gp)
     }

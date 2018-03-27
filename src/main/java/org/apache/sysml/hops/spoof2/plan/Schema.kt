@@ -37,7 +37,7 @@ class Schema private constructor(
     }
 
     override fun toString(): String {
-        return nameShapes.map { (n,s) -> "$n-$s" }.joinToString(prefix = "{", postfix = "}")
+        return nameShapes.map { (n,s) -> "$n" }.joinToString(prefix = "{", postfix = "}") // -$s
     }
 
     fun setTo(s: Schema) {

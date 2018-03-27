@@ -113,7 +113,7 @@ sealed class Edge(open val base: Any, val verts: List<ABS>) {
     }
 }
 
-data class Graph(val outs: List<ABS>, val edges: List<Edge>) {
+data class Graph(val outs: Set<ABS>, val edges: List<Edge>) {
     val verts = edges.flatMap { it.verts }.toSet()
     val aggs: Set<ABS> = verts - outs
     //    val outAtts = outs.map(ABS::a)
@@ -127,7 +127,7 @@ data class Graph(val outs: List<ABS>, val edges: List<Edge>) {
 //        require(verts == edges.flatMap(Edge::verts).toSet()) {"vertices disagree with edges: $verts, $edges"}
     }
     fun isCanonical() = edges.all(Edge::isCanonical)
-    fun rename(h: Monomorph) = Graph(outs.map { h[it] ?: it }, edges.map { it.rename(h) })
+    fun rename(h: Monomorph) = Graph(outs.map { h[it] ?: it }.toSet(), edges.map { it.rename(h) })
     fun toSNode(): SNode {
         if (edges.isEmpty()) return SNodeData(LiteralOp(1.0))
         val mult = if (edges.size == 1) edges[0].toSNode()
@@ -356,7 +356,6 @@ fun GraphBag.connectedComponents(): List<GraphBag> {
 
 class DagOfGraphBags private constructor(
         val graphBags: List<GraphBag>,
-        val graphBagSchemaMaps: List<List<AB>>,
         val graphBagParents: List<List<SNode>>,
         val graphBagParentInputIndices: List<List<Int>>,
         val memoAttrPosList: MutableMap<Id, List<AB>>
@@ -385,10 +384,9 @@ class DagOfGraphBags private constructor(
             return listOf(this)
         return components.map { ilist ->
             val n1 = graphBags.filterIndexed { i2, _ -> i2 in ilist }
-            val ns = graphBagSchemaMaps.filterIndexed { i2, _ -> i2 in ilist }
             val n2 = graphBagParents.filterIndexed { i2, _ -> i2 in ilist }
             val n3 = graphBagParentInputIndices.filterIndexed { i2, _ -> i2 in ilist }
-            DagOfGraphBags(n1, ns, n2, n3, memoAttrPosList)
+            DagOfGraphBags(n1, n2, n3, memoAttrPosList)
         }
     }
 
@@ -397,7 +395,6 @@ class DagOfGraphBags private constructor(
 
         private class Builder {
             val graphBags: MutableList<GraphBag> = mutableListOf()
-            val graphBagSchemaMaps: MutableList<List<AB>> = mutableListOf()
             val graphBagParents: MutableList<List<SNode>> = mutableListOf()
             val graphBagParentInputIndices: MutableList<List<Int>> = mutableListOf()
             val memoGraph: MutableMap<Id, Graph> = mutableMapOf()
@@ -408,22 +405,30 @@ class DagOfGraphBags private constructor(
             val b = Builder()
             for (r in initialRoots)
                 findGraphs(r, b)
-            return DagOfGraphBags(b.graphBags, b.graphBagSchemaMaps,
-                    b.graphBagParents, b.graphBagParentInputIndices,
+            return DagOfGraphBags(b.graphBags.reversed(),
+                    b.graphBagParents.map { it.reversed() }.reversed(), b.graphBagParentInputIndices.map { it.reversed() }.reversed(),
                     b.memoAttrPosList)
         }
 
         private fun findGraphs(n: SNode, b: Builder) {
+            fun recurOnInputs() {
+                var i = 0
+                var sz = n.inputs.size
+                while (i < n.inputs.size) {
+                    findGraphs(n.inputs[i], b)
+                    if (n.inputs.size == sz) i++
+                    else sz = n.inputs.size
+                }
+            }
+
             when(n) {
-                is SNodeData, is SNodeExt -> return n.inputs.indices.forEach { findGraphs(n.inputs[it], b) }
+                is SNodeData, is SNodeExt -> return recurOnInputs()
                 is SNodeUnbind -> return findGraphs(n.input, b)
                 is SNodeBind -> return findGraphs(n.input, b)
                 is OrNode -> throw AssertionError("unexpected OrNode") // return // OrNodes are already expanded.
                 is ENode -> throw AssertionError("unexpected ENode")
                 is SNodeAggregate -> if (n.op != Hop.AggOp.SUM) return findGraphs(n.input, b)
-                is SNodeNary -> if (n.op != SNodeNary.NaryOp.MULT && n.op != SNodeNary.NaryOp.PLUS) {
-                    return n.inputs.indices.forEach { findGraphs(n.inputs[it], b) }
-                }
+                is SNodeNary -> if (n.op != SNodeNary.NaryOp.MULT && n.op != SNodeNary.NaryOp.PLUS) return recurOnInputs()
             }
 
             // strip away parents, add parents to result, in same input location
@@ -437,7 +442,6 @@ class DagOfGraphBags private constructor(
 
             val bag = toGraphBag(n, b)
             b.graphBags += bag
-            b.graphBagSchemaMaps += SHash.createAttributePositionList(n, b.memoAttrPosList)
             b.graphBagParents += pa
             b.graphBagParentInputIndices += paIdx
         }
@@ -472,10 +476,11 @@ class DagOfGraphBags private constructor(
             } else listOf(mult)
             val edges = bases.map { toEdge(it, b) }
             // ordered list of outs
-            val outs = run { //edges.flatMap { it.verts }.toSet() - aggs //bases.flatMap { it.schema.toABS() }.toSet() - aggs
-                val pn = SHash.createAttributePositionList(n, b.memoAttrPosList)
-                pn.map { ab -> ABS(ab, n.schema[ab]!!) }
-            }
+            val outs = edges.flatMap { it.verts }.toSet() - aggs
+//                    run { //edges.flatMap { it.verts }.toSet() - aggs //bases.flatMap { it.schema.toABS() }.toSet() - aggs
+//                val pn = SHash.createAttributePositionList(n, b.memoAttrPosList)
+//                pn.map { ab -> ABS(ab, n.schema[ab]!!) }
+//            }
             assert(edges.flatMap { it.verts }.toSet() - aggs == outs.toSet()) {"$outs is incorrect"}
             return Graph(outs, edges)
         }

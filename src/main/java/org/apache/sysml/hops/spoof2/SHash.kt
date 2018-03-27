@@ -17,7 +17,7 @@ object SHash {
         val map: List<AB> = when (node) {
             is SNodeData -> listOf()
             is SNodeBind -> { check(createAttributePositionList(node.input, memo).isEmpty()) { "there should be no bindings underneath SNodeBind (normal form should have one layer of binds)" }
-                check(node.bindings.keys.map { it.dim }.sorted() == (0 until node.bindings.size).toList()) { "the bound dimensions should be the contiguous natural numbers 1 upto a number N" }
+                check(node.bindings.keys.map { it.dim }.sorted() == (0 until node.bindings.size).toList()) { "the bound dimensions should be the contiguous natural numbers" }
                 node.bindings.entries.sortedBy { it.key.dim }.map { it.value }
             }
             is SNodeNary -> {
@@ -29,8 +29,11 @@ object SHash {
             is SNodeAggregate -> node.aggs.names.fold(createAttributePositionList(node.input, memo)) { acc, aggName ->
                 acc - aggName as AB
             }
-            is SNodeUnbind -> {
+            is SNodeUnbind -> { // there may be partial unbindings
                 check(createAttributePositionList(node.input, memo).toSet() == node.unbindings.values) {"there are more attributes present in the input to this SNodeUnbind than are in the unbindings"}
+//                if (node.schema.any { (a,_) -> a.isBound() }) {
+//
+//                }
                 listOf()
             }
             is SNodeExt -> {

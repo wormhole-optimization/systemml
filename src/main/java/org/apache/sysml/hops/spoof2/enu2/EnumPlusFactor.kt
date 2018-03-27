@@ -175,7 +175,7 @@ class EnumPlusFactor(val g1: Graph, val g2: Graph) : TopIterator<SubgraphIso> {
                 assert(e1.base == e2.base)
                 e1.rename(h1.inverse())
             }
-            val gn = Graph(outs.toList(), edges)
+            val gn = Graph(outs, edges)
             return Triple(gn, h1, h2)
         }
     }

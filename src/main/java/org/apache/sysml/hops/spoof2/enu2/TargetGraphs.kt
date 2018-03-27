@@ -1,7 +1,7 @@
 package org.apache.sysml.hops.spoof2.enu2
 
+import org.apache.commons.logging.LogFactory
 import org.apache.sysml.hops.LiteralOp
-import org.apache.sysml.hops.spoof2.SHash
 import org.apache.sysml.hops.spoof2.plan.*
 import java.util.*
 
@@ -30,14 +30,14 @@ class TargetGraphs(
     fun partitionn(_g: Graph): List<Graph> {
         val (g0, g) = run {
             val (e0, e) = _g.edges.partition { it.verts.isEmpty() }
-            Graph(listOf(), e0) to Graph(_g.outs, e)
+            Graph(setOf(), e0) to Graph(_g.outs, e)
         }
         val oneHop = g.buildOneHopMapUndirected()
         val CCs = findCCs(oneHop, g.verts) // all vertices!
         val gs = CCs.map { CC ->
             val ei = g.edges.filter { !it.verts.disjoint(CC) }
             val ev = ei.flatMap { it.verts }
-            val oi = g.outs.filter { it in ev }
+            val oi = g.outs.filter { it in ev }.toSet()
             Graph(oi, ei)
         }
         return if (g0.edges.isEmpty()) gs else gs+g0
@@ -94,7 +94,8 @@ class TargetGraphs(
             val clist = multMultiplicities.mapIndexed { i, m ->
                 if (m > 0) invComplete[i].single() else null
             }
-            val multComplete = multAlignedConstructs(tgts, clist, multMultiplicities) ?: continue
+            // checkPrune is false to avoid recursive initialization problem (leads to null pointer), and also nothing to check
+            val multComplete = multAlignedConstructs(tgts, clist, multMultiplicities, false) ?: continue
             invCompleteMult[multGroupIdx] += multComplete
         }
 
@@ -107,8 +108,8 @@ class TargetGraphs(
             val clist = plusMultiplicities.mapIndexed { i, m ->
                 if (m > 0) invCompleteMult[i].single() else null
             }
-            val plusComplete = plusConstructs(tgts, clist, plusMultiplicities) ?: continue
-            invCompleteMult[plusGroupIdx] += plusComplete
+            val plusComplete = plusConstructs(tgts, clist, plusMultiplicities, false) ?: continue
+            invCompletePlus[plusGroupIdx] += plusComplete
         }
 
         if (invCompletePlus.all { it.isNotEmpty() }) {
@@ -120,14 +121,16 @@ class TargetGraphs(
         }
     }
 
-    fun multAlignedConstructs(tgs: List<Graph>, _clist: List<Construct?>, multiplicities: IntArray): Construct? {
-        return combineConstructs(tgs, _clist, multiplicities,
+    fun multAlignedConstructs(tgs: List<Graph>, _clist: List<Construct?>, multiplicities: IntArray,
+                              checkPrune: Boolean): Construct? {
+        return combineConstructs(tgs, _clist, multiplicities, checkPrune,
                 { a, b -> a.makeOuterAbove(b) },
                 TargetGraphs.Companion::recMult)
     }
 
-    fun plusConstructs(tgs: List<Graph>, _clist: List<Construct?>, multiplicities: IntArray): Construct? {
-        return combineConstructs(tgs, _clist, multiplicities,
+    fun plusConstructs(tgs: List<Graph>, _clist: List<Construct?>, multiplicities: IntArray,
+                       checkPrune: Boolean): Construct? {
+        return combineConstructs(tgs, _clist, multiplicities, checkPrune,
                 { a, b -> a.makePlusAbove(b) },
                 this::multiplyScalar)
     }
@@ -143,6 +146,8 @@ class TargetGraphs(
     companion object {
         const val COST_EPS = 0
 
+        private val LOG = LogFactory.getLog(TargetGraphs::class.java)!!
+
         // cost of executing all of these constructs, assuming maximum CSE sharing
         private fun combinedCost(clist: List<Construct>): Double {
             return clist.flatMap { it.recConstructsNoSelf + it }.toSet().sumByDouble { it.thisCost }
@@ -151,6 +156,7 @@ class TargetGraphs(
         /* Returns null if the Construct' cost exceeds the upper bound.
          * list given in order of tgts */
         private inline fun combineConstructs(tgs: List<Graph>, _clist: List<Construct?>, multiplicities: IntArray,
+                                             checkPrune: Boolean,
                                              combine: (Construct, Construct) -> Construct,
                                              doMulti: (Construct, Int) -> Construct): Construct? {
             require(_clist.size == multiplicities.size && tgs.size == _clist.size)
@@ -172,7 +178,7 @@ class TargetGraphs(
             val groupsAdded = groupsSorted.mapValues { (schema, clist) ->
                 clist.subList(1, clist.size).fold(clist[0]) { acc, nextc ->
                     val p: Construct = combine(acc, nextc)
-                    if (p.isPruned()) {
+                    if (checkPrune && p.isPruned()) {
                         p.prune()
                         return null
                     }
@@ -182,7 +188,7 @@ class TargetGraphs(
             val groupsAddedSorted = groupsAdded.toList().sortedByDescending { (schema, _) -> schema.size }.map {it.second}
             return groupsAddedSorted.subList(1, groupsAddedSorted.size).fold(groupsAddedSorted[0]) {acc, nextc ->
                 val p: Construct = combine(acc, nextc)
-                if (p.isPruned()) {
+                if (checkPrune && p.isPruned()) {
                     p.prune()
                     return null
                 }
@@ -224,17 +230,22 @@ class TargetGraphs(
     }
 
 
-    fun exploreComplete(cons: CMap) {
+    fun exploreComplete(_cons: CMap) {
         // (for each multiplication group,) combine with other complete constructs in the same multiplication group
         // add the newly formed ones to invCompleteMult and mark FINAL_MULT
         // (for each plus group,) for each newly formed one added to invCompleteMult, combine with other complete constructs in the same plus group
         // add the newly formed ones to bestComplete and mark FINAL_PLUS or FINAL_PLUS_MULT
 
-        invComplete[cons.tgtGraph] += cons.construct
+        val tgtGraph = _cons.tgtGraph
+        val construct = Construct.Rename(_cons.construct, _cons.vertMap.map(ABS::a))
+//                if (_cons.vertMap == tgts[tgtGraph].outs) _cons.construct
+//                else _cons.construct.makeTransposeAbove().also { it.cmaps += _cons; it.status = Construct.Status.EXPLORED }
+
+        invComplete[tgtGraph] += construct
 
         // these are the mult group index (for tgtMult and tgtMultInclusion and invCompleteMult)
         val multGroupIdxs = tgtMultInclusion.withIndex()
-                .filter { (_, mi) -> mi[cons.tgtGraph] > 0 }
+                .filter { (_, mi) -> mi[tgtGraph] > 0 }
                 .map { (i, _) -> i }
         for (multGroupIdx in multGroupIdxs) {
             val multMultiplicities = tgtMultInclusion[multGroupIdx]
@@ -246,16 +257,16 @@ class TargetGraphs(
             // returns a list of size tgts.size but with nulls at the positions where the tgtMultInclusion[multGroupIdx] has multiplicity 0
             // also, the construct at position cons.tgtGraph is always cons.construct
             val iterNewMultComplete: Iterator<List<Construct?>>
-                    = enumConstructsWithNew(multMultiplicities, invComplete, cons.construct, cons.tgtGraph)
+                    = enumConstructsWithNew(multMultiplicities, invComplete, construct, tgtGraph)
             for (mlist in iterNewMultComplete) {
                 // for each one of these, multiply them together, respecting their multiplicities.
                 // If the result is non-null (not pruned), then continue with adding it to invCompleteMult at index multGroupIdx.
-                val _multComplete = multAlignedConstructs(tgts, mlist, multMultiplicities) ?: continue
+                val _multComplete = multAlignedConstructs(tgts, mlist, multMultiplicities, true) ?: continue
                 // todo - make sure there are no leaks of created and thown away constructs - properly prune which deletes from the parents array
                 // Check Transpose!!
-                val multComplete =
-                        if (_multComplete.outer.size < 2) _multComplete
-                        else _multComplete.makeCheckTransposeAbove(tgtMult[multGroupIdx].outs)
+                val multComplete = _multComplete
+//                        if (_multComplete.outer.size < 2) _multComplete
+//                        else _multComplete.makeCheckTransposeAbove(tgtMult[multGroupIdx].outs)
                 multComplete.status = Construct.Status.FINAL_MULT
 
                 invCompleteMult[multGroupIdx] += multComplete
@@ -276,7 +287,7 @@ class TargetGraphs(
                     val iterNewPlusComplete: Iterator<List<Construct?>>
                             = enumConstructsWithNew(plusMultiplicities, invCompleteMult, multComplete, multGroupIdx)
                     for (plist in iterNewPlusComplete) {
-                        val plusComplete = plusConstructs(tgtMult, plist, plusMultiplicities) ?: continue
+                        val plusComplete = plusConstructs(tgtMult, plist, plusMultiplicities, true) ?: continue
 
                         // we have a final fully summed construct for this bag, and it is not pruned.
                         plusComplete.status =
@@ -383,11 +394,11 @@ class TargetGraphs(
                 }
             }
 
-            // add cmap to invMaps
+            if (!cmap.complete) { // add cmap to invMaps
             val invMap = invMaps[cmap.tgtGraph]
             cmap.vertMap.forEach { v ->
                 invMap[v]!! += cmap
-            }
+            } }
         }
 
         // fill in cmaps of all derived
@@ -491,7 +502,8 @@ class TargetGraphs(
             }
         }.forEach { v ->
             val agg = cmap.construct.makeAggAbove(cmap.vertMap.indexOf(v))
-            if (agg.isPruned()) agg.prune()
+            if (agg.isPruned())
+                agg.prune()
             else derivedFromIncomplete += agg
         }
 
@@ -504,25 +516,17 @@ class TargetGraphs(
 
         // convert the bestComplete to SNodes and link them up to their parents
         for ((gbi, bc) in bestComplete!!.withIndex()) { // == bestComplete.indices
-            val rn: SNode = bc.convertToSNode(origDogbs.memoAttrPosList)
-            val rnAPL = SHash.createAttributePositionList(rn, origDogbs.memoAttrPosList)
+            val (rn, _) = bc.convertToSNode()
 
             val pa = origDogbs.graphBagParents[gbi]
             val paIdx = origDogbs.graphBagParentInputIndices[gbi]
-            val paAPL = origDogbs.graphBagSchemaMaps[gbi]
 
             for (idx in pa.indices) {
                 val p = pa[idx]
                 val i = paIdx[idx]
 
-                val r =
-                    if (rnAPL == paAPL) rn
-                    else {
-                        val mapping = rnAPL.zip(paAPL).toMap()
-                        makeRenameAbove(rn, mapping)
-                    }
-                p.inputs.add(i, r) // Orientation is okay?
-                r.parents.add(p)
+                p.inputs.add(i, rn) // Orientation is okay?
+                rn.parents.add(p)
             }
         }
 

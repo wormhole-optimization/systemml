@@ -1,5 +1,6 @@
 package org.apache.sysml.hops.spoof2.enu2
 
+import org.apache.commons.logging.LogFactory
 import java.util.*
 
 class BottomUpOptimize(dogbs: DagOfGraphBags) {
@@ -68,6 +69,8 @@ class BottomUpOptimize(dogbs: DagOfGraphBags) {
          */
         internal val buo: BottomUpOptimize
             get() = _buo!!
+
+        private val LOG = LogFactory.getLog(BottomUpOptimize::class.java)!!
     }
 
 }

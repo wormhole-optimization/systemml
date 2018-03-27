@@ -59,17 +59,22 @@ object SPlan2Hop {
             SPlanRewriteRule.LOG.trace("Ran 'to Hop-ready' rewrites $count times to yield: " + Explain.explainSPlan(sroots))
     }
 
+    private fun isMxMAgg(agg: SNodeAggregate): Boolean {
+        val mult = agg.input
+        return (mult is SNodeNary && mult.op == SNodeNary.NaryOp.MULT && agg.op == Hop.AggOp.SUM
+                && mult.inputs.size == 2
+                && agg.aggs.size == 1
+                && mult.inputs[0].schema.names.intersect(mult.inputs[1].schema.names).let { isc ->
+                    isc.size == 1 && isc.single() == agg.aggs.names.first()
+                } // forbear element-wise multiplication followed by agg
+        )
+    }
+
     private fun reconstructAggregate(agg: SNodeAggregate, hopMemo: MutableMap<SNode, Pair<Hop, Map<AU, AB>>>): Pair<Hop, Map<AU, AB>> {
         try {
             val mult = agg.input
 
-            return if (mult is SNodeNary && mult.op == SNodeNary.NaryOp.MULT && agg.op == Hop.AggOp.SUM
-                    && mult.inputs.size == 2
-                    && agg.aggs.size == 1
-                    && mult.inputs[0].schema.names.intersect(mult.inputs[1].schema.names).let { isc ->
-                        isc.size == 1 && isc.single() == agg.aggs.names.first()
-                    } // forbear element-wise multiplication followed by agg
-            ) {   // MxM
+            return if (isMxMAgg(agg)) {   // MxM
                 var mult0 = mult.inputs[0]
                 var mult1 = mult.inputs[1]
 
@@ -212,10 +217,15 @@ object SPlan2Hop {
                     }
                 }
 
-                val aggInput = agg.input
-                assert(!(aggInput is SNodeAggregate && aggInput.op == Hop.AggOp.SUM)) // RewriteAggregateElim() should handle this case
+                val (aggInput, aggs) =
+                        if (agg.input is SNodeAggregate && (agg.input as SNodeAggregate).op == Hop.AggOp.SUM && !isMxMAgg(agg.input as SNodeAggregate))
+                            agg.input.inputs[0] to Schema(agg.aggs + (agg.input as SNodeAggregate).aggs)
+                        else
+                            agg.input to agg.aggs
+
+//                assert(!(aggInput is SNodeAggregate && aggInput.op == Hop.AggOp.SUM)) // RewriteAggregateElim() should handle this case
                 var (hop0, mi) = rReconstructHopDag(aggInput, hopMemo)
-                if (agg.aggs.isEmpty()) // empty aggregation
+                if (aggs.isEmpty()) // empty aggregation
                     return hop0 to mi
 
                 // AggUnaryOp always requires MATRIX input
@@ -226,15 +236,15 @@ object SPlan2Hop {
                 }
 
                 // Determine direction
-                SNodeException.check(agg.aggs.size in 1..2, agg)
-                { "don't know how to compile aggregate to Hop with aggregates ${agg.aggs}" }
+                SNodeException.check(aggs.size in 1..2, agg)
+                { "don't know how to compile aggregate to Hop with aggregates $aggs" }
                 var dir = when {
                     agg.schema.isEmpty() -> Hop.Direction.RowCol
-                    agg.aggs.size == 2 -> Hop.Direction.RowCol
+                    aggs.size == 2 -> Hop.Direction.RowCol
                 // change to RowCol when aggregating vectors, in order to create a scalar rather than a 1x1 matrix
                     hop0.dim2 == 1L -> Hop.Direction.RowCol // sum first dimension ==> row vector : Hop.Direction.Col
                     hop0.dim1 == 1L -> Hop.Direction.RowCol // sum second dimension ==> col vector: Hop.Direction.Row
-                    agg.aggs.names.first() == mi[AU.U0]!! -> {
+                    aggs.names.first() == mi[AU.U0]!! -> {
                         agg.check(aggInput.schema.size == 2) { "this may be erroneous if aggInput is not a matrix: ${aggInput.id} $aggInput ${aggInput.schema}" }
                         Hop.Direction.Col
                     }
@@ -258,7 +268,7 @@ object SPlan2Hop {
                 val ret = HopRewriteUtils.createAggUnaryOp(hop0, agg.op, dir)
                 if (Spoof2Compiler.LOG.isTraceEnabled)
                     Spoof2Compiler.LOG.trace("Decide direction $dir on input dims [${hop0.dim1},${hop0.dim2}], schema $aggInput, " +
-                            "aggregating on ${agg.aggs} by ${agg.op} to schema ${agg.schema} for SNode ${agg.id} and new Hop ${ret.hopID}")
+                            "aggregating on $aggs by ${agg.op} to schema ${agg.schema} for SNode ${agg.id} and new Hop ${ret.hopID}")
                 mi = if (agg.schema.isNotEmpty()) {
                     agg.check(agg.schema.size == 1) { "expect agg to have 0 or 1 attributes in schema: ${agg.id} $agg ${agg.schema}" }
                     mapOf(AU.U0 to agg.schema.names.first() as AB)
@@ -283,8 +293,7 @@ object SPlan2Hop {
                 SNodeNary.NaryOp.MULT, SNodeNary.NaryOp.PLUS ->
                     if (hopInputs.size == 1)
                         return hopInputs[0] to mis[0]
-                else -> {
-                }
+                else -> {}
             }
 
             if (nary.inputs.size == 2) {
