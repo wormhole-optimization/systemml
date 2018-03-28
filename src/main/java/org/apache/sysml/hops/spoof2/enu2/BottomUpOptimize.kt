@@ -1,6 +1,9 @@
 package org.apache.sysml.hops.spoof2.enu2
 
 import org.apache.commons.logging.LogFactory
+import org.apache.log4j.Level
+import org.apache.log4j.Logger
+import org.apache.sysml.conf.DMLConfig
 import java.util.*
 
 class BottomUpOptimize(dogbs: DagOfGraphBags) {
@@ -27,6 +30,10 @@ class BottomUpOptimize(dogbs: DagOfGraphBags) {
         var counter = 0L
         var upperBound: Double = tgs.upperBound
 
+        if (LOG.isTraceEnabled) {
+            LOG.trace("tgts: \n\t${tgs.tgts.withIndex().joinToString("\n\t") { (i,g) -> "$i: $g"}}")
+        }
+
         while (frontier.isNotEmpty()) {
             val con = frontier.popNextToExplore()
             // Track the newly derived constructs that are formed from exploring incomplete cmaps.
@@ -39,7 +46,11 @@ class BottomUpOptimize(dogbs: DagOfGraphBags) {
                 upperBound = tgs.upperBound
                 // global prune
                 while (costQueue.isNotEmpty() && costQueue.peek().isGlobalPruned()) {
-                    costQueue.peek().prune()
+                    val toprune = costQueue.peek()
+                    if (LOG.isTraceEnabled) {
+                        LOG.trace("Global prune [${toprune.status}]: $toprune")
+                    }
+                    toprune.prune()
                 }
             }
 
@@ -71,6 +82,10 @@ class BottomUpOptimize(dogbs: DagOfGraphBags) {
             get() = _buo!!
 
         private val LOG = LogFactory.getLog(BottomUpOptimize::class.java)!!
+        private const val LDEBUG = DMLConfig.SPOOF_DEBUG
+        init {
+            if (LDEBUG) Logger.getLogger(BottomUpOptimize::class.java).level = Level.TRACE
+        }
     }
 
 }

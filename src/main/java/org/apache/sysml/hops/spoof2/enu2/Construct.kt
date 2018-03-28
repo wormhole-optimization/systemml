@@ -1,7 +1,11 @@
 package org.apache.sysml.hops.spoof2.enu2
 
 import org.apache.commons.logging.LogFactory
-import org.apache.sysml.hops.spoof2.SHash
+import org.apache.log4j.Level
+import org.apache.log4j.Logger
+import org.apache.sysml.conf.DMLConfig
+import org.apache.sysml.hops.DataOp
+import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.spoof2.enu2.BottomUpOptimize.Companion.buo
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.SNodeRewriteUtils
@@ -22,7 +26,7 @@ sealed class Construct(
     val outerSchema = outer.toUnboundSchema() //Schema(outer.mapIndexed { i, s -> AU(i) as Name to s })
 
     override fun toString(): String {
-        return "${javaClass.simpleName}: $cmaps" // <p:${parents.size}>
+        return "${javaClass.simpleName}" // <p:${parents.size}>
     }
 
     val id: Id = _idSeq.nextID
@@ -69,20 +73,20 @@ sealed class Construct(
 
     fun makeEMultAbove(c2: Construct, aligned: Boolean): EWiseMult {
         return parents.find {
-            it is EWiseMult && (it.a == c2 || it.b == c2) && it.aligned == aligned
+            it is EWiseMult && (it.a == c2 && it.b === this || it.b == c2 && it.a === this) && it.aligned == aligned
         } as? EWiseMult ?: EWiseMult.construct(this, c2, aligned)
     }
 
     fun makePlusAbove(c2: Construct): Plus {
         return parents.find {
-            it is Plus && (it.a == c2 || it.b == c2)
+            it is Plus && (it.a == c2 && it.b === this || it.b == c2 && it.a === this)
         } as? Plus ?: Plus.construct(this, c2)
     }
 
     fun makeOuterAbove(c2: Construct): Outer {
         // determine orientation in the Outer.construct method
         return parents.find {
-            it is Outer && (it.a == c2 || it.b == c2)
+            it is Outer && (it.a == c2 && it.b === this || it.b == c2 && it.a === this)
         } as? Outer ?: Outer.construct(this, c2)
     }
 
@@ -95,6 +99,7 @@ sealed class Construct(
         return parents.find { it ->
             when {
                 it !is MatrixMult -> false
+                c2 == this && it.a == this && it.b == this -> it.type.aj == bj && it.type.bj == aj || it.type.aj == aj && it.type.bj == bj
                 it.a == c2 -> it.type.aj == bj && it.type.bj == aj
                 it.b == c2 -> it.type.aj == aj && it.type.bj == bj
                 else -> false
@@ -221,6 +226,10 @@ sealed class Construct(
         private val _idSeq = IDSequence()
         protected val nnzInferer: NnzInferer = WorstCaseNnz
         private val LOG = LogFactory.getLog(Construct::class.java)!!
+        private const val LDEBUG = DMLConfig.SPOOF_DEBUG
+        init {
+            if (LDEBUG) Logger.getLogger(Construct::class.java).level = Level.TRACE
+        }
 
         // order the inputs
         protected fun orderAB(a: Construct, b: Construct): Pair<Construct,Construct> {
@@ -236,6 +245,15 @@ sealed class Construct(
 
     class Base private constructor(val base: SNode, nnz: Nnz, shapeSchema: ShapeList)
         : Construct(listOf(), nnz, 0.0, shapeSchema) {
+
+        override fun toString(): String {
+            if (base is SNodeData && base.hop is DataOp
+                    && base.hop.isRead
+                    && base.hop.dataOpType == Hop.DataOpTypes.TRANSIENTREAD
+                    && base.hop.name != null)
+                return "Base(${base.hop.name})" // ${base.hop.hopID}@
+            return "Base($base)"
+        }
 
         companion object {
             fun Scalar(base: SNode): Base {
@@ -320,6 +338,10 @@ sealed class Construct(
                     1 -> require( a.outer[0] == b.outer[0]) {"reversed matrix-vector element-wise multiply does not match shapes? $a, $b"}
                 }
             }
+        }
+
+        override fun toString(): String {
+            return "EMult${aligned.toCharStr()}($a, $b)"
         }
 
         companion object {
@@ -555,7 +577,7 @@ sealed class Construct(
             return result
         }
 
-        override fun toString(): String = "$type: $cmaps"
+        override fun toString(): String = "$type($a, $b)"
 
         companion object {
             fun construct(_a: Construct, _b: Construct, _aj: Int, _bj: Int): MatrixMult {

@@ -1,6 +1,9 @@
 package org.apache.sysml.hops.spoof2.enu2
 
 import org.apache.commons.logging.LogFactory
+import org.apache.log4j.Level
+import org.apache.log4j.Logger
+import org.apache.sysml.conf.DMLConfig
 import org.apache.sysml.hops.LiteralOp
 import org.apache.sysml.hops.spoof2.plan.*
 import java.util.*
@@ -147,6 +150,10 @@ class TargetGraphs(
         const val COST_EPS = 0
 
         private val LOG = LogFactory.getLog(TargetGraphs::class.java)!!
+        private const val LDEBUG = DMLConfig.SPOOF_DEBUG
+        init {
+            if (LDEBUG) Logger.getLogger(TargetGraphs::class.java).level = Level.TRACE
+        }
 
         // cost of executing all of these constructs, assuming maximum CSE sharing
         private fun combinedCost(clist: List<Construct>): Double {
@@ -243,6 +250,9 @@ class TargetGraphs(
 
         invComplete[tgtGraph] += construct
 
+        if (LOG.isTraceEnabled)
+            LOG.trace("  invComplete[$tgtGraph]++; now ${invComplete.map { it.size }}")
+
         // these are the mult group index (for tgtMult and tgtMultInclusion and invCompleteMult)
         val multGroupIdxs = tgtMultInclusion.withIndex()
                 .filter { (_, mi) -> mi[tgtGraph] > 0 }
@@ -252,6 +262,15 @@ class TargetGraphs(
             // make sure we have at least one completed construct for all components
             if (multMultiplicities.withIndex().any { (gi, m) -> m > 0 && invComplete[gi].isEmpty() })
                 continue
+
+            if (LOG.isTraceEnabled) {
+                val itercnt = multMultiplicities.withIndex().map { (gi, m) -> when {
+                    gi == tgtGraph -> 1L
+                    m == 0 -> 1L
+                    else -> invComplete[gi].size.toLong()
+                } }.prod()
+                LOG.trace("  Complete multGroup $multGroupIdx with membership $multMultiplicities. Will iterate $itercnt times")
+            }
 
             // from invComplete,
             // returns a list of size tgts.size but with nulls at the positions where the tgtMultInclusion[multGroupIdx] has multiplicity 0
@@ -271,6 +290,9 @@ class TargetGraphs(
 
                 invCompleteMult[multGroupIdx] += multComplete
 
+                if (LOG.isTraceEnabled)
+                    LOG.trace("  invCompleteMult[$tgtGraph]++; now ${invCompleteMult.map { it.size }}")
+
                 // get all included plus groups
                 val plusGroupIdxs = tgtPlusInclusion.withIndex()
                         .filter { (_, pi) -> pi[multGroupIdx] > 0 }
@@ -280,6 +302,15 @@ class TargetGraphs(
                     // make sure we have at least one completed construct for all components
                     if (plusMultiplicities.withIndex().any { (gi, m) -> m > 0 && invCompleteMult[gi].isEmpty() })
                         continue
+
+                    if (LOG.isTraceEnabled) {
+                        val itercnt = plusMultiplicities.withIndex().map { (gi, m) -> when {
+                            gi == multGroupIdx -> 1L
+                            m == 0 -> 1L
+                            else -> invCompleteMult[gi].size.toLong()
+                        } }.prod()
+                        LOG.trace("   Complete plusGroup $plusGroupIdx with membership $plusMultiplicities. Will iterate $itercnt times")
+                    }
 
                     // similar; iterate over candidates in invCompleteMult at positions given by tgtPlusInclusion[plusGroupIdx]
                     // except for position multGroupIdx (use multComplete here)
@@ -297,6 +328,9 @@ class TargetGraphs(
 
                         invCompletePlus[plusGroupIdx] += plusComplete
 
+                        if (LOG.isTraceEnabled)
+                            LOG.trace("   invCompletePlus[$tgtGraph]++; now ${invCompletePlus.map { it.size }}")
+
                         // now, see if we can beat the best plan with this newly formed construct.
                         if (invCompletePlus.all { it.isNotEmpty() }) {
                             // no nulls in this one. Looks over invCompletePlus except for position plusGroupIdx (use plusComplete here)
@@ -309,6 +343,11 @@ class TargetGraphs(
                                     bestComplete = flist
                                     upperBound = finalCost
                                     // notify new upper bound?
+                                    if (LOG.isTraceEnabled)
+                                        LOG.trace("    NEW final at cost $finalCost < $upperBound")
+                                } else {
+                                    if (LOG.isTraceEnabled)
+                                        LOG.trace("    Pruned final at cost $finalCost >= $upperBound")
                                 }
                             }
                         } // end if invCompletePlus is all not empty
@@ -377,9 +416,14 @@ class TargetGraphs(
         }
         con.status = Construct.Status.EXPLORED
         val derivedFromIncomplete: MutableSet<Construct> = mutableSetOf()
+        if (LOG.isTraceEnabled)
+            LOG.trace("EXPLORING: $con")
 
         for (cmapIdx in con.cmaps.indices) {
             val cmap = con.cmaps[cmapIdx]
+
+            if (LOG.isTraceEnabled)
+                LOG.trace(" CMAP $cmapIdx: $cmap ${if (cmap.complete) "complete" else ""}")
 
             if (cmap.complete) { // + with other DAGs
                 exploreComplete(cmap)
@@ -395,10 +439,10 @@ class TargetGraphs(
             }
 
             if (!cmap.complete) { // add cmap to invMaps
-            val invMap = invMaps[cmap.tgtGraph]
-            cmap.vertMap.forEach { v ->
-                invMap[v]!! += cmap
-            } }
+                val invMap = invMaps[cmap.tgtGraph]
+                cmap.vertMap.forEach { v ->
+                    invMap[v]!! += cmap
+                } }
         }
 
         // fill in cmaps of all derived
@@ -425,16 +469,25 @@ class TargetGraphs(
                                 && Arrays.equals(it.coveredEdges, cmap.coveredEdges)
                     }
             if (sameOrientationAndCoveredEdges.isNotEmpty()) {
+                if (LOG.isTraceEnabled)
+                    LOG.trace("Found Siblings: $sameOrientationAndCoveredEdges")
+
                 val rep = sameOrientationAndCoveredEdges.first().construct
                 val alts = rep.siblings ?: mutableSetOf(rep).also { rep.siblings = it }
                 alts += cmap.construct
                 cmap.construct.siblings = alts
 
-                if (cmap.construct.isLocallyPruned())
+                if (cmap.construct.isLocallyPruned()) {
+                    if (LOG.isTraceEnabled)
+                        LOG.trace("Locally Pruned by Siblings!")
                     return false
+                }
                 cmap.construct.siblings!!.forEach {
-                    if (it !== cmap.construct && it.isLocallyPruned(listOf(cmap.construct)))
+                    if (it !== cmap.construct && it.isLocallyPruned(listOf(cmap.construct))) {
+                        if (LOG.isTraceEnabled)
+                            LOG.trace("A Sibling is locally pruned! $it")
                         it.prune()
+                    }
                 }
             }
         }
@@ -447,18 +500,16 @@ class TargetGraphs(
 
 
         // 2. Check EWiseMult.
-        val ewCandidates = mapOuterDisjoint.flatten().toSet().filter {bm ->
+        mapOuterDisjoint.flatten().toSet().filter {bm ->
             val (smaller, larger) = if (bm.vertMap.size < cmap.vertMap.size) bm to cmap else cmap to bm
             smaller.vertMap.all { it in larger.vertMap }    // vertices must be a subset
 //            && bm.coveredEdges.disjoint(cmap.coveredEdges)        // edges disjoint - already checked
+        }.map { candidateCmap ->
+            candidateCmap.construct to (cmap.vertMap.last() == candidateCmap.vertMap.last())
+        }.toSet().mapNotNullTo(derivedFromIncomplete) { (candidate, aligned) ->
+            val emult = cmap.construct.makeEMultAbove(candidate, aligned)
+            keepOrGlobalPrune(emult, derivedFromIncomplete)
         }
-        ewCandidates.forEach { candidate ->
-            val aligned = cmap.vertMap.last() == candidate.vertMap.last()
-            val emult = cmap.construct.makeEMultAbove(candidate.construct, aligned)
-            if (emult.isPruned()) emult.prune()
-            else derivedFromIncomplete += emult
-        }
-
 
         if (cmap.vertMap.size == 2) { // ONLY MATRIX-MATRIX MXM
             val vertToAdjEdges = tgtVertToAdjEdges[cmap.tgtGraph]
@@ -486,10 +537,9 @@ class TargetGraphs(
                     else null
                 }.filterNotNull()
 
-                candidates.forEach { (bm, bj) ->
+                candidates.mapNotNullTo(derivedFromIncomplete) { (bm, bj) ->
                     val mxm = cmap.construct.makeMxMAbove(bm.construct, aj, bj)
-                    if (mxm.isPruned()) mxm.prune()
-                    else derivedFromIncomplete += mxm
+                    keepOrGlobalPrune(mxm, derivedFromIncomplete)
                 }
             }
         }
@@ -500,18 +550,36 @@ class TargetGraphs(
             v in tg.aggs && cmap.coveredEdges.withIndex().all { (ei, b) ->
                 b || v !in tgtEdges[ei].verts
             }
-        }.forEach { v ->
+        }.mapNotNullTo(derivedFromIncomplete) { v ->
             val agg = cmap.construct.makeAggAbove(cmap.vertMap.indexOf(v))
-            if (agg.isPruned())
-                agg.prune()
-            else derivedFromIncomplete += agg
+            keepOrGlobalPrune(agg, derivedFromIncomplete)
         }
 
         return true
     }
 
+    private fun keepOrGlobalPrune(c: Construct, dfi: Set<Construct>): Construct? {
+        return if (c.isGlobalPruned()) {
+            if (LOG.isTraceEnabled)
+                LOG.trace("  PRUNED candidate: $c")
+            c.prune()
+            null
+        }
+        else {
+            if (LOG.isTraceEnabled) {
+                if (c in dfi)
+                    LOG.trace("  Duplicate candidate: $c")
+                else
+                    LOG.trace("  Candidate: $c")
+            }
+            c
+        }
+    }
+
 
     fun finish() {
+        if (LOG.isTraceEnabled)
+            LOG.trace("FINAL BESTCOMPLETE: $bestComplete at cost $upperBound")
         check(bestComplete != null)
 
         // convert the bestComplete to SNodes and link them up to their parents

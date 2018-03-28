@@ -494,8 +494,5 @@ class EnumerateIndices(limitsExcl: IntArray): Iterator<IntArray> {
     }
 }
 
-fun BooleanArray.toDenseString(): String {
-    return joinToString("") { if (it) "T" else "F" }
-}
-
-
+fun Boolean.toCharStr() = if (this) "T" else "F"
+fun BooleanArray.toDenseString(): String = joinToString("", transform = Boolean::toCharStr)
