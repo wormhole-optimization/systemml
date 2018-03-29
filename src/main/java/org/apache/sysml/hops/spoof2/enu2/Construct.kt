@@ -121,9 +121,15 @@ sealed class Construct(
         val sa = siblings ?: return false
         // for each alternative to this construct,
         // check whether the recCostNoShare of c is greater than that of the alternative. If so, prune.
-        for (a in sa)
-            if (recCostNoShare > a.recCost)
-                return true
+        if (BottomUpOptimize.PRUNE_FULLY_LOCAL) {
+            for (a in sa)
+                if (recCost > a.recCost)
+                    return true
+        } else {
+            for (a in sa)
+                if (recCostNoShare > a.recCost)
+                    return true
+        }
         return false
     }
 
@@ -164,6 +170,7 @@ sealed class Construct(
 
     init {
         buo.costQueue += this
+        buo.stats.logCreatedConstruct()
     }
 
 
@@ -201,6 +208,7 @@ sealed class Construct(
             parents.last().prune()
         children.forEach { it.parents.remove(this) }
         status = Status.PRUNED
+        buo.stats.logPrunedConstruct(recCost >= buo.tgs.upperBound) // local or global
     }
 
     fun isGlobalPruned(): Boolean {

@@ -482,8 +482,8 @@ class TargetGraphs(
                         LOG.trace("Locally Pruned by Siblings!")
                     return false
                 }
-                cmap.construct.siblings!!.forEach {
-                    if (it !== cmap.construct && it.isLocallyPruned(listOf(cmap.construct))) {
+                cmap.construct.siblings!!.toList().forEach {
+                    if (it.status != Construct.Status.PRUNED && it !== cmap.construct && it.isLocallyPruned(listOf(cmap.construct))) {
                         if (LOG.isTraceEnabled)
                             LOG.trace("A Sibling is locally pruned! $it")
                         it.prune()

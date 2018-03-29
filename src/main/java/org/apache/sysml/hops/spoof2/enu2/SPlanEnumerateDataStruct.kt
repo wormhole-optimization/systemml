@@ -411,6 +411,9 @@ class DagOfGraphBags private constructor(
         }
 
         private fun findGraphs(n: SNode, b: Builder) {
+            if (n.inputs.isEmpty())
+                return
+
             fun recurOnInputs() {
                 var i = 0
                 var sz = n.inputs.size

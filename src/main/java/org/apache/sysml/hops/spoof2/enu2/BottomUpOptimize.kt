@@ -4,6 +4,8 @@ import org.apache.commons.logging.LogFactory
 import org.apache.log4j.Level
 import org.apache.log4j.Logger
 import org.apache.sysml.conf.DMLConfig
+import java.io.File
+import java.text.SimpleDateFormat
 import java.util.*
 
 class BottomUpOptimize(dogbs: DagOfGraphBags) {
@@ -14,6 +16,8 @@ class BottomUpOptimize(dogbs: DagOfGraphBags) {
     }
 
     val costQueue: PriorityQueue<Construct> = PriorityQueue(compareBy { -it.recCost })
+
+    val stats = this.Statistics()
 
     val frontier = Frontier()
     val tgs = TargetGraphs(dogbs)
@@ -27,6 +31,7 @@ class BottomUpOptimize(dogbs: DagOfGraphBags) {
             frontier.add(c)
         }
         val startTime = System.currentTimeMillis()
+        stats.setStart(startTime)
         var counter = 0L
         var upperBound: Double = tgs.upperBound
 
@@ -54,6 +59,8 @@ class BottomUpOptimize(dogbs: DagOfGraphBags) {
                 }
             }
 
+            stats.logBuoIteration(counter)
+
             if (counter % 1000 == 0L && tgs.bestComplete != null) {
                 val elapsed = System.currentTimeMillis() - startTime
                 if (elapsed > MAX_DURATION_MS)
@@ -66,6 +73,7 @@ class BottomUpOptimize(dogbs: DagOfGraphBags) {
         tgs.finish() // return
 
         _buo = null
+        stats.close()
     }
 
 
@@ -86,6 +94,71 @@ class BottomUpOptimize(dogbs: DagOfGraphBags) {
         init {
             if (LDEBUG) Logger.getLogger(BottomUpOptimize::class.java).level = Level.TRACE
         }
+
+        internal const val PRUNE_FULLY_LOCAL = true
+
+        private const val DO_STATS = true
+        private const val STAT_FOLDER = "buo_stats"
+        private const val STAT_FILE_PREFIX = "buo_stats_"
+        private const val STAT_FILE_SUFFIX = ".tsv"
+
+        private val LOADUP_TIMESTAMP = SimpleDateFormat("yyyy-MM-dd-HH-mm-ss").format(Date()) // for millis, add -SSS
+        private var globalStatsCounter = 0L
     }
+
+    inner class Statistics : AutoCloseable {
+        init {
+            val folder = File(STAT_FOLDER)
+            if (!folder.exists())
+                folder.mkdir()
+        }
+        val statFileName = "$STAT_FOLDER/$STAT_FILE_PREFIX${LOADUP_TIMESTAMP}_${globalStatsCounter.toString().padStart(4, '0')}$STAT_FILE_SUFFIX"
+        val statFile = File(statFileName)
+        val statFileWriter = statFile.writer().buffered()
+
+        init {
+            val header = "iter\telapsed\tupperBound\tcreated\tglobalPruned\tlocalPruned\tfrontierSize\n"
+            statFileWriter.write(header)
+            globalStatsCounter++
+        }
+
+        var startTime = 0L
+        var cntCreated = 0L
+        var cntGlobalPruned = 0L
+        var cntLocalPruned = 0L
+        var longestIter = 0L
+
+        fun logBuoIteration(iter: Long) {
+            longestIter = iter
+            val elapsed = System.currentTimeMillis() - startTime
+            val frontierSize = frontier.size
+            val upperBound = if (tgs.upperBound == Double.POSITIVE_INFINITY) 0L else tgs.upperBound.toLong()
+
+            val s = "$iter\t$elapsed\t$upperBound\t$cntCreated\t$cntGlobalPruned\t$cntLocalPruned\t$frontierSize\n"
+            statFileWriter.write(s)
+        }
+
+        override fun close() {
+            statFileWriter.close()
+            val newName = statFileName.substring(0, statFileName.length - STAT_FILE_SUFFIX.length) + "--" + longestIter + STAT_FILE_SUFFIX
+            statFile.renameTo(File(newName))
+        }
+
+        fun logPrunedConstruct(global: Boolean) {
+            if (global) cntGlobalPruned++
+            else cntLocalPruned++
+        }
+
+        fun logCreatedConstruct() {
+            cntCreated++
+        }
+
+        fun setStart(startTime: Long) {
+            this.startTime = startTime
+        }
+
+
+    }
+
 
 }

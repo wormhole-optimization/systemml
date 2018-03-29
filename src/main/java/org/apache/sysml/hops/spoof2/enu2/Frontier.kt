@@ -26,6 +26,9 @@ class Frontier {
     private val exploreQueue: PriorityQueue<Construct> = PriorityQueue(orderConstructsToExploreFirst)
 //    private val descendingCost: PriorityQueue<Construct> = PriorityQueue(compareBy { -it.recCost })
 
+    val size: Int
+        get() = exploreQueue.size
+
 
     fun add(c: Construct) {
         exploreQueue += c
