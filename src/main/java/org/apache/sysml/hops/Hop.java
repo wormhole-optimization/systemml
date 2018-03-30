@@ -912,7 +912,7 @@ public abstract class Hop implements ParseInfo
 		return _dataType.isScalar() || _dim2 >= 0;
 	}
 	
-	public static void resetVisitStatus( ArrayList<Hop> hops ) {
+	public static void resetVisitStatus( List<Hop> hops ) {
 		if( hops != null )
 			for( Hop hopRoot : hops )
 				hopRoot.resetVisitStatus();
@@ -1094,7 +1094,8 @@ public abstract class Hop implements ParseInfo
 		//fused ML-specific operators for performance
 		MINUS_NZ, //sparse-safe minus: X-(mean*ppred(X,0,!=))
 		LOG_NZ, //sparse-safe log; ppred(X,0,"!=")*log(X,0.5)
-		MINUS1_MULT; //1-X*Y
+		MINUS1_MULT, //1-X*Y
+		BITWAND, BITWOR, BITWXOR, BITWSHIFTL, BITWSHIFTR; //bitwise operations
 
         public ValueType resultType(DataType d1, ValueType v1, DataType d2, ValueType v2) {
             if( d1 == DataType.MATRIX || d2 == DataType.MATRIX )
@@ -1117,7 +1118,6 @@ public abstract class Hop implements ParseInfo
             }
             return v1;
         }
-		BITWAND, BITWOR, BITWXOR, BITWSHIFTL, BITWSHIFTR, //bitwise operations
 	}
 
 	// Operations that require 3 operands
