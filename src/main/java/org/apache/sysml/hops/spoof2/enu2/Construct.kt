@@ -26,7 +26,7 @@ sealed class Construct(
     val outerSchema = outer.toUnboundSchema() //Schema(outer.mapIndexed { i, s -> AU(i) as Name to s })
 
     override fun toString(): String {
-        return "${javaClass.simpleName}" // <p:${parents.size}>
+        return "${javaClass.simpleName}$children" // <p:${parents.size}>
     }
 
     val id: Id = _idSeq.nextID

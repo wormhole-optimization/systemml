@@ -95,12 +95,14 @@ class BottomUpOptimize(dogbs: DagOfGraphBags) {
             if (LDEBUG) Logger.getLogger(BottomUpOptimize::class.java).level = Level.TRACE
         }
 
-        internal const val PRUNE_FULLY_LOCAL = true
+        internal const val PRUNE_FULLY_LOCAL = false
 
         private const val DO_STATS = true
         private const val STAT_FOLDER = "buo_stats"
         private const val STAT_FILE_PREFIX = "buo_stats_"
         private const val STAT_FILE_SUFFIX = ".tsv"
+
+        private const val STAT_CUTOFF_MINITER = 10
 
         private val LOADUP_TIMESTAMP = SimpleDateFormat("yyyy-MM-dd-HH-mm-ss").format(Date()) // for millis, add -SSS
         private var globalStatsCounter = 0L
@@ -134,14 +136,31 @@ class BottomUpOptimize(dogbs: DagOfGraphBags) {
             val frontierSize = frontier.size
             val upperBound = if (tgs.upperBound == Double.POSITIVE_INFINITY) 0L else tgs.upperBound.toLong()
 
-            val s = "$iter\t$elapsed\t$upperBound\t$cntCreated\t$cntGlobalPruned\t$cntLocalPruned\t$frontierSize\n"
+            val s = "$iter\t$elapsed\t${upperBound.toStringNoZero()}\t${cntCreated}\t${cntGlobalPruned.toStringNoZero()}\t${cntLocalPruned.toStringNoZero()}\t$frontierSize\n"
             statFileWriter.write(s)
         }
 
         override fun close() {
             statFileWriter.close()
-            val newName = statFileName.substring(0, statFileName.length - STAT_FILE_SUFFIX.length) + "--" + longestIter + STAT_FILE_SUFFIX
-            statFile.renameTo(File(newName))
+            if (longestIter < STAT_CUTOFF_MINITER) {
+                // delete file; not worth keeping this one
+                statFile.delete()
+            } else {
+                // rename file to include longestIter at the end of the file name
+                val newName = statFileName.substring(0, statFileName.length - STAT_FILE_SUFFIX.length) + "-" + longestIter + STAT_FILE_SUFFIX
+                statFile.renameTo(File(newName))
+
+                // also include original graph and the bestComplete in a new, related file
+                val graphFileName = statFileName.substring(0, statFileName.length - STAT_FILE_SUFFIX.length) + "-" + longestIter + "-graph.txt"
+                val graphFile = File(graphFileName)
+                graphFile.writer().buffered().use { graphFileWriter ->
+                    graphFileWriter.write("Original Bases: \n\t${initialBases.joinToString("\n\t") { e -> "${e.base} -- ${e.base.schema} -- nnz ${nnzInfer.infer(e)}"}}\n\n")
+                    graphFileWriter.write("Original GraphBags: \n\t${tgs.origDogbs.graphBags.withIndex().joinToString("\n\t") { (i,g) -> "$i: $g"}}\n")
+                    graphFileWriter.write("bestComplete: \n\t${tgs.bestComplete!!.withIndex().joinToString("\n\t") { (i,g) -> "$i: $g"}}\n")
+                    graphFileWriter.write("upperBound: ${tgs.upperBound}\n\n")
+                    graphFileWriter.write("tgts: \n\t${tgs.tgts.withIndex().joinToString("\n\t") { (i,g) -> "$i: $g"}}\n")
+                }
+            }
         }
 
         fun logPrunedConstruct(global: Boolean) {
@@ -157,6 +176,7 @@ class BottomUpOptimize(dogbs: DagOfGraphBags) {
             this.startTime = startTime
         }
 
+        fun Long.toStringNoZero(): String = if (this == 0L) "" else this.toString()
 
     }
 
