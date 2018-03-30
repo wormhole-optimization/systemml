@@ -5,6 +5,7 @@ import org.apache.sysml.hops.rewrite.HopRewriteUtils
 import org.apache.sysml.hops.spoof2.plan.SNode
 import org.apache.sysml.hops.spoof2.plan.SNodeData
 import org.apache.sysml.hops.spoof2.plan.SNodeNary
+import org.apache.sysml.hops.spoof2.plan.stripDead
 
 /**
  * When a multiply has common subexpression inputs, rewrite them as a power.
@@ -32,7 +33,13 @@ class RewriteMultiplyCSEToPower : SPlanRewriteRule() {
                 // We can have floating-point powers
                 val powerCountOfChild = node.inputs.sumByDouble { if (it.isChildPower(node, child)) (it.inputs[1] as SNodeData).literalDouble else 0.0 }
                 if( numInstancesOfChild + powerCountOfChild > 1 ) {
-                    node.inputs.removeIf { it == child || it.isChildPower(node, child) }
+                    node.inputs.removeIf {
+                        if (it.isChildPower(node, child)) {
+                            it.parents -= node
+                            stripDead(it)
+                            true
+                        } else it == child
+                    }
                     multToChild = Math.min(multToChild, node.inputs.size)
                     // remove all instances in parents of child
                     child.parents.removeIf { it == node || it.isChildPower(node, child) }

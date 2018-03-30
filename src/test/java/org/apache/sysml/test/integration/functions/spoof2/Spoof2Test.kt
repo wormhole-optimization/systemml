@@ -141,8 +141,9 @@ class Spoof2Test(
         //	TEST_NAME+95;  //X - colSums(X)
         //	TEST_NAME+96;  //cbind(u %*% t(v), v %*% t(u))
         //	TEST_NAME+97;  //A * t(B)
+        //	TEST_NAME+98;  //NN snippet
         private const val NUM_TESTS = 73
-        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..97)
+        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..98)
         private val _DO_DOT: List<Pair<Int, DC>> = listOf(
 //                85 to DC(arrayListOf(29, 30), performSpoofRewrites = false),
 //                85 to DC(arrayListOf(29, 30))

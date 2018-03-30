@@ -9,7 +9,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 class BottomUpOptimize(dogbs: DagOfGraphBags) {
-    val nnzInfer: NnzInfer = NnzInfer(nnzInferer)
+    val nnzInfer: NnzInfer = dogbs.nnzInfer
 
     init {
         _buo = this

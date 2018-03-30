@@ -348,7 +348,7 @@ object SPlan2Hop {
             }
 
             // check for outer product: nary(*) between two vectors whose names do not join
-            return if (nary.op == SNodeNary.NaryOp.MULT && nary.inputs[0].schema.size == 1 && nary.inputs[1].schema.size == 1
+            return if ((nary.op == SNodeNary.NaryOp.MULT || nary.op == SNodeNary.NaryOp.PLUS) && nary.inputs[0].schema.size == 1 && nary.inputs[1].schema.size == 1
                     && nary.inputs[0].schema.names.first() != nary.inputs[1].schema.names.first()) {
                 when (hopInputs[0].classify()) {
                     HopClass.ROW_VECTOR -> {
@@ -371,8 +371,14 @@ object SPlan2Hop {
                     }
                     else -> throw SNodeException(nary, "expected outer product but is not: $hopInputs with dims ${hopInputs.map { it.dim1 to it.dim2 }}")
                 }
-                HopRewriteUtils.createMatrixMultiply(hopInputs[0], hopInputs[1]) to
-                        mapOf(AU.U0 to (nary.inputs[0].schema.names.first() as AB), AU.U1 to (nary.inputs[1].schema.names.first() as AB))
+                if (nary.op == SNodeNary.NaryOp.MULT) {
+                    HopRewriteUtils.createMatrixMultiply(hopInputs[0], hopInputs[1]) to
+                            mapOf(AU.U0 to (nary.inputs[0].schema.names.first() as AB), AU.U1 to (nary.inputs[1].schema.names.first() as AB))
+                } else {
+                    // nary.op == SNodeNary.NaryOp.PLUS
+                    HopRewriteUtils.createBinary(hopInputs[0], hopInputs[1], Hop.OpOp2.PLUS, true) to
+                            mapOf(AU.U0 to (nary.inputs[0].schema.names.first() as AB), AU.U1 to (nary.inputs[1].schema.names.first() as AB))
+                }
             } else {
                 hopInputs.mapInPlace {
                     if (it.dim1 == 1L && it.dim2 == 1L)

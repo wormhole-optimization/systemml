@@ -269,7 +269,7 @@ class TargetGraphs(
                     m == 0 -> 1L
                     else -> invComplete[gi].size.toLong()
                 } }.prod()
-                LOG.trace("  Complete multGroup $multGroupIdx with membership $multMultiplicities. Will iterate $itercnt times")
+                LOG.trace("  Complete multGroup $multGroupIdx with membership ${Arrays.toString(multMultiplicities)}. Will iterate $itercnt times")
             }
 
             // from invComplete,
@@ -291,7 +291,7 @@ class TargetGraphs(
                 invCompleteMult[multGroupIdx] += multComplete
 
                 if (LOG.isTraceEnabled)
-                    LOG.trace("  invCompleteMult[$tgtGraph]++; now ${invCompleteMult.map { it.size }}")
+                    LOG.trace("  invCompleteMult[$multGroupIdx]++; now ${invCompleteMult.map { it.size }}")
 
                 // get all included plus groups
                 val plusGroupIdxs = tgtPlusInclusion.withIndex()
@@ -309,7 +309,7 @@ class TargetGraphs(
                             m == 0 -> 1L
                             else -> invCompleteMult[gi].size.toLong()
                         } }.prod()
-                        LOG.trace("   Complete plusGroup $plusGroupIdx with membership $plusMultiplicities. Will iterate $itercnt times")
+                        LOG.trace("   Complete plusGroup $plusGroupIdx with membership ${Arrays.toString(plusMultiplicities)}. Will iterate $itercnt times")
                     }
 
                     // similar; iterate over candidates in invCompleteMult at positions given by tgtPlusInclusion[plusGroupIdx]
@@ -329,7 +329,7 @@ class TargetGraphs(
                         invCompletePlus[plusGroupIdx] += plusComplete
 
                         if (LOG.isTraceEnabled)
-                            LOG.trace("   invCompletePlus[$tgtGraph]++; now ${invCompletePlus.map { it.size }}")
+                            LOG.trace("   invCompletePlus[$plusGroupIdx]++; now ${invCompletePlus.map { it.size }}")
 
                         // now, see if we can beat the best plan with this newly formed construct.
                         if (invCompletePlus.all { it.isNotEmpty() }) {
@@ -340,11 +340,10 @@ class TargetGraphs(
                                 val finalCost = combinedCost(flist)
 
                                 if (bestComplete == null || finalCost < upperBound) {
-                                    bestComplete = flist
-                                    upperBound = finalCost
-                                    // notify new upper bound?
                                     if (LOG.isTraceEnabled)
                                         LOG.trace("    NEW final at cost $finalCost < $upperBound")
+                                    bestComplete = flist
+                                    upperBound = finalCost
                                 } else {
                                     if (LOG.isTraceEnabled)
                                         LOG.trace("    Pruned final at cost $finalCost >= $upperBound")

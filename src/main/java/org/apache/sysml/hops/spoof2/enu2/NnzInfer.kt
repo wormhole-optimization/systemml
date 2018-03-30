@@ -13,8 +13,8 @@ class NnzInfer(
 
     fun infer(node: SNode): Nnz {
         // OrNode: maybe need to take min of all children, because some may have more accurate estimates than others
-        if (node is SNodeBind || node is SNodeUnbind || node is OrNode)
-            return infer(node.inputs[0])
+//        if (node is SNodeBind || node is SNodeUnbind || node is OrNode) // input to SNodeUnbind may be taken away when forming a DOGB
+//            return infer(node.inputs[0])
         if (node.id in memo)
             return memo[node.id]!!
         val nodeNnz: Nnz = when( node ) {
@@ -31,6 +31,8 @@ class NnzInfer(
             }
             is SNodeNary -> inferNnzNary(node)
             is SNodeAggregate -> inferNnzAgg(node)
+            is SNodeUnbind -> infer(node.input)
+            is SNodeBind -> infer(node.input)
             else -> throw AssertionError("unexpected: $node")
         }
         memo[node.id] = nodeNnz

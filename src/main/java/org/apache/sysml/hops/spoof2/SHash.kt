@@ -37,7 +37,7 @@ object SHash {
                 listOf()
             }
             is SNodeExt -> {
-                node.inputs.forEach { check(createAttributePositionList(it, memo).isEmpty()) {"An SNodeExt should not have bound attributes from its inputs"} }
+//                node.inputs.forEach { check(createAttributePositionList(it, memo).isEmpty()) {"An SNodeExt should not have bound attributes from its inputs"} }
                 listOf()
             }
             is OrNode -> createAttributePositionList(node.inputs[0], memo)

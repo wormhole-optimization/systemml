@@ -139,8 +139,16 @@ object Hop2SPlan {
                             i0 = SNodeBind(i0, bs)
                             boundNames += bs
                             if( i1.schema.isNotEmpty() ) {
-                                // both vectors: bind to same name
-                                i1 = SNodeBind(i1, bs)
+                                // if vector orientations match, then bind to same name
+                                // otherwise we have outer product; bind to different names
+                                if (current.input[0].classify() == current.input[1].classify()) {
+                                    i1 = SNodeBind(i1, bs)
+                                }
+                                else {
+                                    val bs1 = i1.schema.genAllBindings()
+                                    i1 = SNodeBind(i1, bs1)
+                                    boundNames += bs
+                                }
                             }
                         }
                         2 -> {

@@ -358,7 +358,8 @@ class DagOfGraphBags private constructor(
         val graphBags: List<GraphBag>,
         val graphBagParents: List<List<SNode>>,
         val graphBagParentInputIndices: List<List<Int>>,
-        val memoAttrPosList: MutableMap<Id, List<AB>>
+        val memoAttrPosList: MutableMap<Id, List<AB>>,
+        val nnzInfer: NnzInfer
 ) {
     val bagBases = graphBags.map { it.flatMap { it.getBases() }.toSet() }
 
@@ -386,7 +387,7 @@ class DagOfGraphBags private constructor(
             val n1 = graphBags.filterIndexed { i2, _ -> i2 in ilist }
             val n2 = graphBagParents.filterIndexed { i2, _ -> i2 in ilist }
             val n3 = graphBagParentInputIndices.filterIndexed { i2, _ -> i2 in ilist }
-            DagOfGraphBags(n1, n2, n3, memoAttrPosList)
+            DagOfGraphBags(n1, n2, n3, memoAttrPosList, nnzInfer)
         }
     }
 
@@ -395,19 +396,24 @@ class DagOfGraphBags private constructor(
 
         private class Builder {
             val graphBags: MutableList<GraphBag> = mutableListOf()
-            val graphBagParents: MutableList<List<SNode>> = mutableListOf()
-            val graphBagParentInputIndices: MutableList<List<Int>> = mutableListOf()
+            val graphBagParents: MutableList<MutableList<SNode>> = mutableListOf()
+            val graphBagParentInputIndices: MutableList<MutableList<Int>> = mutableListOf()
             val memoGraph: MutableMap<Id, Graph> = mutableMapOf()
             val memoAttrPosList: MutableMap<Id, List<AB>> = mutableMapOf()
+            val parentToGraphBag: MutableMap<SNode, MutableList<Int>> = mutableMapOf()
         }
 
         fun form(initialRoots: Collection<SNode>): DagOfGraphBags {
+            // each parent should have their nnz recorded, because we may have a hierarchy of graphbags (one graphbag is an input to another)
+            val nnzInfer = NnzInfer(BottomUpOptimize.nnzInferer)
+            initialRoots.forEach { if (it is SNodeData) it.inputs.forEach { nnzInfer.infer(it) } else nnzInfer.infer(it) }
+
             val b = Builder()
             for (r in initialRoots)
                 findGraphs(r, b)
             return DagOfGraphBags(b.graphBags.reversed(),
                     b.graphBagParents.map { it.reversed() }.reversed(), b.graphBagParentInputIndices.map { it.reversed() }.reversed(),
-                    b.memoAttrPosList)
+                    b.memoAttrPosList, nnzInfer)
         }
 
         private fun findGraphs(n: SNode, b: Builder) {
@@ -435,18 +441,33 @@ class DagOfGraphBags private constructor(
             }
 
             // strip away parents, add parents to result, in same input location
-            val pa: List<SNode> = ArrayList(n.parents)
+            val pa: MutableList<SNode> = ArrayList(n.parents)
             val paIdx = pa.map {
                 val idx = it.inputs.indexOf(n)
                 it.inputs.removeAt(idx)
                 idx
-            }
+            }.toMutableList()
             n.parents.clear()
 
-            val bag = toGraphBag(n, b)
+            val bag1 = if (n in b.parentToGraphBag) {
+                val idxs = b.parentToGraphBag[n]!!
+                idxs.flatMap { idx ->
+                    val ii = b.graphBagParents[idx].indexOf(n)
+                    b.graphBagParents[idx].removeAt(ii)
+                    b.graphBagParentInputIndices[idx].removeAt(ii)
+                    b.graphBags[idx]
+                }
+            } else listOf()
+            val bag2 = toGraphBag(n, b)
+            val bag = bag1 + bag2
             b.graphBags += bag
             b.graphBagParents += pa
             b.graphBagParentInputIndices += paIdx
+            // A * node transformed into a Graph may be reused as part of a different GraphBag. Put the parents in a map to recover the graph, should we encounter a parent +.
+            // filter parents to + nodes
+            if (bag.size == 1)
+                pa.filter { it is SNodeNary && it.op == SNodeNary.NaryOp.PLUS }
+                        .forEach { b.parentToGraphBag.getOrPut(it) { mutableListOf() } += b.graphBags.size - 1 }
         }
 
         private fun toGraphBag(n: SNode, b: Builder): GraphBag {
