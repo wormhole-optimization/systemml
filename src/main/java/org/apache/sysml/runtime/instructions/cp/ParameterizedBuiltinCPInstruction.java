@@ -197,19 +197,18 @@ public class ParameterizedBuiltinCPInstruction extends ComputationCPInstruction 
 			
 		}
 		else if ( opcode.equalsIgnoreCase("rmempty") ) {
+			String margin = params.get("margin");
+			if( !(margin.equals("rows") || margin.equals("cols")) )
+				throw new DMLRuntimeException("Unspupported margin identifier '"+margin+"'.");
+			
 			// acquire locks
 			MatrixBlock target = ec.getMatrixInput(params.get("target"), getExtendedOpcode());
 			MatrixBlock select = params.containsKey("select")? ec.getMatrixInput(params.get("select"), getExtendedOpcode()):null;
 			
 			// compute the result
-			String margin = params.get("margin");
-			MatrixBlock soresBlock = null;
-			if( margin.equals("rows") )
-				soresBlock = target.removeEmptyOperations(new MatrixBlock(), true, select);
-			else if( margin.equals("cols") ) 
-				soresBlock = target.removeEmptyOperations(new MatrixBlock(), false, select);
-			else
-				throw new DMLRuntimeException("Unspupported margin identifier '"+margin+"'.");
+			boolean emptyReturn = Boolean.parseBoolean(params.get("empty.return").toLowerCase());
+			MatrixBlock soresBlock = target.removeEmptyOperations(new MatrixBlock(),
+				margin.equals("rows"), emptyReturn, select);
 			
 			//release locks
 			ec.setMatrixOutput(output.getName(), soresBlock, getExtendedOpcode());

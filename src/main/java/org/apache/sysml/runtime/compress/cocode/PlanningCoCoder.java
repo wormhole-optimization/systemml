@@ -25,7 +25,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import org.apache.commons.logging.Log;
@@ -33,6 +32,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.compress.estim.CompressedSizeEstimator;
 import org.apache.sysml.runtime.compress.estim.CompressedSizeInfo;
+import org.apache.sysml.runtime.util.CommonThreadPool;
 
 public class PlanningCoCoder 
 {
@@ -96,7 +96,7 @@ public class PlanningCoCoder
 	{
 		List<int[]> retGroups = new ArrayList<>();
 		try {
-			ExecutorService pool = Executors.newFixedThreadPool( k );
+			ExecutorService pool = CommonThreadPool.get(k);
 			ArrayList<CocodeTask> tasks = new ArrayList<>();
 			for (List<Integer> bin : bins) {
 				// building an array of singleton CoCodingGroup
@@ -135,8 +135,7 @@ public class PlanningCoCoder
 		if( LOG.isTraceEnabled() )
 			LOG.trace("Cocoding: process "+singletonGroups.length);
 		
-		List<PlanningCoCodingGroup> workset = 
-			new ArrayList<>(Arrays.asList(singletonGroups));
+		List<PlanningCoCodingGroup> workset = new ArrayList<>(Arrays.asList(singletonGroups));
 		
 		//establish memo table for extracted column groups
 		PlanningMemoTable memo = new PlanningMemoTable();

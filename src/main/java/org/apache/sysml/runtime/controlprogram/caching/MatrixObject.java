@@ -326,12 +326,12 @@ public class MatrixObject extends CacheableData<MatrixBlock>
 				if( _partitionFormat == PDataPartitionFormat.ROW_BLOCK_WISE )
 				{
 					int rix = (int)((pred.rowStart-1)%brlen);
-					mb = mb.sliceOperations(rix, rix, (int)(pred.colStart-1), (int)(pred.colEnd-1), new MatrixBlock());
+					mb = mb.slice(rix, rix, (int)(pred.colStart-1), (int)(pred.colEnd-1), new MatrixBlock());
 				}
 				if( _partitionFormat == PDataPartitionFormat.COLUMN_BLOCK_WISE )
 				{
 					int cix = (int)((pred.colStart-1)%bclen);
-					mb = mb.sliceOperations((int)(pred.rowStart-1), (int)(pred.rowEnd-1), cix, cix, new MatrixBlock());
+					mb = mb.slice((int)(pred.rowStart-1), (int)(pred.rowEnd-1), cix, cix, new MatrixBlock());
 				}
 			}
 			
@@ -472,11 +472,11 @@ public class MatrixObject extends CacheableData<MatrixBlock>
 			int clen = (int)mc.getCols();
 			int brlen = (int)mc.getRowsPerBlock();
 			int bclen = (int)mc.getColsPerBlock();
-			long nnz = mc.getNonZeros();
+			long nnz = mc.getNonZerosBound();
 			
 			//guarded rdd collect 
 			if( ii == InputInfo.BinaryBlockInputInfo && //guarded collect not for binary cell
-				!OptimizerUtils.checkSparkCollectMemoryBudget(mc, getPinnedSize()+getBroadcastSize()) ) {
+				!OptimizerUtils.checkSparkCollectMemoryBudget(mc, getPinnedSize()+getBroadcastSize(), true) ) {
 				//write RDD to hdfs and read to prevent invalid collect mem consumption 
 				//note: lazy, partition-at-a-time collect (toLocalIterator) was significantly slower
 				if( !MapReduceTool.existsFileOnHDFS(_hdfsFileName) ) { //prevent overwrite existing file
@@ -492,11 +492,11 @@ public class MatrixObject extends CacheableData<MatrixBlock>
 			}
 			else if( ii == InputInfo.BinaryCellInputInfo ) {
 				//collect matrix block from binary block RDD
-				mb = SparkExecutionContext.toMatrixBlock(lrdd, rlen, clen, nnz);		
+				mb = SparkExecutionContext.toMatrixBlock(lrdd, rlen, clen, nnz);
 			}
 			else {
 				//collect matrix block from binary cell RDD
-				mb = SparkExecutionContext.toMatrixBlock(lrdd, rlen, clen, brlen, bclen, nnz);	
+				mb = SparkExecutionContext.toMatrixBlock(lrdd, rlen, clen, brlen, bclen, nnz);
 			}
 		}
 		catch(DMLRuntimeException ex) {

@@ -264,7 +264,9 @@ public class DMLTranslator
 	{
 		//apply hop rewrites (static rewrites)
 		ProgramRewriter rewriter = new ProgramRewriter(true, false);
-		rewriter.rewriteProgramHopDAGs(dmlp);
+		rewriter.rewriteProgramHopDAGs(dmlp, false); //rewrite and merge
+		resetHopsDAGVisitStatus(dmlp);
+		rewriter.rewriteProgramHopDAGs(dmlp, true); //rewrite and split
 		resetHopsDAGVisitStatus(dmlp);
 		
 		//propagate size information from main into functions (but conservatively)
@@ -313,6 +315,12 @@ public class DMLTranslator
 		throws LanguageException, HopsException, DMLRuntimeException, LopsException, IOException 
 	{
 		SpoofCompiler.generateCode(rtprog);
+	}
+	
+	public void codgenHopsDAG(ProgramBlock pb)
+		throws HopsException, DMLRuntimeException, LopsException, IOException 
+	{
+		SpoofCompiler.generateCodeFromProgramBlock(pb);
 	}
 	
 	public void constructLops(DMLProgram dmlp) throws ParseException, LanguageException, HopsException, LopsException {
@@ -690,7 +698,7 @@ public class DMLTranslator
 					l.addToDag(dag);
 				}
 				
-				// Instructions for Lobs DAGs
+				// Instructions for Lops DAGs
 				instruct = dag.getJobs(sb, config);
 				rtpb.addInstructions(instruct);
 			}
@@ -1222,6 +1230,13 @@ public class DMLTranslator
 						Hop printHop = new UnaryOp(target.getName(), target.getDataType(), target.getValueType(), op, ae);
 						printHop.setParseInfo(current);
 						output.add(printHop);
+					} else if (ptype == PRINTTYPE.ASSERT) {
+						Hop.OpOp1 op = Hop.OpOp1.ASSERT;
+						Expression source = ps.getExpressions().get(0);
+						Hop ae = processExpression(source, target, ids);
+						Hop printHop = new UnaryOp(target.getName(), target.getDataType(), target.getValueType(), op, ae);
+						printHop.setParseInfo(current);
+						output.add(printHop);
 					} else if (ptype == PRINTTYPE.STOP) {
 						Hop.OpOp1 op = Hop.OpOp1.STOP;
 						Expression source = ps.getExpressions().get(0);
@@ -1264,10 +1279,21 @@ public class DMLTranslator
 				
 					// CASE: target is regular data identifier
 					if (!(target instanceof IndexedIdentifier)) {
-					
+						//process right hand side and accumulation
 						Hop ae = processExpression(source, target, ids);
+						if( ((AssignmentStatement)current).isAccumulator() ) {
+							DataIdentifier accum = liveIn.getVariable(target.getName());
+							if( accum == null )
+								throw new LanguageException("Invalid accumulator assignment "
+									+ "to non-existing variable "+target.getName()+".");
+							ae = HopRewriteUtils.createBinary(ids.get(target.getName()), ae, OpOp2.PLUS);
+							target.setProperties(accum.getOutput());
+						}
+						else
+							target.setProperties(source.getOutput());
 						ids.put(target.getName(), ae);
-						target.setProperties(source.getOutput());
+						
+						//add transient write if needed
 						Integer statementId = liveOutToTemp.get(target.getName());
 						if ((statementId != null) && (statementId.intValue() == i)) {
 							DataOp transientwrite = new DataOp(target.getName(), target.getDataType(), target.getValueType(), ae, DataOpTypes.TRANSIENTWRITE, null);
@@ -1276,8 +1302,7 @@ public class DMLTranslator
 							updatedLiveOut.addVariable(target.getName(), target);
 							output.add(transientwrite);
 						}
-					} // end if (!(target instanceof IndexedIdentifier)) {
-					
+					} 
 					// CASE: target is indexed identifier (left-hand side indexed expression)
 					else {
 						Hop ae = processLeftIndexedExpression(source, (IndexedIdentifier)target, ids);
@@ -1287,12 +1312,12 @@ public class DMLTranslator
 						// obtain origDim values BEFORE they are potentially updated during setProperties call
 						//	(this is incorrect for LHS Indexing)
 						long origDim1 = ((IndexedIdentifier)target).getOrigDim1();
-						long origDim2 = ((IndexedIdentifier)target).getOrigDim2();						 
+						long origDim2 = ((IndexedIdentifier)target).getOrigDim2();
 						target.setProperties(source.getOutput());
 						((IndexedIdentifier)target).setOriginalDimensions(origDim1, origDim2);
 						
 						// preserve data type matrix of any index identifier
-						// (required for scalar input to left indexing)					
+						// (required for scalar input to left indexing)
 						if( target.getDataType() != DataType.MATRIX ) {
 							target.setDataType(DataType.MATRIX);
 							target.setValueType(ValueType.DOUBLE);
@@ -1308,10 +1333,8 @@ public class DMLTranslator
 							output.add(transientwrite);
 						}
 					}
-					
-					
 				}
-				else 
+				else
 				{
 					//assignment, function call
 					FunctionCallIdentifier fci = (FunctionCallIdentifier) source;
@@ -1963,12 +1986,12 @@ public class DMLTranslator
 			right = processExpression(source.getRight(), null, hops);
 		}
 
-	    //prepare target identifier and ensure that output type is boolean 
-	    //(type should not be determined by target (e.g., string for print)
-	    if (target == null) {
-	        target = createTarget(source);
-	    }
-	    target.setValueType(ValueType.BOOLEAN);
+		//prepare target identifier and ensure that output type is boolean 
+		//(type should not be determined by target (e.g., string for print)
+		if (target == null)
+			target = createTarget(source);
+		if( target.getDataType().isScalar() )
+			target.setValueType(ValueType.BOOLEAN);
 		
 		if (source.getRight() == null) {
 			Hop currUop = new UnaryOp(target.getName(), target.getDataType(), target.getValueType(), Hop.OpOp1.NOT, left);
@@ -2107,87 +2130,83 @@ public class DMLTranslator
 		
 		// construct hop based on opcode
 		switch(source.getOpCode()) {
-		case CDF:
-		case INVCDF:
-		case QNORM:
-		case QT:
-		case QF:
-		case QCHISQ:
-		case QEXP:
-		case PNORM:
-		case PT:
-		case PF:
-		case PCHISQ:
-		case PEXP:
-			currBuiltinOp = constructDfHop(target.getName(), target.getDataType(), target.getValueType(), source.getOpCode(), paramHops);
-			break;
+			case CDF:
+			case INVCDF:
+			case QNORM:
+			case QT:
+			case QF:
+			case QCHISQ:
+			case QEXP:
+			case PNORM:
+			case PT:
+			case PF:
+			case PCHISQ:
+			case PEXP:
+				currBuiltinOp = constructDfHop(target.getName(), target.getDataType(), target.getValueType(), source.getOpCode(), paramHops);
+				break;
 			
-		case GROUPEDAGG:
-			currBuiltinOp = new ParameterizedBuiltinOp(
-					target.getName(), target.getDataType(), target.getValueType(), ParamBuiltinOp.GROUPEDAGG, paramHops);
-			break;
-		
-		case RMEMPTY:
-			currBuiltinOp = new ParameterizedBuiltinOp(
-					target.getName(), target.getDataType(), target.getValueType(), ParamBuiltinOp.RMEMPTY, paramHops);
-			break;
+			case GROUPEDAGG:
+				currBuiltinOp = new ParameterizedBuiltinOp(
+						target.getName(), target.getDataType(), target.getValueType(), ParamBuiltinOp.GROUPEDAGG, paramHops);
+				break;
 			
-		case REPLACE:
-			currBuiltinOp = new ParameterizedBuiltinOp(
-					target.getName(), target.getDataType(), target.getValueType(), ParamBuiltinOp.REPLACE, paramHops);
-			break;	
+			case RMEMPTY:
+				currBuiltinOp = new ParameterizedBuiltinOp(
+						target.getName(), target.getDataType(), target.getValueType(), ParamBuiltinOp.RMEMPTY, paramHops);
+				break;
 			
-		case ORDER:
-			ArrayList<Hop> inputs = new ArrayList<>();
-			inputs.add(paramHops.get("target"));
-			inputs.add(paramHops.get("by"));
-			inputs.add(paramHops.get("decreasing"));
-			inputs.add(paramHops.get("index.return"));
+			case REPLACE:
+				currBuiltinOp = new ParameterizedBuiltinOp(
+						target.getName(), target.getDataType(), target.getValueType(), ParamBuiltinOp.REPLACE, paramHops);
+				break;
 			
-			currBuiltinOp = new ReorgOp(target.getName(), target.getDataType(), target.getValueType(), ReOrgOp.SORT, inputs);
+			case ORDER:
+				ArrayList<Hop> inputs = new ArrayList<>();
+				inputs.add(paramHops.get("target"));
+				inputs.add(paramHops.get("by"));
+				inputs.add(paramHops.get("decreasing"));
+				inputs.add(paramHops.get("index.return"));
+				
+				currBuiltinOp = new ReorgOp(target.getName(), target.getDataType(), target.getValueType(), ReOrgOp.SORT, inputs);
+				
+				break;
 			
-			break;
-		
-		case TRANSFORMAPPLY:
-			currBuiltinOp = new ParameterizedBuiltinOp(
-				target.getName(), target.getDataType(), target.getValueType(), 
-				ParamBuiltinOp.TRANSFORMAPPLY, paramHops);
-			break;
-		
-		case TRANSFORMDECODE:
-			currBuiltinOp = new ParameterizedBuiltinOp(
-				target.getName(), target.getDataType(), target.getValueType(), 
-				ParamBuiltinOp.TRANSFORMDECODE, paramHops);
-			break;
-		
-		case TRANSFORMCOLMAP:
-			currBuiltinOp = new ParameterizedBuiltinOp(
-				target.getName(), target.getDataType(), target.getValueType(), 
-				ParamBuiltinOp.TRANSFORMCOLMAP, paramHops);
-			break;
-
-		case TRANSFORMMETA:
-			currBuiltinOp = new ParameterizedBuiltinOp(
-				target.getName(), target.getDataType(), target.getValueType(), 
-				ParamBuiltinOp.TRANSFORMMETA, paramHops);
-			break;
-		
-		case TOSTRING:
-			currBuiltinOp = new ParameterizedBuiltinOp(
-									target.getName(), target.getDataType(), 
-									target.getValueType(), ParamBuiltinOp.TOSTRING, 
-									paramHops);
-			break;
+			case TRANSFORMAPPLY:
+				currBuiltinOp = new ParameterizedBuiltinOp(
+					target.getName(), target.getDataType(), target.getValueType(), 
+					ParamBuiltinOp.TRANSFORMAPPLY, paramHops);
+				break;
 			
-		default:
+			case TRANSFORMDECODE:
+				currBuiltinOp = new ParameterizedBuiltinOp(
+					target.getName(), target.getDataType(), target.getValueType(), 
+					ParamBuiltinOp.TRANSFORMDECODE, paramHops);
+				break;
 			
-			LOG.error(source.printErrorLocation() + 
-					"processParameterizedBuiltinFunctionExpression() -- Unknown operation:  "
-							+ source.getOpCode());
+			case TRANSFORMCOLMAP:
+				currBuiltinOp = new ParameterizedBuiltinOp(
+					target.getName(), target.getDataType(), target.getValueType(), 
+					ParamBuiltinOp.TRANSFORMCOLMAP, paramHops);
+				break;
 			
-			throw new ParseException(source.printErrorLocation() + 
-					"processParameterizedBuiltinFunctionExpression() -- Unknown operation:  "
-							+ source.getOpCode());
+			case TRANSFORMMETA:
+				currBuiltinOp = new ParameterizedBuiltinOp(
+					target.getName(), target.getDataType(), target.getValueType(), 
+					ParamBuiltinOp.TRANSFORMMETA, paramHops);
+				break;
+			
+			case TOSTRING:
+				//check for input data type and only compile toString Hop for matrices/frames,
+				//for scalars, we compile (s + "") to ensure consistent string output value types
+				currBuiltinOp = !paramHops.get("target").getDataType().isScalar() ?
+					new ParameterizedBuiltinOp(target.getName(), target.getDataType(), 
+						target.getValueType(), ParamBuiltinOp.TOSTRING, paramHops) :
+					HopRewriteUtils.createBinary(paramHops.get("target"), new LiteralOp(""), OpOp2.PLUS);
+				break;
+			
+			default:
+				throw new ParseException(source.printErrorLocation() + 
+					"processParameterizedBuiltinFunctionExpression() -- Unknown operation: " + source.getOpCode());
 		}
 		
 		setIdentifierParams(currBuiltinOp, source.getOutput());
@@ -2370,6 +2389,10 @@ public class DMLTranslator
 		
 		// Construct the hop based on the type of Builtin function
 		switch (source.getOpCode()) {
+
+		case EVAL:
+			currBuiltinOp = new NaryOp(target.getName(), target.getDataType(), target.getValueType(), OpOpN.EVAL, processAllExpressions(source.getAllExpr(), hops));
+			break;
 
 		case COLSUM:
 			currBuiltinOp = new AggUnaryOp(target.getName(), target.getDataType(), target.getValueType(), AggOp.SUM,
@@ -2668,6 +2691,33 @@ public class DMLTranslator
 		case CAST_AS_BOOLEAN:
 			currBuiltinOp = new UnaryOp(target.getName(), target.getDataType(), ValueType.BOOLEAN, Hop.OpOp1.CAST_AS_BOOLEAN, expr);
 			break;
+
+		// Boolean binary
+		case XOR:
+			currBuiltinOp = new BinaryOp(target.getName(), target.getDataType(),
+				target.getValueType(), Hop.OpOp2.XOR, expr, expr2);
+			break;
+		case BITWAND:
+			currBuiltinOp = new BinaryOp(target.getName(), target.getDataType(),
+					target.getValueType(), OpOp2.BITWAND, expr, expr2);
+			break;
+		case BITWOR:
+			currBuiltinOp = new BinaryOp(target.getName(), target.getDataType(),
+					target.getValueType(), OpOp2.BITWOR, expr, expr2);
+			break;
+		case BITWXOR:
+			currBuiltinOp = new BinaryOp(target.getName(), target.getDataType(),
+					target.getValueType(), OpOp2.BITWXOR, expr, expr2);
+			break;
+		case BITWSHIFTL:
+			currBuiltinOp = new BinaryOp(target.getName(), target.getDataType(),
+					target.getValueType(), OpOp2.BITWSHIFTL, expr, expr2);
+			break;
+		case BITWSHIFTR:
+			currBuiltinOp = new BinaryOp(target.getName(), target.getDataType(),
+					target.getValueType(), OpOp2.BITWSHIFTR, expr, expr2);
+			break;
+
 		case ABS:
 		case SIN:
 		case COS:
@@ -2678,7 +2728,7 @@ public class DMLTranslator
 		case SINH:
 		case COSH:
 		case TANH:
-		case SIGN:	
+		case SIGN:
 		case SQRT:
 		case EXP:
 		case ROUND:
@@ -2865,8 +2915,13 @@ public class DMLTranslator
 				currBuiltinOp=new BinaryOp(target.getName(), target.getDataType(), target.getValueType(), 
 					Hop.OpOp2.MEDIAN, expr, expr2);
 			}
-			break;	
+			break;
 		
+		case IFELSE:
+			currBuiltinOp=new TernaryOp(target.getName(), target.getDataType(), target.getValueType(), 
+				Hop.OpOp3.IFELSE, expr, expr2, expr3);
+			break;
+			
 		case SEQ:
 			HashMap<String,Hop> randParams = new HashMap<>();
 			randParams.put(Statement.SEQ_FROM, expr);
@@ -2980,15 +3035,19 @@ public class DMLTranslator
 			if(source.getOpCode() == BuiltinFunctionOp.MAX_POOL)
 				currBuiltinOp = new ConvolutionOp(target.getName(), target.getDataType(), target.getValueType(), Hop.ConvOp.MAX_POOLING, inHops1);
 			else
-				throw new HopsException("Average pooling is not implemented");
+				currBuiltinOp = new ConvolutionOp(target.getName(), target.getDataType(), target.getValueType(), Hop.ConvOp.AVG_POOLING, inHops1);
 			setBlockSizeAndRefreshSizeInfo(image, currBuiltinOp);
 			break;
 		}
+		case AVG_POOL_BACKWARD:
 		case MAX_POOL_BACKWARD:
 		{
 			Hop image = expr;
 			ArrayList<Hop> inHops1 = getALHopsForConvOpPoolingCOL2IM(image, source, 1, hops); // process dout as well
-			currBuiltinOp = new ConvolutionOp(target.getName(), target.getDataType(), target.getValueType(), Hop.ConvOp.MAX_POOLING_BACKWARD, inHops1);
+			if(source.getOpCode() == BuiltinFunctionOp.MAX_POOL_BACKWARD)
+				currBuiltinOp = new ConvolutionOp(target.getName(), target.getDataType(), target.getValueType(), Hop.ConvOp.MAX_POOLING_BACKWARD, inHops1);
+			else
+				currBuiltinOp = new ConvolutionOp(target.getName(), target.getDataType(), target.getValueType(), Hop.ConvOp.AVG_POOLING_BACKWARD, inHops1);
 			setBlockSizeAndRefreshSizeInfo(image, currBuiltinOp);
 			break;
 		}
@@ -3013,9 +3072,11 @@ public class DMLTranslator
 			throw new ParseException("Unsupported builtin function type: "+source.getOpCode());
 		}
 		
-		if( !(source.getOpCode() == BuiltinFunctionOp.CONV2D || source.getOpCode() == BuiltinFunctionOp.CONV2D_BACKWARD_DATA ||
-				source.getOpCode() == BuiltinFunctionOp.CONV2D_BACKWARD_FILTER || source.getOpCode() == BuiltinFunctionOp.MAX_POOL ||
-				source.getOpCode() == BuiltinFunctionOp.MAX_POOL_BACKWARD) ) {
+		boolean isConvolution = source.getOpCode() == BuiltinFunctionOp.CONV2D || source.getOpCode() == BuiltinFunctionOp.CONV2D_BACKWARD_DATA ||
+				source.getOpCode() == BuiltinFunctionOp.CONV2D_BACKWARD_FILTER || 
+				source.getOpCode() == BuiltinFunctionOp.MAX_POOL || source.getOpCode() == BuiltinFunctionOp.MAX_POOL_BACKWARD || 
+				source.getOpCode() == BuiltinFunctionOp.AVG_POOL || source.getOpCode() == BuiltinFunctionOp.AVG_POOL_BACKWARD;
+		if( !isConvolution) {
 			// Since the dimension of output doesnot match that of input variable for these operations
 			setIdentifierParams(currBuiltinOp, source.getOutput());
 		}

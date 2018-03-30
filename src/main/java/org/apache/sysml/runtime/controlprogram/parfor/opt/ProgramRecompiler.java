@@ -28,6 +28,8 @@ import org.apache.sysml.hops.Hop;
 import org.apache.sysml.hops.HopsException;
 import org.apache.sysml.hops.IndexingOp;
 import org.apache.sysml.hops.OptimizerUtils;
+import org.apache.sysml.hops.codegen.SpoofCompiler;
+import org.apache.sysml.hops.codegen.SpoofCompiler.IntegrationType;
 import org.apache.sysml.hops.recompile.Recompiler;
 import org.apache.sysml.lops.Lop;
 import org.apache.sysml.lops.LopProperties;
@@ -50,7 +52,7 @@ import org.apache.sysml.runtime.controlprogram.ProgramBlock;
 import org.apache.sysml.runtime.controlprogram.WhileProgramBlock;
 import org.apache.sysml.runtime.controlprogram.context.ExecutionContext;
 import org.apache.sysml.runtime.instructions.Instruction;
-import org.apache.sysml.runtime.instructions.cp.ArithmeticBinaryCPInstruction;
+import org.apache.sysml.runtime.instructions.cp.BinaryCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.Data;
 import org.apache.sysml.runtime.instructions.cp.FunctionCallCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.ScalarObject;
@@ -72,6 +74,13 @@ public class ProgramRecompiler
 		//construct runtime program from lops
 		for( StatementBlock sb : sbs ) {
 			ret.add(dmlt.createRuntimeProgramBlock(rtprog, sb, config));
+		}
+		
+		//enhance runtime program by automatic operator fusion
+		if( ConfigurationManager.isCodegenEnabled() 
+			&& SpoofCompiler.INTEGRATION==IntegrationType.RUNTIME ) {
+			for( ProgramBlock pb : ret )
+				dmlt.codgenHopsDAG(pb);
 		}
 		
 		return ret;
@@ -477,7 +486,7 @@ public class ProgramRecompiler
 		
 		//create instruction set
 		ArrayList<Instruction> tmp = new ArrayList<>();
-		Instruction inst = ArithmeticBinaryCPInstruction.parseInstruction(str);
+		Instruction inst = BinaryCPInstruction.parseInstruction(str);
 		tmp.add(inst);
 		
 		return tmp;

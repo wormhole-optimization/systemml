@@ -27,6 +27,7 @@ import org.apache.commons.logging.LogFactory;
 import java.util.Vector;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.FloatBuffer;
 import java.io.File;
 
 import org.apache.commons.io.FileUtils;
@@ -323,7 +324,12 @@ public class NativeHelper {
 	}
 
 	// TODO: Add pmm, wsloss, mmchain, etc.
-	public static native boolean matrixMultDenseDense(double [] m1, double [] m2, double [] ret, int m1rlen, int m1clen, int m2clen, int numThreads);
+	
+	//double-precision matrix multiply dense-dense
+	public static native boolean dmmdd(double [] m1, double [] m2, double [] ret, int m1rlen, int m1clen, int m2clen, int numThreads);
+	//single-precision matrix multiply dense-dense
+	public static native boolean smmdd(FloatBuffer m1, FloatBuffer m2, FloatBuffer ret, int m1rlen, int m1clen, int m2clen, int numThreads);
+	//transpose-self matrix multiply
 	private static native boolean tsmm(double [] m1, double [] ret, int m1rlen, int m1clen, boolean isLeftTranspose, int numThreads);
 
 	// ----------------------------------------------------------------------------------------------------------------
@@ -336,8 +342,10 @@ public class NativeHelper {
 	// Called by ConvolutionCPInstruction if both input and filter are dense
 	public static native int conv2dDense(double [] input, double [] filter, double [] ret, int N, int C, int H, int W, 
 			int K, int R, int S, int stride_h, int stride_w, int pad_h, int pad_w, int P, int Q, int numThreads);
-	public static native int conv2dBiasAddDense(double [] input, double [] bias, double [] filter, double [] ret, int N, int C, int H, int W, 
-			int K, int R, int S, int stride_h, int stride_w, int pad_h, int pad_w, int P, int Q, int numThreads);
+	public static native int dconv2dBiasAddDense(double [] input, double [] bias, double [] filter, double [] ret, int N,
+		int C, int H, int W, int K, int R, int S, int stride_h, int stride_w, int pad_h, int pad_w, int P, int Q, int numThreads);
+	public static native int sconv2dBiasAddDense(FloatBuffer input, FloatBuffer bias, FloatBuffer filter, FloatBuffer ret,
+		int N, int C, int H, int W, int K, int R, int S, int stride_h, int stride_w, int pad_h, int pad_w, int P, int Q, int numThreads);
 	// Called by ConvolutionCPInstruction if both input and filter are dense
 	public static native int conv2dBackwardFilterDense(double [] input, double [] dout, double [] ret, int N, int C, int H, int W, 
 			int K, int R, int S, int stride_h, int stride_w, int pad_h, int pad_w, int P, int Q, int numThreads);

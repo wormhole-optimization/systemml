@@ -38,7 +38,7 @@ public class UtilFunctions
 	//for accurate cast of double values to int and long 
 	//IEEE754: binary64 (double precision) eps = 2^(-53) = 1.11 * 10^(-16)
 	//(same epsilon as used for matrix index cast in R)
-	public static double DOUBLE_EPS = Math.pow(2, -53);
+	public static final double DOUBLE_EPS = Math.pow(2, -53);
 	
 	//prime numbers for old hash function (divide prime close to max int, 
 	//because it determines the max hash domain size
@@ -304,6 +304,13 @@ public class UtilFunctions
 			((Long)obj).intValue() : ((Integer)obj).intValue();
 	}
 	
+	public static float[] toFloat(double[] data) {
+		float[] ret = new float[data.length];
+		for( int i=0; i<data.length; i++ )
+			ret[i] = (float)data[i];
+		return ret;
+	}
+	
 	public static long getSeqLength(double from, double to, double incr) {
 		return getSeqLength(from, to, incr, true);
 	}
@@ -559,6 +566,13 @@ public class UtilFunctions
 			return (!sobj.equals("0") && !sobj.equals("0.0"));
 		}
 	}
+	
+	public static int computeNnz(double[] a, int ai, int len) {
+		int lnnz = 0;
+		for( int i=ai; i<ai+len; i++ )
+			lnnz += (a[i] != 0) ? 1 : 0;
+		return lnnz;
+	}
 
 	public static ValueType[] nCopies(int n, ValueType vt) {
 		ValueType[] ret = new ValueType[n];
@@ -592,11 +606,35 @@ public class UtilFunctions
 	}
 	
 	@SafeVarargs
+	public static <T> List<T> asList(List<T>... inputs) {
+		List<T> ret = new ArrayList<>();
+		for( List<T> list : inputs )
+			ret.addAll(list);
+		return ret;
+	}
+	
+	@SafeVarargs
+	public static <T> Set<T> asSet(List<T>... inputs) {
+		Set<T> ret = new HashSet<>();
+		for( List<T> list : inputs )
+			ret.addAll(list);
+		return ret;
+	}
+	
+	@SafeVarargs
 	public static <T> Set<T> asSet(T[]... inputs) {
 		Set<T> ret = new HashSet<>();
 		for( T[] input : inputs )
 			for( T element : input )
 				ret.add(element);
+		return ret;
+	}
+	
+	@SafeVarargs
+	public static <T> Set<T> asSet(T... inputs) {
+		Set<T> ret = new HashSet<>();
+		for( T element : inputs )
+			ret.add(element);
 		return ret;
 	}
 }

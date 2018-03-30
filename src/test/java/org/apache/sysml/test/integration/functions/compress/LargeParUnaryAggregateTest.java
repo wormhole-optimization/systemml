@@ -1055,7 +1055,7 @@ public class LargeParUnaryAggregateTest extends AutomatedTestBase
 				input = TestUtils.round(input);
 			}
 			MatrixBlock mb = DataConverter.convertToMatrixBlock(input);
-			mb = mb.appendOperations(MatrixBlock.seqOperations(0.1, rows-0.1, 1), new MatrixBlock()); //uc group
+			mb = mb.append(MatrixBlock.seqOperations(0.1, rows-0.1, 1), new MatrixBlock()); //uc group
 			
 			//prepare unary aggregate operator
 			AggregateUnaryOperator auop = null;
@@ -1080,7 +1080,7 @@ public class LargeParUnaryAggregateTest extends AutomatedTestBase
 			if( compress )
 				cmb.compress();
 			
-			//matrix-vector uncompressed						
+			//matrix-vector uncompressed
 			MatrixBlock ret1 = (MatrixBlock)mb.aggregateUnaryOperations(auop, new MatrixBlock(), 1000, 1000, null, true);
 			
 			//matrix-vector compressed
@@ -1092,7 +1092,7 @@ public class LargeParUnaryAggregateTest extends AutomatedTestBase
 			int dim1 = (aggtype == AggType.ROWSUMS || aggtype == AggType.ROWSUMSSQ 
 					|| aggtype == AggType.ROWMINS || aggtype == AggType.ROWMINS)?rows:1;
 			int dim2 = (aggtype == AggType.COLSUMS || aggtype == AggType.COLSUMSSQ 
-					|| aggtype == AggType.COLMAXS || aggtype == AggType.COLMINS)?cols:1;
+					|| aggtype == AggType.COLMAXS || aggtype == AggType.COLMINS)?cols+1:1;
 			TestUtils.compareMatrices(d1, d2, dim1, dim2, 0.000000001);
 		}
 		catch(Exception ex) {

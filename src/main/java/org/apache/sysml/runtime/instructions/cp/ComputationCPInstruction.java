@@ -21,6 +21,7 @@ package org.apache.sysml.runtime.instructions.cp;
 
 import org.apache.sysml.api.DMLScript;
 import org.apache.sysml.api.DMLScript.RUNTIME_PLATFORM;
+import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.runtime.controlprogram.caching.CacheableData;
 import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.matrix.operators.Operator;
@@ -65,6 +66,8 @@ public abstract class ComputationCPInstruction extends CPInstruction {
 		double memReq = out.isInSparseFormat() ? 
 			MatrixBlock.estimateSizeDenseInMemory(out.getNumRows(), out.getNumColumns()) :
 			MatrixBlock.estimateSizeSparseInMemory(out.getNumRows(), out.getNumColumns(), out.getSparsity());
-		return ( memReq < memIn1 + memIn2 );
+		//guarded if mem requirements smaller than input sizes
+		return ( memReq < memIn1 + memIn2
+			+ OptimizerUtils.SAFE_REP_CHANGE_THRES ); //8MB
 	}
 }

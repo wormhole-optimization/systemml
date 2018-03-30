@@ -58,7 +58,8 @@ import org.apache.sysml.utils.Statistics;
  * 
  */
 public class ResultMergeRemoteMR extends ResultMerge
-{	
+{
+	private static final long serialVersionUID = 575681838941682037L;
 	
 	public static final byte COMPARE_TAG = 'c';
 	public static final byte DATA_TAG = 'd';
@@ -70,9 +71,10 @@ public class ResultMergeRemoteMR extends ResultMerge
 	//private int  _max_retry = -1;
 	private boolean _jvmReuse = false;
 
-	public ResultMergeRemoteMR(MatrixObject out, MatrixObject[] in, String outputFilename, long pfid, int numMappers, int numReducers, int replication, int max_retry, boolean jvmReuse) 
+	public ResultMergeRemoteMR(MatrixObject out, MatrixObject[] in, String outputFilename, boolean accum,
+		long pfid, int numMappers, int numReducers, int replication, int max_retry, boolean jvmReuse) 
 	{
-		super(out, in, outputFilename);
+		super(out, in, outputFilename, accum);
 		
 		_pfid = pfid;
 		_numMappers = numMappers;
@@ -136,9 +138,8 @@ public class ResultMergeRemoteMR extends ResultMerge
 				moNew = new MatrixObject(_output.getValueType(), _outputFName);
 				OutputInfo oiOld = metadata.getOutputInfo();
 				InputInfo iiOld = metadata.getInputInfo();
-				MatrixCharacteristics mc = new MatrixCharacteristics(mcOld.getRows(),mcOld.getCols(),
-						                                             mcOld.getRowsPerBlock(),mcOld.getColsPerBlock());
-				mc.setNonZeros( computeNonZeros(_output, inMO) );
+				MatrixCharacteristics mc = new MatrixCharacteristics(mcOld);
+				mc.setNonZeros(_isAccum ? -1 : computeNonZeros(_output, inMO));
 				MetaDataFormat meta = new MetaDataFormat(mc,oiOld,iiOld);
 				moNew.setMetaData( meta );
 			}
@@ -185,11 +186,12 @@ public class ResultMergeRemoteMR extends ResultMerge
 			if( withCompare ) {
 				FileSystem fs = IOUtilFunctions.getFileSystem(pathNew, job);
 				pathCompare = new Path(fname).makeQualified(fs);
-				MRJobConfiguration.setResultMergeInfo(job, pathCompare.toString(), ii, 
+				MRJobConfiguration.setResultMergeInfo(job, pathCompare.toString(), _isAccum, ii, 
 					LocalFileUtils.getWorkingDir(LocalFileUtils.CATEGORY_RESULTMERGE), rlen, clen, brlen, bclen);
 			}
 			else
-				MRJobConfiguration.setResultMergeInfo(job, "null", ii, LocalFileUtils.getWorkingDir(LocalFileUtils.CATEGORY_RESULTMERGE), rlen, clen, bclen, bclen);
+				MRJobConfiguration.setResultMergeInfo(job, "null", _isAccum, ii,
+					LocalFileUtils.getWorkingDir(LocalFileUtils.CATEGORY_RESULTMERGE), rlen, clen, bclen, bclen);
 			
 			
 			//set mappers, reducers, combiners

@@ -22,7 +22,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -31,8 +30,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.sysml.api.DMLScript;
 import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.runtime.DMLRuntimeException;
-import org.apache.sysml.runtime.instructions.InstructionUtils;
-import org.apache.sysml.runtime.matrix.operators.BinaryOperator;
+import org.apache.sysml.runtime.util.CommonThreadPool;
 import org.apache.sysml.runtime.util.ConvolutionUtils;
 
 /*
@@ -51,7 +49,7 @@ import org.apache.sysml.runtime.util.ConvolutionUtils;
  * followed by the above mentioned functions are as follows:
  *   execute(LibMatrixDNNHelper.get__Workers(params), params);
  * 3. LibMatrixDNN's execute() method ensures the creation and shutdown of the ExecutorService.
- * 4. LibMatrixDNNHelper.get__Workers creates appropriate workers based on the runtime characteristics of
+ * 4. LibMatrixDNN__.getWorkers creates appropriate workers based on the runtime characteristics of
  * the input data (for example: input activations, filter, dout, ...). For code maintenance, these workers
  * are placed in the respective LibMatrixDNN__Helper files.
  * 5. The above mentioned workers may also use additional workers such as im2col and rotate180.
@@ -66,6 +64,9 @@ import org.apache.sysml.runtime.util.ConvolutionUtils;
 public class LibMatrixDNN {
 	
 	protected static final Log LOG =  LogFactory.getLog(LibMatrixDNN.class.getName());
+	public static enum PoolingType {
+		MAX, AVG
+	}
 	
 	//library configurations and external contracts
 	// ------------------------------------------------------------------------------------------------
@@ -129,18 +130,7 @@ public class LibMatrixDNN {
 		loopedConvBwdDataMatMultTime.set(0);
 		loopedConvBwdDataCol2ImTime.set(0);
 	}
-	
-	// Commonly used operators
-	static BinaryOperator _binaryElementWiseAddition = null;
-	static BinaryOperator _binaryElementWiseMultiplication = null;
-	static {
-		try {
-			_binaryElementWiseAddition = InstructionUtils.parseBinaryOperator("+");
-			_binaryElementWiseMultiplication = InstructionUtils.parseBinaryOperator("*");
-		} catch (DMLRuntimeException e) {
-			throw new RuntimeException("ERROR initializing LibMatrixDNN", e);
-		}
-	}
+
 	// ------------------------------------------------------------------------------------------------
 	
 	/**
@@ -154,11 +144,10 @@ public class LibMatrixDNN {
 	 */
 	public static void conv2d(MatrixBlock input, MatrixBlock filter, MatrixBlock outputBlock, ConvolutionParameters params) throws DMLRuntimeException {
 		LibMatrixDNN.checkInputsConv2d(input, filter, outputBlock, params);
-		
 		if(params.bias != null && params.bias.isInSparseFormat())
 			params.bias.sparseToDense(); // Since bias is extremely small array
 		
-		long nnz = execute(LibMatrixDNNHelper.getConv2dWorkers(params), params);
+		long nnz = execute(LibMatrixDNNConv2d.getConv2dWorkers(params), params);
 		
 		//post-processing: maintain nnz
 		outputBlock.setNonZeros(nnz);
@@ -177,7 +166,7 @@ public class LibMatrixDNN {
 	public static void conv2dBackwardData(MatrixBlock filter, MatrixBlock dout, MatrixBlock outputBlock, ConvolutionParameters params) throws DMLRuntimeException {
 		checkInputsConv2dBackwardData(filter, dout, outputBlock, params);
 		
-		long nnz = execute(LibMatrixDNNHelper.getConv2dBackwardDataWorkers(params), params);
+		long nnz = execute(LibMatrixDNNConv2d.getConv2dBackwardDataWorkers(params), params);
 		
 		//post-processing: maintain nnz
 		outputBlock.setNonZeros(nnz);
@@ -196,13 +185,271 @@ public class LibMatrixDNN {
 	public static void conv2dBackwardFilter(MatrixBlock input, MatrixBlock dout, MatrixBlock outputBlock, ConvolutionParameters params) throws DMLRuntimeException {
 		checkInputsConv2dBackwardFilter(input, dout, outputBlock, params);
 		
-		execute(LibMatrixDNNHelper.getConv2dBackwardFilterWorkers(params), params);
+		execute(LibMatrixDNNConv2d.getConv2dBackwardFilterWorkers(params), params);
 		
 		//post-processing: maintain nnz
 		outputBlock.recomputeNonZeros(); 
 		outputBlock.examSparsity();
 	}
 	
+	public static void pooling(MatrixBlock input, MatrixBlock output, ConvolutionParameters params, PoolingType poolType) throws DMLRuntimeException {
+		params.input1 = input;
+		params.output = output;
+		
+		if(input.getNumColumns() != params.C*params.H*params.W || input.getNumRows() != params.N) {
+			throw new DMLRuntimeException("Incorrect input dimensions in maxpooling:" + input.getNumRows() + " " 
+				+ input.getNumColumns() + " " + params.N + " " + params.C*params.H*params.W);
+		}
+		
+		//materialize indexes unless basic case with stride=1 and pad=0
+		if( !params.isStride1Pad0() || input.sparse )
+			fillIndexesArray(params);
+		
+		long nnz = execute(LibMatrixDNNPooling.getPoolingWorkers(params, poolType), params);
+		
+		// post-processing: maintain nnz
+		output.setNonZeros(nnz);
+		output.examSparsity();
+	}
+	
+
+	/**
+	 * This method computes the backpropogation errors for previous layer of pooling operation
+	 * 
+	 * @param input input matrix
+	 * @param dout dout matrix
+	 * @param outputBlock output matrix
+	 * @param params convolution parameters
+	 * @param performReluBackward perform ReLU backward
+	 * @param poolType type of pooling
+	 * @throws DMLRuntimeException if DMLRuntimeException occurs
+	 */
+	public static void poolingBackward(MatrixBlock input, MatrixBlock dout, MatrixBlock outputBlock, 
+			ConvolutionParameters params, boolean performReluBackward, PoolingType poolType) throws DMLRuntimeException {
+		params.input1 = input;
+		params.input2 = dout;
+		params.output = outputBlock;
+		
+		if(poolType == PoolingType.MAX && (input.getNumColumns() != params.C*params.H*params.W || input.getNumRows() != params.N)) {
+			throw new DMLRuntimeException("Incorrect input dimensions in maxpooling_backward:" + input.getNumRows() + " " + input.getNumColumns() + " " + params.N + " " + params.K*params.P*params.Q);
+		}
+
+		if(dout.getNumColumns() != params.C*params.P*params.Q || dout.getNumRows() != params.N) {
+			throw new DMLRuntimeException("Incorrect dout dimensions in pooling_backward:" + input.getNumRows() + " " + input.getNumColumns() + " " + params.N + " " + params.K*params.P*params.Q);
+		}
+		
+		if(DMLScript.FINEGRAINED_STATISTICS) {
+			boolean isSparse = (poolType == PoolingType.MAX) ? (input.isInSparseFormat() || dout.isInSparseFormat()) : dout.isInSparseFormat();
+			if(isSparse)
+				maxPoolBwdSparseCount.addAndGet(1);
+			else
+				maxPoolBwdDenseCount.addAndGet(1);
+		}
+		
+		if (params.output.isInSparseFormat())
+			throw new DMLRuntimeException("Sparse pooling_backward is not supported");
+
+		if(poolType == PoolingType.AVG) {
+			fillIndexesArray(params); 
+		}
+		else {
+			if( !(params.input1.isInSparseFormat() && !params.input2.isInSparseFormat()) )
+				fillIndexesArray(params); //not needed for sparse-dense	 
+		}
+		long nnz = execute(LibMatrixDNNPooling.getPoolingBackwardWorkers(params, performReluBackward, poolType), params);
+		//post-processing: maintain nnz 
+		outputBlock.setNonZeros(nnz);
+		outputBlock.examSparsity();
+	}
+	
+	/**
+	 * This method computes the backpropagation errors for previous layer of relu operation
+	 * 
+	 * @param input input matrix
+	 * @param dout errors from next layer
+	 * @param outputBlock output matrix
+	 * @param numThreads number of threads
+	 * @throws DMLRuntimeException if DMLRuntimeException occurs
+	 */
+	public static void reluBackward(MatrixBlock input, MatrixBlock dout, MatrixBlock outputBlock, int numThreads) throws DMLRuntimeException {
+		int N = input.getNumRows();
+		ConvolutionParameters params = new ConvolutionParameters(N, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, numThreads);
+		params.input1 = input;
+		params.input2 = dout;
+		params.output = outputBlock;
+		if(input.getNumRows() != dout.getNumRows() || input.getNumColumns() != dout.getNumColumns()) {
+			throw new DMLRuntimeException("Incorrect dimensions for relu_backward:" + 
+				input.getNumRows() + " != " + dout.getNumRows() + " || " + input.getNumColumns() + " != " + dout.getNumColumns());
+		}
+		
+		long nnz = execute(LibMatrixDNNRelu.getReluBackwardWorkers(params), params);
+		
+		// post-processing: maintain nnz
+		outputBlock.setNonZeros(nnz);
+		outputBlock.examSparsity();
+	}
+	
+	/**
+	 * Performs the operation corresponding to the DML script:
+	 * ones = matrix(1, rows=1, cols=Hout*Wout)		
+	 * output = input + matrix(bias %*% ones, rows=1, cols=F*Hout*Wout)
+	 * This operation is often followed by conv2d and hence we have introduced bias_add(input, bias) built-in function
+	 * 
+	 * @param input input matrix
+	 * @param bias bias matrix
+	 * @param outputBlock output matrix
+	 * @param numThreads number of threads
+	 * @throws DMLRuntimeException if DMLRuntimeException occurs
+	 */
+	public static void biasAdd(MatrixBlock input, MatrixBlock bias, MatrixBlock outputBlock, int numThreads) throws DMLRuntimeException {
+		int N = input.getNumRows();
+		int K = bias.getNumRows();
+		int PQ = input.getNumColumns() / K;
+		
+		if(bias.getNumColumns() != 1 || input.getNumColumns() % K != 0) {
+			throw new DMLRuntimeException("Incorrect inputs for bias_add: input[" + N + " X " + input.getNumColumns()  + "] and bias[" + K + " X " + bias.getNumColumns() + "]");
+		}
+		
+		double [] outputArray = outputBlock.getDenseBlockValues();
+		if(input.isEmptyBlock()) {
+			for(int n = 0;  n < N; n++) 
+				ConvolutionUtils.fillBias(bias, outputArray, n, n+1, N, K, PQ);
+		}
+		else {
+			// Handles both dense and sparse inputs and copies it to dense output
+			outputBlock.copy(input); 
+			int index = 0;
+			if(bias.isInSparseFormat())
+				bias.sparseToDense(); // Since bias is extremely small array
+			double [] biasArr = bias.getDenseBlockValues();
+			for(int n = 0; n < N; n++) {
+				for(int k = 0; k < K; k++) {
+					double biasVal = biasArr[k];
+					for(int pq = 0; pq < PQ; pq++, index++) {
+						outputArray[index] += biasVal;
+					}
+				}
+			}
+		}
+		
+		//post-processing: maintain nnz
+		outputBlock.recomputeNonZeros(); 
+		outputBlock.examSparsity();
+	}
+	
+	
+	/**
+	 * Performs the operation corresponding to the DML script:
+	 * ones = matrix(1, rows=1, cols=Hout*Wout)		
+	 * output = input * matrix(bias %*% ones, rows=1, cols=F*Hout*Wout)
+	 * This operation is often followed by conv2d and hence we have introduced bias_multiply(input, bias) built-in function
+	 * 
+	 * @param input input matrix
+	 * @param bias bias matrix
+	 * @param outputBlock output matrix
+	 * @param numThreads number of threads
+	 * @throws DMLRuntimeException if DMLRuntimeException occurs
+	 */
+	public static void biasMultiply(MatrixBlock input, MatrixBlock bias, MatrixBlock outputBlock, int numThreads) throws DMLRuntimeException {
+		int N = input.getNumRows();
+		int K = bias.getNumRows();
+		int PQ = input.getNumColumns() / K;
+		
+		ConvolutionParameters params = new ConvolutionParameters(N, PQ, -1, -1, K, -1, -1, -1, -1, -1, -1, numThreads);
+		params.input1 = input;
+		params.input2 = bias;
+		params.output = outputBlock;
+		
+		if(bias.getNumColumns() != 1 || input.getNumColumns() % K != 0) {
+			throw new DMLRuntimeException("Incorrect inputs for bias_multiply: input[" + N + " X " + input.getNumColumns()  + "] and bias[" + K + " X " + bias.getNumColumns() + "]");
+		}
+		
+		if(!input.isEmptyBlock() && !bias.isEmptyBlock()) {
+			// Handles both dense and sparse inputs and copies it to dense output
+			outputBlock.copy(input);
+			if(bias.isInSparseFormat())
+				bias.sparseToDense(); // Since bias is extremely small array
+			double [] biasArr = bias.getDenseBlockValues();
+			if(!input.isInSparseFormat()) {
+				double [] outputArray = outputBlock.getDenseBlockValues();
+				int index = 0;
+				for(int n = 0; n < N; n++) {
+					for(int k = 0; k < K; k++) {
+						double biasVal = biasArr[k];
+						for(int pq = 0; pq < PQ; pq++, index++) {
+							outputArray[index] *= biasVal;
+						}
+					}
+				}
+			}
+			else {
+				// First delete those elements which will become zero 
+				for(int k = 0; k < K; k++) {
+					if(biasArr[k] == 0) {
+						for(int n = 0; n < N; n++) {
+							outputBlock.sparseBlock.deleteIndexRange(n, k*PQ, (k+1)*PQ);
+						}
+					}
+				}
+				// Then perform bias_multiply for non-zero bias entries
+				for(int n = 0; n < N; n++) {
+					if( !outputBlock.sparseBlock.isEmpty(n) ) {
+						int apos = outputBlock.sparseBlock.pos(n);
+						int alen = outputBlock.sparseBlock.size(n);
+						int[] aix = outputBlock.sparseBlock.indexes(n);
+						double[] avals = outputBlock.sparseBlock.values(n);
+						
+						for(int j=apos; j<apos+alen; j++) {
+							// Since aix[j] => KPQ
+							int k = aix[j] % PQ;
+							if(biasArr[k] != 0)
+								avals[j] *= biasArr[k];
+						}
+					}
+				}
+			}
+			
+			//post-processing: maintain nnz
+			params.output.recomputeNonZeros();
+			params.output.examSparsity();
+		}
+		else {
+			params.output.setNonZeros(0);
+		}
+	}
+	
+	/**
+	 * Executes the tasks in parallel using java's ExecutorService.
+	 *  
+	 * @param tasks deep learning related tasks
+	 * @param params convolution parameters
+	 * @throws DMLRuntimeException if the error occurs
+	 */
+	private static long execute(ArrayList<Callable<Long>> tasks, ConvolutionParameters params) throws DMLRuntimeException {
+		int k = OptimizerUtils.getConstrainedNumThreads(params.numThreads);
+		long lnnz = 0;
+		try {
+			if(k == 1) {
+				// Single-threaded execution when called in parfor
+				// this avoid unnecessary creation of threadpool.
+				for(Callable<Long> task : tasks) {
+					lnnz += task.call();
+				}
+			}
+			else {
+				ExecutorService pool = CommonThreadPool.get( Math.min(k, params.N) );
+				List<Future<Long>> taskret = pool.invokeAll(tasks);
+				pool.shutdown();
+				for( Future<Long> task : taskret )
+					lnnz += task.get();
+			}
+		} 
+		catch (Exception e) {
+			throw new DMLRuntimeException("Error while executing multi-threaded tasks", e);
+		}
+		
+		return lnnz;
+	}
 	
 	private static void checkOrThrowException(String msg, long lhs, long rhs) throws DMLRuntimeException {
 		if(lhs != rhs)
@@ -290,49 +537,6 @@ public class LibMatrixDNN {
 	}
 	
 	/**
-	 * This method computes the backpropogation errors for previous layer of maxpooling operation
-	 * 
-	 * @param input input matrix
-	 * @param dout dout matrix
-	 * @param outputBlock output matrix
-	 * @param params convolution parameters
-	 * @param performReluBackward perform ReLU backward
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
-	 */
-	public static void maxpoolingBackward(MatrixBlock input, MatrixBlock dout, MatrixBlock outputBlock, 
-			ConvolutionParameters params, boolean performReluBackward) throws DMLRuntimeException {
-		params.input1 = input;
-		params.input2 = dout;
-		params.output = outputBlock;
-		if(input.getNumColumns() != params.C*params.H*params.W || input.getNumRows() != params.N) {
-			throw new DMLRuntimeException("Incorrect input dimensions in maxpooling_backward:" + input.getNumRows() + " " + input.getNumColumns() + " " + params.N + " " + params.K*params.P*params.Q);
-		}
-
-		if(dout.getNumColumns() != params.C*params.P*params.Q || dout.getNumRows() != params.N) {
-			throw new DMLRuntimeException("Incorrect dout dimensions in maxpooling_backward:" + input.getNumRows() + " " + input.getNumColumns() + " " + params.N + " " + params.K*params.P*params.Q);
-		}
-		
-		if(DMLScript.FINEGRAINED_STATISTICS) {
-			if(input.isInSparseFormat() || dout.isInSparseFormat())
-				maxPoolBwdSparseCount.addAndGet(1);
-			else
-				maxPoolBwdDenseCount.addAndGet(1);
-		}
-		
-		if (params.output.isInSparseFormat())
-			throw new DMLRuntimeException("Sparse maxpooling_backward is not supported");
-
-		if( !(params.input1.isInSparseFormat() && !params.input2.isInSparseFormat()) )
-			fillIndexesArray(params); //not needed for sparse-dense
-		
-		long nnz = execute(LibMatrixDNNHelper.getMaxPoolingBackwardWorkers(params, performReluBackward), params);
-		
-		//post-processing: maintain nnz 
-		outputBlock.setNonZeros(nnz); 
-		outputBlock.examSparsity();
-	}
-	
-	/**
 	 * This method computes start and end indexes required for max_pool and max_pool_backward operations.
 	 * This speeds up the performance of max_pool and  max_pool_backward
 	 * 
@@ -353,229 +557,5 @@ public class LibMatrixDNN {
 			params.start_indexes_w[q] = Math.max(ix, 0);
 			params.end_indexes_w[q] = Math.min(ix+params.S, params.W);
 		}
-	}
-	
-	/**
-	 * This method computes the backpropagation errors for previous layer of relu operation
-	 * 
-	 * @param input input matrix
-	 * @param dout errors from next layer
-	 * @param outputBlock output matrix
-	 * @param numThreads number of threads
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
-	 */
-	public static void reluBackward(MatrixBlock input, MatrixBlock dout, MatrixBlock outputBlock, int numThreads) throws DMLRuntimeException {
-		int N = input.getNumRows();
-		ConvolutionParameters params = new ConvolutionParameters(N, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, numThreads);
-		params.input1 = input;
-		params.input2 = dout;
-		params.output = outputBlock;
-		if(input.getNumRows() != dout.getNumRows() || input.getNumColumns() != dout.getNumColumns()) {
-			throw new DMLRuntimeException("Incorrect dimensions for relu_backward:" + 
-				input.getNumRows() + " != " + dout.getNumRows() + " || " + input.getNumColumns() + " != " + dout.getNumColumns());
-		}
-		
-		execute(LibMatrixDNNHelper.getReluBackwardWorkers(params), params);
-		
-		// post-processing: maintain nnz
-		outputBlock.recomputeNonZeros(); 
-		outputBlock.examSparsity();
-	}
-	
-	/**
-	 * Performs the operation corresponding to the DML script:
-	 * ones = matrix(1, rows=1, cols=Hout*Wout)		
-	 * output = input + matrix(bias %*% ones, rows=1, cols=F*Hout*Wout)
-	 * This operation is often followed by conv2d and hence we have introduced bias_add(input, bias) built-in function
-	 * 
-	 * @param input input matrix
-	 * @param bias bias matrix
-	 * @param outputBlock output matrix
-	 * @param numThreads number of threads
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
-	 */
-	public static void biasAdd(MatrixBlock input, MatrixBlock bias, MatrixBlock outputBlock, int numThreads) throws DMLRuntimeException {
-		int N = input.getNumRows();
-		int K = bias.getNumRows();
-		int PQ = input.getNumColumns() / K;
-		
-		if(bias.getNumColumns() != 1 || input.getNumColumns() % K != 0) {
-			throw new DMLRuntimeException("Incorrect inputs for bias_add: input[" + N + " X " + input.getNumColumns()  + "] and bias[" + K + " X " + bias.getNumColumns() + "]");
-		}
-		
-		double [] outputArray = outputBlock.getDenseBlock();
-		if(input.isEmptyBlock()) {
-			for(int n = 0;  n < N; n++) 
-				ConvolutionUtils.fillBias(bias, outputArray, n, n+1, N, K, PQ);
-		}
-		else {
-			// Handles both dense and sparse inputs and copies it to dense output
-			outputBlock.copy(input); 
-			int index = 0;
-			if(bias.isInSparseFormat())
-				bias.sparseToDense(); // Since bias is extremely small array
-			double [] biasArr = bias.getDenseBlock();
-			for(int n = 0; n < N; n++) {
-				for(int k = 0; k < K; k++) {
-					double biasVal = biasArr[k];
-					for(int pq = 0; pq < PQ; pq++, index++) {
-						outputArray[index] += biasVal;
-					}
-				}
-			}
-		}
-		
-		//post-processing: maintain nnz
-		outputBlock.recomputeNonZeros(); 
-		outputBlock.examSparsity();
-	}
-	
-	
-	/**
-	 * Performs the operation corresponding to the DML script:
-	 * ones = matrix(1, rows=1, cols=Hout*Wout)		
-	 * output = input * matrix(bias %*% ones, rows=1, cols=F*Hout*Wout)
-	 * This operation is often followed by conv2d and hence we have introduced bias_multiply(input, bias) built-in function
-	 * 
-	 * @param input input matrix
-	 * @param bias bias matrix
-	 * @param outputBlock output matrix
-	 * @param numThreads number of threads
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
-	 */
-	public static void biasMultiply(MatrixBlock input, MatrixBlock bias, MatrixBlock outputBlock, int numThreads) throws DMLRuntimeException {
-		int N = input.getNumRows();
-		int K = bias.getNumRows();
-		int PQ = input.getNumColumns() / K;
-		
-		ConvolutionParameters params = new ConvolutionParameters(N, PQ, -1, -1, K, -1, -1, -1, -1, -1, -1, numThreads);
-		params.input1 = input;
-		params.input2 = bias;
-		params.output = outputBlock;
-		
-		if(bias.getNumColumns() != 1 || input.getNumColumns() % K != 0) {
-			throw new DMLRuntimeException("Incorrect inputs for bias_multiply: input[" + N + " X " + input.getNumColumns()  + "] and bias[" + K + " X " + bias.getNumColumns() + "]");
-		}
-		
-		if(!input.isEmptyBlock() && !bias.isEmptyBlock()) {
-			// Handles both dense and sparse inputs and copies it to dense output
-			outputBlock.copy(input);
-			if(bias.isInSparseFormat())
-				bias.sparseToDense(); // Since bias is extremely small array
-			double [] biasArr = bias.getDenseBlock();
-			if(!input.isInSparseFormat()) {
-				double [] outputArray = outputBlock.getDenseBlock();
-				int index = 0;
-				for(int n = 0; n < N; n++) {
-					for(int k = 0; k < K; k++) {
-						double biasVal = biasArr[k];
-						for(int pq = 0; pq < PQ; pq++, index++) {
-							outputArray[index] *= biasVal;
-						}
-					}
-				}
-			}
-			else {
-				// First delete those elements which will become zero 
-				for(int k = 0; k < K; k++) {
-					if(biasArr[k] == 0) {
-						for(int n = 0; n < N; n++) {
-							outputBlock.sparseBlock.deleteIndexRange(n, k*PQ, (k+1)*PQ);
-						}
-					}
-				}
-				// Then perform bias_multiply for non-zero bias entries
-				for(int n = 0; n < N; n++) {
-					if( !outputBlock.sparseBlock.isEmpty(n) ) {
-						int apos = outputBlock.sparseBlock.pos(n);
-						int alen = outputBlock.sparseBlock.size(n);
-						int[] aix = outputBlock.sparseBlock.indexes(n);
-						double[] avals = outputBlock.sparseBlock.values(n);
-						
-						for(int j=apos; j<apos+alen; j++) {
-							// Since aix[j] => KPQ
-							int k = aix[j] % PQ;
-							if(biasArr[k] != 0)
-								avals[j] *= biasArr[k];
-						}
-					}
-				}
-			}
-			
-			//post-processing: maintain nnz
-			params.output.recomputeNonZeros(); 
-			params.output.examSparsity();
-		}
-		else {
-			params.output.setNonZeros(0);
-		}
-	}
-	
-	public static void maxpooling(MatrixBlock input, MatrixBlock output, ConvolutionParameters params) throws DMLRuntimeException {
-		params.input1 = input;
-		params.output = output;
-		
-		if(input.getNumColumns() != params.C*params.H*params.W || input.getNumRows() != params.N) {
-			throw new DMLRuntimeException("Incorrect input dimensions in maxpooling:" + input.getNumRows() + " " 
-				+ input.getNumColumns() + " " + params.N + " " + params.C*params.H*params.W);
-		}
-		
-		//materialize indexes unless basic case with stride=1 and pad=0
-		if( !params.isStride1Pad0() || input.sparse )
-			fillIndexesArray(params);
-		
-		long nnz = execute(LibMatrixDNNHelper.getMaxPoolingWorkers(params), params);
-		
-		// post-processing: maintain nnz
-		output.setNonZeros(nnz);
-		output.examSparsity();
-	}
-	
-	/**
-	 * Executes the tasks in parallel using java's ExecutorService.
-	 *  
-	 * @param tasks deep learning related tasks
-	 * @param params convolution parameters
-	 * @throws DMLRuntimeException if the error occurs
-	 */
-	private static long execute(ArrayList<Callable<Long>> tasks, ConvolutionParameters params) throws DMLRuntimeException {
-		int k = OptimizerUtils.getConstrainedNumThreads(params.numThreads);
-		long lnnz = 0;
-		try {
-			if(k == 1) {
-				// Single-threaded execution when called in parfor
-				// this avoid unnecessary creation of threadpool.
-				for(Callable<Long> task : tasks) {
-					lnnz += task.call();
-				}
-			}
-			else {
-				ExecutorService pool = Executors.newFixedThreadPool( Math.min(k, params.N) );
-				List<Future<Long>> taskret = pool.invokeAll(tasks);
-				pool.shutdown();
-				for( Future<Long> task : taskret )
-					lnnz += task.get();
-			}
-		} 
-		catch (Exception e) {
-			throw new DMLRuntimeException("Error while executing multi-threaded tasks", e);
-		}
-		
-		return lnnz;
-	}
-	
-	static boolean isEligibleForConv2dBackwardFilterSparseDense(ConvolutionParameters params) {
-		// NativeHelper.conv2dBackwardFilterSparseDense only if input is sparse. 
-		// dout converted to dense if sparse.
-		return params.enableNative && params.input1.isInSparseFormat();
-	}
-	static boolean isEligibleForConv2dSparse(ConvolutionParameters params) {
-		// NativeHelper.conv2dSparse only if filter is dense and input is sparse
-		return params.enableNative && params.input1.isInSparseFormat() && !params.input2.isInSparseFormat();
-	}
-	static boolean isEligibleForConv2dBackwardDataDense(ConvolutionParameters params) {
-		// NativeHelper.conv2dBackwardDataDense only if filter is dense. 
-		// dout converted to dense if sparse.
-		return params.enableNative && !params.input1.isInSparseFormat();
 	}
 }

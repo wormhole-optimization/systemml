@@ -24,7 +24,6 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.fs.FileSystem;
@@ -42,7 +41,9 @@ import org.apache.sysml.conf.ConfigurationManager;
 import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.matrix.data.CSVFileFormatProperties;
+import org.apache.sysml.runtime.matrix.data.DenseBlock;
 import org.apache.sysml.runtime.matrix.data.MatrixBlock;
+import org.apache.sysml.runtime.util.CommonThreadPool;
 
 /**
  * Parallel version of ReaderTextCSV.java. To summarize, we do two passes in
@@ -105,7 +106,7 @@ public class ReaderTextCSVParallel extends MatrixReader
 		ret.examSparsity();
 
 		// sanity check for parallel row count (since determined internally)
-		if (rlen > 0 && rlen != ret.getNumRows())
+		if (rlen >= 0 && rlen != ret.getNumRows())
 			throw new DMLRuntimeException("Read matrix inconsistent with given meta data: "
 					+ "expected nrow="+ rlen + ", real nrow=" + ret.getNumRows());
 
@@ -130,7 +131,7 @@ public class ReaderTextCSVParallel extends MatrixReader
 		TextInputFormat informat = new TextInputFormat();
 		informat.configure(job);
 
-		ExecutorService pool = Executors.newFixedThreadPool(_numThreads);
+		ExecutorService pool = CommonThreadPool.get(_numThreads);
 
 		try 
 		{
@@ -189,7 +190,7 @@ public class ReaderTextCSVParallel extends MatrixReader
 		// count rows in parallel per split
 		try 
 		{
-			ExecutorService pool = Executors.newFixedThreadPool(_numThreads);
+			ExecutorService pool = CommonThreadPool.get(_numThreads);
 			ArrayList<CountRowsTask> tasks = new ArrayList<>();
 			for (InputSplit split : splits) {
 				tasks.add(new CountRowsTask(split, informat, job, hasHeader));
@@ -421,14 +422,12 @@ public class ReaderTextCSVParallel extends MatrixReader
 					} 
 					else // DENSE<-value
 					{
-						while (reader.next(key, value)) // foreach line
-						{
+						DenseBlock a = _dest.getDenseBlock();
+						while (reader.next(key, value)) { // foreach line
 							String cellStr = value.toString().trim();
 							String[] parts = IOUtilFunctions.split(cellStr, _delim);
 							col = 0;
-
-							for (String part : parts) // foreach cell
-							{
+							for (String part : parts) { // foreach cell
 								part = part.trim();
 								if (part.isEmpty()) {
 									noFillEmpty |= !_fill;
@@ -438,7 +437,7 @@ public class ReaderTextCSVParallel extends MatrixReader
 									cellValue = IOUtilFunctions.parseDoubleParallel(part);
 								}
 								if( cellValue != 0 ) {
-									_dest.setValueDenseUnsafe(row, col, cellValue);
+									a.set(row, col, cellValue);
 									lnnz++;
 								}
 								col++;

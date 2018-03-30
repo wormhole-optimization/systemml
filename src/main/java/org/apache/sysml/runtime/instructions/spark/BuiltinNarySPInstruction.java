@@ -42,8 +42,7 @@ public class BuiltinNarySPInstruction extends SPInstruction
 	private CPOperand output;
 	
 	protected BuiltinNarySPInstruction(CPOperand[] in, CPOperand out, String opcode, String istr) {
-		super(opcode, istr);
-		_sptype = SPINSTRUCTION_TYPE.BuiltinNary;
+		super(SPType.BuiltinNary, opcode, istr);
 		inputs = in;
 		output = out;
 	}
@@ -137,9 +136,9 @@ public class BuiltinNarySPInstruction extends SPInstruction
 			
 			//cbind or rbind to pad to right blocksize
 			if( brlen > mb.getNumRows() ) //rbind
-				mb = mb.appendOperations(new MatrixBlock(brlen-mb.getNumRows(),bclen,true), new MatrixBlock(), false);
+				mb = mb.append(new MatrixBlock(brlen-mb.getNumRows(),bclen,true), new MatrixBlock(), false);
 			else if( bclen > mb.getNumColumns() ) //cbind
-				mb = mb.appendOperations(new MatrixBlock(brlen,bclen-mb.getNumColumns(),true), new MatrixBlock(), true);
+				mb = mb.append(new MatrixBlock(brlen,bclen-mb.getNumColumns(),true), new MatrixBlock(), true);
 			return new Tuple2<>(ix, mb);
 		}
 	}

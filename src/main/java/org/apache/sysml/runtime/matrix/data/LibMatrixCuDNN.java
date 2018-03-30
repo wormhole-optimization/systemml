@@ -50,8 +50,10 @@ import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.controlprogram.caching.MatrixObject;
 import org.apache.sysml.runtime.controlprogram.context.ExecutionContext;
 import org.apache.sysml.runtime.instructions.gpu.GPUInstruction;
+import org.apache.sysml.runtime.instructions.gpu.context.CSRPointer;
 import org.apache.sysml.runtime.instructions.gpu.context.ExecutionConfig;
 import org.apache.sysml.runtime.instructions.gpu.context.GPUContext;
+import org.apache.sysml.runtime.matrix.data.LibMatrixDNN.PoolingType;
 import org.apache.sysml.utils.GPUStatistics;
 import org.apache.sysml.utils.Statistics;
 
@@ -63,6 +65,10 @@ import static jcuda.jcudnn.cudnnSoftmaxMode.CUDNN_SOFTMAX_MODE_CHANNEL;
  */
 public class LibMatrixCuDNN extends LibMatrixCUDA {
 
+	// Currently we only use nnz information from the sparse matrix which is pre-computed
+	// TODO: experiment how often does dense matrix is empty where recomputing nnz before calling CuDNN will help
+	private static final boolean RECOMPUTE_DENSE_NNZ = false;
+	
 	protected static int CONVOLUTION_PREFERENCE = cudnnConvolutionFwdPreference.CUDNN_CONVOLUTION_FWD_NO_WORKSPACE;
 	private static final Log LOG = LogFactory.getLog(LibMatrixCuDNN.class.getName());
 
@@ -103,7 +109,60 @@ public class LibMatrixCuDNN extends LibMatrixCUDA {
 		biasAdd(gCtx, instName, output, bias, output);
 	}
 	
-
+	/**
+	 * Performs im2col operation on GPU
+	 * 
+	 * @param gCtx a valid {@link GPUContext}
+	 * @param instName the invoking instruction's name for record {@link Statistics}.
+	 * @param image input matrix object
+	 * @param isSparseImage is input image sparse
+	 * @param N        number of input images
+	 * @param C        number of channels
+	 * @param H        height of each image
+	 * @param W        width of each image
+	 * @param R        height of filter
+	 * @param S        width of filter
+	 * @param pad_h    padding height
+	 * @param pad_w    padding width
+	 * @param stride_h stride height
+	 * @param stride_w string width
+	 * @param P        output height
+	 * @param Q        output width
+	 * @return output im2col pointer (the caller is expected to free this pointer) or null if image is an empty matrix
+	 * @throws DMLRuntimeException if error
+	 */
+	private static Pointer denseIm2col(GPUContext gCtx, String instName, MatrixObject image, boolean isSparseImage, long N, long C, long H, long W,
+			int R, int S, int pad_h, int pad_w, int stride_h, int stride_w, int P, int Q) throws DMLRuntimeException {
+		Pointer im2colPointer = null;
+		long t1 = DMLScript.FINEGRAINED_STATISTICS ? System.nanoTime() : 0;
+		if(isSparseImage) {
+			CSRPointer inPointer = getSparsePointer(gCtx, image, instName);
+			if(inPointer.nnz < 0) {
+				throw new DMLRuntimeException("Unknown number of nonzeroes in denseIm2col");
+			}
+			else if(inPointer.nnz > 0) {
+				im2colPointer = gCtx.allocate(instName, C*R*S*N*P*Q*sizeOfDataType);
+				getCudaKernels(gCtx).launchKernel("sparse_dense_im2col", ExecutionConfig.getConfigForSimpleVectorOperations(toInt(inPointer.nnz)), 
+						inPointer.val, inPointer.rowPtr, inPointer.colInd, im2colPointer, inPointer.nnz, N, 
+						C*H*W, H*W, W, R, S, P, Q, P*Q, R*S, N*P*Q, stride_h, stride_w, pad_h, pad_w);
+				if (DMLScript.FINEGRAINED_STATISTICS)
+					GPUStatistics.maintainCPMiscTimes(instName, GPUInstruction.MISC_TIMER_SPARSE_IM2COL_KERNEL, System.nanoTime() - t1);
+			}
+			else
+				return null;
+		}
+		else {
+			im2colPointer = gCtx.allocate(instName, C*R*S*N*P*Q*sizeOfDataType);
+			Pointer imagePointer = getDensePointerForCuDNN(gCtx, image, instName);
+			getCudaKernels(gCtx).launchKernel("dense_dense_im2col", ExecutionConfig.getConfigForSimpleVectorOperations(toInt(N*C*H*W)), 
+					imagePointer, im2colPointer, N*C*H*W, 
+					C*H*W, H*W, W, R, S, P, Q, P*Q, R*S, N*P*Q, stride_h, stride_w, pad_h, pad_w);
+			if (DMLScript.FINEGRAINED_STATISTICS)
+				GPUStatistics.maintainCPMiscTimes(instName, GPUInstruction.MISC_TIMER_DENSE_IM2COL_KERNEL, System.nanoTime() - t1);
+		}
+		return im2colPointer;
+	}
+	
 	/**
 	 * Performs a 2D convolution
 	 * 
@@ -133,32 +192,69 @@ public class LibMatrixCuDNN extends LibMatrixCUDA {
 
 		long CHW = C*H*W; long KPQ = K*P*Q; long CRS = C*R*S; 
 		long NCHW = N*CHW; long NKPQ = N*KPQ; long KCRS = K*CRS;
+		long NPQ = N*P*Q;
+		
+		boolean isSparseFilter = isInSparseFormat(gCtx, filter);
+		long filterNnz = getNnz(gCtx, instName, filter, RECOMPUTE_DENSE_NNZ);
+		if(filterNnz == 0) {
+			return; // since filter is empty
+		}
+		boolean isSparseImage = isInSparseFormat(gCtx, image);
+		long imageNnz = getNnz(gCtx, instName, image, RECOMPUTE_DENSE_NNZ);
+		if(imageNnz == 0) {
+			return; // since image is empty
+		}
+		Pointer dstPointer = getDensePointerForCuDNN(gCtx, outputBlock, instName);
 		
 		if(NCHW < maxNumElementsOfCuDNNTensor && NKPQ < maxNumElementsOfCuDNNTensor && KCRS < maxNumElementsOfCuDNNTensor) {
-			// Filter and output are accounted as dense in the memory estimation for conv2d
-			double overhead = isInSparseFormat(gCtx, filter) ? OptimizerUtils.estimateSizeExactSparsity(K, CRS, 1.0) : 0;
-			overhead += isInSparseFormat(gCtx, image) ? OptimizerUtils.estimateSizeExactSparsity(N, CHW, 1.0) : 0;
+			if(isSparseFilter && 
+				(OptimizerUtils.estimateSizeExactSparsity(CRS, NPQ, 1.0) + OptimizerUtils.estimateSizeExactSparsity(K, NPQ, 1.0)) < 
+					Math.min(LibMatrixCuDNNConvolutionAlgorithm.MAX_WORKSPACE_LIMIT_BYTES, intermediateMemoryBudget)) {
+				// Sparse filter conv2d
+				// Perform dense im2col
+				Pointer im2colPointer = denseIm2col(gCtx, instName, image, isSparseImage,
+						N, C, H, W, R, S, pad_h, pad_w, stride_h, stride_w, P, Q);
+				
+				// Perform matrix multiplication
+				CSRPointer filterPointer = filter.getGPUObject(gCtx).getJcudaSparseMatrixPtr();
+				Pointer matmultOutputPointer = gCtx.allocate(instName, NKPQ*sizeOfDataType);
+				LibMatrixCuMatMult.sparseDenseMatMult(gCtx, instName, matmultOutputPointer, filterPointer, im2colPointer, K, CRS, CRS, NPQ, K, NPQ, false, false);
+				gCtx.cudaFreeHelper(instName, im2colPointer);
+				
+				// Perform reorg_knpq a reorg operation of matmultOutputPointer matrix with dimensions [K, NPQ]
+				// and return a matrix dstPointer with dimensions [N, KPQ]
+				long t1 = DMLScript.FINEGRAINED_STATISTICS ? System.nanoTime() : 0;
+				getCudaKernels(gCtx).launchKernel("reorg_knpq", ExecutionConfig.getConfigForSimpleVectorOperations(toInt(NKPQ)), 
+						matmultOutputPointer, dstPointer, NKPQ, NPQ, KPQ, P*Q);
+				if (DMLScript.FINEGRAINED_STATISTICS)
+					GPUStatistics.maintainCPMiscTimes(instName, GPUInstruction.MISC_TIMER_DENSE_REORG_KNPQ_KERNEL, System.nanoTime() - t1);
+				gCtx.cudaFreeHelper(instName, matmultOutputPointer);
+			}
+			else {
+				// Filter and output are accounted as dense in the memory estimation for conv2d
+				double overhead = isSparseFilter ? OptimizerUtils.estimateSizeExactSparsity(K, CRS, 1.0) : 0;
+				overhead += isSparseImage ? OptimizerUtils.estimateSizeExactSparsity(N, CHW, 1.0) : 0;
 
-			Pointer filterPointer = getDensePointerForCuDNN(gCtx, filter, instName);
-			Pointer dstPointer = getDensePointerForCuDNN(gCtx, outputBlock, instName);
-			
-			// Required for LibMatrixCuDNNConvolutionAlgorithm
-			long workspaceLimit = (long) (intermediateMemoryBudget-overhead);
-			int localN = overhead <= intermediateMemoryBudget ? N : 1;
-			
-			try(LibMatrixCuDNNConvolutionAlgorithm algo = 
-					LibMatrixCuDNNConvolutionAlgorithm.cudnnGetConvolutionForwardAlgorithm(gCtx, instName, 
-					localN, C, H, W, K, R, S, pad_h, pad_w, stride_h, stride_w, P, Q, workspaceLimit)) {
-				if(localN == N) {
-					// Perform all-input all-channel conv2d
-					Pointer imagePointer = getDensePointerForCuDNN(gCtx, image, instName);
-					cudnnConv2d(gCtx, instName, imagePointer, filterPointer, dstPointer, algo);
-				}
-				else {
-					try(LibMatrixCuDNNInputRowFetcher imgFetcher = new LibMatrixCuDNNInputRowFetcher(gCtx, instName, image)) {
-						for(int n = 0; n < N; n++) {
-							// Perform one-input all-channel conv2d
-							cudnnConv2d(gCtx, instName, imgFetcher.getNthRow(n), filterPointer, dstPointer.withByteOffset(n*KPQ*sizeOfDataType), algo);
+				Pointer filterPointer = getDensePointerForCuDNN(gCtx, filter, instName);
+				
+				// Required for LibMatrixCuDNNConvolutionAlgorithm
+				long workspaceLimit = (long) (intermediateMemoryBudget-overhead);
+				int localN = overhead <= intermediateMemoryBudget ? N : 1;
+				
+				try(LibMatrixCuDNNConvolutionAlgorithm algo = 
+						LibMatrixCuDNNConvolutionAlgorithm.cudnnGetConvolutionForwardAlgorithm(gCtx, instName, 
+						localN, C, H, W, K, R, S, pad_h, pad_w, stride_h, stride_w, P, Q, workspaceLimit)) {
+					if(localN == N) {
+						// Perform all-input all-channel conv2d
+						Pointer imagePointer = getDensePointerForCuDNN(gCtx, image, instName);
+						cudnnConv2d(gCtx, instName, imagePointer, filterPointer, dstPointer, algo);
+					}
+					else {
+						try(LibMatrixCuDNNInputRowFetcher imgFetcher = new LibMatrixCuDNNInputRowFetcher(gCtx, instName, image)) {
+							for(int n = 0; n < N; n++) {
+								// Perform one-input all-channel conv2d
+								cudnnConv2d(gCtx, instName, imgFetcher.getNthRow(n), filterPointer, dstPointer.withByteOffset(n*KPQ*sizeOfDataType), algo);
+							}
 						}
 					}
 				}
@@ -313,11 +409,21 @@ public class LibMatrixCuDNN extends LibMatrixCUDA {
 		long CHW = C*H*W; long KPQ = K*P*Q; long CRS = C*R*S; 
 		long NCHW = N*CHW; long NKPQ = N*KPQ; long KCRS = K*CRS;
 		
+		boolean isSparseDout = isInSparseFormat(gCtx, dout);
+		long doutNnz = getNnz(gCtx, instName, dout, RECOMPUTE_DENSE_NNZ);
+		if(doutNnz == 0) {
+			return; // since dout is empty
+		}
+		boolean isSparseImage = isInSparseFormat(gCtx, image);
+		long imageNnz = getNnz(gCtx, instName, image, RECOMPUTE_DENSE_NNZ);
+		if(imageNnz == 0) {
+			return; // since image is empty
+		}
 		
 		if(NCHW < maxNumElementsOfCuDNNTensor && NKPQ < maxNumElementsOfCuDNNTensor && KCRS < maxNumElementsOfCuDNNTensor) {
 			Pointer dwPointer = getDensePointerForCuDNN(gCtx, outputBlock, instName);
-			double overhead = isInSparseFormat(gCtx, image) ? OptimizerUtils.estimateSizeExactSparsity(N, CHW, 1.0) : 0;
-			overhead += isInSparseFormat(gCtx, dout) ? OptimizerUtils.estimateSizeExactSparsity(N, KPQ, 1.0) : 0;
+			double overhead = isSparseImage ? OptimizerUtils.estimateSizeExactSparsity(N, CHW, 1.0) : 0;
+			overhead += isSparseDout ? OptimizerUtils.estimateSizeExactSparsity(N, KPQ, 1.0) : 0;
 
 			// Required for LibMatrixCuDNNConvolutionAlgorithm
 			long workspaceLimit = (long) (intermediateMemoryBudget-overhead);
@@ -420,10 +526,21 @@ public class LibMatrixCuDNN extends LibMatrixCUDA {
 		long CHW = C*H*W; long KPQ = K*P*Q; long CRS = C*R*S; 
 		long NCHW = N*CHW; long NKPQ = N*KPQ; long KCRS = K*CRS;
 
+		boolean isSparseFilter = isInSparseFormat(gCtx, filter);
+		long filterNnz = getNnz(gCtx, instName, filter, RECOMPUTE_DENSE_NNZ);
+		if(filterNnz == 0) {
+			return; // since filter is empty
+		}
+		boolean isSparseDout = isInSparseFormat(gCtx, dout);
+		long doutNnz = getNnz(gCtx, instName, dout, RECOMPUTE_DENSE_NNZ);
+		if(doutNnz == 0) {
+			return; // since dout is empty
+		}
+		
 		if(NCHW < maxNumElementsOfCuDNNTensor && NKPQ < maxNumElementsOfCuDNNTensor && KCRS < maxNumElementsOfCuDNNTensor) {
 			// Filter and output are accounted as dense in the memory estimation for conv2dBackwardData
-			double overhead = isInSparseFormat(gCtx, filter) ? OptimizerUtils.estimateSizeExactSparsity(K, CRS, 1.0) : 0;
-			overhead += isInSparseFormat(gCtx, dout) ? OptimizerUtils.estimateSizeExactSparsity(N, KPQ, 1.0) : 0;
+			double overhead = isSparseFilter ? OptimizerUtils.estimateSizeExactSparsity(K, CRS, 1.0) : 0;
+			overhead += isSparseDout ? OptimizerUtils.estimateSizeExactSparsity(N, KPQ, 1.0) : 0;
 			Pointer filterPointer = getDensePointerForCuDNN(gCtx, filter, instName);
 			Pointer dstPointer = getDensePointerForCuDNN(gCtx, output, instName);
 			
@@ -502,13 +619,14 @@ public class LibMatrixCuDNN extends LibMatrixCUDA {
 	 * @param stride_w		vertical stride
 	 * @param P				(H - R + 1 + 2*pad_h)/stride_h
 	 * @param Q				(W - S + 1 + 2*pad_w)/stride_w
+	 * @param poolingType	type of pooling
 	 * @param intermediateMemoryBudget intermediate memory budget
 	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public static void maxpooling(GPUContext gCtx, String instName, MatrixObject image,
+	public static void pooling(GPUContext gCtx, String instName, MatrixObject image,
 			MatrixObject outputBlock, int N, int C, int H, int W, int K, int R,
 			int S, int pad_h, int pad_w, int stride_h, int stride_w, int P,
-			int Q, double intermediateMemoryBudget) throws DMLRuntimeException {
+			int Q, PoolingType poolingType, double intermediateMemoryBudget) throws DMLRuntimeException {
 		long CHW = C*H*W; long CPQ = C*P*Q;  
 		long NCHW = N*CHW; long NCPQ = N*CPQ; 
 
@@ -518,12 +636,12 @@ public class LibMatrixCuDNN extends LibMatrixCUDA {
 			Pointer y = getDensePointerForCuDNN(gCtx, outputBlock, instName);
 			if(overhead <= intermediateMemoryBudget) {
 				Pointer x = getDensePointerForCuDNN(gCtx, image, instName);
-				cudnnMaxpooling(gCtx, instName, x, y, N, C, H, W, K, R, S, pad_h, pad_w, stride_h, stride_w, P, Q);
+				cudnnPoolingHelper(gCtx, instName, x, y, N, C, H, W, K, R, S, pad_h, pad_w, stride_h, stride_w, P, Q, poolingType);
 			}
 			else {
 				LibMatrixCuDNNInputRowFetcher imgFetcher = new LibMatrixCuDNNInputRowFetcher(gCtx, instName, image);
 				for(int n = 0; n < N; n++) {
-					cudnnMaxpooling(gCtx, instName, imgFetcher.getNthRow(n), y.withByteOffset(n*CPQ*sizeOfDataType), 1, C, H, W, K, R, S, pad_h, pad_w, stride_h, stride_w, P, Q);
+					cudnnPoolingHelper(gCtx, instName, imgFetcher.getNthRow(n), y.withByteOffset(n*CPQ*sizeOfDataType), 1, C, H, W, K, R, S, pad_h, pad_w, stride_h, stride_w, P, Q, poolingType);
 				}
 				imgFetcher.close();
 			}
@@ -533,17 +651,17 @@ public class LibMatrixCuDNN extends LibMatrixCUDA {
 		}
 	}
 
-	private static void cudnnMaxpooling(GPUContext gCtx, String instName, Pointer x,
+	private static void cudnnPoolingHelper(GPUContext gCtx, String instName, Pointer x,
 			Pointer y, int N, int C, int H, int W, int K, int R,
 			int S, int pad_h, int pad_w, int stride_h, int stride_w, int P,
-			int Q) throws DMLRuntimeException {
+			int Q, PoolingType poolingType) throws DMLRuntimeException {
 		if(LOG.isTraceEnabled()) {
-			LOG.trace("GPU : performMaxpooling" + ", GPUContext=" + gCtx);
+			LOG.trace("GPU : perform pooling" + ", GPUContext=" + gCtx);
 		}
 
 		try(LibMatrixCuDNNPoolingDescriptors desc = 
-				LibMatrixCuDNNPoolingDescriptors.cudnnMaxpoolingDescriptors(gCtx, instName, N, C, H, W, K, R, S, 
-						pad_h, pad_w, stride_h, stride_w, P, Q)) {
+				LibMatrixCuDNNPoolingDescriptors.cudnnPoolingDescriptors(gCtx, instName, N, C, H, W, K, R, S, 
+						pad_h, pad_w, stride_h, stride_w, P, Q, poolingType)) {
 			long t1=0,t2=0;
 			if (DMLScript.FINEGRAINED_STATISTICS) t1 = System.nanoTime();
 			if (DMLScript.FINEGRAINED_STATISTICS) GPUStatistics.maintainCPMiscTimes(instName, GPUInstruction.MISC_TIMER_CUDNN_INIT, System.nanoTime() - t1);
@@ -557,7 +675,7 @@ public class LibMatrixCuDNN extends LibMatrixCUDA {
 			throw new DMLRuntimeException("Error in conv2d in GPUContext " + gCtx.toString() + " from Thread " + Thread.currentThread().toString(), e);
 		}
 	}
-
+	
 	/**
 	 * Performs maxpoolingBackward on GPU by exploiting cudnnPoolingBackward(...)
 	 * This method computes the backpropogation errors for previous layer of maxpooling operation
@@ -580,13 +698,14 @@ public class LibMatrixCuDNN extends LibMatrixCUDA {
 	 * @param stride_w		vertical stride
 	 * @param P				(H - R + 1 + 2*pad_h)/stride_h
 	 * @param Q				(W - S + 1 + 2*pad_w)/stride_w
+	 * @param poolingType	type of pooling
 	 * @param intermediateMemoryBudget intermediate memory budget
 	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public static void maxpoolingBackward(GPUContext gCtx, String instName, MatrixObject image, MatrixObject dout,
+	public static void poolingBackward(GPUContext gCtx, String instName, MatrixObject image, MatrixObject dout,
 			MatrixObject maxpoolOutput, MatrixObject outputBlock, int N, int C, int H, int W, int K, int R,
 			int S, int pad_h, int pad_w, int stride_h, int stride_w, int P,
-			int Q, double intermediateMemoryBudget) throws DMLRuntimeException {
+			int Q, PoolingType poolingType, double intermediateMemoryBudget) throws DMLRuntimeException {
 		long CHW = C*H*W; long CPQ = C*P*Q;  
 		long NCHW = N*CHW; long NCPQ = N*CPQ; 
 
@@ -601,7 +720,7 @@ public class LibMatrixCuDNN extends LibMatrixCUDA {
 				Pointer x = getDensePointerForCuDNN(gCtx, image, instName);
 				Pointer dy = getDensePointerForCuDNN(gCtx, dout, instName);
 				Pointer y = isMaxPoolOutputProvided ? getDensePointerForCuDNN(gCtx, maxpoolOutput, instName) : null;
-				cudnnMaxpoolingBackward(gCtx, instName, x, dy, y, dx, N, C, H, W, K, R, S, pad_h, pad_w, stride_h, stride_w, P, Q);
+				cudnnPoolingBackwardHelper(gCtx, instName, x, dy, y, dx, N, C, H, W, K, R, S, pad_h, pad_w, stride_h, stride_w, P, Q, poolingType);
 			}
 			else {
 				LibMatrixCuDNNInputRowFetcher imgFetcher = new LibMatrixCuDNNInputRowFetcher(gCtx, instName, image);
@@ -611,9 +730,9 @@ public class LibMatrixCuDNN extends LibMatrixCUDA {
 					Pointer x = imgFetcher.getNthRow(n);
 					Pointer dy = doutFetcher.getNthRow(n);
 					Pointer y = isMaxPoolOutputProvided ? maxPoolOutFetcher.getNthRow(n) : null;
-					cudnnMaxpoolingBackward(gCtx, instName, x, dy, y, 
+					cudnnPoolingBackwardHelper(gCtx, instName, x, dy, y, 
 							dx.withByteOffset(n*CHW*sizeOfDataType), 
-							1, C, H, W, K, R, S, pad_h, pad_w, stride_h, stride_w, P, Q);
+							1, C, H, W, K, R, S, pad_h, pad_w, stride_h, stride_w, P, Q, poolingType);
 				}
 				// Deallocate temporary array to hold one element of input
 				imgFetcher.close();
@@ -627,11 +746,11 @@ public class LibMatrixCuDNN extends LibMatrixCUDA {
 		}
 	}
 	
-	private static void cudnnMaxpoolingBackward(GPUContext gCtx, String instName, 
+	private static void cudnnPoolingBackwardHelper(GPUContext gCtx, String instName, 
 			Pointer x, Pointer dy, Pointer y, Pointer dx, 
 			int N, int C, int H, int W, int K, int R,
 			int S, int pad_h, int pad_w, int stride_h, int stride_w, int P,
-			int Q) throws DMLRuntimeException {
+			int Q, PoolingType poolingType) throws DMLRuntimeException {
 		if(LOG.isTraceEnabled()) {
 			LOG.trace("GPU : maxpoolingBackward" + ", GPUContext=" + gCtx);
 		}
@@ -639,8 +758,8 @@ public class LibMatrixCuDNN extends LibMatrixCUDA {
 		boolean isMaxPoolOutputProvided = (y != null);
 
 		try(LibMatrixCuDNNPoolingDescriptors desc = 
-				LibMatrixCuDNNPoolingDescriptors.cudnnMaxpoolingBackwardDescriptors(gCtx, instName, N, C, H, W, K, R, S, 
-						pad_h, pad_w, stride_h, stride_w, P, Q)) {
+				LibMatrixCuDNNPoolingDescriptors.cudnnPoolingBackwardDescriptors(gCtx, instName, N, C, H, W, K, R, S, 
+						pad_h, pad_w, stride_h, stride_w, P, Q, poolingType)) {
 			long t1=0, t2=0, t3=0;
 			int status;
 			if(!isMaxPoolOutputProvided) {

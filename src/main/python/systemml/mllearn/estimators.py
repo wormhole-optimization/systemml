@@ -186,7 +186,19 @@ class BaseSystemMLEstimator(Estimator):
         self.X = None
         self.y = None
         return self
-        
+
+    def fit_file(self, X_file, y_file):
+        global default_jvm_stdout, default_jvm_stdout_parallel_flush
+        try:
+            if default_jvm_stdout:
+                with jvm_stdout(parallel_flush=default_jvm_stdout_parallel_flush):
+                    self.model = self.estimator.fit(X_file, y_file)
+            else:
+                self.model = self.estimator.fit(X_file, y_file)
+        except Py4JError:
+            traceback.print_exc()
+        return self
+                
     # Returns a model after calling fit(df) on Estimator object on JVM
     def _fit(self, X):
         """
@@ -207,17 +219,21 @@ class BaseSystemMLEstimator(Estimator):
 
         Parameters
         ----------
-        X: NumPy ndarray, Pandas DataFrame, scipy sparse matrix
-        y: NumPy ndarray, Pandas DataFrame, scipy sparse matrix
+        X: NumPy ndarray, Pandas DataFrame, scipy sparse matrix, Spark DataFrame, file path
+        y: NumPy ndarray, Pandas DataFrame, scipy sparse matrix, file path
         """
         if y is None:
             return self._fit(X)
-        elif y is not None and isinstance(X, SUPPORTED_TYPES) and isinstance(y, SUPPORTED_TYPES):
-            y = self.encode(y)
+        elif isinstance(X, str) and isinstance(y, str):
+            return self.fit_file(X, y)
+        elif isinstance(X, SUPPORTED_TYPES) and isinstance(y, SUPPORTED_TYPES):
+            # Donot encode if y is a numpy matrix => useful for segmentation
+            skipEncodingY = len(y.shape) == 2 and y.shape[0] != 1 and y.shape[1] != 1
+            y = y if skipEncodingY else self.encode(y)
             if self.transferUsingDF:
                 pdfX = convertToPandasDF(X)
                 pdfY = convertToPandasDF(y)
-                if getNumCols(pdfY) != 1:
+                if getNumCols(pdfY) != 1 and not skipEncodingY:
                     raise Exception('y should be a column vector')
                 if pdfX.shape[0] != pdfY.shape[0]:
                     raise Exception('Number of rows of X and y should match')
@@ -227,7 +243,7 @@ class BaseSystemMLEstimator(Estimator):
                 self.fit_df(df)
             else:
                 numColsy = getNumCols(y)
-                if numColsy != 1:
+                if numColsy != 1 and not skipEncodingY:
                     raise Exception('Expected y to be a column vector')
                 self.fit_numpy(X, y)
             if self.setOutputRawPredictionsToFalse:
@@ -305,6 +321,8 @@ class BaseSystemMLEstimator(Estimator):
         except AttributeError:
             pass
         try:
+            if isinstance(X, str):
+                return self.model.transform_probability(X)
             jX = self._convertPythonXToJavaObject(X)
             if default_jvm_stdout:
                 with jvm_stdout(parallel_flush=default_jvm_stdout_parallel_flush):
@@ -321,7 +339,7 @@ class BaseSystemMLEstimator(Estimator):
 
         Parameters
         ----------
-        X: NumPy ndarray, Pandas DataFrame, scipy sparse matrix or PySpark DataFrame
+        X: NumPy ndarray, Pandas DataFrame, scipy sparse matrix or PySpark DataFrame or file path
         """
         global default_jvm_stdout, default_jvm_stdout_parallel_flush
         try:
@@ -330,6 +348,8 @@ class BaseSystemMLEstimator(Estimator):
         except AttributeError:
             pass
         try:
+            if isinstance(X, str):
+                return self.model.transform(X)
             jX = self._convertPythonXToJavaObject(X)
             if default_jvm_stdout:
                 with jvm_stdout(parallel_flush=default_jvm_stdout_parallel_flush):
@@ -842,7 +862,7 @@ class Caffe2DML(BaseSystemMLClassifier):
         if ignore_weights is not None:
             self.estimator.setWeightsToIgnore(ignore_weights)
             
-    def set(self, debug=None, train_algo=None, test_algo=None, parallel_batches=None, output_activations=None):
+    def set(self, debug=None, train_algo=None, test_algo=None, parallel_batches=None, output_activations=None, perform_one_hot_encoding=None, parfor_parameters=None):
         """
         Set input to Caffe2DML
         
@@ -853,12 +873,22 @@ class Caffe2DML(BaseSystemMLClassifier):
         test_algo: can be minibatch, batch, allreduce_parallel_batches or allreduce (default: minibatch)
         parallel_batches: number of parallel batches
         output_activations: (developer flag) directory to output activations of each layer as csv while prediction. To be used only in batch mode (default: None)
+        perform_one_hot_encoding: should perform one-hot encoding in DML using table function (default: False)
+        parfor_parameters: dictionary for parfor parameters when using allreduce-style algorithms (default: "")
         """
         if debug is not None: self.estimator.setInput("$debug", str(debug).upper())
         if train_algo is not None: self.estimator.setInput("$train_algo", str(train_algo).lower())
         if test_algo is not None: self.estimator.setInput("$test_algo", str(test_algo).lower())
         if parallel_batches is not None: self.estimator.setInput("$parallel_batches", str(parallel_batches))
         if output_activations is not None: self.estimator.setInput("$output_activations", str(output_activations))
+        if perform_one_hot_encoding is not None: self.estimator.setInput("$perform_one_hot_encoding", str(perform_one_hot_encoding).lower())
+        if parfor_parameters is not None:
+            if isinstance(parfor_parameters, dict):
+                # Convert dictionary to comma-separated list
+                parfor_parameters = ''.join([ ', ' + str(k) + '=' + str(v) for k, v in parfor_parameters.items()]) if len(parfor_parameters) > 0 else ''
+                self.estimator.setInput("$parfor_parameters", parfor_parameters)
+            else:
+                raise TypeError("parfor_parameters should be a dictionary") 
         return self
     
     def summary(self):
@@ -884,7 +914,7 @@ class Keras2DML(Caffe2DML):
 
     """
 
-    def __init__(self, sparkSession, keras_model, input_shape, transferUsingDF=False, weights=None, labels=None):
+    def __init__(self, sparkSession, keras_model, input_shape, transferUsingDF=False, load_keras_weights=True, weights=None, labels=None, batch_size=64, max_iter=2000, test_iter=10, test_interval=500, display=100, lr_policy="step", weight_decay=5e-4, regularization_type="L2"):
         """
         Performs training/prediction for a given keras model.
 
@@ -894,8 +924,17 @@ class Keras2DML(Caffe2DML):
         keras_model: keras model
         input_shape: 3-element list (number of channels, input height, input width)
         transferUsingDF: whether to pass the input dataset via PySpark DataFrame (default: False)
+        load_keras_weights: whether to load weights from the keras_model. If False, the weights will be initialized to random value using NN libraries' init method  (default: True)
         weights: directory whether learned weights are stored (default: None)
         labels: file containing mapping between index and string labels (default: None)
+        batch_size: size of the input batch (default: 64)
+        max_iter: maximum number of iterations (default: 1)
+        test_iter: test_iter for caffe solver (default: 10)
+        test_interval: test_interval for caffe solver (default: 500)
+        display: display for caffe solver (default: 100)
+        lr_policy: learning rate policy for caffe solver (default: "step")
+        weight_decay: regularation strength (default: 5e-4)
+        regularization_type: regularization type (default: "L2")
         """
         from .keras2caffe import *
         import tempfile
@@ -906,10 +945,13 @@ class Keras2DML(Caffe2DML):
             keras_model = keras_model.model
         self.name = keras_model.name
         createJavaObject(sparkSession._sc, 'dummy')
-        convertKerasToCaffeNetwork(keras_model, self.name + ".proto")
-        convertKerasToCaffeSolver(keras_model, self.name + ".proto", self.name + "_solver.proto")
+        if not hasattr(keras_model, 'optimizer'):
+		    keras_model.compile(loss='categorical_crossentropy', optimizer=keras.optimizers.SGD(lr=0.01, momentum=0.95, decay=5e-4, nesterov=True))
+        convertKerasToCaffeNetwork(keras_model, self.name + ".proto", int(batch_size))
+        convertKerasToCaffeSolver(keras_model, self.name + ".proto", self.name + "_solver.proto", int(max_iter), int(test_iter), int(test_interval), int(display), lr_policy, weight_decay, regularization_type)
         self.weights = tempfile.mkdtemp() if weights is None else weights
-        convertKerasToSystemMLModel(sparkSession, keras_model, self.weights)
+        if load_keras_weights:
+            convertKerasToSystemMLModel(sparkSession, keras_model, self.weights)
         if labels is not None and (labels.startswith('https:') or labels.startswith('http:')):
             import urllib
             urllib.urlretrieve(labels, os.path.join(weights, 'labels.txt'))
@@ -917,7 +959,8 @@ class Keras2DML(Caffe2DML):
             from shutil import copyfile
             copyfile(labels, os.path.join(weights, 'labels.txt'))
         super(Keras2DML,self).__init__(sparkSession, self.name + "_solver.proto", input_shape, transferUsingDF)
-        self.load(self.weights)
+        if load_keras_weights:
+            self.load(self.weights)
 
     def close(self):
         import shutil

@@ -33,12 +33,8 @@ import org.apache.sysml.runtime.instructions.cp.AggregateBinaryCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.AggregateTernaryCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.AggregateUnaryCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.AppendCPInstruction;
-import org.apache.sysml.runtime.instructions.cp.ArithmeticBinaryCPInstruction;
-import org.apache.sysml.runtime.instructions.cp.BooleanBinaryCPInstruction;
-import org.apache.sysml.runtime.instructions.cp.BooleanUnaryCPInstruction;
-import org.apache.sysml.runtime.instructions.cp.BuiltinBinaryCPInstruction;
+import org.apache.sysml.runtime.instructions.cp.BinaryCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.BuiltinNaryCPInstruction;
-import org.apache.sysml.runtime.instructions.cp.BuiltinUnaryCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.CPInstruction;
 import org.apache.sysml.runtime.instructions.cp.CPInstruction.CPType;
 import org.apache.sysml.runtime.instructions.cp.CentralMomentCPInstruction;
@@ -56,16 +52,16 @@ import org.apache.sysml.runtime.instructions.cp.MultiReturnBuiltinCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.MultiReturnParameterizedBuiltinCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.PMMJCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.ParameterizedBuiltinCPInstruction;
-import org.apache.sysml.runtime.instructions.cp.PlusMultCPInstruction;
+import org.apache.sysml.runtime.instructions.cp.TernaryCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.QuantilePickCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.QuantileSortCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.QuaternaryCPInstruction;
-import org.apache.sysml.runtime.instructions.cp.RelationalBinaryCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.ReorgCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.SpoofCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.StringInitCPInstruction;
-import org.apache.sysml.runtime.instructions.cp.TernaryCPInstruction;
+import org.apache.sysml.runtime.instructions.cp.CtableCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.UaggOuterChainCPInstruction;
+import org.apache.sysml.runtime.instructions.cp.UnaryCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.VariableCPInstruction;
 import org.apache.sysml.runtime.instructions.cpfile.MatrixIndexingCPFileInstruction;
 import org.apache.sysml.runtime.instructions.cpfile.ParameterizedBuiltinCPFileInstruction;
@@ -115,76 +111,79 @@ public class CPInstructionParser extends InstructionParser
 		String2CPInstructionType.put( "uaggouterchain", CPType.UaggOuterChain);
 		
 		// Arithmetic Instruction Opcodes 
-		String2CPInstructionType.put( "+"    , CPType.ArithmeticBinary);
-		String2CPInstructionType.put( "-"    , CPType.ArithmeticBinary);
-		String2CPInstructionType.put( "*"    , CPType.ArithmeticBinary);
-		String2CPInstructionType.put( "/"    , CPType.ArithmeticBinary);
-		String2CPInstructionType.put( "%%"   , CPType.ArithmeticBinary);
-		String2CPInstructionType.put( "%/%"  , CPType.ArithmeticBinary);
-		String2CPInstructionType.put( "^"    , CPType.ArithmeticBinary);
-		String2CPInstructionType.put( "1-*"  , CPType.ArithmeticBinary); //special * case
-		String2CPInstructionType.put( "^2"   , CPType.ArithmeticBinary); //special ^ case
-		String2CPInstructionType.put( "*2"   , CPType.ArithmeticBinary); //special * case
-		String2CPInstructionType.put( "-nz"  , CPType.ArithmeticBinary); //special - case
-		String2CPInstructionType.put( "+*"  , CPType.ArithmeticBinary); 
-		String2CPInstructionType.put( "-*"  , CPType.ArithmeticBinary); 
-
+		String2CPInstructionType.put( "+"    , CPType.Binary);
+		String2CPInstructionType.put( "-"    , CPType.Binary);
+		String2CPInstructionType.put( "*"    , CPType.Binary);
+		String2CPInstructionType.put( "/"    , CPType.Binary);
+		String2CPInstructionType.put( "%%"   , CPType.Binary);
+		String2CPInstructionType.put( "%/%"  , CPType.Binary);
+		String2CPInstructionType.put( "^"    , CPType.Binary);
+		String2CPInstructionType.put( "1-*"  , CPType.Binary); //special * case
+		String2CPInstructionType.put( "^2"   , CPType.Binary); //special ^ case
+		String2CPInstructionType.put( "*2"   , CPType.Binary); //special * case
+		String2CPInstructionType.put( "-nz"  , CPType.Binary); //special - case
 		
 		// Boolean Instruction Opcodes 
-		String2CPInstructionType.put( "&&"   , CPType.BooleanBinary);
-		String2CPInstructionType.put( "||"   , CPType.BooleanBinary);
-		
-		String2CPInstructionType.put( "!"    , CPType.BooleanUnary);
+		String2CPInstructionType.put( "&&"   , CPType.Binary);
+		String2CPInstructionType.put( "||"   , CPType.Binary);
+		String2CPInstructionType.put( "xor"  , CPType.Binary);
+		String2CPInstructionType.put( "bitwAnd", CPType.Binary);
+		String2CPInstructionType.put( "bitwOr", CPType.Binary);
+		String2CPInstructionType.put( "bitwXor", CPType.Binary);
+		String2CPInstructionType.put( "bitwShiftL", CPType.Binary);
+		String2CPInstructionType.put( "bitwShiftR", CPType.Binary);
+		String2CPInstructionType.put( "!"    , CPType.Unary);
 
 		// Relational Instruction Opcodes 
-		String2CPInstructionType.put( "=="   , CPType.RelationalBinary);
-		String2CPInstructionType.put( "!="   , CPType.RelationalBinary);
-		String2CPInstructionType.put( "<"    , CPType.RelationalBinary);
-		String2CPInstructionType.put( ">"    , CPType.RelationalBinary);
-		String2CPInstructionType.put( "<="   , CPType.RelationalBinary);
-		String2CPInstructionType.put( ">="   , CPType.RelationalBinary);
+		String2CPInstructionType.put( "=="   , CPType.Binary);
+		String2CPInstructionType.put( "!="   , CPType.Binary);
+		String2CPInstructionType.put( "<"    , CPType.Binary);
+		String2CPInstructionType.put( ">"    , CPType.Binary);
+		String2CPInstructionType.put( "<="   , CPType.Binary);
+		String2CPInstructionType.put( ">="   , CPType.Binary);
 		
 		// Builtin Instruction Opcodes 
 		String2CPInstructionType.put( "log"  , CPType.Builtin);
 		String2CPInstructionType.put( "log_nz"  , CPType.Builtin);
 
-		String2CPInstructionType.put( "max"  , CPType.BuiltinBinary);
-		String2CPInstructionType.put( "min"  , CPType.BuiltinBinary);
-		String2CPInstructionType.put( "solve"  , CPType.BuiltinBinary);
+		String2CPInstructionType.put( "max"  , CPType.Binary);
+		String2CPInstructionType.put( "min"  , CPType.Binary);
+		String2CPInstructionType.put( "solve"  , CPType.Binary);
 		
-		String2CPInstructionType.put( "exp"   , CPType.BuiltinUnary);
-		String2CPInstructionType.put( "abs"   , CPType.BuiltinUnary);
-		String2CPInstructionType.put( "sin"   , CPType.BuiltinUnary);
-		String2CPInstructionType.put( "cos"   , CPType.BuiltinUnary);
-		String2CPInstructionType.put( "tan"   , CPType.BuiltinUnary);
-		String2CPInstructionType.put( "sinh"   , CPType.BuiltinUnary);
-		String2CPInstructionType.put( "cosh"   , CPType.BuiltinUnary);
-		String2CPInstructionType.put( "tanh"   , CPType.BuiltinUnary);
-		String2CPInstructionType.put( "asin"  , CPType.BuiltinUnary);
-		String2CPInstructionType.put( "acos"  , CPType.BuiltinUnary);
-		String2CPInstructionType.put( "atan"  , CPType.BuiltinUnary);
-		String2CPInstructionType.put( "sign"  , CPType.BuiltinUnary);
-		String2CPInstructionType.put( "sqrt"  , CPType.BuiltinUnary);
-		String2CPInstructionType.put( "plogp" , CPType.BuiltinUnary);
-		String2CPInstructionType.put( "print" , CPType.BuiltinUnary);
-		String2CPInstructionType.put( "round" , CPType.BuiltinUnary);
-		String2CPInstructionType.put( "ceil"  , CPType.BuiltinUnary);
-		String2CPInstructionType.put( "floor" , CPType.BuiltinUnary);
-		String2CPInstructionType.put( "ucumk+", CPType.BuiltinUnary);
-		String2CPInstructionType.put( "ucum*" , CPType.BuiltinUnary);
-		String2CPInstructionType.put( "ucummin", CPType.BuiltinUnary);
-		String2CPInstructionType.put( "ucummax", CPType.BuiltinUnary);
-		String2CPInstructionType.put( "stop"  , CPType.BuiltinUnary);
-		String2CPInstructionType.put( "inverse", CPType.BuiltinUnary);
-		String2CPInstructionType.put( "cholesky",CPType.BuiltinUnary);
-		String2CPInstructionType.put( "sprop", CPType.BuiltinUnary);
-		String2CPInstructionType.put( "sigmoid", CPType.BuiltinUnary);
-		String2CPInstructionType.put( "sel+", CPType.BuiltinUnary);
+		String2CPInstructionType.put( "exp"   , CPType.Unary);
+		String2CPInstructionType.put( "abs"   , CPType.Unary);
+		String2CPInstructionType.put( "sin"   , CPType.Unary);
+		String2CPInstructionType.put( "cos"   , CPType.Unary);
+		String2CPInstructionType.put( "tan"   , CPType.Unary);
+		String2CPInstructionType.put( "sinh"   , CPType.Unary);
+		String2CPInstructionType.put( "cosh"   , CPType.Unary);
+		String2CPInstructionType.put( "tanh"   , CPType.Unary);
+		String2CPInstructionType.put( "asin"  , CPType.Unary);
+		String2CPInstructionType.put( "acos"  , CPType.Unary);
+		String2CPInstructionType.put( "atan"  , CPType.Unary);
+		String2CPInstructionType.put( "sign"  , CPType.Unary);
+		String2CPInstructionType.put( "sqrt"  , CPType.Unary);
+		String2CPInstructionType.put( "plogp" , CPType.Unary);
+		String2CPInstructionType.put( "print" , CPType.Unary);
+		String2CPInstructionType.put( "assert" , CPType.Unary);
+		String2CPInstructionType.put( "round" , CPType.Unary);
+		String2CPInstructionType.put( "ceil"  , CPType.Unary);
+		String2CPInstructionType.put( "floor" , CPType.Unary);
+		String2CPInstructionType.put( "ucumk+", CPType.Unary);
+		String2CPInstructionType.put( "ucum*" , CPType.Unary);
+		String2CPInstructionType.put( "ucummin", CPType.Unary);
+		String2CPInstructionType.put( "ucummax", CPType.Unary);
+		String2CPInstructionType.put( "stop"  , CPType.Unary);
+		String2CPInstructionType.put( "inverse", CPType.Unary);
+		String2CPInstructionType.put( "cholesky",CPType.Unary);
+		String2CPInstructionType.put( "sprop", CPType.Unary);
+		String2CPInstructionType.put( "sigmoid", CPType.Unary);
 		
 		String2CPInstructionType.put( "printf" , CPType.BuiltinNary);
 		String2CPInstructionType.put( "cbind" , CPType.BuiltinNary);
 		String2CPInstructionType.put( "rbind" , CPType.BuiltinNary);
-		
+		String2CPInstructionType.put( "eval" , CPType.BuiltinNary);
+
 		// Parameterized Builtin Functions
 		String2CPInstructionType.put( "cdf"	 		, CPType.ParameterizedBuiltin);
 		String2CPInstructionType.put( "invcdf"	 	, CPType.ParameterizedBuiltin);
@@ -198,6 +197,11 @@ public class CPInstructionParser extends InstructionParser
 		String2CPInstructionType.put( "transformcolmap",CPType.ParameterizedBuiltin);
 		String2CPInstructionType.put( "transformmeta",CPType.ParameterizedBuiltin);
 		String2CPInstructionType.put( "transformencode",CPType.MultiReturnParameterizedBuiltin);
+		
+		// Ternary Instruction Opcodes
+		String2CPInstructionType.put( "+*",      CPType.Ternary);
+		String2CPInstructionType.put( "-*",      CPType.Ternary);
+		String2CPInstructionType.put( "ifelse",  CPType.Ternary);
 		
 		// Variable Instruction Opcodes 
 		String2CPInstructionType.put( "assignvar"   , CPType.Variable);
@@ -229,6 +233,8 @@ public class CPInstructionParser extends InstructionParser
 		String2CPInstructionType.put( "relu_maxpooling_backward"      , CPType.Convolution);
 		String2CPInstructionType.put( "maxpooling"      , CPType.Convolution);
 		String2CPInstructionType.put( "maxpooling_backward"      , CPType.Convolution);
+		String2CPInstructionType.put( "avgpooling"      , CPType.Convolution);
+		String2CPInstructionType.put( "avgpooling_backward"      , CPType.Convolution);
 		String2CPInstructionType.put( "conv2d"      , CPType.Convolution);
 		String2CPInstructionType.put( "conv2d_bias_add"      , CPType.Convolution);
 		String2CPInstructionType.put( "conv2d_backward_filter"      , CPType.Convolution);
@@ -255,8 +261,8 @@ public class CPInstructionParser extends InstructionParser
 		String2CPInstructionType.put( DataGen.SINIT_OPCODE  , CPType.StringInit);
 		String2CPInstructionType.put( DataGen.SAMPLE_OPCODE , CPType.Rand);
 		
-		String2CPInstructionType.put( "ctable", 		CPType.Ternary);
-		String2CPInstructionType.put( "ctableexpand", 	CPType.Ternary);
+		String2CPInstructionType.put( "ctable", 		CPType.Ctable);
+		String2CPInstructionType.put( "ctableexpand", 	CPType.Ctable);
 		
 		//central moment, covariance, quantiles (sort/pick)
 		String2CPInstructionType.put( "cm"    , CPType.CentralMoment);
@@ -320,13 +326,12 @@ public class CPInstructionParser extends InstructionParser
 	
 			case AggregateTernary:
 				return AggregateTernaryCPInstruction.parseInstruction(str);
-				
-			case ArithmeticBinary:
-				String opcode = InstructionUtils.getOpCode(str);
-				if( opcode.equals("+*") || opcode.equals("-*")  )
-					return PlusMultCPInstruction.parseInstruction(str);
-				else
-					return ArithmeticBinaryCPInstruction.parseInstruction(str);
+			
+			case Unary:
+				return UnaryCPInstruction.parseInstruction(str);
+			
+			case Binary:
+				return BinaryCPInstruction.parseInstruction(str);
 			
 			case Ternary:
 				return TernaryCPInstruction.parseInstruction(str);
@@ -334,20 +339,11 @@ public class CPInstructionParser extends InstructionParser
 			case Quaternary:
 				return QuaternaryCPInstruction.parseInstruction(str);
 			
-			case BooleanBinary:
-				return BooleanBinaryCPInstruction.parseInstruction(str);
-				
-			case BooleanUnary:
-				return BooleanUnaryCPInstruction.parseInstruction(str);
-				
-			case BuiltinBinary:
-				return BuiltinBinaryCPInstruction.parseInstruction(str);
-				
-			case BuiltinUnary:
-				return BuiltinUnaryCPInstruction.parseInstruction(str);
-			
 			case BuiltinNary:
 				return BuiltinNaryCPInstruction.parseInstruction(str);
+			
+			case Ctable:
+				return CtableCPInstruction.parseInstruction(str);
 			
 			case Reorg:
 				return ReorgCPInstruction.parseInstruction(str);
@@ -363,9 +359,6 @@ public class CPInstructionParser extends InstructionParser
 	
 			case Append:
 				return AppendCPInstruction.parseInstruction(str);
-				
-			case RelationalBinary:
-				return RelationalBinaryCPInstruction.parseInstruction(str);
 			
 			case Variable:
 				return VariableCPInstruction.parseInstruction(str);
@@ -410,10 +403,10 @@ public class CPInstructionParser extends InstructionParser
 				if ( parts[0].equals("log") || parts[0].equals("log_nz") ) {
 					if ( parts.length == 3 ) {
 						// B=log(A), y=log(x)
-						return BuiltinUnaryCPInstruction.parseInstruction(str);
+						return UnaryCPInstruction.parseInstruction(str);
 					} else if ( parts.length == 4 ) {
 						// B=log(A,10), y=log(x,10)
-						return BuiltinBinaryCPInstruction.parseInstruction(str);
+						return BinaryCPInstruction.parseInstruction(str);
 					}
 				}
 				else {
@@ -429,7 +422,7 @@ public class CPInstructionParser extends InstructionParser
 				return MMChainCPInstruction.parseInstruction(str);
 			
 			case Partition:
-				return DataPartitionCPInstruction.parseInstruction(str);	
+				return DataPartitionCPInstruction.parseInstruction(str);
 		
 			case CentralMoment:
 				return CentralMomentCPInstruction.parseInstruction(str);
@@ -438,12 +431,10 @@ public class CPInstructionParser extends InstructionParser
 				return CovarianceCPInstruction.parseInstruction(str);
 	
 			case Compression:
-				return (CPInstruction) CompressionCPInstruction.parseInstruction(str);	
+				return (CPInstruction) CompressionCPInstruction.parseInstruction(str);
 			
 			case SpoofFused:
 				return SpoofCPInstruction.parseInstruction(str);
-			
-			case INVALID:
 			
 			default: 
 				throw new DMLRuntimeException("Invalid CP Instruction Type: " + cptype );

@@ -43,20 +43,18 @@ import org.apache.sysml.runtime.matrix.data.MatrixIndexes;
 import org.apache.sysml.runtime.matrix.data.OutputInfo;
 import org.apache.sysml.utils.Statistics;
 
-/**
- * MR job class for submitting parfor result merge MR jobs.
- * 
- */
 public class ResultMergeRemoteSpark extends ResultMerge
-{	
+{
+	private static final long serialVersionUID = -6924566953903424820L;
 	
 	private ExecutionContext _ec = null;
 	private int  _numMappers = -1;
 	private int  _numReducers = -1;
 	
-	public ResultMergeRemoteSpark(MatrixObject out, MatrixObject[] in, String outputFilename, ExecutionContext ec, int numMappers, int numReducers) 
+	public ResultMergeRemoteSpark(MatrixObject out, MatrixObject[] in, String outputFilename, boolean accum,
+		ExecutionContext ec, int numMappers, int numReducers) 
 	{
-		super(out, in, outputFilename);
+		super(out, in, outputFilename, accum);
 		
 		_ec = ec;
 		_numMappers = numMappers;
@@ -83,8 +81,7 @@ public class ResultMergeRemoteSpark extends ResultMerge
 
 		try
 		{
-			if( _inputs != null && _inputs.length>0 )
-			{
+			if( _inputs != null && _inputs.length>0 ) {
 				//prepare compare
 				MetaDataFormat metadata = (MetaDataFormat) _output.getMetaData();
 				MatrixCharacteristics mcOld = metadata.getMatrixCharacteristics();
@@ -97,24 +94,21 @@ public class ResultMergeRemoteSpark extends ResultMerge
 				moNew = new MatrixObject(_output.getValueType(), _outputFName);
 				OutputInfo oiOld = metadata.getOutputInfo();
 				InputInfo iiOld = metadata.getInputInfo();
-				MatrixCharacteristics mc = new MatrixCharacteristics(mcOld.getRows(),mcOld.getCols(),
-						                                             mcOld.getRowsPerBlock(),mcOld.getColsPerBlock());
-				mc.setNonZeros( computeNonZeros(_output, Arrays.asList(_inputs)) );
+				MatrixCharacteristics mc = new MatrixCharacteristics(mcOld);
+				mc.setNonZeros(_isAccum ? -1 : computeNonZeros(_output, Arrays.asList(_inputs)));
 				MetaDataFormat meta = new MetaDataFormat(mc,oiOld,iiOld);
 				moNew.setMetaData( meta );
 				moNew.setRDDHandle( ro );
 			}
-			else
-			{
+			else {
 				moNew = _output; //return old matrix, to prevent copy
 			}
 		}
-		catch(Exception ex)
-		{
+		catch(Exception ex) {
 			throw new DMLRuntimeException(ex);
 		}
 		
-		return moNew;		
+		return moNew;
 	}
 
 	@SuppressWarnings("unchecked")
@@ -165,23 +159,24 @@ public class ResultMergeRemoteSpark extends ResultMerge
 			
 			//Step 2a: merge with compare
 			JavaPairRDD<MatrixIndexes, MatrixBlock> out = null;
-			if( withCompare )
-			{
+			if( withCompare ) {
 				JavaPairRDD<MatrixIndexes, MatrixBlock> compareRdd = (JavaPairRDD<MatrixIndexes, MatrixBlock>) 
 						sec.getRDDHandleForMatrixObject(compare, InputInfo.BinaryBlockInputInfo);
-		    	
+				
 				//merge values which differ from compare values
-				ResultMergeRemoteSparkWCompare cfun = new ResultMergeRemoteSparkWCompare();
+				ResultMergeRemoteSparkWCompare cfun = new ResultMergeRemoteSparkWCompare(_isAccum);
 				out = rdd.groupByKey(numRed) //group all result blocks per key
-		    			.join(compareRdd)   //join compare block and result blocks 
-		    			.mapToPair(cfun);   //merge result blocks w/ compare
+					.join(compareRdd)        //join compare block and result blocks 
+					.mapToPair(cfun);        //merge result blocks w/ compare
 			}
 			//Step 2b: merge without compare
 			else {
 				//direct merge in any order (disjointness guaranteed)
-				out = RDDAggregateUtils.mergeByKey(rdd, false);
+				out = _isAccum ?
+					RDDAggregateUtils.sumByKeyStable(rdd, false) :
+					RDDAggregateUtils.mergeByKey(rdd, false);
 			}
-		    
+			
 			//Step 3: create output rdd handle w/ lineage
 			ret = new RDDObject(out);
 			for(int i=0; i<paths.length; i++)
@@ -191,7 +186,7 @@ public class ResultMergeRemoteSpark extends ResultMerge
 		}
 		catch( Exception ex ) {
 			throw new DMLRuntimeException(ex);
-		}	    
+		}
 		
 		//maintain statistics
 		Statistics.incrementNoOfCompiledSPInst();
@@ -206,9 +201,7 @@ public class ResultMergeRemoteSpark extends ResultMerge
 	private static int determineNumReducers(long rlen, long clen, int brlen, int bclen, long numRed) {
 		//set the number of mappers and reducers 
 		long reducerGroups = Math.max(rlen/brlen,1) * Math.max(clen/bclen, 1);
-		int ret = (int)Math.min( numRed, reducerGroups );
-		
-		return ret; 	
+		return (int)Math.min( numRed, reducerGroups );
 	}
 	
 	@SuppressWarnings("unchecked")

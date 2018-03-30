@@ -84,7 +84,7 @@ public class InterProceduralAnalysis
 {
 	private static final boolean LDEBUG = false; //internal local debug level
 	private static final Log LOG = LogFactory.getLog(InterProceduralAnalysis.class.getName());
-    
+
 	//internal configuration parameters
 	protected static final boolean INTRA_PROCEDURAL_ANALYSIS      = true; //propagate statistics across statement blocks (main/functions)	
 	protected static final boolean PROPAGATE_KNOWN_UDF_STATISTICS = true; //propagate statistics for known external functions 
@@ -166,7 +166,7 @@ public class InterProceduralAnalysis
 	 * @throws HopsException in case of compilation errors
 	 */
 	public void analyzeProgram(int repetitions) 
-		throws HopsException	
+		throws HopsException
 	{
 		//sanity check for valid number of repetitions
 		if( repetitions <= 0 )
@@ -201,7 +201,7 @@ public class InterProceduralAnalysis
 			
 			//step 2: apply additional IPA passes
 			for( IPAPass pass : _passes )
-				if( pass.isApplicable() )
+				if( pass.isApplicable(_fgraph) )
 					pass.rewriteProgram(_prog, _fgraph, fcallSizes);
 			
 			//early abort without functions or on reached fixpoint
@@ -217,7 +217,7 @@ public class InterProceduralAnalysis
 		//cleanup pass: remove unused functions
 		FunctionCallGraph graph2 = new FunctionCallGraph(_prog);
 		IPAPass rmFuns = new IPAPassRemoveUnusedFunctions();
-		if( rmFuns.isApplicable() )
+		if( rmFuns.isApplicable(graph2) )
 			rmFuns.rewriteProgram(_prog, graph2, null);
 	}
 	
@@ -638,8 +638,9 @@ public class InterProceduralAnalysis
 						{
 							MatrixObject moOut = (MatrixObject)dat;
 							MatrixCharacteristics mc = moOut.getMatrixCharacteristics();
-							if( OptimizerUtils.estimateSizeExactSparsity(mc.getRows(), mc.getCols(), (mc.getNonZeros()>0)?((double)mc.getNonZeros())/mc.getRows()/mc.getCols():1.0)	
-							    < OptimizerUtils.estimateSize(moIn.getNumRows(), moIn.getNumColumns()) )
+							if( OptimizerUtils.estimateSizeExactSparsity(mc.getRows(), mc.getCols(), (mc.getNonZeros()>0)?
+								OptimizerUtils.getSparsity(mc):1.0) 
+								< OptimizerUtils.estimateSize(moIn.getNumRows(), moIn.getNumColumns()) )
 							{
 								//update statistics if necessary
 								mc.setDimension(moIn.getNumRows(), moIn.getNumColumns());

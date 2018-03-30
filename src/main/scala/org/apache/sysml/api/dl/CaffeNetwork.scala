@@ -225,13 +225,14 @@ class CaffeNetwork(netFilePath: String, val currentPhase: Phase, var numChannels
     else m.containsKey(key)
   private def convertLayerParameterToCaffeLayer(param: LayerParameter): CaffeLayer = {
     id = id + 1
-    param.getType.toLowerCase() match {
+    param.getType.toLowerCase match {
       case "convolution" => new Convolution(param, id, this)
       case "pooling" =>
-        if (param.getPoolingParam.getPool == PoolingParameter.PoolMethod.MAX) new MaxPooling(param, id, this)
-        else throw new LanguageException("Only maxpooling is supported:" + param.getPoolingParam.getPool.name)
+        if (param.getPoolingParam.getPool == PoolingParameter.PoolMethod.MAX || param.getPoolingParam.getPool == PoolingParameter.PoolMethod.AVE) new MaxPooling(param, id, this)
+        else throw new LanguageException("Only max/avg pooling is supported:" + param.getPoolingParam.getPool.name)
       case "innerproduct"    => new InnerProduct(param, id, this)
       case "relu"            => new ReLU(param, id, this)
+      case "upsample"        => new Upsample(param, id, this)
       case "tanh"            => new TanH(param, id, this)
       case "sigmoid"         => new Sigmoid(param, id, this)
       case "softmaxwithloss" => new SoftmaxWithLoss(param, id, this)
@@ -246,6 +247,8 @@ class CaffeNetwork(netFilePath: String, val currentPhase: Phase, var numChannels
       case "deconvolution"   => new DeConvolution(param, id, this)
       case "threshold"       => new Threshold(param, id, this)
       case "softmax"         => new Softmax(param, id, this)
+      case "rnn"             => new RNN(param, id, this)
+      case "lstm"            => new LSTM(param, id, this)
       case _                 => throw new LanguageException("Layer of type " + param.getType + " is not supported")
     }
   }

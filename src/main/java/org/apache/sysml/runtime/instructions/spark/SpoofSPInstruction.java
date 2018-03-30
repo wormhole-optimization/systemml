@@ -25,6 +25,7 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.stream.IntStream;
 
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.spark.api.java.JavaPairRDD;
@@ -75,10 +76,9 @@ public class SpoofSPInstruction extends SPInstruction {
 
 	private SpoofSPInstruction(Class<?> cls, byte[] classBytes, CPOperand[] in, CPOperand out, String opcode,
 			String str) {
-		super(opcode, str);
+		super(SPType.SpoofFused, opcode, str);
 		_class = cls;
 		_classBytes = classBytes;
-		_sptype = SPINSTRUCTION_TYPE.SpoofFused;
 		_in = in;
 		_out = out;
 	}
@@ -105,15 +105,16 @@ public class SpoofSPInstruction extends SPInstruction {
 	@Override
 	public void processInstruction(ExecutionContext ec)
 		throws DMLRuntimeException 
-	{	
+	{
 		SparkExecutionContext sec = (SparkExecutionContext)ec;
 		
 		//decide upon broadcast side inputs
 		boolean[] bcVect = determineBroadcastInputs(sec, _in);
 		boolean[] bcVect2 = getMatrixBroadcastVector(sec, _in, bcVect);
+		int main = getMainInputIndex(_in, bcVect);
 		
 		//create joined input rdd w/ replication if needed
-		MatrixCharacteristics mcIn = sec.getMatrixCharacteristics(_in[0].getName());
+		MatrixCharacteristics mcIn = sec.getMatrixCharacteristics(_in[main].getName());
 		JavaPairRDD<MatrixIndexes, MatrixBlock[]> in = createJoinedInputRDD(
 			sec, _in, bcVect, (_class.getSuperclass() == SpoofOuterProduct.class));
 		JavaPairRDD<MatrixIndexes, MatrixBlock> out = null;
@@ -121,7 +122,7 @@ public class SpoofSPInstruction extends SPInstruction {
 		//create lists of input broadcasts and scalars
 		ArrayList<PartitionedBroadcast<MatrixBlock>> bcMatrices = new ArrayList<>();
 		ArrayList<ScalarObject> scalars = new ArrayList<>();
-		for( int i=1; i<_in.length; i++ ) {
+		for( int i=0; i<_in.length; i++ ) {
 			if( _in[i].getDataType()==DataType.MATRIX && bcVect[i] ) {
 				bcMatrices.add(sec.getBroadcastForVariable(_in[i].getName()));
 			}
@@ -144,19 +145,16 @@ public class SpoofSPInstruction extends SPInstruction {
 				
 				if( (op.getCellType()==CellType.ROW_AGG && mcIn.getCols() > mcIn.getColsPerBlock())
 					|| (op.getCellType()==CellType.COL_AGG && mcIn.getRows() > mcIn.getRowsPerBlock())) {
-					//TODO investigate if some other side effect of correct blocks
 					long numBlocks = (op.getCellType()==CellType.ROW_AGG ) ? 
 						mcIn.getNumRowBlocks() : mcIn.getNumColBlocks();
-					if( out.partitions().size() > numBlocks )
-						out = RDDAggregateUtils.aggByKeyStable(out, aggop, (int)numBlocks, false);
-					else
-						out = RDDAggregateUtils.aggByKeyStable(out, aggop, false);
+					out = RDDAggregateUtils.aggByKeyStable(out, aggop,
+						(int)Math.min(out.getNumPartitions(), numBlocks), false);
 				}
 				sec.setRDDHandleForVariable(_out.getName(), out);
 				
 				//maintain lineage info and output characteristics
 				maintainLineageInfo(sec, _in, bcVect, _out);
-				updateOutputMatrixCharacteristics(sec, op);	
+				updateOutputMatrixCharacteristics(sec, op);
 			}
 			else { //SCALAR
 				out = in.mapPartitionsToPair(new CellwiseFunction(
@@ -189,11 +187,9 @@ public class SpoofSPInstruction extends SPInstruction {
 				out = in.mapPartitionsToPair(new OuterProductFunction(
 					_class.getName(), _classBytes, bcVect2, bcMatrices, scalars), true);
 				if(type == OutProdType.LEFT_OUTER_PRODUCT || type == OutProdType.RIGHT_OUTER_PRODUCT ) {
-					//TODO investigate if some other side effect of correct blocks
-					if( in.partitions().size() > mcOut.getNumRowBlocks()*mcOut.getNumColBlocks() )
-						out = RDDAggregateUtils.sumByKeyStable(out, (int)(mcOut.getNumRowBlocks()*mcOut.getNumColBlocks()), false);
-					else
-						out = RDDAggregateUtils.sumByKeyStable(out, false);	
+					long numBlocks = mcOut.getNumRowBlocks() * mcOut.getNumColBlocks();
+					out = RDDAggregateUtils.sumByKeyStable(out,
+						(int)Math.min(out.getNumPartitions(), numBlocks), false);
 				}
 				sec.setRDDHandleForVariable(_out.getName(), out);
 				
@@ -231,13 +227,9 @@ public class SpoofSPInstruction extends SPInstruction {
 			else //row-agg or no-agg 
 			{
 				if( op.getRowType()==RowType.ROW_AGG && mcIn.getCols() > mcIn.getColsPerBlock() ) {
-					//TODO investigate if some other side effect of correct blocks
-					if( out.partitions().size() > mcIn.getNumRowBlocks() )
-						out = RDDAggregateUtils.sumByKeyStable(out, (int)mcIn.getNumRowBlocks(), false);
-					else
-						out = RDDAggregateUtils.sumByKeyStable(out, false);
+					out = RDDAggregateUtils.sumByKeyStable(out,
+						(int)Math.min(out.getNumPartitions(), mcIn.getNumRowBlocks()), false);
 				}
-				
 				sec.setRDDHandleForVariable(_out.getName(), out);
 				
 				//maintain lineage info and output characteristics
@@ -260,7 +252,7 @@ public class SpoofSPInstruction extends SPInstruction {
 		
 		//decided for each matrix input if it fits into remaining memory
 		//budget; the major input, i.e., inputs[0] is always an RDD
-		for( int i=1; i<inputs.length; i++ ) 
+		for( int i=0; i<inputs.length; i++ ) 
 			if( inputs[i].getDataType().isMatrix() ) {
 				MatrixCharacteristics mc = sec.getMatrixCharacteristics(inputs[i].getName());
 				double sizeL = OptimizerUtils.estimateSizeExactSparsity(mc);
@@ -270,6 +262,10 @@ public class SpoofSPInstruction extends SPInstruction {
 				localBudget -= ret[i] ? sizeP : 0; //in local block manager
 				bcBudget -= ret[i] ? sizeP : 0; //in remote block managers
 			}
+		
+		//ensure there is at least one RDD input, with awareness for scalars
+		if( !IntStream.range(0, ret.length).anyMatch(i -> inputs[i].isMatrix() && !ret[i]) )
+			ret[0] = false;
 		
 		return ret;
 	}
@@ -290,12 +286,13 @@ public class SpoofSPInstruction extends SPInstruction {
 		throws DMLRuntimeException
 	{
 		//get input rdd for main input
-		MatrixCharacteristics mcIn = sec.getMatrixCharacteristics(inputs[0].getName());
-		JavaPairRDD<MatrixIndexes, MatrixBlock> in = sec.getBinaryBlockRDDHandleForVariable(inputs[0].getName());
+		int main = getMainInputIndex(inputs, bcVect);
+		MatrixCharacteristics mcIn = sec.getMatrixCharacteristics(inputs[main].getName());
+		JavaPairRDD<MatrixIndexes, MatrixBlock> in = sec.getBinaryBlockRDDHandleForVariable(inputs[main].getName());
 		JavaPairRDD<MatrixIndexes, MatrixBlock[]> ret = in.mapValues(new MapInputSignature());
 		
-		for( int i=1; i<inputs.length; i++ )
-			if( inputs[i].getDataType().isMatrix() && !bcVect[i] ) {
+		for( int i=0; i<inputs.length; i++ )
+			if( i != main && inputs[i].getDataType().isMatrix() && !bcVect[i] ) {
 				//create side input rdd 
 				String varname = inputs[i].getName();
 				JavaPairRDD<MatrixIndexes, MatrixBlock> tmp = sec
@@ -323,6 +320,11 @@ public class SpoofSPInstruction extends SPInstruction {
 		for( int i=0; i<inputs.length; i++ )
 			if( inputs[i].getDataType().isMatrix() )
 				sec.addLineage(output.getName(), inputs[i].getName(), bcVect[i]);
+	}
+	
+	private static int getMainInputIndex(CPOperand[] inputs, boolean[] bcVect) {
+		return IntStream.range(0, bcVect.length)
+			.filter(i -> inputs[i].isMatrix() && !bcVect[i]).min().orElse(0);
 	}
 	
 	private void updateOutputMatrixCharacteristics(SparkExecutionContext sec, SpoofOperator op) 
@@ -487,8 +489,11 @@ public class SpoofSPInstruction extends SPInstruction {
 			
 			//cleanup and final result preparations
 			LibSpoofPrimitives.cleanupThreadLocalMemory();
-			if( aggIncr )
+			if( aggIncr ) {
+				blkOut.recomputeNonZeros();
+				blkOut.examSparsity(); //deferred format change
 				ret.add(new Tuple2<>(new MatrixIndexes(1,1), blkOut));
+			}
 			
 			return ret.iterator();
 		}
@@ -705,9 +710,9 @@ public class SpoofSPInstruction extends SPInstruction {
 		if( aggop == AggOp.SUM || aggop == AggOp.SUM_SQ )
 			return new AggregateOperator(0, KahanPlus.getKahanPlusFnObject(), true, CorrectionLocationType.NONE);
 		else if( aggop == AggOp.MIN )
-			return new AggregateOperator(Double.MAX_VALUE, Builtin.getBuiltinFnObject(BuiltinCode.MIN), false, CorrectionLocationType.NONE);
+			return new AggregateOperator(Double.POSITIVE_INFINITY, Builtin.getBuiltinFnObject(BuiltinCode.MIN), false, CorrectionLocationType.NONE);
 		else if( aggop == AggOp.MAX )
-			return new AggregateOperator(-Double.MAX_VALUE, Builtin.getBuiltinFnObject(BuiltinCode.MAX), false, CorrectionLocationType.NONE);
+			return new AggregateOperator(Double.NEGATIVE_INFINITY, Builtin.getBuiltinFnObject(BuiltinCode.MAX), false, CorrectionLocationType.NONE);
 		return null;
 	}
 }

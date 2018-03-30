@@ -29,11 +29,11 @@ import org.apache.sysml.runtime.matrix.operators.Operator;
 
 public abstract class CPInstruction extends Instruction 
 {
-	public enum CPType { INVALID, 
-		AggregateUnary, AggregateBinary, AggregateTernary, ArithmeticBinary, 
-		Ternary, Quaternary, BooleanBinary, BooleanUnary, BuiltinBinary, BuiltinUnary, BuiltinNary, 
-		MultiReturnParameterizedBuiltin, ParameterizedBuiltin, MultiReturnBuiltin, 
-		Builtin, Reorg, RelationalBinary, Variable, External, Append, Rand, QSort, QPick, 
+	public enum CPType {
+		AggregateUnary, AggregateBinary, AggregateTernary,
+		Unary, Binary, Ternary, Quaternary, BuiltinNary, Ctable, 
+		MultiReturnParameterizedBuiltin, ParameterizedBuiltin, MultiReturnBuiltin,
+		Builtin, Reorg, Variable, External, Append, Rand, QSort, QPick,
 		MatrixIndexing, MMTSJ, PMMJ, MMChain, MatrixReshape, Partition, Compression, SpoofFused,
 		StringInit, CentralMoment, Covariance, UaggOuterChain, Convolution }
 	

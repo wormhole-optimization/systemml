@@ -51,6 +51,8 @@ public class GPUInstructionParser  extends InstructionParser
 		String2GPUInstructionType.put( "conv2d_backward_data",   GPUINSTRUCTION_TYPE.Convolution);
 		String2GPUInstructionType.put( "maxpooling",             GPUINSTRUCTION_TYPE.Convolution);
 		String2GPUInstructionType.put( "maxpooling_backward",    GPUINSTRUCTION_TYPE.Convolution);
+		String2GPUInstructionType.put( "avgpooling",             GPUINSTRUCTION_TYPE.Convolution);
+		String2GPUInstructionType.put( "avgpooling_backward",    GPUINSTRUCTION_TYPE.Convolution);
 		String2GPUInstructionType.put( "bias_add",               GPUINSTRUCTION_TYPE.Convolution);
 		String2GPUInstructionType.put( "bias_multiply",          GPUINSTRUCTION_TYPE.Convolution);
 		String2GPUInstructionType.put( "channel_sums",          GPUINSTRUCTION_TYPE.Convolution);
@@ -81,7 +83,6 @@ public class GPUInstructionParser  extends InstructionParser
 		String2GPUInstructionType.put( "-*",   GPUINSTRUCTION_TYPE.ArithmeticBinary);
 		
 		// Unary Builtin functions
-		String2GPUInstructionType.put( "sel+",  GPUINSTRUCTION_TYPE.BuiltinUnary);
 		String2GPUInstructionType.put( "exp",   GPUINSTRUCTION_TYPE.BuiltinUnary);
 		String2GPUInstructionType.put( "log",   GPUINSTRUCTION_TYPE.BuiltinUnary);
 		String2GPUInstructionType.put( "abs",   GPUINSTRUCTION_TYPE.BuiltinUnary);
@@ -104,6 +105,8 @@ public class GPUInstructionParser  extends InstructionParser
 
 		// Binary Builtin functions
 		String2GPUInstructionType.put( "solve", GPUINSTRUCTION_TYPE.BuiltinBinary);
+		String2GPUInstructionType.put( "min", GPUINSTRUCTION_TYPE.BuiltinBinary);
+		String2GPUInstructionType.put( "max", GPUINSTRUCTION_TYPE.BuiltinBinary);
 
 		// Aggregate Unary
 		String2GPUInstructionType.put( "ua+"     , GPUINSTRUCTION_TYPE.AggregateUnary); // Sum

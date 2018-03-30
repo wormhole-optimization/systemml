@@ -20,6 +20,7 @@
 package org.apache.sysml.conf;
 
 import org.apache.hadoop.mapred.JobConf;
+import org.apache.sysml.api.DMLScript;
 import org.apache.sysml.conf.CompilerConfig.ConfigType;
 import org.apache.sysml.runtime.matrix.mapred.MRConfigurationNames;
 import org.apache.sysml.runtime.matrix.mapred.MRJobConfiguration;
@@ -190,14 +191,17 @@ public class ConfigurationManager
 	}
 	
 	public static boolean isCodegenEnabled() {
-		return getDMLConfig().getBooleanValue(DMLConfig.CODEGEN)
-			|| getCompilerConfigFlag(ConfigType.CODEGEN_ENABLED);
+		return (getDMLConfig().getBooleanValue(DMLConfig.CODEGEN)
+			|| getCompilerConfigFlag(ConfigType.CODEGEN_ENABLED))
+			&& !DMLScript.USE_ACCELERATOR;
+		//note: until codegen is supported for the GPU backend, we globally
+		//disable codegen if operations are forced to the GPU to avoid
+		//a counter-productive impact on performance.
 	}
 
 	public static boolean isSpoofEnabled() {
 		return getDMLConfig().getBooleanValue(DMLConfig.SPOOF);
 	}
-	
 	
 	///////////////////////////////////////
 	// Thread-local classes

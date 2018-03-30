@@ -65,6 +65,7 @@ public abstract class GPUInstruction extends Instruction {
 	
 	public final static String MISC_TIMER_CUDA_FREE =               "f";		// time spent in calling cudaFree
 	public final static String MISC_TIMER_ALLOCATE =                "a";		// time spent to allocate memory on gpu
+	public final static String MISC_TIMER_EVICT =                	"evict";	// time spent in eviction on gpu
 	public final static String MISC_TIMER_ALLOCATE_DENSE_OUTPUT =   "ad";		// time spent to allocate dense output (recorded differently than MISC_TIMER_ALLOCATE)
 	public final static String MISC_TIMER_ALLOCATE_SPARSE_OUTPUT =  "as";		// time spent to allocate sparse output (recorded differently than MISC_TIMER_ALLOCATE)
 	public final static String MISC_TIMER_SET_ZERO =                "az";		// time spent to allocate
@@ -141,6 +142,9 @@ public abstract class GPUInstruction extends Instruction {
 	public final static String MISC_TIMER_RELU_KERNEL =                    "nnrk";  // time spent in the relu kernel
 	public final static String MISC_TIMER_CUDNN_INIT =                     "nni";   // time spent in initializations for cudnn call
 	public final static String MISC_TIMER_CUDNN_CLEANUP =                  "nnc";   // time spent in cleanup for cudnn call
+	public final static String MISC_TIMER_DENSE_IM2COL_KERNEL=             "nndim2c"; // time spent in dense im2col cuda kernel
+	public final static String MISC_TIMER_SPARSE_IM2COL_KERNEL=            "nnsim2c"; // time spent in sparse im2col cuda kernel
+	public final static String MISC_TIMER_DENSE_REORG_KNPQ_KERNEL=         "nndrknpq"; // time spent in dense reorg_knpq cuda kernel
 
 	protected GPUINSTRUCTION_TYPE _gputype;
 	protected Operator _optr;

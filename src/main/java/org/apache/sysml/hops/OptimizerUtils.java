@@ -43,6 +43,7 @@ import org.apache.sysml.parser.Expression.ValueType;
 import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.controlprogram.ForProgramBlock;
 import org.apache.sysml.runtime.controlprogram.LocalVariableMap;
+import org.apache.sysml.runtime.controlprogram.caching.LazyWriteBuffer;
 import org.apache.sysml.runtime.controlprogram.context.SparkExecutionContext;
 import org.apache.sysml.runtime.controlprogram.parfor.ProgramConverter;
 import org.apache.sysml.runtime.controlprogram.parfor.stat.InfrastructureAnalyzer;
@@ -98,6 +99,8 @@ public class OptimizerUtils
 	public static final long MAX_NNZ_CP_SPARSE = (MatrixBlock.DEFAULT_SPARSEBLOCK == 
 			SparseBlock.Type.MCSR) ? Long.MAX_VALUE : Integer.MAX_VALUE;
 
+	public static final long SAFE_REP_CHANGE_THRES = 8 * 1024 *1024; //8MB
+	
 	/**
 	 * Enables common subexpression elimination in dags. There is however, a potential tradeoff
 	 * between computation redundancy and data transfer between MR jobs. Since, we do not reason
@@ -447,15 +450,12 @@ public class OptimizerUtils
 		return ( size < memBudgetExec && 2*size < memBudgetLocal );
 	}
 
-	public static boolean checkSparkBroadcastMemoryBudget( long rlen, long clen, long brlen, long bclen, long nnz )
-	{
+	public static boolean checkSparkBroadcastMemoryBudget( long rlen, long clen, long brlen, long bclen, long nnz ) {
 		double memBudgetExec = SparkExecutionContext.getBroadcastMemoryBudget();
 		double memBudgetLocal = OptimizerUtils.getLocalMemBudget();
-
 		double sp = getSparsity(rlen, clen, nnz);
 		double size = estimateSizeExactSparsity(rlen, clen, sp);
 		double sizeP = estimatePartitionedSizeExactSparsity(rlen, clen, brlen, bclen, sp);
-		
 		//basic requirement: the broadcast needs to to fit once in the remote broadcast memory 
 		//and twice into the local memory budget because we have to create a partitioned broadcast
 		//memory and hand it over to the spark context as in-memory object
@@ -463,25 +463,25 @@ public class OptimizerUtils
 				&& sizeP < memBudgetExec && size+sizeP < memBudgetLocal );
 	}
 
-	public static boolean checkSparkCollectMemoryBudget( MatrixCharacteristics mc, long memPinned )
-	{
-		return checkSparkCollectMemoryBudget(
-				mc.getRows(), 
-				mc.getCols(),
-				mc.getRowsPerBlock(),
-				mc.getColsPerBlock(),
-				mc.getNonZeros(), memPinned);
+	public static boolean checkSparkCollectMemoryBudget( MatrixCharacteristics mc, long memPinned ) {
+		return checkSparkCollectMemoryBudget(mc.getRows(), mc.getCols(), mc.getRowsPerBlock(),
+			mc.getColsPerBlock(), mc.getNonZerosBound(), memPinned, false);
 	}
 	
-	public static boolean checkSparkCollectMemoryBudget( long rlen, long clen, int brlen, int bclen, long nnz, long memPinned )
-	{
+	public static boolean checkSparkCollectMemoryBudget( MatrixCharacteristics mc, long memPinned, boolean checkBP ) {
+		return checkSparkCollectMemoryBudget(mc.getRows(), mc.getCols(), mc.getRowsPerBlock(),
+			mc.getColsPerBlock(), mc.getNonZerosBound(), memPinned, checkBP);
+	}
+	
+	private static boolean checkSparkCollectMemoryBudget( long rlen, long clen, int brlen, int bclen, long nnz, long memPinned, boolean checkBP ) {
 		//compute size of output matrix and its blocked representation
 		double sp = getSparsity(rlen, clen, nnz);
 		double memMatrix = estimateSizeExactSparsity(rlen, clen, sp);
 		double memPMatrix = estimatePartitionedSizeExactSparsity(rlen, clen, brlen, bclen, sp);
-		
 		//check if both output matrix and partitioned matrix fit into local mem budget
-		return (memPinned + memMatrix + memPMatrix < getLocalMemBudget());
+		return (memPinned + memMatrix + memPMatrix < getLocalMemBudget())
+		//check if the output matrix fits into the write buffer to avoid unnecessary evictions
+			&& (!checkBP || memMatrix < LazyWriteBuffer.getWriteBufferLimit());
 	}
 
 	public static boolean checkSparseBlockCSRConversion( MatrixCharacteristics mcIn ) {
@@ -734,16 +734,16 @@ public class OptimizerUtils
 
 		//estimate size of bottom boundary blocks 
 		long lrlen = rlen % brlen;
-		if( ncblks > 0 && lrlen > 0 )
+		if( ncblks > 0 && lrlen >= 0 )
 			ret += ncblks * estimateSizeExactSparsity(lrlen, bclen, sp);
 		
 		//estimate size of right boundary blocks
 		long lclen = clen % bclen;
-		if( nrblks > 0 && lclen > 0 )
+		if( nrblks > 0 && lclen >= 0 )
 			ret += nrblks * estimateSizeExactSparsity(brlen, lclen, sp);
 		
 		//estimate size of bottom right boundary block
-		if( lrlen > 0 && lclen > 0  )
+		if( lrlen >= 0 && lclen >= 0  )
 			ret += estimateSizeExactSparsity(lrlen, lclen, sp);
 		
 		return ret;
@@ -826,6 +826,11 @@ public class OptimizerUtils
 				|| (rl-1)/brlen == (ru-1)/brlen && (cl-1)%bclen == 0 
 				|| (rl-1)%brlen == 0 && (cl-1)/bclen == (cu-1)/bclen);
 	}
+	
+	public static boolean isValidCPDimensions( MatrixCharacteristics mc ) {
+		return isValidCPDimensions(mc.getRows(), mc.getCols());
+	}
+	
 	/**
 	 * Returns false if dimensions known to be invalid; other true
 	 * 
@@ -1033,6 +1038,7 @@ public class OptimizerUtils
 				||(op==OpOp2.EQUAL    && val!=0)
 				||(op==OpOp2.MINUS    && val==0)
 				||(op==OpOp2.PLUS     && val==0)
+				||(op==OpOp2.POW      && val!=0)
 				||(op==OpOp2.MAX      && val<=0)
 				||(op==OpOp2.MIN      && val>=0));
 	}
@@ -1060,11 +1066,10 @@ public class OptimizerUtils
 			//NOTE: for matrix-scalar operations this estimate is too conservative, because 
 			//Math.min(1, sp1 + sp2) will always give a sparsity 1 if we pass sp2=1 for scalars.
 			//In order to do better (with guarantees), we need to take the actual values into account  
-			switch(op) 
-			{
+			switch(op) {
 				case PLUS:
 				case MINUS:
-				case LESS: 
+				case LESS:
 				case GREATER:
 				case NOTEQUAL:
 				case MIN:
@@ -1075,47 +1080,43 @@ public class OptimizerUtils
 				case AND:
 					ret = Math.min(sp1, sp2); break;
 				case DIV:
+					ret = Math.min(1, sp1 + (1-sp2)); break;
 				case MODULUS:
 				case POW:
 				case MINUS_NZ:
-				case LOG_NZ:	
-					ret = sp1; break; 
+				case LOG_NZ:
+					ret = sp1; break;
 				//case EQUAL: //doesnt work on worstcase estimates, but on 
-				//	ret = 1-Math.abs(sp1-sp2); break;	
-	
+				//	ret = 1-Math.abs(sp1-sp2); break;
 				default:
 					ret = 1.0;
 			}
 		}
 		else
 		{
-			switch(op) {			
+			switch(op) {
 				case PLUS:
 				case MINUS:
 					// result[i,j] != 0 iff A[i,j] !=0 || B[i,j] != 0
 					// worst case estimate = sp1+sp2
-					ret = (1 - (1-sp1)*(1-sp2)); 
+					ret = (1 - (1-sp1)*(1-sp2));
 					break;
-					
 				case MULT:
 					// result[i,j] != 0 iff A[i,j] !=0 && B[i,j] != 0
 					// worst case estimate = min(sp1,sp2)
-					ret = sp1 * sp2;  
+					ret = sp1 * sp2;
 					break;
-					
 				case DIV:
 					ret = 1.0; // worst case estimate
 					break;
-					
-				case LESS: 
+				case LESS:
 				case LESSEQUAL:
 				case GREATER:
 				case GREATEREQUAL:
-				case EQUAL: 
+				case EQUAL:
 				case NOTEQUAL:
 					ret = 1.0; // purely data-dependent operations, and hence worse-case estimate
 					break;
-					
 				//MIN, MAX, AND, OR, LOG, POW
 				default:
 					ret = 1.0;
@@ -1125,16 +1126,35 @@ public class OptimizerUtils
 		return ret; 
 	}
 	
+	public static long getOuterNonZeros(long n1, long n2, long nnz1, long nnz2, OpOp2 op) {
+		if( nnz1 < 0 || nnz2 < 0 )
+			return n1 * n2;
+		switch(op) {
+			case PLUS:
+			case MINUS:
+			case LESS:
+			case GREATER:
+			case NOTEQUAL:
+			case MIN:
+			case MAX:
+			case OR:
+				return n1 * n2
+					- (n1-nnz1) * (n2-nnz2);
+			case MULT:
+			case AND:
+				return nnz1 * nnz2;
+			default:
+				return n1 * n2;
+		}
+	}
+	
 	public static double getSparsity( MatrixCharacteristics mc ) {
 		return getSparsity(mc.getRows(), mc.getCols(), mc.getNonZeros());
 	}
 	
-	public static double getSparsity( long dim1, long dim2, long nnz )
-	{
-		if( dim1<=0 || dim2<=0 || nnz<0 )
-			return 1.0;
-		else
-			return Math.min(((double)nnz)/dim1/dim2, 1.0);
+	public static double getSparsity( long dim1, long dim2, long nnz ) {
+		return ( dim1<=0 || dim2<=0 || nnz<0 ) ? 1.0 :
+			Math.min(((double)nnz)/dim1/dim2, 1.0);
 	}
 	
 	public static String toMB(double inB) {
@@ -1284,9 +1304,9 @@ public class OptimizerUtils
 		Hop input = uroot.getInput().get(0);
 		
 		if(uroot.getOp() == Hop.OpOp1.NROW)
-			ret = (input.getDim1()>0) ? input.getDim1() : Double.MAX_VALUE;
+			ret = input.rowsKnown() ? input.getDim1() : Double.MAX_VALUE;
 		else if( uroot.getOp() == Hop.OpOp1.NCOL )
-			ret = (input.getDim2()>0) ? input.getDim2() : Double.MAX_VALUE;
+			ret = input.colsKnown() ? input.getDim2() : Double.MAX_VALUE;
 		else
 		{
 			double lval = rEvalSimpleDoubleExpression(uroot.getInput().get(0), valMemo);
@@ -1294,8 +1314,10 @@ public class OptimizerUtils
 			{
 				switch( uroot.getOp() )
 				{
-					case SQRT:	ret = Math.sqrt(lval); break;
+					case SQRT:  ret = Math.sqrt(lval); break;
 					case ROUND: ret = Math.round(lval); break;
+					case CEIL:  ret = Math.ceil(lval); break;
+					case FLOOR: ret = Math.floor(lval); break;
 					case CAST_AS_BOOLEAN: ret = (lval!=0)? 1 : 0; break;
 					case CAST_AS_INT: ret = UtilFunctions.toLong(lval); break;
 					case CAST_AS_DOUBLE: ret = lval; break;
@@ -1321,9 +1343,9 @@ public class OptimizerUtils
 		Hop input = uroot.getInput().get(0);
 		
 		if(uroot.getOp() == Hop.OpOp1.NROW)
-			ret = (input.getDim1()>0) ? input.getDim1() : Double.MAX_VALUE;
+			ret = input.rowsKnown() ? input.getDim1() : Double.MAX_VALUE;
 		else if( uroot.getOp() == Hop.OpOp1.NCOL )
-			ret = (input.getDim2()>0) ? input.getDim2() : Double.MAX_VALUE;
+			ret = input.colsKnown() ? input.getDim2() : Double.MAX_VALUE;
 		else
 		{
 			double lval = rEvalSimpleDoubleExpression(uroot.getInput().get(0), valMemo, vars);
@@ -1331,8 +1353,10 @@ public class OptimizerUtils
 			{
 				switch( uroot.getOp() )
 				{
-					case SQRT:	ret = Math.sqrt(lval); break;
+					case SQRT:  ret = Math.sqrt(lval); break;
 					case ROUND: ret = Math.round(lval); break;
+					case CEIL:  ret = Math.ceil(lval); break;
+					case FLOOR: ret = Math.floor(lval); break;
 					case CAST_AS_BOOLEAN: ret = (lval!=0)? 1 : 0; break;
 					case CAST_AS_INT: ret = UtilFunctions.toLong(lval); break;
 					case CAST_AS_DOUBLE: ret = lval; break;

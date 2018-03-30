@@ -29,6 +29,7 @@ import org.junit.runners.Suite;
 	ConditionalValidateTest.class,
 	DataTypeCastingTest.class,
 	DataTypeChangeTest.class,
+	FunctionInExpressionTest.class,
 	FunctionInliningTest.class,
 	FunctionNamespaceTest.class,
 	FunctionReturnTest.class,
@@ -73,10 +74,12 @@ import org.junit.runners.Suite;
 	ScalarMatrixUnaryBinaryTermTest.class,
 	ScalarToMatrixInLoopTest.class,
 	SetWorkingDirTest.class,
+	SizePropagationRBindTest.class,
 	ToStringTest.class,
 	ValueTypeAutoCastingTest.class,
 	ValueTypeCastingTest.class,
 	ValueTypeMatrixScalarBuiltinTest.class,
+	ZeroRowsColsMatrixTest.class,
 })
 
 

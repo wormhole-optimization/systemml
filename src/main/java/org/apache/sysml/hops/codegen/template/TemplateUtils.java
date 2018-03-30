@@ -257,8 +257,10 @@ public class TemplateUtils
 	
 	public static boolean rIsSparseSafeOnly(CNode node, BinType...types) {
 		if( !(isBinary(node, types) || node instanceof CNodeData 
-			|| (node instanceof CNodeUnary && ((CNodeUnary)node).getType().isScalarLookup())
-			|| (node instanceof CNodeUnary && ((CNodeUnary)node).getType().isSparseSafeScalar())) )
+			|| (node instanceof CNodeUnary && ((((CNodeUnary)node).getType().isScalarLookup())
+				|| ((CNodeUnary)node).getType().isSparseSafeScalar()
+				|| ((CNodeUnary)node).getType()==UnaryType.POW2
+				|| ((CNodeUnary)node).getType()==UnaryType.MULT2)) ))
 			return false;
 		boolean ret = true;
 		for( CNode c : node.getInput() )
@@ -317,7 +319,9 @@ public class TemplateUtils
 				&& !TemplateUtils.isUnary(output, 
 					UnaryType.EXP, UnaryType.LOG, UnaryType.ROW_COUNTNNZS)) 
 			|| (output instanceof CNodeBinary
-				&& !TemplateUtils.isBinary(output, BinType.VECT_OUTERMULT_ADD))) 
+				&& !TemplateUtils.isBinary(output, BinType.VECT_OUTERMULT_ADD))
+			|| output instanceof CNodeTernary 
+				&& ((CNodeTernary)output).getType() == TernaryType.IFELSE)
 			&& hasOnlyDataNodeOrLookupInputs(output);
 	}
 	

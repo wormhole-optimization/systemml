@@ -19,7 +19,6 @@
 package org.apache.sysml.runtime.instructions.spark;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Iterator;
 
 import org.apache.spark.api.java.JavaPairRDD;
@@ -41,6 +40,7 @@ import org.apache.sysml.runtime.matrix.MetaDataFormat;
 import org.apache.sysml.runtime.matrix.data.ConvolutionParameters;
 import org.apache.sysml.runtime.matrix.data.InputInfo;
 import org.apache.sysml.runtime.matrix.data.LibMatrixDNN;
+import org.apache.sysml.runtime.matrix.data.LibMatrixDNN.PoolingType;
 import org.apache.sysml.runtime.matrix.data.LibMatrixNative;
 import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.matrix.data.MatrixIndexes;
@@ -62,8 +62,7 @@ public class ConvolutionSPInstruction extends UnarySPInstruction {
 	private ConvolutionSPInstruction(CPOperand in, CPOperand out, String opcode, String istr,
 			ArrayList<CPOperand> stride, ArrayList<CPOperand> padding, ArrayList<CPOperand> input_shape,
 			ArrayList<CPOperand> filter_shape) {
-		super(new ReorgOperator(SwapIndex.getSwapIndexFnObject()), in, out, opcode, istr);
-		_sptype = SPINSTRUCTION_TYPE.Convolution;
+		super(SPType.Convolution, new ReorgOperator(SwapIndex.getSwapIndexFnObject()), in, out, opcode, istr);
 		_stride = stride;
 		_padding = padding;
 		_input_shape = input_shape;
@@ -73,9 +72,8 @@ public class ConvolutionSPInstruction extends UnarySPInstruction {
 	private ConvolutionSPInstruction(CPOperand in, CPOperand in2, CPOperand out, String opcode, String istr,
 			ArrayList<CPOperand> stride, ArrayList<CPOperand> padding, ArrayList<CPOperand> input_shape,
 			ArrayList<CPOperand> filter_shape) {
-		super(new ReorgOperator(SwapIndex.getSwapIndexFnObject()), in, out, opcode, istr);
+		super(SPType.Convolution, new ReorgOperator(SwapIndex.getSwapIndexFnObject()), in, out, opcode, istr);
 		_in2 = in2;
-		_sptype = SPINSTRUCTION_TYPE.Convolution;
 		_stride = stride;
 		_padding = padding;
 		_input_shape = input_shape;
@@ -85,10 +83,9 @@ public class ConvolutionSPInstruction extends UnarySPInstruction {
 	private ConvolutionSPInstruction(CPOperand in, CPOperand in2, CPOperand in3, CPOperand out, String opcode,
 			String istr, ArrayList<CPOperand> stride, ArrayList<CPOperand> padding, ArrayList<CPOperand> input_shape,
 			ArrayList<CPOperand> filter_shape) {
-		super(new ReorgOperator(SwapIndex.getSwapIndexFnObject()), in, out, opcode, istr);
+		super(SPType.Convolution, new ReorgOperator(SwapIndex.getSwapIndexFnObject()), in, out, opcode, istr);
 		_in2 = in2;
 		_in3 = in3;
-		_sptype = SPINSTRUCTION_TYPE.Convolution;
 		_stride = stride;
 		_padding = padding;
 		_input_shape = input_shape;
@@ -96,9 +93,8 @@ public class ConvolutionSPInstruction extends UnarySPInstruction {
 	}
 
 	private ConvolutionSPInstruction(CPOperand in, CPOperand in2, CPOperand out, String opcode, String istr) {
-		super(new ReorgOperator(SwapIndex.getSwapIndexFnObject()), in, out, opcode, istr);
+		super(SPType.Convolution, new ReorgOperator(SwapIndex.getSwapIndexFnObject()), in, out, opcode, istr);
 		_in2 = in2;
-		_sptype = SPINSTRUCTION_TYPE.Convolution;
 	}
 
 	public static ConvolutionSPInstruction parseInstruction( String str ) throws DMLRuntimeException {
@@ -360,8 +356,17 @@ public class ConvolutionSPInstruction extends UnarySPInstruction {
 				else {
 					outputBlock = new MatrixBlock(params.N, params.C*params.P*params.Q, false).allocateBlock();
 					if(instOpcode.equalsIgnoreCase("maxpooling"))
-						Arrays.fill(outputBlock.getDenseBlock(), -Double.MAX_VALUE);
-					LibMatrixDNN.maxpooling(matBlock, outputBlock, params);
+						outputBlock.getDenseBlock().set(-Double.MAX_VALUE);
+					LibMatrixDNN.pooling(matBlock, outputBlock, params, PoolingType.MAX);
+				}
+			}
+			else if(instOpcode.equalsIgnoreCase("avgpooling") || instOpcode.equalsIgnoreCase("relu_avgpooling")) {
+				if(matBlock.isEmptyBlock()) {
+					outputBlock = new MatrixBlock(params.N, params.C*params.P*params.Q, true);
+				}
+				else {
+					outputBlock = new MatrixBlock(params.N, params.C*params.P*params.Q, false).allocateBlock();
+					LibMatrixDNN.pooling(matBlock, outputBlock, params, PoolingType.AVG);
 				}
 			}
 			else {
