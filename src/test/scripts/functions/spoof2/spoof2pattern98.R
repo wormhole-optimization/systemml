@@ -45,6 +45,7 @@ var = rowMeans(subgrp_vars) + rowVars(subgrp_means)*(((Hin*Win)-1)/(Hin*Win))  #
 ema_mean_upd = mu*ema_mean + (1-mu)*mean
 ema_var_upd = mu*ema_var + (1-mu)*var
 
+while (FALSE) {}
 R = cbind(mean, var, ema_mean_upd, ema_var_upd)
 
 writeMM(as(R, "CsparseMatrix"), paste(args[2], "S", sep=""));

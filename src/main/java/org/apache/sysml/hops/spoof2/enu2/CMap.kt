@@ -12,7 +12,7 @@ class CMap(
         val vertMap: List<ABS>,
         val coveredEdges: BooleanArray // size tgtEdgeListNoScalars
 ) {
-    val complete: Boolean = coveredEdges.all { it } && vertMap.size == BottomUpOptimize.buo.tgs.tgts[tgtGraph].outs.size
+    val complete: Boolean = coveredEdges.all { it } && vertMap.size == construct.buo.tgs.tgts[tgtGraph].outs.size
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

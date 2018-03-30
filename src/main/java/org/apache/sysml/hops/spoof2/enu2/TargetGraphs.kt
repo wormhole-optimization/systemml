@@ -9,7 +9,8 @@ import org.apache.sysml.hops.spoof2.plan.*
 import java.util.*
 
 class TargetGraphs(
-        val origDogbs: DagOfGraphBags
+        val origDogbs: DagOfGraphBags,
+        val buo: BottomUpOptimize
 ) {
     //val tgtPlus = origDogbs.graphBags
     val tgtMult: List<Graph>// may not need to actually store; size is # of ditinct graphs.
@@ -71,16 +72,16 @@ class TargetGraphs(
         //get() =  bestComplete?.recCost?.minus(COST_EPS) ?: Double.POSITIVE_INFINITY
 
     private val _scalarCache: MutableMap<Int, Construct> = mutableMapOf()
-    fun getScalar(s: Int): Construct = _scalarCache.getOrPut(s) { Construct.Base.Scalar(SNodeData(LiteralOp(s.toLong()))) }
+    fun getScalar(s: Int): Construct = _scalarCache.getOrPut(s) { Construct.Base.Scalar(buo, SNodeData(LiteralOp(s.toLong()))) }
 
     // initialize all-scalar graphs
     init {
         for ((i, tg) in tgts.withIndex()) {
             if (tg.edges.all { it.verts.isEmpty() }) {
-                val cs = tg.edges.map { Construct.Base.Scalar(it.toSNode()) as Construct }
+                val cs = tg.edges.map { Construct.Base.Scalar(buo, it.toSNode()) as Construct }
                 val c = if (cs.isEmpty()) getScalar(1)
                     else cs.subList(1,cs.size).fold(cs[0]) { acc, nexts ->
-                        Construct.EWiseMult.construct(acc, nexts, true)
+                        Construct.EWiseMult.construct(buo, acc, nexts, true)
                     }
                 invComplete[i] += c
             }
@@ -127,14 +128,14 @@ class TargetGraphs(
     fun multAlignedConstructs(tgs: List<Graph>, _clist: List<Construct?>, multiplicities: IntArray,
                               checkPrune: Boolean): Construct? {
         return combineConstructs(tgs, _clist, multiplicities, checkPrune,
-                { a, b -> a.makeOuterAbove(b) },
-                TargetGraphs.Companion::recMult)
+                { a, b -> a.makeOuterAbove(buo, b) }
+        ) { _bg, _num -> recMult(buo, _bg, _num) }
     }
 
     fun plusConstructs(tgs: List<Graph>, _clist: List<Construct?>, multiplicities: IntArray,
                        checkPrune: Boolean): Construct? {
         return combineConstructs(tgs, _clist, multiplicities, checkPrune,
-                { a, b -> a.makePlusAbove(b) },
+                { a, b -> a.makePlusAbove(buo, b) },
                 this::multiplyScalar)
     }
 
@@ -142,7 +143,7 @@ class TargetGraphs(
     private fun multiplyScalar(bg: Construct, num: Int): Construct {
         val c = getScalar(num)
         // todo: push into * of scalars if bg is an ewise and one of the inputs is the product of scalars
-        return bg.makeAlignedEMultAbove(c)
+        return bg.makeAlignedEMultAbove(buo, c)
     }
 
 
@@ -204,15 +205,15 @@ class TargetGraphs(
         }
 
         /** recursively add together [num] of [bg] (multiply) */
-        private fun recAdd(_bg: Construct, _num: Int): Construct {
+        private fun recAdd(buo: BottomUpOptimize, _bg: Construct, _num: Int): Construct {
             var num = _num
             var bg = _bg
             while (num > 1) {
                 if (num % 2 == 0) {
-                    bg = bg.makePlusAbove(bg)
+                    bg = bg.makePlusAbove(buo, bg)
                     num /= 2
                 } else {
-                    bg = bg.makePlusAbove(_bg)
+                    bg = bg.makePlusAbove(buo, _bg)
                     num--
                 }
             }
@@ -220,15 +221,15 @@ class TargetGraphs(
         }
 
         /** recursively multiply together [num] of [bg] (power) */
-        private fun recMult(_bg: Construct, _num: Int): Construct {
+        private fun recMult(buo: BottomUpOptimize, _bg: Construct, _num: Int): Construct {
             var num = _num
             var bg = _bg
             while (num > 1) {
                 if (num % 2 == 0) {
-                    bg = bg.makeAlignedEMultAbove(bg)
+                    bg = bg.makeAlignedEMultAbove(buo, bg)
                     num /= 2
                 } else {
-                    bg = bg.makeAlignedEMultAbove(_bg)
+                    bg = bg.makeAlignedEMultAbove(buo, _bg)
                     num--
                 }
             }
@@ -244,7 +245,7 @@ class TargetGraphs(
         // add the newly formed ones to bestComplete and mark FINAL_PLUS or FINAL_PLUS_MULT
 
         val tgtGraph = _cons.tgtGraph
-        val construct = Construct.Rename(_cons.construct, _cons.vertMap.map(ABS::a))
+        val construct = Construct.Rename(buo, _cons.construct, _cons.vertMap.map(ABS::a))
 //                if (_cons.vertMap == tgts[tgtGraph].outs) _cons.construct
 //                else _cons.construct.makeTransposeAbove().also { it.cmaps += _cons; it.status = Construct.Status.EXPLORED }
 
@@ -506,7 +507,7 @@ class TargetGraphs(
         }.map { candidateCmap ->
             candidateCmap.construct to (cmap.vertMap.last() == candidateCmap.vertMap.last())
         }.toSet().mapNotNullTo(derivedFromIncomplete) { (candidate, aligned) ->
-            val emult = cmap.construct.makeEMultAbove(candidate, aligned)
+            val emult = cmap.construct.makeEMultAbove(buo, candidate, aligned)
             keepOrGlobalPrune(emult, derivedFromIncomplete)
         }
 
@@ -537,7 +538,7 @@ class TargetGraphs(
                 }.filterNotNull()
 
                 candidates.mapNotNullTo(derivedFromIncomplete) { (bm, bj) ->
-                    val mxm = cmap.construct.makeMxMAbove(bm.construct, aj, bj)
+                    val mxm = cmap.construct.makeMxMAbove(buo, bm.construct, aj, bj)
                     keepOrGlobalPrune(mxm, derivedFromIncomplete)
                 }
             }
@@ -550,7 +551,7 @@ class TargetGraphs(
                 b || v !in tgtEdges[ei].verts
             }
         }.mapNotNullTo(derivedFromIncomplete) { v ->
-            val agg = cmap.construct.makeAggAbove(cmap.vertMap.indexOf(v))
+            val agg = cmap.construct.makeAggAbove(buo, cmap.vertMap.indexOf(v))
             keepOrGlobalPrune(agg, derivedFromIncomplete)
         }
 

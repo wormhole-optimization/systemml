@@ -11,23 +11,19 @@ import java.util.*
 class BottomUpOptimize(dogbs: DagOfGraphBags) {
     val nnzInfer: NnzInfer = dogbs.nnzInfer
 
-    init {
-        _buo = this
-    }
-
     val costQueue: PriorityQueue<Construct> = PriorityQueue(compareBy { -it.recCost })
 
     val stats = this.Statistics()
 
     val frontier = Frontier()
-    val tgs = TargetGraphs(dogbs)
+    val tgs = TargetGraphs(dogbs, this)
 
     @Suppress("UNCHECKED_CAST")
     val initialBases: List<Edge.C> = tgs.tgtEdgeListNoScalars.flatten().distinctBy { it.base }
 
     fun drive() {
         initialBases.forEach { b ->
-            val c = Construct.Base.NonScalar(b, nnzInfer.infer(b), tgs)
+            val c = Construct.Base.NonScalar(this, b, nnzInfer.infer(b), tgs)
             frontier.add(c)
         }
         val startTime = System.currentTimeMillis()
@@ -72,7 +68,6 @@ class BottomUpOptimize(dogbs: DagOfGraphBags) {
         // sum these up in the best possible way using a heuristic.
         tgs.finish() // return
 
-        _buo = null
         stats.close()
     }
 
@@ -82,27 +77,20 @@ class BottomUpOptimize(dogbs: DagOfGraphBags) {
         val nnzInferer: NnzInferer = WorstCaseNnz
         private const val MAX_DURATION_MS = 20 * 1000
 
-        private var _buo: BottomUpOptimize? = null
-        /**
-         * Global controller.
-         */
-        internal val buo: BottomUpOptimize
-            get() = _buo!!
-
         private val LOG = LogFactory.getLog(BottomUpOptimize::class.java)!!
         private const val LDEBUG = DMLConfig.SPOOF_DEBUG
         init {
             if (LDEBUG) Logger.getLogger(BottomUpOptimize::class.java).level = Level.TRACE
         }
 
-        internal const val PRUNE_FULLY_LOCAL = false
+        internal const val PRUNE_FULLY_LOCAL = true
 
         private const val DO_STATS = true
         private const val STAT_FOLDER = "buo_stats"
         private const val STAT_FILE_PREFIX = "buo_stats_"
         private const val STAT_FILE_SUFFIX = ".tsv"
 
-        private const val STAT_CUTOFF_MINITER = 10
+        private const val STAT_CUTOFF_MINITER = 4
 
         private val LOADUP_TIMESTAMP = SimpleDateFormat("yyyy-MM-dd-HH-mm-ss").format(Date()) // for millis, add -SSS
         private var globalStatsCounter = 0L

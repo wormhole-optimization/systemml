@@ -48,10 +48,6 @@ class Frontier {
         return c
     }
 
-    fun printStats() {
-
-    }
-
     fun isNotEmpty(): Boolean = exploreQueue.isNotEmpty()
     fun isEmpty(): Boolean = exploreQueue.isEmpty()
 }

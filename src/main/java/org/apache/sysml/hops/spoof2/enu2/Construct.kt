@@ -6,7 +6,6 @@ import org.apache.log4j.Logger
 import org.apache.sysml.conf.DMLConfig
 import org.apache.sysml.hops.DataOp
 import org.apache.sysml.hops.Hop
-import org.apache.sysml.hops.spoof2.enu2.BottomUpOptimize.Companion.buo
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.SNodeRewriteUtils
 import org.apache.sysml.runtime.controlprogram.parfor.util.IDSequence
@@ -18,6 +17,7 @@ private fun ShapeList.toUnboundSchema(): Schema = Schema(this.mapIndexed { i, s 
 
 
 sealed class Construct(
+        val buo: BottomUpOptimize,
         val children: List<Construct>,
         val nnz: Nnz,
         val thisCost: Double,
@@ -69,33 +69,33 @@ sealed class Construct(
     val parents: MutableList<Construct> = mutableListOf()
     init { children.forEach { it.parents += this } }
 
-    fun makeAlignedEMultAbove(c2: Construct): EWiseMult = makeEMultAbove(c2, true)
+    fun makeAlignedEMultAbove(buo: BottomUpOptimize, c2: Construct): EWiseMult = makeEMultAbove(buo, c2, true)
 
-    fun makeEMultAbove(c2: Construct, aligned: Boolean): EWiseMult {
+    fun makeEMultAbove(buo: BottomUpOptimize, c2: Construct, aligned: Boolean): EWiseMult {
         return parents.find {
             it is EWiseMult && (it.a == c2 && it.b === this || it.b == c2 && it.a === this) && it.aligned == aligned
-        } as? EWiseMult ?: EWiseMult.construct(this, c2, aligned)
+        } as? EWiseMult ?: EWiseMult.construct(buo, this, c2, aligned)
     }
 
-    fun makePlusAbove(c2: Construct): Plus {
+    fun makePlusAbove(buo: BottomUpOptimize, c2: Construct): Plus {
         return parents.find {
             it is Plus && (it.a == c2 && it.b === this || it.b == c2 && it.a === this)
-        } as? Plus ?: Plus.construct(this, c2)
+        } as? Plus ?: Plus.construct(buo, this, c2)
     }
 
-    fun makeOuterAbove(c2: Construct): Outer {
+    fun makeOuterAbove(buo: BottomUpOptimize, c2: Construct): Outer {
         // determine orientation in the Outer.construct method
         return parents.find {
             it is Outer && (it.a == c2 && it.b === this || it.b == c2 && it.a === this)
-        } as? Outer ?: Outer.construct(this, c2)
+        } as? Outer ?: Outer.construct(buo, this, c2)
     }
 
-    fun makeRenameAbove(schema: ABList): Rename {
+    fun makeRenameAbove(buo: BottomUpOptimize, schema: ABList): Rename {
         return parents.find { it is Rename && it.schema == schema }
-                as? Rename ?: Rename(this, schema)
+                as? Rename ?: Rename(buo, this, schema)
     }
 
-    fun makeMxMAbove(c2: Construct, aj: Int, bj: Int): MatrixMult { // TODO
+    fun makeMxMAbove(buo: BottomUpOptimize, c2: Construct, aj: Int, bj: Int): MatrixMult {
         return parents.find { it ->
             when {
                 it !is MatrixMult -> false
@@ -104,12 +104,12 @@ sealed class Construct(
                 it.b == c2 -> it.type.aj == aj && it.type.bj == bj
                 else -> false
             }
-        } as? MatrixMult ?: MatrixMult.construct(this, c2, aj, bj)
+        } as? MatrixMult ?: MatrixMult.construct(buo, this, c2, aj, bj)
     }
 
-    fun makeAggAbove(pos: Int): Agg {
+    fun makeAggAbove(buo: BottomUpOptimize, pos: Int): Agg {
         return parents.find { it is Agg && it.aggPos == pos }
-                as? Agg ?: Agg.construct(this, pos)
+                as? Agg ?: Agg.construct(buo, this, pos)
     }
 
 
@@ -184,7 +184,7 @@ sealed class Construct(
             Status.EXPLORED -> {
                 cmaps.forEach { cmap ->
                     if (cmap.complete) {
-                        val above = this.makeRenameAbove(cmap.vertMap.map(ABS::a))
+                        val above = this.makeRenameAbove(buo, cmap.vertMap.map(ABS::a))
                         val idx = buo.tgs.invComplete[cmap.tgtGraph].indexOf(above)
                         buo.tgs.invComplete[cmap.tgtGraph].removeAt(idx)
                     } else {
@@ -251,8 +251,8 @@ sealed class Construct(
     }
 
 
-    class Base private constructor(val base: SNode, nnz: Nnz, shapeSchema: ShapeList)
-        : Construct(listOf(), nnz, 0.0, shapeSchema) {
+    class Base private constructor(buo: BottomUpOptimize, val base: SNode, nnz: Nnz, shapeSchema: ShapeList)
+        : Construct(buo, listOf(), nnz, 0.0, shapeSchema) {
 
         override fun toString(): String {
             if (base is SNodeData && base.hop is DataOp
@@ -264,14 +264,14 @@ sealed class Construct(
         }
 
         companion object {
-            fun Scalar(base: SNode): Base {
+            fun Scalar(buo: BottomUpOptimize, base: SNode): Base {
                 val nnz = if (SNodeRewriteUtils.isLiteralOfValue(base, 0.0)) 0L else 1L
-                return Base(base, nnz, listOf())
+                return Base(buo, base, nnz, listOf())
             }
 
-            fun NonScalar(edge: Edge.C, nnz: Nnz, tgs: TargetGraphs): Base {
+            fun NonScalar(buo: BottomUpOptimize, edge: Edge.C, nnz: Nnz, tgs: TargetGraphs): Base {
                 // fill with CMaps
-                val b = Base(edge.base, nnz, edge.verts.map { it.s })
+                val b = Base(buo, edge.base, nnz, edge.verts.map { it.s })
                 tgs.tgtEdgeListNoScalars.withIndex().forEach { (tgi, tg) ->
                     tg.withIndex().filter { (_,e) -> e.base == edge.base }.forEach { (ei,e) ->
                         val ou = if (e.verts.size == 2 && e.verts[0].s != b.outer[0]) e.verts.reversed() else e.verts
@@ -327,8 +327,8 @@ sealed class Construct(
      * 2. VeM Aij * vi
      */
     class EWiseMult private constructor(
-            val a: Construct, val b: Construct, nnz: Nnz, thisCost: Double, val aligned: Boolean
-    ) : Construct(listOf(a, b), nnz, thisCost, a.outer) {
+            buo: BottomUpOptimize, val a: Construct, val b: Construct, nnz: Nnz, thisCost: Double, val aligned: Boolean
+    ) : Construct(buo, listOf(a, b), nnz, thisCost, a.outer) {
         init {
             if (aligned) {
                 when (a.outer.size) {
@@ -360,12 +360,12 @@ sealed class Construct(
                 return nnzInferer.inferMult(d, cz, cd)
             }
             // cost estimate is same as nnz estimate
-            fun construct(_a: Construct, _b: Construct, aligned: Boolean): EWiseMult {
+            fun construct(buo: BottomUpOptimize, _a: Construct, _b: Construct, aligned: Boolean): EWiseMult {
                 // compare by dim (matrices before vectors), then nnz (denser first), then id (smallest first)
                 val (a, b) = orderAB(_a, _b)
 
                 val nnz = estimateNnz(a, b)
-                return EWiseMult(a, b, nnz, nnz.toDouble(), aligned)
+                return EWiseMult(buo, a, b, nnz, nnz.toDouble(), aligned)
             }
         }
 
@@ -440,8 +440,8 @@ sealed class Construct(
 
     // used for vector-vector outer product and any-scalar multiply
     class Outer private constructor(
-            val a: Construct, val b: Construct, nnz: Nnz, thisCost: Double
-    ) : Construct(listOf(a,b), nnz, thisCost, a.outer + b.outer) {
+            buo: BottomUpOptimize, val a: Construct, val b: Construct, nnz: Nnz, thisCost: Double
+    ) : Construct(buo, listOf(a,b), nnz, thisCost, a.outer + b.outer) {
 
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
@@ -464,7 +464,7 @@ sealed class Construct(
             fun estimateNnz(a: Construct, b: Construct): Nnz {
                 return a.nnz * b.nnz
             }
-            fun construct(_a: Construct, _b: Construct): Outer {
+            fun construct(buo: BottomUpOptimize, _a: Construct, _b: Construct): Outer {
                 // Choose the order of A and B such that the outer schema is constructed correctly, given the graph we target
 //                val (a, b) = run {
 //                    when {
@@ -477,7 +477,7 @@ sealed class Construct(
                 val (a, b) = orderAB(_a, _b)
                 val nnz = estimateNnz(a, b)
                 // Treat cost as 0 since we don't search over orders of vector and scalar multi
-                return Outer(a, b, nnz, 0.0)
+                return Outer(buo, a, b, nnz, 0.0)
             }
 
         }
@@ -495,8 +495,8 @@ sealed class Construct(
     // Plus does not track CMaps or orientation.
     // This is okay for now because each graph is only represented in a single way during addition
     class Plus private constructor(
-            val a: Construct, val b: Construct, nnz: Nnz, thisCost: Double
-    ) : Construct(listOf(a, b), nnz, thisCost, a.outer) {
+            buo: BottomUpOptimize, val a: Construct, val b: Construct, nnz: Nnz, thisCost: Double
+    ) : Construct(buo, listOf(a, b), nnz, thisCost, a.outer) {
 
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
@@ -522,13 +522,13 @@ sealed class Construct(
                 val cd = listOf(a.outerSchema, b.outerSchema)
                 return nnzInferer.inferAdd(d, cz, cd)
             }
-            fun construct(_a: Construct, _b: Construct): Plus {
+            fun construct(buo: BottomUpOptimize, _a: Construct, _b: Construct): Plus {
                 // compare by dim (matrices before vectors), then nnz (denser first), then id (smallest first)
                 val (a, b) = orderAB(_a, _b)
 
                 val nnz = estimateNnz(a, b)
                 // Treat cost as 0 until we implement plus factorization or search over + orders
-                return Plus(a, b, nnz, 0.0)
+                return Plus(buo, a, b, nnz, 0.0)
             }
 
         }
@@ -543,8 +543,8 @@ sealed class Construct(
 
 
     class MatrixMult private constructor(
-            val a: Construct, val b: Construct, nnz: Nnz, thisCost: Double, outer: ShapeList, val type: MMType
-    ) : Construct(listOf(a, b), nnz, thisCost, outer) {
+            buo: BottomUpOptimize, val a: Construct, val b: Construct, nnz: Nnz, thisCost: Double, outer: ShapeList, val type: MMType
+    ) : Construct(buo, listOf(a, b), nnz, thisCost, outer) {
 
         enum class MMType(val aj: Int, val bj: Int) {
             MM00(0,0), MM01(0,1), MM10(1,0), MM11(1,1);
@@ -588,7 +588,7 @@ sealed class Construct(
         override fun toString(): String = "$type($a, $b)"
 
         companion object {
-            fun construct(_a: Construct, _b: Construct, _aj: Int, _bj: Int): MatrixMult {
+            fun construct(buo: BottomUpOptimize, _a: Construct, _b: Construct, _aj: Int, _bj: Int): MatrixMult {
                 val (a, b) = orderAB(_a, _b)
                 val (aj, bj) = if (a === _a) _aj to _bj else _bj to _aj
                 val ai = other01(aj)
@@ -611,7 +611,7 @@ sealed class Construct(
                 val multNnz = nnzInferer.inferMult(multSchema, cz, cd)
                 val cost = 2 * multNnz.toDouble()
 
-                return MatrixMult(a, b, nnz, cost, outer, MMType.fromInts(aj, bj))
+                return MatrixMult(buo, a, b, nnz, cost, outer, MMType.fromInts(aj, bj))
             }
         }
 
@@ -681,8 +681,8 @@ sealed class Construct(
 
 
     class Agg private constructor(
-            val a: Construct, nnz: Nnz, thisCost: Double, val aggPos: Int
-    ) : Construct(listOf(a), nnz, thisCost, a.outer.allBut(aggPos)) {
+            buo: BottomUpOptimize, val a: Construct, nnz: Nnz, thisCost: Double, val aggPos: Int
+    ) : Construct(buo, listOf(a), nnz, thisCost, a.outer.allBut(aggPos)) {
 
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
@@ -702,7 +702,7 @@ sealed class Construct(
         }
 
         companion object {
-            fun construct(a: Construct, aggPos: Int): Agg {
+            fun construct(buo: BottomUpOptimize, a: Construct, aggPos: Int): Agg {
                 val cz = a.nnz
                 val cd = a.outerSchema
                 val d = a.outerSchema - AU(aggPos)
@@ -710,7 +710,7 @@ sealed class Construct(
 
                 // cost is 0 if child is also an Agg, becaue the Aggs can be combined.
                 val cost = if (a is Agg) 0.0 else a.nnz.toDouble()
-                return Agg(a, nnz, cost, aggPos)
+                return Agg(buo, a, nnz, cost, aggPos)
             }
         }
 
@@ -782,7 +782,7 @@ sealed class Construct(
 //        }
 //    }
 
-    class Rename(val a: Construct, val schema: ABList): Construct(listOf(a), a.nnz, 0.0, a.outer) {
+    class Rename(buo: BottomUpOptimize, val a: Construct, val schema: ABList): Construct(buo, listOf(a), a.nnz, 0.0, a.outer) {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
             if (javaClass != other?.javaClass) return false
