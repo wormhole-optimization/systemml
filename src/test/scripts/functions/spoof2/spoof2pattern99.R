@@ -19,16 +19,17 @@
 #
 #-------------------------------------------------------------
 
-A= matrix(1, rows=2, cols=4)
-B= matrix(2, rows=4, cols=4)
-C= matrix(3, rows=4, cols=3)
-D= matrix(4, rows=3, cols=5)
-E= matrix(5, rows=5, cols=2)
-while(FALSE) {}
+args<-commandArgs(TRUE)
+options(digits=22)
+library(Matrix)
+A = matrix(1, nrow=2, ncol=4, byrow = TRUE)
+B = matrix(2, nrow=4, ncol=4, byrow = TRUE)
+C = matrix(3, nrow=4, ncol=3, byrow = TRUE)
+D = matrix(4, nrow=3, ncol=3, byrow = TRUE)
+E = matrix(5, nrow=3, ncol=2, byrow = TRUE)
 
-X = A%*%B%*%C%*%D
-Y = B%*%C%*%D%*%E
+X = t(A)%*%A%*%B%*%C%*%D
+Y = B%*%C%*%D%*%E%*%A
 
-while(FALSE) {}
 Z = cbind(X,t(Y))
-write(Z,$1)
+writeMM(as(Z, "CsparseMatrix"), paste(args[2], "S", sep=""));

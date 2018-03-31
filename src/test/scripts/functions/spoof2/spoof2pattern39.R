@@ -23,11 +23,13 @@ args<-commandArgs(TRUE)
 options(digits=22)
 library(Matrix)
 A = matrix(1, nrow=2, ncol=4, byrow = TRUE)
-B = matrix(1, nrow=4, ncol=4, byrow = TRUE)
-C = matrix(1, nrow=4, ncol=3, byrow = TRUE)
-D = matrix(1, nrow=3, ncol=5, byrow = TRUE)
-E = matrix(1, nrow=5, ncol=2, byrow = TRUE)
+B = matrix(2, nrow=4, ncol=4, byrow = TRUE)
+C = matrix(3, nrow=4, ncol=3, byrow = TRUE)
+D = matrix(4, nrow=3, ncol=5, byrow = TRUE)
+E = matrix(5, nrow=5, ncol=2, byrow = TRUE)
+
 X = A%*%B%*%C%*%D
 Y = B%*%C%*%D%*%E
+
 Z = cbind(X,t(Y))
 writeMM(as(Z, "CsparseMatrix"), paste(args[2], "S", sep=""));
