@@ -83,7 +83,7 @@ class BottomUpOptimize(dogbs: DagOfGraphBags) {
             if (LDEBUG) Logger.getLogger(BottomUpOptimize::class.java).level = Level.TRACE
         }
 
-        internal const val PRUNE_FULLY_LOCAL = true
+        internal const val PRUNE_FULLY_LOCAL = false
 
         private const val DO_STATS = true
         private const val STAT_FOLDER = "buo_stats"

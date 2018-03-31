@@ -112,7 +112,7 @@ class TargetGraphs(
             val clist = plusMultiplicities.mapIndexed { i, m ->
                 if (m > 0) invCompleteMult[i].single() else null
             }
-            val plusComplete = plusConstructs(tgts, clist, plusMultiplicities, false) ?: continue
+            val plusComplete = plusConstructs(tgtMult, clist, plusMultiplicities, false) ?: continue
             invCompletePlus[plusGroupIdx] += plusComplete
         }
 

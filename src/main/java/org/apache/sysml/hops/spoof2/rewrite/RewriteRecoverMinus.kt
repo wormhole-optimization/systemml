@@ -147,8 +147,16 @@ class RewriteRecoverMinus : SPlanRewriteRule() {
                             val other = mult.inputs[idxNegOne]
                             mult.inputs.removeAt(idxNegOne)
                             other.parents -= mult
-                            if (LOG.isTraceEnabled)
-                                LOG.trace("RewriteRecoverMinus: eliminate -1 * -1 as (${other.id}) * (${input.id}) underneath a +")
+                            // if the mult is now empty, then put a one.
+                            if (mult.inputs.isEmpty()) {
+                                val one = SNodeData(LiteralOp(1))
+                                mult.inputs += one
+                                one.parents += mult
+                                if (LOG.isTraceEnabled)
+                                    LOG.trace("RewriteRecoverMinus: eliminate -1 * -1 as (${other.id}) * (${input.id}) underneath a + and replace with 1")
+                            } else
+                                if (LOG.isTraceEnabled)
+                                    LOG.trace("RewriteRecoverMinus: eliminate -1 * -1 as (${other.id}) * (${input.id}) underneath a +")
                             idxNegOne = -2
                             idx--
                         }
