@@ -4,11 +4,12 @@ import org.apache.commons.logging.LogFactory
 import org.apache.log4j.Level
 import org.apache.log4j.Logger
 import org.apache.sysml.conf.DMLConfig
+import org.apache.sysml.hops.spoof2.plan.SNode
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
-class BottomUpOptimize(dogbs: DagOfGraphBags) {
+class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
     val nnzInfer: NnzInfer = dogbs.nnzInfer
 
     val costQueue: PriorityQueue<Construct> = PriorityQueue(compareBy { -it.recCost })
@@ -21,7 +22,7 @@ class BottomUpOptimize(dogbs: DagOfGraphBags) {
     @Suppress("UNCHECKED_CAST")
     val initialBases: List<Edge.C> = tgs.tgtEdgeListNoScalars.flatten().distinctBy { it.base }
 
-    fun drive() {
+    fun drive(): List<SNode> {
         initialBases.forEach { b ->
             val c = Construct.Base.NonScalar(this, b, nnzInfer.infer(b), tgs)
             frontier.add(c)
@@ -66,9 +67,9 @@ class BottomUpOptimize(dogbs: DagOfGraphBags) {
 
         // finished plan: tgs.bestComplete
         // sum these up in the best possible way using a heuristic.
-        tgs.finish() // return
-
+        val ret = tgs.finish()
         stats.close()
+        return ret
     }
 
 

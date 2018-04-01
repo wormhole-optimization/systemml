@@ -9,7 +9,7 @@ import org.apache.sysml.hops.spoof2.plan.*
 import java.util.*
 
 class TargetGraphs(
-        val origDogbs: DagOfGraphBags,
+        val origDogbs: DagOfGraphBagSlice,
         val buo: BottomUpOptimize
 ) {
     //val tgtPlus = origDogbs.graphBags
@@ -577,26 +577,28 @@ class TargetGraphs(
     }
 
 
-    fun finish() {
+    fun finish(): List<SNode> {
         if (LOG.isTraceEnabled)
             LOG.trace("FINAL BESTCOMPLETE: $bestComplete at cost $upperBound")
         check(bestComplete != null)
 
+        return bestComplete!!.map { it.convertToSNode().first }
+
         // convert the bestComplete to SNodes and link them up to their parents
-        for ((gbi, bc) in bestComplete!!.withIndex()) { // == bestComplete.indices
-            val (rn, _) = bc.convertToSNode()
-
-            val pa = origDogbs.graphBagParents[gbi]
-            val paIdx = origDogbs.graphBagParentInputIndices[gbi]
-
-            for (idx in pa.indices) {
-                val p = pa[idx]
-                val i = paIdx[idx]
-
-                p.inputs.add(i, rn) // Orientation is okay?
-                rn.parents.add(p)
-            }
-        }
+//        for ((gbi, bc) in bestComplete!!.withIndex()) { // == bestComplete.indices
+//            val (rn, _) = bc.convertToSNode()
+//
+//            val pa = origDogbs.graphBagParents[gbi]
+//            val paIdx = origDogbs.graphBagParentInputIndices[gbi]
+//
+//            for (idx in pa.indices) {
+//                val p = pa[idx]
+//                val i = paIdx[idx]
+//
+//                p.inputs.add(i, rn) // Orientation is okay?
+//                rn.parents.add(p)
+//            }
+//        }
 
     }
 }

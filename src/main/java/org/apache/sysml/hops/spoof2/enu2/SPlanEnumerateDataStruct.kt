@@ -350,11 +350,20 @@ fun GraphBag.connectedComponents(): List<GraphBag> {
 
 
 
+// This extra slice indirection data structure is necessarty because
+// we need to instantiate the parents with the new SNodes after optimization
+// in exactly the original order. Otherwise, the child positions of the parents can get swapped up.
+class DagOfGraphBagSlice internal constructor(
+        val origDogb: DagOfGraphBag,
+        val origIndices: List<Int>
+) {
+    val graphBags = origIndices.map { origDogb.graphBags[it] }
+    val nnzInfer: NnzInfer = origDogb.nnzInfer
+}
 
 
 
-
-class DagOfGraphBags private constructor(
+class DagOfGraphBag private constructor(
         val graphBags: List<GraphBag>,
         val graphBagParents: List<List<SNode>>,
         val graphBagParentInputIndices: List<List<Int>>,
@@ -365,9 +374,10 @@ class DagOfGraphBags private constructor(
 
     /** Two GraphBags are in the same connected component if either
      * (1) both have no bases (empty GraphBags) or (2) their bases are not disjoint. */
-    fun decomposeByConnectedComponents(): List<DagOfGraphBags> {
+    fun decomposeByConnectedComponents(): List<DagOfGraphBagSlice> {
         val bases = mutableListOf<MutableSet<SNode>>()
         val components: MutableList<MutableList<Int>> = mutableListOf()
+
         loop@for (i in graphBags.indices) {
             val bgBases = bagBases[i]
             for (i2 in bases.indices) {
@@ -382,18 +392,17 @@ class DagOfGraphBags private constructor(
         }
 
         if (components.size == 1)
-            return listOf(this)
+            return listOf(DagOfGraphBagSlice(this, graphBags.indices.toList()))
         return components.map { ilist ->
-            val n1 = graphBags.filterIndexed { i2, _ -> i2 in ilist }
-            val n2 = graphBagParents.filterIndexed { i2, _ -> i2 in ilist }
-            val n3 = graphBagParentInputIndices.filterIndexed { i2, _ -> i2 in ilist }
-            DagOfGraphBags(n1, n2, n3, memoAttrPosList, nnzInfer)
+//            val n1 = graphBags.filterIndexed { i2, _ -> i2 in ilist }
+//            val n2 = graphBagParents.filterIndexed { i2, _ -> i2 in ilist }
+//            val n3 = graphBagParentInputIndices.filterIndexed { i2, _ -> i2 in ilist }
+            DagOfGraphBagSlice(this, ilist)
         }
     }
 
 
     companion object {
-
         private class Builder {
             val graphBags: MutableList<GraphBag> = mutableListOf()
             val graphBagParents: MutableList<MutableList<SNode>> = mutableListOf()
@@ -403,7 +412,7 @@ class DagOfGraphBags private constructor(
             val parentToGraphBag: MutableMap<SNode, MutableList<Int>> = mutableMapOf()
         }
 
-        fun form(initialRoots: Collection<SNode>): DagOfGraphBags {
+        fun form(initialRoots: Collection<SNode>): DagOfGraphBag {
             // each parent should have their nnz recorded, because we may have a hierarchy of graphbags (one graphbag is an input to another)
             val nnzInfer = NnzInfer(BottomUpOptimize.nnzInferer)
             initialRoots.forEach { if (it is SNodeData) it.inputs.forEach { nnzInfer.infer(it) } else nnzInfer.infer(it) }
@@ -411,7 +420,7 @@ class DagOfGraphBags private constructor(
             val b = Builder()
             for (r in initialRoots)
                 findGraphs(r, b)
-            return DagOfGraphBags(b.graphBags.reversed(),
+            return DagOfGraphBag(b.graphBags.reversed(),
                     b.graphBagParents.map { it.reversed() }.reversed(), b.graphBagParentInputIndices.map { it.reversed() }.reversed(),
                     b.memoAttrPosList, nnzInfer)
         }
@@ -466,7 +475,7 @@ class DagOfGraphBags private constructor(
             // A * node transformed into a Graph may be reused as part of a different GraphBag. Put the parents in a map to recover the graph, should we encounter a parent +.
             // filter parents to + nodes
             if (bag.size == 1)
-                pa.filter { it is SNodeNary && it.op == SNodeNary.NaryOp.PLUS }
+                pa.filter { it is SNodeAggregate && it.op == Hop.AggOp.SUM || it is SNodeNary && it.op == SNodeNary.NaryOp.PLUS }
                         .forEach { b.parentToGraphBag.getOrPut(it) { mutableListOf() } += b.graphBags.size - 1 }
         }
 

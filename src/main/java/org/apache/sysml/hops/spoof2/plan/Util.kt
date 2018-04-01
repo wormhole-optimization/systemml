@@ -4,6 +4,7 @@ import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.HopsException
 import org.apache.sysml.hops.spoof2.enu.SumProduct
 import org.apache.sysml.parser.Expression
+import java.util.*
 
 // See [Schema].
 //typealias Attribute = Pair<Name, Shape>
@@ -496,3 +497,22 @@ class EnumerateIndices(limitsExcl: IntArray): Iterator<IntArray> {
 
 fun Boolean.toCharStr() = if (this) "T" else "F"
 fun BooleanArray.toDenseString(): String = joinToString("", transform = Boolean::toCharStr)
+
+inline fun extractHops(roots: List<Hop>, condition: (Hop) -> Boolean): Set<Hop> {
+    Hop.resetVisitStatus(roots)
+    val found: MutableSet<Hop> = mutableSetOf()
+    val frontier: NavigableSet<Hop> = java.util.TreeSet(compareBy { it.input.size })
+    frontier += roots
+
+    while (frontier.isNotEmpty()) {
+        val node = frontier.pollFirst()
+        node.setVisited()
+        if (condition(node)) found += node
+        node.input.filterTo(frontier) { !it.isVisited }
+    }
+
+    Hop.resetVisitStatus(roots)
+    return found
+}
+
+

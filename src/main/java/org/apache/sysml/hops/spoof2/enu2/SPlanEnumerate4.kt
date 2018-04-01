@@ -1,6 +1,5 @@
 package org.apache.sysml.hops.spoof2.enu2
 
-import org.apache.commons.logging.LogFactory
 import org.apache.sysml.hops.spoof2.Spoof2Compiler
 import org.apache.sysml.hops.spoof2.plan.SNode
 
@@ -9,14 +8,34 @@ class SPlanEnumerate4(initialRoots: Collection<SNode>) {
     private val _origRoots = initialRoots.toList()
 
     fun execute() {
-        val dogbs = DagOfGraphBags.form(_origRoots)
+        val dogbs = DagOfGraphBag.form(_origRoots)
 
         if (Spoof2Compiler.LOG.isTraceEnabled) {
             Spoof2Compiler.LOG.trace("dogbs before connected components: \n\t${dogbs.graphBags.joinToString("\n\t") { g -> "$g"}}")
         }
 
+        val resultNodes = Array<SNode?>(dogbs.graphBags.size) {null}
         for (cc in dogbs.decomposeByConnectedComponents()) {
-            BottomUpOptimize(cc).drive()
+            val nodes = BottomUpOptimize(cc).drive()
+            cc.origIndices.zip(nodes).forEach { (i, n) ->
+                resultNodes[i] = n
+            }
+        }
+
+        // Connect new nodes to parents in exactly the original order.
+        for ((gbi, _bc) in resultNodes.withIndex()) { // == bestComplete.indices
+            val bc = _bc!!
+
+            val pa = dogbs.graphBagParents[gbi]
+            val paIdx = dogbs.graphBagParentInputIndices[gbi]
+
+            for (idx in pa.indices) {
+                val p = pa[idx]
+                val i = paIdx[idx]
+
+                p.inputs.add(i, bc) // Orientation is okay?
+                bc.parents.add(p)
+            }
         }
     }
 }
