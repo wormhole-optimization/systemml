@@ -42,6 +42,9 @@ sealed class Construct(
     /** Sum of nnz of bases included in this construct. Used as a heuristic in `recCostNoShare / coveredEdgeWeight`. */
     val coveredBaseNnzSum: Nnz
 
+    /** Whether there is a violation of the "compute every subexpression in one way" rule. */
+    val recomputePruned: Boolean
+
     init {
         val rc = children.flatMap { it.recConstructsNoSelf + it }.toSet()
         var recCost = thisCost
@@ -57,7 +60,23 @@ sealed class Construct(
         this.recCostNoShare = recCostNoShare //rc.sumByDouble { c -> (2 - c.cmaps.map { it.tgtGraph }.toSet().size) * c.thisCost } + thisCost
         this.coveredBaseNnzSum = coveredBaseNnzSum
         recConstructsNoSelf = rc
+        recomputePruned = checkRecomputePruned(rc)
     }
+
+    private fun checkRecomputePruned(rc: Set<Construct>): Boolean {
+        val seen = mutableSetOf<Construct>()
+        return children.any { it.checkRecomputePruned(rc, seen) }
+    }
+    private fun checkRecomputePruned(rc: Set<Construct>, seen: MutableSet<Construct>): Boolean {
+        if (this in seen) return false
+        seen += this
+        if (this.siblings != null) {
+            if (!(siblings!! - this).disjoint(rc))
+                return true
+        }
+        return children.any { it.checkRecomputePruned(rc, seen) }
+    }
+
 
     val cmaps: MutableList<CMap> = mutableListOf()
 
@@ -164,7 +183,14 @@ sealed class Construct(
         FINAL_MULT,
         FINAL_PLUS,
         FINAL_MULT_PLUS,
-        PRUNED;
+        PRUNED_GLOBAL,
+        PRUNED_LOCAL,
+        PRUNED_RECOMPUTE;
+
+        fun isPruneStatus(): Boolean = when(this) {
+            PRUNED_RECOMPUTE, PRUNED_LOCAL, PRUNED_GLOBAL -> true
+            else -> false
+        }
     }
     var status: Status = Status.NONE
 
@@ -179,7 +205,6 @@ sealed class Construct(
         siblings = null
         buo.costQueue.remove(this)
         when (status) {
-            Status.NONE -> {}
             Status.FRONTIER -> buo.frontier.remove(this)
             Status.EXPLORED -> {
                 cmaps.forEach { cmap ->
@@ -202,21 +227,26 @@ sealed class Construct(
                 buo.tgs.invCompleteMult.forEach { it.remove(this) }
                 buo.tgs.invCompletePlus.forEach { it.remove(this) }
             }
-            Status.PRUNED -> {}
         }
         while (parents.isNotEmpty())
             parents.last().prune()
         children.forEach { it.parents.remove(this) }
-        status = Status.PRUNED
-        buo.stats.logPrunedConstruct(recCost >= buo.tgs.upperBound) // local or global
+        status = when {
+            recomputePruned -> Status.PRUNED_RECOMPUTE
+            recCost >= buo.tgs.upperBound -> Status.PRUNED_GLOBAL
+            else -> Status.PRUNED_LOCAL
+        }
+        buo.stats.logPrunedConstruct(status)
     }
 
     fun isGlobalPruned(): Boolean {
         return recCost > buo.tgs.upperBound // recCost != buo.tgs.upperBound && recCost > buo.tgs.upperBound - TargetGraphs.COST_EPS
     }
 
-    fun isPruned(): Boolean { if (this is Base) return false
-        if (isGlobalPruned())
+    fun isPruned(): Boolean {
+        if (this is Base)
+            return false
+        if (recomputePruned || isGlobalPruned())
             return true
         if (cmaps.isEmpty() && siblings == null)
             return false

@@ -483,7 +483,7 @@ class TargetGraphs(
                     return false
                 }
                 cmap.construct.siblings!!.toList().forEach {
-                    if (it.status != Construct.Status.PRUNED && it !== cmap.construct && it.isLocallyPruned(listOf(cmap.construct))) {
+                    if (!it.status.isPruneStatus() && it !== cmap.construct && it.isLocallyPruned(listOf(cmap.construct))) {
                         if (LOG.isTraceEnabled)
                             LOG.trace("A Sibling is locally pruned! $it")
                         it.prune()
@@ -561,7 +561,7 @@ class TargetGraphs(
     private fun keepOrGlobalPrune(c: Construct, dfi: Set<Construct>): Construct? {
         return if (c.isGlobalPruned()) {
             if (LOG.isTraceEnabled)
-                LOG.trace("  PRUNED candidate: $c")
+                LOG.trace("  PRUNED candidate: $c (cost ${c.recCost})")
             c.prune()
             null
         }

@@ -4,18 +4,17 @@ import org.apache.commons.logging.LogFactory
 import org.apache.log4j.Level
 import org.apache.log4j.Logger
 import org.apache.sysml.conf.DMLConfig
+import org.apache.sysml.hops.spoof2.plan.Name
 import org.apache.sysml.hops.spoof2.plan.SNode
+import org.apache.sysml.hops.spoof2.plan.prod
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
 class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
     val nnzInfer: NnzInfer = dogbs.nnzInfer
-
     val costQueue: PriorityQueue<Construct> = PriorityQueue(compareBy { -it.recCost })
-
     val stats = this.Statistics()
-
     val frontier = Frontier()
     val tgs = TargetGraphs(dogbs, this)
 
@@ -26,6 +25,12 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
         initialBases.forEach { b ->
             val c = Construct.Base.NonScalar(this, b, nnzInfer.infer(b), tgs)
             frontier.add(c)
+        }
+        val initialUpperBound = initialUpperBound()
+        if (tgs.upperBound == Double.POSITIVE_INFINITY) {
+            tgs.upperBound = initialUpperBound
+            if (LOG.isTraceEnabled)
+                LOG.trace("Initial Upper Bound: $initialUpperBound")
         }
         val startTime = System.currentTimeMillis()
         stats.setStart(startTime)
@@ -72,6 +77,63 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
         return ret
     }
 
+    fun initialUpperBound(): Double {
+        // multiply_nnz_estimate for each graph
+        // 2* that for each if agg is necessary
+        // add them up
+        // todo - incorporate cost of +
+//        val initialUpperBound = tgs.tgts.map { tg ->
+//            val d = tg.edges.flatMap { it.verts }.toSet().map { it.a as Name to it.s }.toMap()
+//            val cz = tg.edges.map { nnzInfer.infer(it) }
+//            val cd = tg.edges.map { it.verts.map { it.a as Name to it.s }.toMap() }
+//            val multNnz = nnzInferer.inferMult(d, cz, cd)
+//            if (tg.aggs.isEmpty()) multNnz else 2*multNnz
+//        }.sum()
+
+//        // attempt 2: pairwise multiplying together
+//        val initialUpperBound = tgs.tgts.map { tg ->
+//            var totalCost = 0L
+//            val frontier = tg.edges.map { it to nnzInfer.infer(it) }
+//                    .groupBy { it.first.verts.map { it.a }.toSet() }
+//                    .map { (k,v) ->
+//                        // multiply within groups in some arbitrary order
+////                        val shape = v.first().first.verts.map(ABS::s).prod()
+//                        val nnzSmall = v.minBy { it.second }!!.second
+//                        totalCost += nnzSmall * (v.size-1)
+//                        v.first().first.verts to nnzSmall
+//                    }.toMap().toMutableMap()
+//            // multiply across groups
+//            // build degree map - vertex to incident edges; vertex to number of incident vertices
+//            // process starting with vertices of degree
+//            fun vertMinAdj(): ABS {
+//                return frontier.keys.flatMap { if (it.size == 2) listOf(it[0] to it[1], it[1] to it[0]) else listOf() }
+//                        .groupBy { it.first }
+//                        .minBy { (_, v) -> v.size }!!.key
+//            }
+//
+//            while (frontier.size > 1) {
+//                val vertMin = vertMinAdj()
+//                val adj = frontier.filterKeys { vertMin in it }
+//                assert(adj.size in 1..2)
+//                if (adj.size == 2) { // MxM
+//                    // remove edges from frontier
+//                    // add new edges on the output vertices to the new nnz
+//                    val (a,b) = adj.entries.toList()
+//                    val comm = a.key.find {  }
+//                    a.key.map { it !in b.key } + b.key.map { it !in a.key }
+//
+//                }
+//            }
+
+//            val d = tg.edges.flatMap { it.verts }.toSet().map { it.a as Name to it.s }.toMap()
+//            val cz = tg.edges.map { nnzInfer.infer(it) }
+//            val cd = tg.edges.map { it.verts.map { it.a as Name to it.s }.toMap() }
+//            val multNnz = nnzInferer.inferMult(d, cz, cd)
+//            if (tg.aggs.isEmpty()) multNnz else 2*multNnz
+//        }.sum()
+        return Double.POSITIVE_INFINITY //initialUpperBound
+    }
+
 
 
     companion object {
@@ -108,7 +170,7 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
         val statFileWriter = statFile.writer().buffered()
 
         init {
-            val header = "iter\telapsed\tupperBound\tcreated\tglobalPruned\tlocalPruned\tfrontierSize\n"
+            val header = "iter\telapsed\tupperBound\tcreated\tglobalPruned\tlocalPruned\trecomputePruned\tfrontierSize\n"
             statFileWriter.write(header)
             globalStatsCounter++
         }
@@ -117,6 +179,7 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
         var cntCreated = 0L
         var cntGlobalPruned = 0L
         var cntLocalPruned = 0L
+        var cntRecomputePruned = 0L
         var longestIter = 0L
 
         fun logBuoIteration(iter: Long) {
@@ -125,7 +188,7 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
             val frontierSize = frontier.size
             val upperBound = if (tgs.upperBound == Double.POSITIVE_INFINITY) 0L else tgs.upperBound.toLong()
 
-            val s = "$iter\t$elapsed\t${upperBound.toStringNoZero()}\t${cntCreated}\t${cntGlobalPruned.toStringNoZero()}\t${cntLocalPruned.toStringNoZero()}\t$frontierSize\n"
+            val s = "$iter\t$elapsed\t${upperBound.toStringNoZero()}\t${cntCreated}\t${cntGlobalPruned.toStringNoZero()}\t${cntLocalPruned.toStringNoZero()}\t${cntRecomputePruned.toStringNoZero()}\t$frontierSize\n"
             statFileWriter.write(s)
         }
 
@@ -152,9 +215,13 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
             }
         }
 
-        fun logPrunedConstruct(global: Boolean) {
-            if (global) cntGlobalPruned++
-            else cntLocalPruned++
+        fun logPrunedConstruct(type: Construct.Status) {
+            when (type) {
+                Construct.Status.PRUNED_GLOBAL -> cntGlobalPruned++
+                Construct.Status.PRUNED_LOCAL -> cntLocalPruned++
+                Construct.Status.PRUNED_RECOMPUTE -> cntRecomputePruned++
+                else -> throw AssertionError()
+            }
         }
 
         fun logCreatedConstruct() {
