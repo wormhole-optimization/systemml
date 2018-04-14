@@ -22,7 +22,21 @@ object SPlan2Hop {
             RewriteSplitMultiplyPlus(),
             RewriteAggregateElim(),
             RewritePushAggIntoMult(),
-            RewriteClearMxM()
+            RewriteClearMxM(),
+            RewriteReorderMultiply()
+    /* pattern
+          *
+         / \
+       a,b  *
+           / \
+         a,b  b,c
+       to
+          *
+         / \
+       b,c  *
+           / \
+         a,b  a,b
+     */
     )
 
     /** Whether to invoke the SPlanValidator after every rewrite pass. */
