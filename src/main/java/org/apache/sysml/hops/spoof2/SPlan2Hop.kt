@@ -4,7 +4,6 @@ import org.apache.sysml.hops.DataOp
 import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.LiteralOp
 import org.apache.sysml.hops.rewrite.HopRewriteUtils
-import org.apache.sysml.hops.spoof2.enu.NormalFormExploreEq
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.*
 import org.apache.sysml.parser.Expression
@@ -307,6 +306,12 @@ object SPlan2Hop {
                 SNodeNary.NaryOp.MULT, SNodeNary.NaryOp.PLUS ->
                     if (hopInputs.size == 1)
                         return hopInputs[0] to mis[0]
+                SNodeNary.NaryOp.SPROP -> {
+                    assert(hopInputs.size == 1)
+                    if (hopInputs[0].dataType == Expression.DataType.SCALAR) {
+                        hopInputs[0] = HopRewriteUtils.createUnary(hopInputs[0], Hop.OpOp1.CAST_AS_MATRIX)
+                    }
+                }
                 else -> {}
             }
 
@@ -395,7 +400,7 @@ object SPlan2Hop {
                 }
             } else {
                 hopInputs.mapInPlace {
-                    if (it.dim1 == 1L && it.dim2 == 1L)
+                    if (it.dim1 == 1L && it.dim2 == 1L && nary.op != SNodeNary.NaryOp.SPROP)
                         HopRewriteUtils.createUnary(it, Hop.OpOp1.CAST_AS_SCALAR)
                     else it
                 }
