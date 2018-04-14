@@ -4,17 +4,17 @@ import org.apache.sysml.hops.spoof2.plan.*
 
 /**
  * ```
-           *
-          / \
+           *   F
+          / \ /
         a,b  *
             / \
          a,b   b,c
    to
-           *
-          / \
-        b,c  *
-            / \
-         a,b  a,b
+           *            F
+          / \           |
+        b,c  *          *
+            / \        / \
+         a,b  a,b   a,b   b,c
  * ```
  */
 class RewriteReorderMultiply : SPlanRewriteRule() {
@@ -29,6 +29,12 @@ class RewriteReorderMultiply : SPlanRewriteRule() {
                     if (match2other != null) {
                         val nomatch2 = mult2.inputs.find { it !== match2other && it.schema != otherIn1.schema }
                         if (nomatch2 != null) {
+                            // deal with foreign parents on mult2
+                            if (mult2.parents.size > 1) {
+                                val otherp = mult2.parents.filter { it !== mult1 }
+                                val copy2 = mult2.shallowCopyNoParentsYesInputs()
+                                otherp.forEach { it.inputs[it.inputs.indexOf(mult2)] = copy2; copy2.parents += it; mult2.parents -= it }
+                            }
                             // swap otherIn1 with nomatch2
                             otherIn1.parents -= mult1
                             nomatch2.parents -= mult2
