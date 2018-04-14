@@ -1,7 +1,6 @@
 package org.apache.sysml.hops.spoof2.rewrite
 
 import org.apache.sysml.hops.LiteralOp
-import org.apache.sysml.hops.rewrite.HopRewriteUtils
 import org.apache.sysml.hops.spoof2.plan.SNode
 import org.apache.sysml.hops.spoof2.plan.SNodeData
 import org.apache.sysml.hops.spoof2.plan.SNodeNary
@@ -23,7 +22,7 @@ class RewriteMultiplyCSEToPower : SPlanRewriteRule() {
                 && this.parents.size == 1
     }
 
-    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int, allRoots: List<SNode>): RewriteResult {
         if( node is SNodeNary && node.op == SNodeNary.NaryOp.MULT ) { // todo generalize to other * functions - min and max don't change input, + doubles input
             var numCSEs = 0
             var multToChild = 0

@@ -66,7 +66,7 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
  */
 class RewritePullAggAboveMult : SPlanRewriteRule() {
 
-    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int, allRoots: List<SNode>): RewriteResult {
         if( node !is SNodeNary || node.op != NaryOp.MULT ) // todo generalize to other * functions that are semiring to +
             return RewriteResult.NoChange
         val mult: SNodeNary = node
@@ -110,7 +110,7 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
                     // Dead code elim, if agg has only one parent (mult)
                     agg.parents.remove(mult)
                     if( agg.parents.isEmpty() )
-                        stripDead(agg)
+                        stripDead(agg, allRoots.toSet())
 
                     if (SPlanRewriteRule.LOG.isDebugEnabled)
                         SPlanRewriteRule.LOG.debug("In RewritePullAggAboveMult, " +
@@ -161,7 +161,7 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
     }
 
     companion object {
-        private fun stripDead(node: SNode) {
+        private fun stripDead(node: SNode, parentsDontRemove: Set<SNode>) {
             val sb: StringBuilder?
             val action: (SNode) -> Unit
             if (SPlanRewriteRule.LOG.isDebugEnabled) {
@@ -171,17 +171,17 @@ class RewritePullAggAboveMult : SPlanRewriteRule() {
                 sb = null
                 action = {}
             }
-            stripDead(node, action)
+            stripDead(node, parentsDontRemove, action)
             if (SPlanRewriteRule.LOG.isDebugEnabled) {
                 val s = sb!!.substring(1).toString()
                 SPlanRewriteRule.LOG.debug("In RewritePullAggAboveMult, dead code eliminate $s")
             }
         }
-        private fun stripDead(node: SNode, action: (SNode) -> Unit) {
-            node.parents.removeIf { it.parents.isEmpty() }
+        private fun stripDead(node: SNode, parentsDontRemove: Set<SNode>, action: (SNode) -> Unit) {
+            node.parents.removeIf { it.parents.isEmpty() && it !in parentsDontRemove }
             if (node.parents.isEmpty()) {
                 action(node)
-                node.inputs.forEach { stripDead(it, action) }
+                node.inputs.forEach { stripDead(it, parentsDontRemove, action) }
             }
         }
     }

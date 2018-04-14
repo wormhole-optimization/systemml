@@ -97,7 +97,7 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
                 if (node.op == SNodeNary.NaryOp.PLUS) {
                     insertPlus(node) //!copyOnChange || !changed
                 } else if (node.op == SNodeNary.NaryOp.MULT) {
-                    insertMult(node) //!copyOnChange || !changed
+                    insertMult(node, allRoots) //!copyOnChange || !changed
                 } else false to node
             }
             is SNodeAggregate -> {
@@ -291,7 +291,7 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
         node.inputs.toSet().filter { !it.schema.names.disjoint(renaming.keys) }.forEach { renameDownSplitCse(it, renaming, seen, bindsToRename) }
     }
 
-    private fun insertMult(mult: SNodeNary): Pair<Boolean, SNode> {
+    private fun insertMult(mult: SNodeNary, allRoots: List<SNode>): Pair<Boolean, SNode> {
         val modify = checkModifyConditionsOnInputs(mult) { input ->
             input is SNodeNary && (input.op == SNodeNary.NaryOp.PLUS || input.op == SNodeNary.NaryOp.MULT) ||
                     input is SNodeAggregate && input.op == Hop.AggOp.SUM
@@ -319,14 +319,14 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
                 it.inputs[it.inputs.indexOf(mult)] = newPlus
                 newPlus.parents += it
             }
-            newPlusInputs.forEach { insertMult(it) }
+            newPlusInputs.forEach { insertMult(it, allRoots) }
             return true to newPlus
         }
         val inAgg = mult.inputs.filter { it is SNodeAggregate && it.op == Hop.AggOp.SUM }
         if( inAgg.isNotEmpty() ) {
             if (LOG.isTraceEnabled)
                 LOG.trace("SPlan2NormalForm_InsertStyle: Insert * (${mult.id}): pull Σ children above *")
-            val result = rewritePullAggAboveMult.rewriteNode(mult.parents[0], mult, -1) as SPlanRewriteRule.RewriteResult.NewNode
+            val result = rewritePullAggAboveMult.rewriteNode(mult.parents[0], mult, -1, allRoots) as SPlanRewriteRule.RewriteResult.NewNode
             val topAgg = result.newNode as SNodeAggregate
             var below = topAgg.input
             while( below is SNodeAggregate && below.op == Hop.AggOp.SUM ) {
@@ -334,7 +334,7 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
             }
             below as SNodeNary
             check(below.op == SNodeNary.NaryOp.MULT)
-            insertMult(below)
+            insertMult(below, allRoots)
             insertAgg(topAgg)
             below.visited = true
             topAgg.visited = true

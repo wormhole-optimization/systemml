@@ -8,7 +8,7 @@ import org.apache.sysml.hops.spoof2.plan.SNode
 
 abstract class SPlanRewriteRule {
 
-    abstract fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult
+    abstract fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int, allRoots: List<SNode>): RewriteResult
 
     sealed class RewriteResult {
         data class NewNode(val newNode: SNode) : RewriteResult()

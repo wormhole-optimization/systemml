@@ -27,7 +27,7 @@ object SPlanTopDownRewriter {
 
             //apply actual rewrite rules
             for (r in rules) {
-                val result = r.rewriteNode(node, child, i)
+                val result = r.rewriteNode(node, child, i, allRoots)
                 when( result ) {
                     SPlanRewriteRule.RewriteResult.NoChange -> {}
                     is SPlanRewriteRule.RewriteResult.NewNode -> {

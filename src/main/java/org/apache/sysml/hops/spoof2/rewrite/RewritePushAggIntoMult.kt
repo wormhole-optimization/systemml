@@ -8,7 +8,7 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
 import org.apache.sysml.hops.spoof2.plan.shallowCopyNoParentsYesInputs
 
 class RewritePushAggIntoMult : SPlanRewriteRule() {
-    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int, allRoots: List<SNode>): RewriteResult {
 
         //pattern: agg(sum)-b(*)
         if (node is SNodeAggregate && node.op == AggOp.SUM

@@ -12,7 +12,7 @@ import org.apache.sysml.hops.spoof2.plan.*
  */
 class RewriteSplitMultiplyPlus : SPlanRewriteRule() {
 
-    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int, allRoots: List<SNode>): RewriteResult {
         val origInputSize = node.inputs.size
         if( node is SNodeNary
                 && (node.op == SNodeNary.NaryOp.MULT || node.op == SNodeNary.NaryOp.PLUS)

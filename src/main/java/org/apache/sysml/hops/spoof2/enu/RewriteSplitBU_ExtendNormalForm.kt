@@ -9,7 +9,7 @@ import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriteRule
  */
 class RewriteSplitBU_ExtendNormalForm : SPlanRewriteRule() {
 
-    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int, allRoots: List<SNode>): RewriteResult {
         if( !SumProduct.isSumProductBlock(node) )
             return RewriteResult.NoChange
         val cnt = splitForConstructBlock(node, parent)

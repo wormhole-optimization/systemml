@@ -18,7 +18,7 @@ import org.apache.sysml.hops.spoof2.plan.*
  * ```
  */
 class RewriteReorderMultiply : SPlanRewriteRule() {
-    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int, allRoots: List<SNode>): RewriteResult {
         if (node is SNodeNary && node.op == SNodeNary.NaryOp.MULT) {
             val mult1 = node
             val mult2 = node.inputs.find { it is SNodeNary && it.op == SNodeNary.NaryOp.MULT }

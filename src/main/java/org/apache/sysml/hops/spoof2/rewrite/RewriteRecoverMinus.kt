@@ -12,7 +12,7 @@ import org.apache.sysml.parser.Expression
  */
 class RewriteRecoverMinus : SPlanRewriteRule() {
 
-    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int, allRoots: List<SNode>): RewriteResult {
         if( node is SNodeNary
                 && (node.op == SNodeNary.NaryOp.PLUS) ) {
             val minus = separateMinus(node)

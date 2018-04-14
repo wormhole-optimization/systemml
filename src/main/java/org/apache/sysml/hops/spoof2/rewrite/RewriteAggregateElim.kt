@@ -13,7 +13,7 @@ class RewriteAggregateElim : SPlanRewriteRule() {
 //        val allowedAggOps = setOf(AggOp.SUM, AggOp.MIN, AggOp.MAX, AggOp.)
     }
 
-    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int, allRoots: List<SNode>): RewriteResult {
         return rRewriteNode(parent, node, false)
     }
     private tailrec fun rRewriteNode(parent: SNode, node: SNode, changed: Boolean): RewriteResult {

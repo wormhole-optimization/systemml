@@ -27,7 +27,7 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
  */
 class RewritePullAggAbovePlus : SPlanRewriteRule() {
 
-    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int, allRoots: List<SNode>): RewriteResult {
         if( node !is SNodeNary || node.op != NaryOp.PLUS )
             return RewriteResult.NoChange
         val plus: SNodeNary = node

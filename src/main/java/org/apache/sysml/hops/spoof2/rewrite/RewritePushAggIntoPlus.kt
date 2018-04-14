@@ -9,7 +9,7 @@ class RewritePushAggIntoPlus(
         val constantAggToMultiply: Boolean = false
 ) : SPlanRewriteRule() {
     // currently visiting parent. Will visit return result (or node) next.
-    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int): RewriteResult {
+    override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int, allRoots: List<SNode>): RewriteResult {
         if (node is SNodeAggregate && node.op == AggOp.SUM
                 && node.inputs[0] is SNodeNary
                 && (node.inputs[0] as SNodeNary).op == NaryOp.PLUS) {
