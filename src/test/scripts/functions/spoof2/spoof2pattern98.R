@@ -37,8 +37,8 @@ mu = 0.95
 epsilon = 1e-4
 while(FALSE) {}
 
-subgrp_means = matrix(colMeans(X), nrow=C, ncol=Hin*Win)
-subgrp_vars = matrix(colVars(X) * ((N-1)/N), nrow=C, ncol=Hin*Win)  # uncorrected variances
+subgrp_means = matrix(colMeans(X), nrow=C, ncol=Hin*Win, byrow=TRUE)
+subgrp_vars = matrix(colVars(X) * ((N-1)/N), nrow=C, ncol=Hin*Win, byrow=TRUE)  # uncorrected variances
 mean = rowMeans(subgrp_means)  # shape (C, 1)
 var = rowMeans(subgrp_vars) + rowVars(subgrp_means)*(((Hin*Win)-1)/(Hin*Win))  # shape (C, 1)
 # Update moving averages
