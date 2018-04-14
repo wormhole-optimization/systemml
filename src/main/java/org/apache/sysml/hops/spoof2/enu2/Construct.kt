@@ -140,14 +140,18 @@ sealed class Construct(
         val sa = siblings ?: return false
         // for each alternative to this construct,
         // check whether the recCostNoShare of c is greater than that of the alternative. If so, prune.
-        if (BottomUpOptimize.PRUNE_FULLY_LOCAL) {
-            for (a in sa)
-                if (recCost > a.recCost)
-                    return true
-        } else {
-            for (a in sa)
-                if (recCostNoShare > a.recCost)
-                    return true
+        when (BottomUpOptimize.PRUNE_LOCAL_STRATEGY) {
+            "naive" -> {
+                for (a in sa)
+                    if (recCost > a.recCost)
+                        return true
+            }
+            "cse-aware" -> {
+                for (a in sa)
+                    if (recCostNoShare > a.recCost)
+                        return true
+            }
+            else -> throw AssertionError()
         }
         return false
     }
@@ -187,7 +191,7 @@ sealed class Construct(
         PRUNED_LOCAL,
         PRUNED_RECOMPUTE;
 
-        fun isPruneStatus(): Boolean = when(this) {
+        fun isPrune(): Boolean = when(this) {
             PRUNED_RECOMPUTE, PRUNED_LOCAL, PRUNED_GLOBAL -> true
             else -> false
         }

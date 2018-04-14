@@ -15,7 +15,12 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
     val nnzInfer: NnzInfer = dogbs.nnzInfer
     val costQueue: PriorityQueue<Construct> = PriorityQueue(compareBy { -it.recCost })
     val stats = this.Statistics()
-    val frontier = Frontier()
+    val frontier = when (FRONTIER_ORDER_STRATEGY) {
+        "smart" -> Frontier.Smart()
+        "naive" -> Frontier.Random()
+        else -> throw AssertionError()
+    }
+
     val tgs = TargetGraphs(dogbs, this)
 
     @Suppress("UNCHECKED_CAST")
@@ -146,7 +151,8 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
             if (LDEBUG) Logger.getLogger(BottomUpOptimize::class.java).level = Level.TRACE
         }
 
-        internal const val PRUNE_FULLY_LOCAL = false
+        internal const val PRUNE_LOCAL_STRATEGY = "cse-aware"
+        private const val FRONTIER_ORDER_STRATEGY = "smart"
 
         private const val DO_STATS = true
         private const val STAT_FOLDER = "buo_stats"
@@ -206,6 +212,8 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
                 val graphFileName = statFileName.substring(0, statFileName.length - STAT_FILE_SUFFIX.length) + "-" + longestIter + "-graph.txt"
                 val graphFile = File(graphFileName)
                 graphFile.writer().buffered().use { graphFileWriter ->
+                    graphFileWriter.write("PRUNE_LOCAL_STRATEGY: $PRUNE_LOCAL_STRATEGY\n")
+                    graphFileWriter.write("FRONTIER_ORDER_STRATEGY: $FRONTIER_ORDER_STRATEGY\n")
                     graphFileWriter.write("Original Bases: \n\t${initialBases.joinToString("\n\t") { e -> "${e.base} -- ${e.base.schema} -- nnz ${nnzInfer.infer(e)}"}}\n\n")
                     graphFileWriter.write("Original GraphBags: \n\t${tgs.origDogbs.graphBags.withIndex().joinToString("\n\t") { (i,g) -> "$i: $g"}}\n")
                     graphFileWriter.write("bestComplete: \n\t${tgs.bestComplete!!.withIndex().joinToString("\n\t") { (i,g) -> "$i: $g"}}\n")
