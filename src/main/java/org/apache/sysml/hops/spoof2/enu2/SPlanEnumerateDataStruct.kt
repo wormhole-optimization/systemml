@@ -451,6 +451,7 @@ class DagOfGraphBag private constructor(
 
             // strip away parents, add parents to result, in same input location
             val pa: MutableList<SNode> = ArrayList(n.parents)
+            pa.forEach { SHash.createAttributePositionList(it, b.memoAttrPosList) } // cache attr. pos. list because we're stripping their children away, so can't compute later
             val paIdx = pa.map {
                 val idx = it.inputs.indexOf(n)
                 it.inputs.removeAt(idx)
