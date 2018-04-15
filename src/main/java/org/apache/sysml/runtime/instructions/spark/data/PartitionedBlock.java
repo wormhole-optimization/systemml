@@ -29,6 +29,7 @@ import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
 import java.lang.reflect.Constructor;
 import java.util.ArrayList;
+import java.util.Arrays;
 
 import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.controlprogram.caching.CacheBlock;
@@ -76,21 +77,19 @@ public class PartitionedBlock<T extends CacheBlock> implements Externalizable
 		int ncblks = getNumColumnBlocks();
 		int code = CacheBlockFactory.getCode(block);
 		
-		try
-		{
+		try {
 			_partBlocks = new CacheBlock[nrblks * ncblks];
-			for( int i=0, ix=0; i<nrblks; i++ )
-				for( int j=0; j<ncblks; j++, ix++ ) {
-					T tmp = (T) CacheBlockFactory.newInstance(code);
-					block.slice(i*_brlen, Math.min((i+1)*_brlen, rlen)-1, 
-							           j*_bclen, Math.min((j+1)*_bclen, clen)-1, tmp);
-					_partBlocks[ix] = tmp;
-				}
-		}
-		catch(Exception ex) {
+			Arrays.parallelSetAll(_partBlocks, index -> {
+				int i = index / ncblks;
+				int j = index % ncblks;
+				T tmp = (T) CacheBlockFactory.newInstance(code);
+				return block.slice(i * _brlen, Math.min((i + 1) * _brlen, rlen) - 1,
+					j * _bclen, Math.min((j + 1) * _bclen, clen) - 1, tmp);
+			});
+		} catch(Exception ex) {
 			throw new RuntimeException("Failed partitioning of broadcast variable input.", ex);
 		}
-		
+
 		_offset = 0;
 	}
 
@@ -107,7 +106,7 @@ public class PartitionedBlock<T extends CacheBlock> implements Externalizable
 		_partBlocks = new CacheBlock[nrblks * ncblks];
 	}
 
-	public PartitionedBlock<T> createPartition( int offset, int numBlks, T block )
+	public PartitionedBlock<T> createPartition( int offset, int numBlks)
 	{
 		PartitionedBlock<T> ret = new PartitionedBlock<>();
 		ret._rlen = _rlen;
@@ -146,9 +145,7 @@ public class PartitionedBlock<T extends CacheBlock> implements Externalizable
 	}
 
 	@SuppressWarnings("unchecked")
-	public T getBlock(int rowIndex, int colIndex) 
-		throws DMLRuntimeException 
-	{
+	public T getBlock(int rowIndex, int colIndex) {
 		//check for valid block index
 		int nrblks = getNumRowBlocks();
 		int ncblks = getNumColumnBlocks();
@@ -163,9 +160,7 @@ public class PartitionedBlock<T extends CacheBlock> implements Externalizable
 		return (T)_partBlocks[ix];
 	}
 
-	public void setBlock(int rowIndex, int colIndex, T block) 
-		throws DMLRuntimeException
-	{
+	public void setBlock(int rowIndex, int colIndex, T block) {
 		//check for valid block index
 		int nrblks = getNumRowBlocks();
 		int ncblks = getNumColumnBlocks();
@@ -212,12 +207,9 @@ public class PartitionedBlock<T extends CacheBlock> implements Externalizable
 	 * @param cu column upper bound
 	 * @param block block object
 	 * @return block object
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
 	@SuppressWarnings("unchecked")
-	public T slice(long rl, long ru, long cl, long cu, T block) 
-		throws DMLRuntimeException 
-	{
+	public T slice(long rl, long ru, long cl, long cu, T block) {
 		int lrl = (int) rl;
 		int lru = (int) ru;
 		int lcl = (int) cl;

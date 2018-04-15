@@ -35,12 +35,13 @@ import org.apache.spark.api.java.function.PairFlatMapFunction;
 import org.apache.spark.storage.StorageLevel;
 import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.lops.Checkpoint;
-import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.controlprogram.context.SparkExecutionContext;
 import org.apache.sysml.runtime.controlprogram.parfor.stat.InfrastructureAnalyzer;
 import org.apache.sysml.runtime.instructions.spark.functions.CopyBinaryCellFunction;
 import org.apache.sysml.runtime.instructions.spark.functions.CopyBlockFunction;
 import org.apache.sysml.runtime.instructions.spark.functions.CopyBlockPairFunction;
+import org.apache.sysml.runtime.instructions.spark.functions.FilterNonEmptyBlocksFunction;
+import org.apache.sysml.runtime.instructions.spark.functions.RecomputeNnzFunction;
 import org.apache.sysml.runtime.matrix.MatrixCharacteristics;
 import org.apache.sysml.runtime.matrix.data.FrameBlock;
 import org.apache.sysml.runtime.matrix.data.MatrixBlock;
@@ -165,7 +166,7 @@ public class SparkUtils
 	}
 
 	// This returns RDD with identifier as well as location
-	public static String getStartLineFromSparkDebugInfo(String line) throws DMLRuntimeException {
+	public static String getStartLineFromSparkDebugInfo(String line) {
 		// To remove: (2)  -- Assumption: At max, 9 RDDs as input to transformation/action
 		String withoutPrefix = line.substring(4, line.length());
 		// To remove: [Disk Memory Deserialized 1x Replicated]
@@ -234,7 +235,9 @@ public class SparkUtils
 	}
 	
 	public static long getNonZeros(JavaPairRDD<MatrixIndexes, MatrixBlock> input) {
-		return input.values().map(b -> b.getNonZeros()).reduce((a,b)->a+b);
+		//note: avoid direct lambda expression due reduce unnecessary GC overhead
+		return input.filter(new FilterNonEmptyBlocksFunction())
+			.values().mapPartitions(new RecomputeNnzFunction()).reduce((a,b)->a+b);
 	}
 
 	private static class AnalyzeCellMatrixCharacteristics implements Function<Tuple2<MatrixIndexes,MatrixCell>, MatrixCharacteristics> 

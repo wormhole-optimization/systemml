@@ -20,6 +20,8 @@
 package org.apache.sysml.runtime.instructions.spark;
 
 import org.apache.spark.api.java.JavaPairRDD;
+import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.function.Function;
 import org.apache.spark.api.java.function.PairFunction;
 
 import scala.Tuple2;
@@ -30,18 +32,23 @@ import org.apache.sysml.runtime.controlprogram.context.ExecutionContext;
 import org.apache.sysml.runtime.controlprogram.context.SparkExecutionContext;
 import org.apache.sysml.runtime.functionobjects.Multiply;
 import org.apache.sysml.runtime.functionobjects.Plus;
+import org.apache.sysml.runtime.functionobjects.SwapIndex;
 import org.apache.sysml.runtime.instructions.InstructionUtils;
 import org.apache.sysml.runtime.instructions.cp.CPOperand;
 import org.apache.sysml.runtime.instructions.spark.functions.FilterNonEmptyBlocksFunction;
+import org.apache.sysml.runtime.instructions.spark.functions.FilterNonEmptyBlocksFunction2;
+import org.apache.sysml.runtime.instructions.spark.functions.ReorgMapFunction;
 import org.apache.sysml.runtime.instructions.spark.utils.RDDAggregateUtils;
 import org.apache.sysml.runtime.instructions.spark.utils.SparkUtils;
 import org.apache.sysml.runtime.matrix.MatrixCharacteristics;
 import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.matrix.data.MatrixIndexes;
+import org.apache.sysml.runtime.matrix.data.OperationsOnMatrixValues;
 import org.apache.sysml.runtime.matrix.mapred.IndexedMatrixValue;
 import org.apache.sysml.runtime.matrix.operators.AggregateBinaryOperator;
 import org.apache.sysml.runtime.matrix.operators.AggregateOperator;
 import org.apache.sysml.runtime.matrix.operators.Operator;
+import org.apache.sysml.runtime.matrix.operators.ReorgOperator;
 
 /**
  * Cpmm: cross-product matrix multiplication operation (distributed matrix multiply
@@ -53,35 +60,32 @@ import org.apache.sysml.runtime.matrix.operators.Operator;
  * 
  */
 public class CpmmSPInstruction extends BinarySPInstruction {
-	private SparkAggType _aggtype;
-
-	private CpmmSPInstruction(Operator op, CPOperand in1, CPOperand in2, CPOperand out, SparkAggType aggtype, String opcode, String istr) {
+	private final boolean _outputEmptyBlocks;
+	private final SparkAggType _aggtype;
+	
+	private CpmmSPInstruction(Operator op, CPOperand in1, CPOperand in2, CPOperand out, boolean outputEmptyBlocks, SparkAggType aggtype, String opcode, String istr) {
 		super(SPType.CPMM, op, in1, in2, out, opcode, istr);
+		_outputEmptyBlocks = outputEmptyBlocks;
 		_aggtype = aggtype;
 	}
 
-	public static CpmmSPInstruction parseInstruction( String str )
-		throws DMLRuntimeException 
-	{
+	public static CpmmSPInstruction parseInstruction( String str ) {
 		String[] parts = InstructionUtils.getInstructionPartsWithValueType(str);
 		String opcode = parts[0];
-		
 		if ( !opcode.equalsIgnoreCase("cpmm"))
 			throw new DMLRuntimeException("CpmmSPInstruction.parseInstruction(): Unknown opcode " + opcode);
-		
 		CPOperand in1 = new CPOperand(parts[1]);
 		CPOperand in2 = new CPOperand(parts[2]);
 		CPOperand out = new CPOperand(parts[3]);
 		AggregateOperator agg = new AggregateOperator(0, Plus.getPlusFnObject());
 		AggregateBinaryOperator aggbin = new AggregateBinaryOperator(Multiply.getMultiplyFnObject(), agg);
-		SparkAggType aggtype = SparkAggType.valueOf(parts[4]);
-		return new CpmmSPInstruction(aggbin, in1, in2, out, aggtype, opcode, str);
+		boolean outputEmptyBlocks = Boolean.parseBoolean(parts[4]);
+		SparkAggType aggtype = SparkAggType.valueOf(parts[5]);
+		return new CpmmSPInstruction(aggbin, in1, in2, out, outputEmptyBlocks, aggtype, opcode, str);
 	}
 	
 	@Override
-	public void processInstruction(ExecutionContext ec)
-		throws DMLRuntimeException
-	{
+	public void processInstruction(ExecutionContext ec) {
 		SparkExecutionContext sec = (SparkExecutionContext)ec;
 		
 		//get rdd inputs
@@ -90,43 +94,63 @@ public class CpmmSPInstruction extends BinarySPInstruction {
 		MatrixCharacteristics mc1 = sec.getMatrixCharacteristics(input1.getName());
 		MatrixCharacteristics mc2 = sec.getMatrixCharacteristics(input2.getName());
 		
-		if( _aggtype == SparkAggType.SINGLE_BLOCK ) {
+		if( !_outputEmptyBlocks || _aggtype == SparkAggType.SINGLE_BLOCK ) {
 			//prune empty blocks of ultra-sparse matrices
 			in1 = in1.filter(new FilterNonEmptyBlocksFunction());
 			in2 = in2.filter(new FilterNonEmptyBlocksFunction());
 		}
 		
-		//compute preferred join degree of parallelism
-		int numPreferred = getPreferredParJoin(mc1, mc2, in1.getNumPartitions(), in2.getNumPartitions());
-		int numPartJoin = Math.min(getMaxParJoin(mc1, mc2), numPreferred);
-		
-		//process core cpmm matrix multiply 
-		JavaPairRDD<Long, IndexedMatrixValue> tmp1 = in1.mapToPair(new CpmmIndexFunction(true));
-		JavaPairRDD<Long, IndexedMatrixValue> tmp2 = in2.mapToPair(new CpmmIndexFunction(false));
-		JavaPairRDD<MatrixIndexes,MatrixBlock> out = tmp1
-			.join(tmp2, numPartJoin)                // join over common dimension
-			.mapToPair(new CpmmMultiplyFunction()); // compute block multiplications
-		
-		//process cpmm aggregation and handle outputs
-		if( _aggtype == SparkAggType.SINGLE_BLOCK ) {
-			//prune empty blocks and aggregate all results
-			out = out.filter(new FilterNonEmptyBlocksFunction());
+		if( SparkUtils.isHashPartitioned(in1) //ZIPMM-like CPMM
+			&& mc1.getNumRowBlocks()==1 && mc2.getCols()==1 ) {
+			//note: if the major input is hash-partitioned and it's a matrix-vector
+			//multiply, avoid the index mapping to preserve the partitioning similar
+			//to a ZIPMM but with different transpose characteristics
+			JavaRDD<MatrixBlock> out = in1
+				.join(in2.mapToPair(new ReorgMapFunction("r'")))
+				.values().map(new Cpmm2MultiplyFunction())
+				.filter(new FilterNonEmptyBlocksFunction2());
 			MatrixBlock out2 = RDDAggregateUtils.sumStable(out);
 			
 			//put output block into symbol table (no lineage because single block)
 			//this also includes implicit maintenance of matrix characteristics
 			sec.setMatrixOutput(output.getName(), out2, getExtendedOpcode());
 		}
-		else { //DEFAULT: MULTI_BLOCK
-			out = RDDAggregateUtils.sumByKeyStable(out, false);
+		else //GENERAL CPMM
+		{
+			//compute preferred join degree of parallelism
+			int numPreferred = getPreferredParJoin(mc1, mc2, in1.getNumPartitions(), in2.getNumPartitions());
+			int numPartJoin = Math.min(getMaxParJoin(mc1, mc2), numPreferred);
 			
-			//put output RDD handle into symbol table
-			sec.setRDDHandleForVariable(output.getName(), out);
-			sec.addLineageRDD(output.getName(), input1.getName());
-			sec.addLineageRDD(output.getName(), input2.getName());
+			//process core cpmm matrix multiply 
+			JavaPairRDD<Long, IndexedMatrixValue> tmp1 = in1.mapToPair(new CpmmIndexFunction(true));
+			JavaPairRDD<Long, IndexedMatrixValue> tmp2 = in2.mapToPair(new CpmmIndexFunction(false));
+			JavaPairRDD<MatrixIndexes,MatrixBlock> out = tmp1
+				.join(tmp2, numPartJoin)                // join over common dimension
+				.mapToPair(new CpmmMultiplyFunction()); // compute block multiplications
 			
-			//update output statistics if not inferred
-			updateBinaryMMOutputMatrixCharacteristics(sec, true);
+			//process cpmm aggregation and handle outputs
+			if( _aggtype == SparkAggType.SINGLE_BLOCK ) {
+				//prune empty blocks and aggregate all results
+				out = out.filter(new FilterNonEmptyBlocksFunction());
+				MatrixBlock out2 = RDDAggregateUtils.sumStable(out);
+				
+				//put output block into symbol table (no lineage because single block)
+				//this also includes implicit maintenance of matrix characteristics
+				sec.setMatrixOutput(output.getName(), out2, getExtendedOpcode());
+			}
+			else { //DEFAULT: MULTI_BLOCK
+				if( !_outputEmptyBlocks )
+					out = out.filter(new FilterNonEmptyBlocksFunction());
+				out = RDDAggregateUtils.sumByKeyStable(out, false);
+				
+				//put output RDD handle into symbol table
+				sec.setRDDHandleForVariable(output.getName(), out);
+				sec.addLineageRDD(output.getName(), input1.getName());
+				sec.addLineageRDD(output.getName(), input2.getName());
+				
+				//update output statistics if not inferred
+				updateBinaryMMOutputMatrixCharacteristics(sec, true);
+			}
 		}
 	}
 	
@@ -180,15 +204,39 @@ public class CpmmSPInstruction extends BinarySPInstruction {
 			MatrixBlock blkIn1 = (MatrixBlock)arg0._2()._1().getValue();
 			MatrixBlock blkIn2 = (MatrixBlock)arg0._2()._2().getValue();
 			MatrixIndexes ixOut = new MatrixIndexes();
-			MatrixBlock blkOut = new MatrixBlock();
 			
 			//core block matrix multiplication 
-			blkIn1.aggregateBinaryOperations(blkIn1, blkIn2, blkOut, _op);
+			MatrixBlock blkOut = OperationsOnMatrixValues
+				.performAggregateBinaryIgnoreIndexes(blkIn1, blkIn2, new MatrixBlock(), _op);
 			
 			//return target block
 			ixOut.setIndexes(arg0._2()._1().getIndexes().getRowIndex(),
 				arg0._2()._2().getIndexes().getColumnIndex());
 			return new Tuple2<>( ixOut, blkOut );
+		}
+	}
+	
+	private static class Cpmm2MultiplyFunction implements Function<Tuple2<MatrixBlock,MatrixBlock>, MatrixBlock>
+	{
+		private static final long serialVersionUID = -3718880362385713416L;
+		private AggregateBinaryOperator _op = null;
+		private ReorgOperator _rop = null;
+		
+		@Override
+		public MatrixBlock call(Tuple2<MatrixBlock, MatrixBlock> arg0) throws Exception {
+			 //lazy operator construction
+			if( _op == null ) {
+				AggregateOperator agg = new AggregateOperator(0, Plus.getPlusFnObject());
+				_op = new AggregateBinaryOperator(Multiply.getMultiplyFnObject(), agg);
+				_rop = new ReorgOperator(SwapIndex.getSwapIndexFnObject());
+			}
+			//prepare inputs, including transpose of right-hand-side
+			MatrixBlock in1 = arg0._1();
+			MatrixBlock in2 = (MatrixBlock)arg0._2()
+				.reorgOperations(_rop, new MatrixBlock(), 0, 0, 0);
+			//core block matrix multiplication
+			return OperationsOnMatrixValues
+				.performAggregateBinaryIgnoreIndexes(in1, in2, new MatrixBlock(), _op);
 		}
 	}
 }

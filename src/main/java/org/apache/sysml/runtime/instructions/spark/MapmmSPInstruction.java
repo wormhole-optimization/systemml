@@ -68,9 +68,7 @@ public class MapmmSPInstruction extends BinarySPInstruction {
 		_aggtype = aggtype;
 	}
 
-	public static MapmmSPInstruction parseInstruction( String str ) 
-		throws DMLRuntimeException 
-	{
+	public static MapmmSPInstruction parseInstruction( String str ) {
 		String parts[] = InstructionUtils.getInstructionPartsWithValueType(str);
 		String opcode = parts[0];
 
@@ -90,9 +88,7 @@ public class MapmmSPInstruction extends BinarySPInstruction {
 	}
 	
 	@Override
-	public void processInstruction(ExecutionContext ec) 
-		throws DMLRuntimeException
-	{	
+	public void processInstruction(ExecutionContext ec)  {
 		SparkExecutionContext sec = (SparkExecutionContext)ec;
 		
 		CacheType type = _type;
@@ -101,8 +97,11 @@ public class MapmmSPInstruction extends BinarySPInstruction {
 		MatrixCharacteristics mcRdd = sec.getMatrixCharacteristics(rddVar);
 		MatrixCharacteristics mcBc = sec.getMatrixCharacteristics(bcastVar);
 		
-		//get input rdd
-		JavaPairRDD<MatrixIndexes,MatrixBlock> in1 = sec.getBinaryBlockRDDHandleForVariable(rddVar);
+		//get input rdd with preferred number of partitions to avoid unnecessary repartition
+		JavaPairRDD<MatrixIndexes,MatrixBlock> in1 = sec.getBinaryBlockRDDHandleForVariable(rddVar,
+			(requiresFlatMapFunction(type, mcBc) && requiresRepartitioning(
+			type, mcRdd, mcBc, sec.getSparkContext().defaultParallelism())) ?
+			getNumRepartitioning(type, mcRdd, mcBc) : -1, _outputEmpty);
 		
 		//investigate if a repartitioning - including a potential flip of broadcast and rdd 
 		//inputs - is required to ensure moderately sized output partitions (2GB limitation)
@@ -220,7 +219,8 @@ public class MapmmSPInstruction extends BinarySPInstruction {
 		boolean isLargeOutput = (OptimizerUtils.estimatePartitionedSizeExactSparsity(isLeft?mcBc.getRows():mcRdd.getRows(),
 				isLeft?mcRdd.getCols():mcBc.getCols(), isLeft?mcBc.getRowsPerBlock():mcRdd.getRowsPerBlock(),
 				isLeft?mcRdd.getColsPerBlock():mcBc.getColsPerBlock(), 1.0) / numPartitions) > 1024*1024*1024; 
-		return isOuter && isLargeOutput && mcRdd.dimsKnown() && mcBc.dimsKnown();
+		return isOuter && isLargeOutput && mcRdd.dimsKnown() && mcBc.dimsKnown()
+			&& numPartitions < getNumRepartitioning(type, mcRdd, mcBc);
 	}
 
 	/**
@@ -327,8 +327,8 @@ public class MapmmSPInstruction extends BinarySPInstruction {
 				MatrixBlock left = _pbc.getBlock(1, (int)ixIn.getRowIndex());
 				
 				//execute matrix-vector mult
-				return (MatrixBlock) OperationsOnMatrixValues.performAggregateBinaryIgnoreIndexes( 
-						left, blkIn, new MatrixBlock(), _op);						
+				return OperationsOnMatrixValues.performAggregateBinaryIgnoreIndexes( 
+					left, blkIn, new MatrixBlock(), _op);
 			}
 			else //if( _type == CacheType.RIGHT )
 			{
@@ -336,8 +336,8 @@ public class MapmmSPInstruction extends BinarySPInstruction {
 				MatrixBlock right = _pbc.getBlock((int)ixIn.getColumnIndex(), 1);
 				
 				//execute matrix-vector mult
-				return (MatrixBlock) OperationsOnMatrixValues.performAggregateBinaryIgnoreIndexes(
-						blkIn, right, new MatrixBlock(), _op);
+				return OperationsOnMatrixValues.performAggregateBinaryIgnoreIndexes(
+					blkIn, right, new MatrixBlock(), _op);
 			}
 		}
 	}
@@ -392,7 +392,7 @@ public class MapmmSPInstruction extends BinarySPInstruction {
 					MatrixBlock left = _pbc.getBlock(1, (int)ixIn.getRowIndex());
 					
 					//execute index preserving matrix multiplication
-					left.aggregateBinaryOperations(left, blkIn, blkOut, _op);
+					OperationsOnMatrixValues.performAggregateBinaryIgnoreIndexes(left, blkIn, blkOut, _op);
 				}
 				else //if( _type == CacheType.RIGHT )
 				{
@@ -400,7 +400,7 @@ public class MapmmSPInstruction extends BinarySPInstruction {
 					MatrixBlock right = _pbc.getBlock((int)ixIn.getColumnIndex(), 1);
 
 					//execute index preserving matrix multiplication
-					blkIn.aggregateBinaryOperations(blkIn, right, blkOut, _op);	
+					OperationsOnMatrixValues.performAggregateBinaryIgnoreIndexes(blkIn, right, blkOut, _op);
 				}
 			
 				return new Tuple2<>(ixIn, blkOut);
@@ -431,43 +431,27 @@ public class MapmmSPInstruction extends BinarySPInstruction {
 			throws Exception 
 		{
 			ArrayList<Tuple2<MatrixIndexes, MatrixBlock>> ret = new ArrayList<>();
-			
 			MatrixIndexes ixIn = arg0._1();
 			MatrixBlock blkIn = arg0._2();
 
-			if( _type == CacheType.LEFT )
-			{
+			if( _type == CacheType.LEFT ) {
 				//for all matching left-hand-side blocks
 				int len = _pbc.getNumRowBlocks();
-				for( int i=1; i<=len; i++ ) 
-				{
+				for( int i=1; i<=len; i++ ) {
 					MatrixBlock left = _pbc.getBlock(i, (int)ixIn.getRowIndex());
-					MatrixIndexes ixOut = new MatrixIndexes();
-					MatrixBlock blkOut = new MatrixBlock();
-					
-					//execute matrix-vector mult
-					OperationsOnMatrixValues.performAggregateBinary( 
-							new MatrixIndexes(i,ixIn.getRowIndex()), left, ixIn, blkIn, ixOut, blkOut, _op);
-					
-					ret.add(new Tuple2<>(ixOut, blkOut));
+					MatrixBlock blkOut = OperationsOnMatrixValues
+						.performAggregateBinaryIgnoreIndexes(left, blkIn, new MatrixBlock(), _op);
+					ret.add(new Tuple2<>(new MatrixIndexes(i, ixIn.getColumnIndex()), blkOut));
 				}
 			}
-			else //if( _type == CacheType.RIGHT )
-			{
+			else { //RIGHT
 				//for all matching right-hand-side blocks
 				int len = _pbc.getNumColumnBlocks();
-				for( int j=1; j<=len; j++ ) 
-				{
-					//get the right hand side matrix
+				for( int j=1; j<=len; j++ )  {
 					MatrixBlock right = _pbc.getBlock((int)ixIn.getColumnIndex(), j);
-					MatrixIndexes ixOut = new MatrixIndexes();
-					MatrixBlock blkOut = new MatrixBlock();
-					
-					//execute matrix-vector mult
-					OperationsOnMatrixValues.performAggregateBinary(
-							ixIn, blkIn, new MatrixIndexes(ixIn.getColumnIndex(),j), right, ixOut, blkOut, _op);
-				
-					ret.add(new Tuple2<>(ixOut, blkOut));
+					MatrixBlock blkOut = OperationsOnMatrixValues
+						.performAggregateBinaryIgnoreIndexes(blkIn, right, new MatrixBlock(), _op);
+					ret.add(new Tuple2<>(new MatrixIndexes(ixIn.getRowIndex(), j), blkOut));
 				}
 			}
 			

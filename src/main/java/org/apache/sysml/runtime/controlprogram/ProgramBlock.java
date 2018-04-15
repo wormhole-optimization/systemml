@@ -126,10 +126,8 @@ public class ProgramBlock implements ParseInfo
 	 * Executes this program block (incl recompilation if required).
 	 *
 	 * @param ec execution context
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
 	public void execute(ExecutionContext ec)
-		throws DMLRuntimeException
 	{
 		ArrayList<Instruction> tmp = _inst;
 
@@ -172,10 +170,8 @@ public class ProgramBlock implements ParseInfo
 	 * @param retType value type of the return type
 	 * @param ec execution context
 	 * @return scalar object
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
 	public ScalarObject executePredicate(ArrayList<Instruction> inst, Hop hops, boolean requiresRecompile, ValueType retType, ExecutionContext ec)
-		throws DMLRuntimeException
 	{
 		ArrayList<Instruction> tmp = inst;
 
@@ -205,23 +201,17 @@ public class ProgramBlock implements ParseInfo
 		return executePredicateInstructions(tmp, retType, ec);
 	}
 
-	protected void executeInstructions(ArrayList<Instruction> inst, ExecutionContext ec)
-		throws DMLRuntimeException
-	{
-		for (int i = 0; i < inst.size(); i++)
-		{
+	protected void executeInstructions(ArrayList<Instruction> inst, ExecutionContext ec) {
+		for (int i = 0; i < inst.size(); i++) {
 			//indexed access required due to dynamic add
 			Instruction currInst = inst.get(i);
-
 			//execute instruction
 			ec.updateDebugState(i);
 			executeSingleInstruction(currInst, ec);
 		}
 	}
 
-	protected ScalarObject executePredicateInstructions(ArrayList<Instruction> inst, ValueType retType, ExecutionContext ec)
-		throws DMLRuntimeException
-	{
+	protected ScalarObject executePredicateInstructions(ArrayList<Instruction> inst, ValueType retType, ExecutionContext ec) {
 		//execute all instructions (indexed access required due to debug mode)
 		int pos = 0;
 		for( Instruction currInst : inst ) {
@@ -248,9 +238,7 @@ public class ProgramBlock implements ParseInfo
 		return ret;
 	}
 
-	private void executeSingleInstruction( Instruction currInst, ExecutionContext ec )
-		throws DMLRuntimeException
-	{
+	private void executeSingleInstruction( Instruction currInst, ExecutionContext ec ) {
 		try
 		{
 			// start time measurement for statistics
@@ -299,9 +287,7 @@ public class ProgramBlock implements ParseInfo
 		}
 	}
 
-	protected UpdateType[] prepareUpdateInPlaceVariables(ExecutionContext ec, long tid)
-		throws DMLRuntimeException
-	{
+	protected UpdateType[] prepareUpdateInPlaceVariables(ExecutionContext ec, long tid) {
 		if( _sb == null || _sb.getUpdateInPlaceVars().isEmpty() )
 			return null;
 
@@ -324,6 +310,9 @@ public class ProgramBlock implements ParseInfo
 				mo.release();
 				moNew.release();
 				moNew.setUpdateType(UpdateType.INPLACE);
+				//cleanup old variable (e.g., remove from buffer pool)
+				if( ec.removeVariable(varname) != null )
+					ec.cleanupCacheableData(mo);
 				ec.setVariable(varname, moNew);
 			}
 		}
@@ -331,12 +320,9 @@ public class ProgramBlock implements ParseInfo
 		return flags;
 	}
 
-	protected void resetUpdateInPlaceVariableFlags(ExecutionContext ec, UpdateType[] flags)
-		throws DMLRuntimeException
-	{
+	protected void resetUpdateInPlaceVariableFlags(ExecutionContext ec, UpdateType[] flags) {
 		if( flags == null )
 			return;
-
 		//reset update-in-place flag to pre-loop status
 		ArrayList<String> varnames = _sb.getUpdateInPlaceVars();
 		for( int i=0; i<varnames.size(); i++ )
@@ -347,7 +333,6 @@ public class ProgramBlock implements ParseInfo
 	}
 	
 	private static void checkSparsity( Instruction lastInst, LocalVariableMap vars )
-		throws DMLRuntimeException
 	{
 		for( String varname : vars.keySet() )
 		{

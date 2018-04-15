@@ -24,8 +24,8 @@ import java.io.Serializable;
 import java.util.Arrays;
 import java.util.HashMap;
 
+import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.lops.MMTSJ.MMTSJType;
-import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.instructions.mr.AggregateBinaryInstruction;
 import org.apache.sysml.runtime.instructions.mr.AggregateInstruction;
 import org.apache.sysml.runtime.instructions.mr.AggregateUnaryInstruction;
@@ -62,6 +62,7 @@ import org.apache.sysml.runtime.instructions.mr.UaggOuterChainInstruction;
 import org.apache.sysml.runtime.instructions.mr.UnaryInstruction;
 import org.apache.sysml.runtime.instructions.mr.UnaryMRInstructionBase;
 import org.apache.sysml.runtime.instructions.mr.ZeroOutInstruction;
+import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.matrix.operators.AggregateBinaryOperator;
 import org.apache.sysml.runtime.matrix.operators.AggregateUnaryOperator;
 import org.apache.sysml.runtime.matrix.operators.ReorgOperator;
@@ -78,9 +79,7 @@ public class MatrixCharacteristics implements Serializable
 	private long nonZero = -1;
 	private boolean ubNnz = false;
 	
-	public MatrixCharacteristics() {
-	
-	}
+	public MatrixCharacteristics() {}
 	
 	public MatrixCharacteristics(long nr, long nc, int bnr, int bnc) {
 		set(nr, nc, bnr, bnc);
@@ -122,9 +121,17 @@ public class MatrixCharacteristics implements Serializable
 	public long getRows(){
 		return numRows;
 	}
+	
+	public void setRows(long rlen) {
+		numRows = rlen;
+	}
 
 	public long getCols(){
 		return numColumns;
+	}
+	
+	public void setCols(long clen) {
+		numColumns = clen;
 	}
 	
 	public long getLength() {
@@ -220,6 +227,11 @@ public class MatrixCharacteristics implements Serializable
 		return ( !ubNnz && nonZero >= 0 );
 	}
 	
+	public boolean isUltraSparse() {
+		return dimsKnown(true) && OptimizerUtils.getSparsity(this)
+			< MatrixBlock.ULTRA_SPARSITY_TURN_POINT;
+	}
+	
 	public boolean mightHaveEmptyBlocks() {
 		long singleBlk = Math.max(Math.min(numRows, numRowsPerBlock),1) 
 				* Math.max(Math.min(numColumns, numColumnsPerBlock),1);
@@ -227,15 +239,11 @@ public class MatrixCharacteristics implements Serializable
 			|| (nonZero < numRows*numColumns - singleBlk);
 	}
 	
-	public static void reorg(MatrixCharacteristics dim, ReorgOperator op, 
-			MatrixCharacteristics dimOut) throws DMLRuntimeException
-	{
+	public static void reorg(MatrixCharacteristics dim, ReorgOperator op, MatrixCharacteristics dimOut) {
 		op.fn.computeDimension(dim, dimOut);
 	}
 	
-	public static void aggregateUnary(MatrixCharacteristics dim, AggregateUnaryOperator op, 
-			MatrixCharacteristics dimOut) throws DMLRuntimeException
-	{
+	public static void aggregateUnary(MatrixCharacteristics dim, AggregateUnaryOperator op, MatrixCharacteristics dimOut) {
 		op.indexFn.computeDimension(dim, dimOut);
 	}
 	
@@ -246,9 +254,7 @@ public class MatrixCharacteristics implements Serializable
 		dimOut.set(dim1.numRows, dim2.numColumns, dim1.numRowsPerBlock, dim2.numColumnsPerBlock);
 	}
 	
-	public static void computeDimension(HashMap<Byte, MatrixCharacteristics> dims, MRInstruction ins) 
-		throws DMLRuntimeException
-	{
+	public static void computeDimension(HashMap<Byte, MatrixCharacteristics> dims, MRInstruction ins) {
 		MatrixCharacteristics dimOut=dims.get(ins.output);
 		if(dimOut==null)
 		{

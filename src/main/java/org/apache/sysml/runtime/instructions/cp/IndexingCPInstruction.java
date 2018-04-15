@@ -25,42 +25,38 @@ import org.apache.sysml.parser.Expression.DataType;
 import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.controlprogram.context.ExecutionContext;
 import org.apache.sysml.runtime.instructions.InstructionUtils;
-import org.apache.sysml.runtime.matrix.operators.Operator;
-import org.apache.sysml.runtime.matrix.operators.SimpleOperator;
 import org.apache.sysml.runtime.util.IndexRange;
 
 public abstract class IndexingCPInstruction extends UnaryCPInstruction {
 	protected final CPOperand rowLower, rowUpper, colLower, colUpper;
 
-	protected IndexingCPInstruction(Operator op, CPOperand in, CPOperand rl, CPOperand ru, CPOperand cl, CPOperand cu,
+	protected IndexingCPInstruction(CPOperand in, CPOperand rl, CPOperand ru, CPOperand cl, CPOperand cu,
 			CPOperand out, String opcode, String istr) {
-		super(CPType.MatrixIndexing, op, in, out, opcode, istr);
+		super(CPType.MatrixIndexing, null, in, out, opcode, istr);
 		rowLower = rl;
 		rowUpper = ru;
 		colLower = cl;
 		colUpper = cu;
 	}
 
-	protected IndexingCPInstruction(Operator op, CPOperand lhsInput, CPOperand rhsInput, CPOperand rl, CPOperand ru,
+	protected IndexingCPInstruction(CPOperand lhsInput, CPOperand rhsInput, CPOperand rl, CPOperand ru,
 			CPOperand cl, CPOperand cu, CPOperand out, String opcode, String istr) {
-		super(CPType.MatrixIndexing, op, lhsInput, rhsInput, out, opcode, istr);
+		super(CPType.MatrixIndexing, null, lhsInput, rhsInput, out, opcode, istr);
 		rowLower = rl;
 		rowUpper = ru;
 		colLower = cl;
 		colUpper = cu;
 	}
 
-	protected IndexRange getIndexRange(ExecutionContext ec) throws DMLRuntimeException {
+	protected IndexRange getIndexRange(ExecutionContext ec) {
 		return new IndexRange( //rl, ru, cl, ru
 			(int)(ec.getScalarInput(rowLower.getName(), rowLower.getValueType(), rowLower.isLiteral()).getLongValue()-1),
 			(int)(ec.getScalarInput(rowUpper.getName(), rowUpper.getValueType(), rowUpper.isLiteral()).getLongValue()-1),
 			(int)(ec.getScalarInput(colLower.getName(), colLower.getValueType(), colLower.isLiteral()).getLongValue()-1),
-			(int)(ec.getScalarInput(colUpper.getName(), colUpper.getValueType(), colUpper.isLiteral()).getLongValue()-1));		
+			(int)(ec.getScalarInput(colUpper.getName(), colUpper.getValueType(), colUpper.isLiteral()).getLongValue()-1));
 	}
 
-	public static IndexingCPInstruction parseInstruction ( String str ) 
-		throws DMLRuntimeException 
-	{	
+	public static IndexingCPInstruction parseInstruction ( String str ) {
 		String[] parts = InstructionUtils.getInstructionPartsWithValueType(str);
 		String opcode = parts[0];
 		
@@ -74,9 +70,9 @@ public abstract class IndexingCPInstruction extends UnaryCPInstruction {
 				cu = new CPOperand(parts[5]);
 				out = new CPOperand(parts[6]);
 				if( in.getDataType()==DataType.MATRIX )
-					return new MatrixIndexingCPInstruction(new SimpleOperator(null), in, rl, ru, cl, cu, out, opcode, str);
+					return new MatrixIndexingCPInstruction(in, rl, ru, cl, cu, out, opcode, str);
 				else if (in.getDataType() == DataType.FRAME)
-					return new FrameIndexingCPInstruction(new SimpleOperator(null), in, rl, ru, cl, cu, out, opcode, str);
+					return new FrameIndexingCPInstruction(in, rl, ru, cl, cu, out, opcode, str);
 				else 
 					throw new DMLRuntimeException("Can index only on Frames or Matrices");
 			}
@@ -95,9 +91,9 @@ public abstract class IndexingCPInstruction extends UnaryCPInstruction {
 				cu = new CPOperand(parts[6]);
 				out = new CPOperand(parts[7]);
 				if( lhsInput.getDataType()==DataType.MATRIX )
-					return new MatrixIndexingCPInstruction(new SimpleOperator(null), lhsInput, rhsInput, rl, ru, cl, cu, out, opcode, str);
+					return new MatrixIndexingCPInstruction(lhsInput, rhsInput, rl, ru, cl, cu, out, opcode, str);
 				else if (lhsInput.getDataType() == DataType.FRAME)
-					return new FrameIndexingCPInstruction(new SimpleOperator(null), lhsInput, rhsInput, rl, ru, cl, cu, out, opcode, str);
+					return new FrameIndexingCPInstruction(lhsInput, rhsInput, rl, ru, cl, cu, out, opcode, str);
 				else 
 					throw new DMLRuntimeException("Can index only on Frames or Matrices");
 			}

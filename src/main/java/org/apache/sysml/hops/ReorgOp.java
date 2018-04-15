@@ -87,10 +87,10 @@ public class ReorgOp extends Hop implements MultiThreadedHop
 	}
 
 	@Override
-	public void checkArity() throws HopsException {
+	public void checkArity() {
 		int sz = _input.size();
 		switch( op ) {
-		case TRANSPOSE:
+		case TRANS:
 		case DIAG:
 		case REV:
 			HopsException.check(sz == 1, this, "should have arity 1 for op %s but has arity %d", op, sz);
@@ -131,7 +131,7 @@ public class ReorgOp extends Hop implements MultiThreadedHop
 		if(!DMLScript.USE_ACCELERATOR)
 			return false;
 		switch( op ) {
-			case TRANSPOSE: {
+			case TRANS: {
 				Lop lin;
 				try {
 					lin = getInput().get(0).constructLops();
@@ -157,7 +157,6 @@ public class ReorgOp extends Hop implements MultiThreadedHop
 
 	@Override
 	public Lop constructLops()
-		throws HopsException, LopsException 
 	{
 		//return already created lops
 		if( getLops() != null )
@@ -167,7 +166,7 @@ public class ReorgOp extends Hop implements MultiThreadedHop
 		
 		switch( op )
 		{
-			case TRANSPOSE:
+			case TRANS:
 			{
 				Lop lin = getInput().get(0).constructLops();
 				if( lin instanceof Transform && ((Transform)lin).getOperationType()==OperationTypes.Transpose )
@@ -233,7 +232,7 @@ public class ReorgOp extends Hop implements MultiThreadedHop
 				if( et==ExecType.MR )
 				{
 					Transform transform1 = new Transform( linputs,
-						HopsTransf2Lops.get(op), getDataType(), getValueType(), et);
+						HopsTransf2Lops.get(op), getDataType(), getValueType(), true, et);
 					setOutputDimensions(transform1);
 					setLineNumbers(transform1);
 					
@@ -251,8 +250,10 @@ public class ReorgOp extends Hop implements MultiThreadedHop
 				}
 				else //CP/SPARK
 				{
+					_outputEmptyBlocks = (et==ExecType.SPARK &&
+						!OptimizerUtils.allowsToFilterEmptyBlockOutputs(this)); 
 					Transform transform1 = new Transform( linputs,
-						HopsTransf2Lops.get(op), getDataType(), getValueType(), et);
+						HopsTransf2Lops.get(op), getDataType(), getValueType(), _outputEmptyBlocks, et);
 					setOutputDimensions(transform1);
 					setLineNumbers(transform1);
 					
@@ -387,7 +388,6 @@ public class ReorgOp extends Hop implements MultiThreadedHop
 	}
 
 	private static Lop constructCPOrSparkSortLop( Hop input, Hop by, Hop desc, Hop ixret, ExecType et, boolean bSortIndInMem ) 
-		throws HopsException, LopsException
 	{
 		Hop[] hinputs = new Hop[]{input, by, desc, ixret};
 		Lop[] linputs = new Lop[4];
@@ -437,7 +437,7 @@ public class ReorgOp extends Hop implements MultiThreadedHop
 			
 		switch(op) 
 		{
-			case TRANSPOSE:
+			case TRANS:
 			{
 				// input is a [k1,k2] matrix and output is a [k2,k1] matrix
 				// #nnz in output is exactly the same as in input
@@ -514,13 +514,13 @@ public class ReorgOp extends Hop implements MultiThreadedHop
 	}
 	
 	@Override
-	protected ExecType optFindExecType() throws HopsException {
+	protected ExecType optFindExecType() {
 		
 		checkAndSetForcedPlatform();
 	
 		ExecType REMOTE = OptimizerUtils.isSparkExecutionMode() ? ExecType.SPARK : ExecType.MR;
 		
-		if( _etypeForced != null ) 			
+		if( _etypeForced != null )
 		{
 			_etype = _etypeForced;
 		}
@@ -556,7 +556,7 @@ public class ReorgOp extends Hop implements MultiThreadedHop
 		
 		switch(op) 
 		{
-			case TRANSPOSE:
+			case TRANS:
 			{
 				// input is a [k1,k2] matrix and output is a [k2,k1] matrix
 				// #nnz in output is exactly the same as in input

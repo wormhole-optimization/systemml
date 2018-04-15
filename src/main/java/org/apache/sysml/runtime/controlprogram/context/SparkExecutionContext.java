@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.LongStream;
 
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.io.LongWritable;
@@ -51,6 +52,7 @@ import org.apache.sysml.parser.Expression.ValueType;
 import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.compress.CompressedMatrixBlock;
 import org.apache.sysml.runtime.controlprogram.Program;
+import org.apache.sysml.runtime.controlprogram.caching.CacheBlock;
 import org.apache.sysml.runtime.controlprogram.caching.CacheableData;
 import org.apache.sysml.runtime.controlprogram.caching.FrameObject;
 import org.apache.sysml.runtime.controlprogram.caching.MatrixObject;
@@ -92,10 +94,9 @@ public class SparkExecutionContext extends ExecutionContext
 	private static final boolean LDEBUG = false; //local debug flag
 
 	//internal configurations
-	private static boolean LAZY_SPARKCTX_CREATION = true;
-	private static boolean ASYNCHRONOUS_VAR_DESTROY = true;
-
-	public static boolean FAIR_SCHEDULER_MODE = true;
+	private static final boolean LAZY_SPARKCTX_CREATION = true;
+	private static final boolean ASYNCHRONOUS_VAR_DESTROY = true;
+	public static final boolean FAIR_SCHEDULER_MODE = true;
 
 	//executor memory and relative fractions as obtained from the spark configuration
 	private static SparkClusterConfig _sconf = null;
@@ -107,8 +108,12 @@ public class SparkExecutionContext extends ExecutionContext
 	//10% of JVM max heap size for parallelized RDDs; if this is not sufficient,
 	//matrices or frames are exported to HDFS and the RDDs are created from files.
 	//TODO unify memory management for CP, par RDDs, and potentially broadcasts
-	private static MemoryManagerParRDDs _parRDDs = new MemoryManagerParRDDs(0.1);
-
+	private static final MemoryManagerParRDDs _parRDDs = new MemoryManagerParRDDs(0.1);
+	
+	//pool of reused fair scheduler pool names (unset bits indicate availability)
+	private static boolean[] _poolBuff = FAIR_SCHEDULER_MODE ?
+		new boolean[InfrastructureAnalyzer.getLocalParallelism()] : null;
+	
 	static {
 		// for internal debugging only
 		if( LDEBUG ) {
@@ -117,11 +122,10 @@ public class SparkExecutionContext extends ExecutionContext
 		}
 	}
 
-	protected SparkExecutionContext(boolean allocateVars, Program prog)
-	{
+	protected SparkExecutionContext(boolean allocateVars, Program prog) {
 		//protected constructor to force use of ExecutionContextFactory
 		super( allocateVars, prog );
-
+		
 		//spark context creation via internal initializer
 		if( !LAZY_SPARKCTX_CREATION || DMLScript.rtplatform==RUNTIME_PLATFORM.SPARK ) {
 			initSparkContext();
@@ -134,8 +138,7 @@ public class SparkExecutionContext extends ExecutionContext
 	 *
 	 * @return java spark context
 	 */
-	public JavaSparkContext getSparkContext()
-	{
+	public JavaSparkContext getSparkContext() {
 		//lazy spark context creation on demand (lazy instead of asynchronous
 		//to avoid wait for uninitialized spark context on close)
 		if( LAZY_SPARKCTX_CREATION ) {
@@ -287,13 +290,19 @@ public class SparkExecutionContext extends ExecutionContext
 	 *
 	 * @param varname variable name
 	 * @return JavaPairRDD of MatrixIndexes-MatrixBlocks
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
 	@SuppressWarnings("unchecked")
-	public JavaPairRDD<MatrixIndexes,MatrixBlock> getBinaryBlockRDDHandleForVariable( String varname )
-		throws DMLRuntimeException
-	{
-		return (JavaPairRDD<MatrixIndexes,MatrixBlock>) getRDDHandleForVariable( varname, InputInfo.BinaryBlockInputInfo);
+	public JavaPairRDD<MatrixIndexes,MatrixBlock> getBinaryBlockRDDHandleForVariable( String varname ) {
+		MatrixObject mo = getMatrixObject(varname);
+		return (JavaPairRDD<MatrixIndexes,MatrixBlock>)
+			getRDDHandleForMatrixObject(mo, InputInfo.BinaryBlockInputInfo, -1, true);
+	}
+	
+	@SuppressWarnings("unchecked")
+	public JavaPairRDD<MatrixIndexes,MatrixBlock> getBinaryBlockRDDHandleForVariable( String varname, int numParts, boolean inclEmpty ) {
+		MatrixObject mo = getMatrixObject(varname);
+		return (JavaPairRDD<MatrixIndexes,MatrixBlock>)
+			getRDDHandleForMatrixObject(mo, InputInfo.BinaryBlockInputInfo, numParts, inclEmpty);
 	}
 
 	/**
@@ -302,23 +311,20 @@ public class SparkExecutionContext extends ExecutionContext
 	 *
 	 * @param varname variable name
 	 * @return JavaPairRDD of Longs-FrameBlocks
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
 	@SuppressWarnings("unchecked")
-	public JavaPairRDD<Long,FrameBlock> getFrameBinaryBlockRDDHandleForVariable( String varname )
-		throws DMLRuntimeException
-	{
-		JavaPairRDD<Long,FrameBlock> out = (JavaPairRDD<Long,FrameBlock>) getRDDHandleForVariable( varname, InputInfo.BinaryBlockInputInfo);
+	public JavaPairRDD<Long,FrameBlock> getFrameBinaryBlockRDDHandleForVariable( String varname ) {
+		FrameObject fo = getFrameObject(varname);
+		JavaPairRDD<Long,FrameBlock> out = (JavaPairRDD<Long,FrameBlock>)
+			getRDDHandleForFrameObject(fo, InputInfo.BinaryBlockInputInfo);
 		return out;
 	}
 
-	public JavaPairRDD<?,?> getRDDHandleForVariable( String varname, InputInfo inputInfo )
-		throws DMLRuntimeException
-	{
+	public JavaPairRDD<?,?> getRDDHandleForVariable( String varname, InputInfo inputInfo, int numParts, boolean inclEmpty ) {
 		Data dat = getVariable(varname);
 		if( dat instanceof MatrixObject ) {
 			MatrixObject mo = getMatrixObject(varname);
-			return getRDDHandleForMatrixObject(mo, inputInfo);
+			return getRDDHandleForMatrixObject(mo, inputInfo, numParts, inclEmpty);
 		}
 		else if( dat instanceof FrameObject ) {
 			FrameObject fo = getFrameObject(varname);
@@ -329,19 +335,12 @@ public class SparkExecutionContext extends ExecutionContext
 		}
 	}
 
-	/**
-	 * This call returns an RDD handle for a given matrix object. This includes
-	 * the creation of RDDs for in-memory or binary-block HDFS data.
-	 *
-	 * @param mo matrix object
-	 * @param inputInfo input info
-	 * @return JavaPairRDD handle for a matrix object
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
-	 */
+	public JavaPairRDD<?,?> getRDDHandleForMatrixObject( MatrixObject mo, InputInfo inputInfo ) {
+		return getRDDHandleForMatrixObject(mo, inputInfo, -1, true);
+	}
+	
 	@SuppressWarnings("unchecked")
-	public JavaPairRDD<?,?> getRDDHandleForMatrixObject( MatrixObject mo, InputInfo inputInfo )
-		throws DMLRuntimeException
-	{
+	public JavaPairRDD<?,?> getRDDHandleForMatrixObject( MatrixObject mo, InputInfo inputInfo, int numParts, boolean inclEmpty ) {
 		//NOTE: MB this logic should be integrated into MatrixObject
 		//However, for now we cannot assume that spark libraries are
 		//always available and hence only store generic references in
@@ -375,7 +374,7 @@ public class SparkExecutionContext extends ExecutionContext
 			}
 			else { //default case
 				MatrixBlock mb = mo.acquireRead(); //pin matrix in memory
-				rdd = toMatrixJavaPairRDD(sc, mb, (int)mo.getNumRowsPerBlock(), (int)mo.getNumColumnsPerBlock());
+				rdd = toMatrixJavaPairRDD(sc, mb, (int)mo.getNumRowsPerBlock(), (int)mo.getNumColumnsPerBlock(), numParts, inclEmpty);
 				mo.release(); //unpin matrix
 				_parRDDs.registerRDD(rdd.id(), OptimizerUtils.estimatePartitionedSizeExactSparsity(mc), true);
 			}
@@ -425,11 +424,9 @@ public class SparkExecutionContext extends ExecutionContext
 	 * @param fo frame object
 	 * @param inputInfo input info
 	 * @return JavaPairRDD handle for a frame object
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
 	@SuppressWarnings("unchecked")
 	public JavaPairRDD<?,?> getRDDHandleForFrameObject( FrameObject fo, InputInfo inputInfo )
-		throws DMLRuntimeException
 	{
 		//NOTE: MB this logic should be integrated into FrameObject
 		//However, for now we cannot assume that spark libraries are
@@ -511,7 +508,6 @@ public class SparkExecutionContext extends ExecutionContext
 	
 	@SuppressWarnings("unchecked")
 	public PartitionedBroadcast<MatrixBlock> getBroadcastForVariable( String varname )
-		throws DMLRuntimeException
 	{
 		//NOTE: The memory consumption of this method is the in-memory size of the 
 		//matrix object plus the partitioned size in 1k-1k blocks. Since the call
@@ -556,19 +552,12 @@ public class SparkExecutionContext extends ExecutionContext
 			Broadcast<PartitionedBlock<MatrixBlock>>[] ret = new Broadcast[numParts];
 
 			//create coarse-grained partitioned broadcasts
-			if( numParts > 1 ) {
-				for( int i=0; i<numParts; i++ ) {
-					int offset = i * numPerPart;
-					int numBlks = Math.min(numPerPart, pmb.getNumRowBlocks()*pmb.getNumColumnBlocks()-offset);
-					PartitionedBlock<MatrixBlock> tmp = pmb.createPartition(offset, numBlks, new MatrixBlock());
-					ret[i] = getSparkContext().broadcast(tmp);
-					if( !isLocalMaster() )
-						tmp.clearBlocks();
-				}
-			}
+			if (numParts > 1) {
+				Arrays.parallelSetAll(ret, i -> createPartitionedBroadcast(pmb, numPerPart, i));
+			} 
 			else { //single partition
 				ret[0] = getSparkContext().broadcast(pmb);
-				if( !isLocalMaster() )
+				if (!isLocalMaster())
 					pmb.clearBlocks();
 			}
 			
@@ -589,7 +578,6 @@ public class SparkExecutionContext extends ExecutionContext
 
 	@SuppressWarnings("unchecked")
 	public PartitionedBroadcast<FrameBlock> getBroadcastForFrameVariable( String varname)
-		throws DMLRuntimeException
 	{
 		long t0 = DMLScript.STATISTICS ? System.nanoTime() : 0;
 
@@ -626,19 +614,12 @@ public class SparkExecutionContext extends ExecutionContext
 			Broadcast<PartitionedBlock<FrameBlock>>[] ret = new Broadcast[numParts];
 
 			//create coarse-grained partitioned broadcasts
-			if( numParts > 1 ) {
-				for( int i=0; i<numParts; i++ ) {
-					int offset = i * numPerPart;
-					int numBlks = Math.min(numPerPart, pmb.getNumRowBlocks()*pmb.getNumColumnBlocks()-offset);
-					PartitionedBlock<FrameBlock> tmp = pmb.createPartition(offset, numBlks, new FrameBlock());
-					ret[i] = getSparkContext().broadcast(tmp);
-					if( !isLocalMaster() )
-						tmp.clearBlocks();
-				}
+			if (numParts > 1) {
+				Arrays.parallelSetAll(ret, i -> createPartitionedBroadcast(pmb, numPerPart, i));
 			}
 			else { //single partition
 				ret[0] = getSparkContext().broadcast(pmb);
-				if( !isLocalMaster() )
+				if (!isLocalMaster())
 					pmb.clearBlocks();
 			}
 
@@ -656,6 +637,17 @@ public class SparkExecutionContext extends ExecutionContext
 
 		return bret;
 	}
+	
+	private Broadcast<PartitionedBlock<? extends CacheBlock>> createPartitionedBroadcast(
+			PartitionedBlock<? extends CacheBlock> pmb, int numPerPart, int pos) {
+		int offset = pos * numPerPart;
+		int numBlks = Math.min(numPerPart, pmb.getNumRowBlocks() * pmb.getNumColumnBlocks() - offset);
+		PartitionedBlock<? extends CacheBlock> tmp = pmb.createPartition(offset, numBlks);
+		Broadcast<PartitionedBlock<? extends CacheBlock>> ret = getSparkContext().broadcast(tmp);
+		if (!isLocalMaster())
+			tmp.clearBlocks();
+		return ret;
+	}
 
 	/**
 	 * Keep the output rdd of spark rdd operations as meta data of matrix/frame
@@ -663,29 +655,19 @@ public class SparkExecutionContext extends ExecutionContext
 	 *
 	 * @param varname variable name
 	 * @param rdd JavaPairRDD handle for variable
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public void setRDDHandleForVariable(String varname, JavaPairRDD<?,?> rdd)
-		throws DMLRuntimeException
-	{
+	public void setRDDHandleForVariable(String varname, JavaPairRDD<?,?> rdd) {
 		CacheableData<?> obj = getCacheableData(varname);
 		RDDObject rddhandle = new RDDObject(rdd);
 		obj.setRDDHandle( rddhandle );
 	}
 
-	/**
-	 * Utility method for creating an RDD out of an in-memory matrix block.
-	 *
-	 * @param sc java spark context
-	 * @param src matrix block
-	 * @param brlen block row length
-	 * @param bclen block column length
-	 * @return JavaPairRDD handle to matrix block
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
-	 */
-	public static JavaPairRDD<MatrixIndexes,MatrixBlock> toMatrixJavaPairRDD(JavaSparkContext sc, MatrixBlock src, int brlen, int bclen)
-		throws DMLRuntimeException
-	{
+	public static JavaPairRDD<MatrixIndexes,MatrixBlock> toMatrixJavaPairRDD(JavaSparkContext sc, MatrixBlock src, int brlen, int bclen) {
+		return toMatrixJavaPairRDD(sc, src, brlen, bclen, -1, true);
+	}
+	
+	public static JavaPairRDD<MatrixIndexes,MatrixBlock> toMatrixJavaPairRDD(JavaSparkContext sc, MatrixBlock src,
+			int brlen, int bclen, int numParts, boolean inclEmpty) {
 		long t0 = DMLScript.STATISTICS ? System.nanoTime() : 0;
 		List<Tuple2<MatrixIndexes,MatrixBlock>> list = null;
 
@@ -697,10 +679,13 @@ public class SparkExecutionContext extends ExecutionContext
 				src.getNumRows(), src.getNumColumns(), brlen, bclen, src.getNonZeros());
 			list = LongStream.range(0, mc.getNumBlocks()).parallel()
 				.mapToObj(i -> createIndexedBlock(src, mc, i))
+				.filter(kv -> inclEmpty || !kv._2.isEmptyBlock(false))
 				.collect(Collectors.toList());
 		}
 
-		JavaPairRDD<MatrixIndexes,MatrixBlock> result = sc.parallelizePairs(list);
+		JavaPairRDD<MatrixIndexes,MatrixBlock> result = (numParts > 1) ?
+			sc.parallelizePairs(list, numParts) : sc.parallelizePairs(list);
+		
 		if (DMLScript.STATISTICS) {
 			Statistics.accSparkParallelizeTime(System.nanoTime() - t0);
 			Statistics.incSparkParallelizeCount(1);
@@ -731,9 +716,7 @@ public class SparkExecutionContext extends ExecutionContext
 		}
 	}
 
-	public static JavaPairRDD<Long,FrameBlock> toFrameJavaPairRDD(JavaSparkContext sc, FrameBlock src)
-		throws DMLRuntimeException
-	{
+	public static JavaPairRDD<Long,FrameBlock> toFrameJavaPairRDD(JavaSparkContext sc, FrameBlock src) {
 		long t0 = DMLScript.STATISTICS ? System.nanoTime() : 0;
 		LinkedList<Tuple2<Long,FrameBlock>> list = new LinkedList<>();
 
@@ -774,12 +757,9 @@ public class SparkExecutionContext extends ExecutionContext
 	 * @param bclen number of columns in a block
 	 * @param nnz number of non-zeros
 	 * @return matrix block
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
 	@SuppressWarnings("unchecked")
-	public static MatrixBlock toMatrixBlock(RDDObject rdd, int rlen, int clen, int brlen, int bclen, long nnz)
-		throws DMLRuntimeException
-	{
+	public static MatrixBlock toMatrixBlock(RDDObject rdd, int rlen, int clen, int brlen, int bclen, long nnz) {
 		return toMatrixBlock(
 				(JavaPairRDD<MatrixIndexes, MatrixBlock>) rdd.getRDD(),
 				rlen, clen, brlen, bclen, nnz);
@@ -799,12 +779,8 @@ public class SparkExecutionContext extends ExecutionContext
 	 * @param bclen number of columns in a block
 	 * @param nnz number of non-zeros
 	 * @return matrix block
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public static MatrixBlock toMatrixBlock(JavaPairRDD<MatrixIndexes,MatrixBlock> rdd, int rlen, int clen, int brlen, int bclen, long nnz)
-		throws DMLRuntimeException
-	{
-
+	public static MatrixBlock toMatrixBlock(JavaPairRDD<MatrixIndexes,MatrixBlock> rdd, int rlen, int clen, int brlen, int bclen, long nnz) {
 		long t0 = DMLScript.STATISTICS ? System.nanoTime() : 0;
 
 		MatrixBlock out = null;
@@ -883,9 +859,7 @@ public class SparkExecutionContext extends ExecutionContext
 	}
 
 	@SuppressWarnings("unchecked")
-	public static MatrixBlock toMatrixBlock(RDDObject rdd, int rlen, int clen, long nnz)
-		throws DMLRuntimeException
-	{
+	public static MatrixBlock toMatrixBlock(RDDObject rdd, int rlen, int clen, long nnz) {
 		return toMatrixBlock(
 				(JavaPairRDD<MatrixIndexes, MatrixCell>) rdd.getRDD(),
 				rlen, clen, nnz);
@@ -900,10 +874,8 @@ public class SparkExecutionContext extends ExecutionContext
 	 * @param clen number of columns
 	 * @param nnz number of non-zeros
 	 * @return matrix block
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
 	public static MatrixBlock toMatrixBlock(JavaPairRDD<MatrixIndexes, MatrixCell> rdd, int rlen, int clen, long nnz)
-		throws DMLRuntimeException
 	{
 		long t0 = DMLScript.STATISTICS ? System.nanoTime() : 0;
 
@@ -945,7 +917,6 @@ public class SparkExecutionContext extends ExecutionContext
 	}
 
 	public static PartitionedBlock<MatrixBlock> toPartitionedMatrixBlock(JavaPairRDD<MatrixIndexes,MatrixBlock> rdd, int rlen, int clen, int brlen, int bclen, long nnz)
-		throws DMLRuntimeException
 	{
 
 		long t0 = DMLScript.STATISTICS ? System.nanoTime() : 0;
@@ -971,16 +942,12 @@ public class SparkExecutionContext extends ExecutionContext
 	}
 
 	@SuppressWarnings("unchecked")
-	public static FrameBlock toFrameBlock(RDDObject rdd, ValueType[] schema, int rlen, int clen)
-		throws DMLRuntimeException
-	{
+	public static FrameBlock toFrameBlock(RDDObject rdd, ValueType[] schema, int rlen, int clen) {
 		JavaPairRDD<Long,FrameBlock> lrdd = (JavaPairRDD<Long,FrameBlock>) rdd.getRDD();
 		return toFrameBlock(lrdd, schema, rlen, clen);
 	}
 
-	public static FrameBlock toFrameBlock(JavaPairRDD<Long,FrameBlock> rdd, ValueType[] schema, int rlen, int clen)
-		throws DMLRuntimeException
-	{
+	public static FrameBlock toFrameBlock(JavaPairRDD<Long,FrameBlock> rdd, ValueType[] schema, int rlen, int clen) {
 		long t0 = DMLScript.STATISTICS ? System.nanoTime() : 0;
 
 		if(schema == null)
@@ -1062,14 +1029,10 @@ public class SparkExecutionContext extends ExecutionContext
 	 *
 	 * @param varParent parent variable
 	 * @param varChild child variable
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public void addLineageRDD(String varParent, String varChild)
-		throws DMLRuntimeException
-	{
+	public void addLineageRDD(String varParent, String varChild) {
 		RDDObject parent = getCacheableData(varParent).getRDDHandle();
 		RDDObject child = getCacheableData(varChild).getRDDHandle();
-
 		parent.addLineageChild( child );
 	}
 
@@ -1078,20 +1041,14 @@ public class SparkExecutionContext extends ExecutionContext
 	 *
 	 * @param varParent parent variable
 	 * @param varChild child variable
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public void addLineageBroadcast(String varParent, String varChild)
-		throws DMLRuntimeException
-	{
+	public void addLineageBroadcast(String varParent, String varChild) {
 		RDDObject parent = getCacheableData(varParent).getRDDHandle();
 		BroadcastObject<?> child = getCacheableData(varChild).getBroadcastHandle();
-
 		parent.addLineageChild( child );
 	}
 
-	public void addLineage(String varParent, String varChild, boolean broadcast)
-		throws DMLRuntimeException
-	{
+	public void addLineage(String varParent, String varChild, boolean broadcast) {
 		if( broadcast )
 			addLineageBroadcast(varParent, varChild);
 		else
@@ -1099,47 +1056,44 @@ public class SparkExecutionContext extends ExecutionContext
 	}
 
 	@Override
-	public void cleanupCacheableData( CacheableData<?> mo )
-		throws DMLRuntimeException
+	public void cleanupCacheableData(CacheableData<?> mo)
 	{
 		//NOTE: this method overwrites the default behavior of cleanupMatrixObject
 		//and hence is transparently used by rmvar instructions and other users. The
 		//core difference is the lineage-based cleanup of RDD and broadcast variables.
 
+		if( !mo.isCleanupEnabled() )
+			return;
+		
 		try
 		{
-			if ( mo.isCleanupEnabled() )
-			{
-				//compute ref count only if matrix cleanup actually necessary
-				if ( !getVariables().hasReferences(mo) )
-				{
-					//clean cached data
-					mo.clearData();
+			//compute ref count only if matrix cleanup actually necessary
+			if( !getVariables().hasReferences(mo) ) {
+				//clean cached data
+				mo.clearData();
 
-					//clean hdfs data if no pending rdd operations on it
-					if( mo.isHDFSFileExists() && mo.getFileName()!=null ) {
-						if( mo.getRDDHandle()==null ) {
-							MapReduceTool.deleteFileWithMTDIfExistOnHDFS(mo.getFileName());
-						}
-						else { //deferred file removal
-							RDDObject rdd = mo.getRDDHandle();
-							rdd.setHDFSFilename(mo.getFileName());
-						}
+				//clean hdfs data if no pending rdd operations on it
+				if( mo.isHDFSFileExists() && mo.getFileName()!=null ) {
+					if( mo.getRDDHandle()==null ) {
+						MapReduceTool.deleteFileWithMTDIfExistOnHDFS(mo.getFileName());
 					}
+					else { //deferred file removal
+						RDDObject rdd = mo.getRDDHandle();
+						rdd.setHDFSFilename(mo.getFileName());
+					}
+				}
 
-					//cleanup RDD and broadcast variables (recursive)
-					//note: requires that mo.clearData already removed back references
-					if( mo.getRDDHandle()!=null ) {
- 						rCleanupLineageObject(mo.getRDDHandle());
-					}
-					if( mo.getBroadcastHandle()!=null ) {
-						rCleanupLineageObject(mo.getBroadcastHandle());
-					}
+				//cleanup RDD and broadcast variables (recursive)
+				//note: requires that mo.clearData already removed back references
+				if( mo.getRDDHandle()!=null ) {
+					rCleanupLineageObject(mo.getRDDHandle());
+				}
+				if( mo.getBroadcastHandle()!=null ) {
+					rCleanupLineageObject(mo.getBroadcastHandle());
 				}
 			}
 		}
-		catch(Exception ex)
-		{
+		catch(Exception ex) {
 			throw new DMLRuntimeException(ex);
 		}
 	}
@@ -1215,9 +1169,7 @@ public class SparkExecutionContext extends ExecutionContext
 	}
 
 	@SuppressWarnings("unchecked")
-	public void repartitionAndCacheMatrixObject( String var )
-		throws DMLRuntimeException
-	{
+	public void repartitionAndCacheMatrixObject( String var ) {
 		MatrixObject mo = getMatrixObject(var);
 		MatrixCharacteristics mcIn = mo.getMatrixCharacteristics();
 
@@ -1264,9 +1216,7 @@ public class SparkExecutionContext extends ExecutionContext
 	}
 
 	@SuppressWarnings("unchecked")
-	public void cacheMatrixObject( String var )
-		throws DMLRuntimeException
-	{
+	public void cacheMatrixObject( String var ) {
 		//get input rdd and default storage level
 		MatrixObject mo = getMatrixObject(var);
 
@@ -1283,18 +1233,39 @@ public class SparkExecutionContext extends ExecutionContext
 			in.count(); //trigger caching to prevent contention
 	}
 
-	public void setThreadLocalSchedulerPool(String poolName) {
+	public int setThreadLocalSchedulerPool() {
+		int pool = -1;
 		if( FAIR_SCHEDULER_MODE ) {
+			pool = allocSchedulerPoolName();
 			getSparkContext().sc().setLocalProperty(
-					"spark.scheduler.pool", poolName);
+				"spark.scheduler.pool", "parforPool"+pool);
 		}
+		return pool;
 	}
 
-	public void cleanupThreadLocalSchedulerPool() {
+	public void cleanupThreadLocalSchedulerPool(int pool) {
 		if( FAIR_SCHEDULER_MODE ) {
+			freeSchedulerPoolName(pool);
 			getSparkContext().sc().setLocalProperty(
-					"spark.scheduler.pool", null);
+				"spark.scheduler.pool", null);
 		}
+	}
+	
+	private static synchronized int allocSchedulerPoolName() {
+		int pool = ArrayUtils.indexOf(_poolBuff, false);
+		//grow pool on demand
+		if( pool < 0 ) {
+			pool = _poolBuff.length;
+			_poolBuff = Arrays.copyOf(_poolBuff,
+				(int)Math.min(2L*pool, Integer.MAX_VALUE));
+		}
+		//mark pool name for in use
+		_poolBuff[pool] = true;
+		return pool;
+	}
+	
+	private static synchronized void freeSchedulerPoolName(int pool) {
+		_poolBuff[pool] = false;
 	}
 
 	private boolean isRDDMarkedForCaching( int rddID ) {

@@ -107,7 +107,7 @@ public class TernaryOp extends Hop
 	}
 
 	@Override
-	public void checkArity() throws HopsException {
+	public void checkArity() {
 		int sz = _input.size();
 		if (_dimInputsPresent) {
 			// only CTABLE
@@ -130,8 +130,8 @@ public class TernaryOp extends Hop
 		if(!DMLScript.USE_ACCELERATOR)
 			return false;
 		switch( _op ) {
-			case CENTRALMOMENT:
-			case COVARIANCE:
+			case MOMENT:
+			case COV:
 			case CTABLE:
 			case INTERQUANTILE:
 			case QUANTILE:
@@ -147,8 +147,7 @@ public class TernaryOp extends Hop
 	
 	@Override
 	public Lop constructLops() 
-		throws HopsException, LopsException 
-	{	
+	{
 		//return already created lops
 		if( getLops() != null )
 			return getLops();
@@ -156,11 +155,11 @@ public class TernaryOp extends Hop
 		try 
 		{
 			switch( _op ) {
-				case CENTRALMOMENT:
+				case MOMENT:
 					constructLopsCentralMoment();
 					break;
 					
-				case COVARIANCE:
+				case COV:
 					constructLopsCovariance();
 					break;
 					
@@ -196,15 +195,11 @@ public class TernaryOp extends Hop
 
 	/**
 	 * Method to construct LOPs when op = CENTRAILMOMENT.
-	 * 
-	 * @throws HopsException if HopsException occurs
-	 * @throws LopsException if LopsException occurs
 	 */
-	private void constructLopsCentralMoment() 
-		throws HopsException, LopsException 
+	private void constructLopsCentralMoment()
 	{	
-		if ( _op != OpOp3.CENTRALMOMENT )
-			throw new HopsException("Unexpected operation: " + _op + ", expecting " + OpOp3.CENTRALMOMENT );
+		if ( _op != OpOp3.MOMENT )
+			throw new HopsException("Unexpected operation: " + _op + ", expecting " + OpOp3.MOMENT );
 		
 		ExecType et = optFindExecType();
 		
@@ -250,15 +245,10 @@ public class TernaryOp extends Hop
 	
 	/**
 	 * Method to construct LOPs when op = COVARIANCE.
-	 * 
-	 * @throws HopsException if HopsException occurs
-	 * @throws LopsException if LopsException occurs
 	 */
-	private void constructLopsCovariance()
-		throws HopsException, LopsException 
-	{	
-		if ( _op != OpOp3.COVARIANCE )
-			throw new HopsException("Unexpected operation: " + _op + ", expecting " + OpOp3.COVARIANCE );
+	private void constructLopsCovariance() {
+		if ( _op != OpOp3.COV )
+			throw new HopsException("Unexpected operation: " + _op + ", expecting " + OpOp3.COV );
 		
 		ExecType et = optFindExecType();
 		
@@ -308,11 +298,8 @@ public class TernaryOp extends Hop
 	
 	/**
 	 * Method to construct LOPs when op = QUANTILE | INTERQUANTILE.
-	 * 
-	 * @throws HopsException if HopsException occurs
-	 * @throws LopsException if LopsException occurs
 	 */
-	private void constructLopsQuantile() throws HopsException, LopsException {
+	private void constructLopsQuantile() {
 		
 		if ( _op != OpOp3.QUANTILE && _op != OpOp3.INTERQUANTILE )
 			throw new HopsException("Unexpected operation: " + _op + ", expecting " + OpOp3.QUANTILE + " or " + OpOp3.INTERQUANTILE );
@@ -390,11 +377,8 @@ public class TernaryOp extends Hop
 
 	/**
 	 * Method to construct LOPs when op = CTABLE.
-	 * 
-	 * @throws HopsException if HopsException occurs
-	 * @throws LopsException if LopsException occurs
 	 */
-	private void constructLopsCtable() throws HopsException, LopsException {
+	private void constructLopsCtable() {
 		
 		if ( _op != OpOp3.CTABLE )
 			throw new HopsException("Unexpected operation: " + _op + ", expecting " + OpOp3.CTABLE );
@@ -645,7 +629,6 @@ public class TernaryOp extends Hop
 	}
 
 	private void constructLopsTernaryDefault() 
-		throws HopsException, LopsException 
 	{
 		ExecType et = optFindExecType();
 		if( getInput().stream().allMatch(h -> h.getDataType().isScalar()) )
@@ -831,8 +814,7 @@ public class TernaryOp extends Hop
 
 	@Override
 	protected ExecType optFindExecType() 
-		throws HopsException 
-	{	
+	{
 		checkAndSetForcedPlatform();
 
 		ExecType REMOTE = OptimizerUtils.isSparkExecutionMode() ? ExecType.SPARK : ExecType.MR;

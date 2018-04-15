@@ -186,11 +186,8 @@ public class Connection implements Closeable
 	 * @param inputs string array of input variables to register
 	 * @param outputs string array of output variables to register
 	 * @return PreparedScript object representing the precompiled script
-	 * @throws DMLException if DMLException occurs
 	 */
-	public PreparedScript prepareScript( String script, String[] inputs, String[] outputs) 
-		throws DMLException 
-	{
+	public PreparedScript prepareScript( String script, String[] inputs, String[] outputs) {
 		return prepareScript(script, inputs, outputs, false);
 	}
 	
@@ -202,11 +199,8 @@ public class Connection implements Closeable
 	 * @param outputs string array of output variables to register
 	 * @param parsePyDML {@code true} if PyDML, {@code false} if DML
 	 * @return PreparedScript object representing the precompiled script
-	 * @throws DMLException if DMLException occurs
 	 */
-	public PreparedScript prepareScript( String script, String[] inputs, String[] outputs, boolean parsePyDML) 
-		throws DMLException 
-	{
+	public PreparedScript prepareScript( String script, String[] inputs, String[] outputs, boolean parsePyDML) {
 		return prepareScript(script, new HashMap<String,String>(), inputs, outputs, parsePyDML);
 	}
 	
@@ -219,11 +213,8 @@ public class Connection implements Closeable
 	 * @param outputs string array of output variables to register
 	 * @param parsePyDML {@code true} if PyDML, {@code false} if DML
 	 * @return PreparedScript object representing the precompiled script
-	 * @throws DMLException if DMLException occurs
 	 */
-	public PreparedScript prepareScript( String script, Map<String, String> args, String[] inputs, String[] outputs, boolean parsePyDML) 
-		throws DMLException 
-	{
+	public PreparedScript prepareScript( String script, Map<String, String> args, String[] inputs, String[] outputs, boolean parsePyDML) {
 		DMLScript.SCRIPT_TYPE = parsePyDML ? ScriptType.PYDML : ScriptType.DML;
 		
 		//check for valid names of passed arguments
@@ -430,7 +421,9 @@ public class Connection implements Closeable
 	 * @throws IOException if IOException occurs
 	 */
 	public double[][] convertToDoubleMatrix(String input, int rows, int cols) throws IOException {
-		return convertToDoubleMatrix(IOUtilFunctions.toInputStream(input), rows, cols);
+		try( InputStream is = IOUtilFunctions.toInputStream(input) ) {
+			return convertToDoubleMatrix(is, rows, cols);
+		}
 	}
 	
 	/**
@@ -476,7 +469,9 @@ public class Connection implements Closeable
 	 * @throws IOException if IOException occurs
 	 */
 	public MatrixBlock convertToMatrix(String input, String meta) throws IOException {
-		return convertToMatrix(IOUtilFunctions.toInputStream(input), meta);
+		try( InputStream is = IOUtilFunctions.toInputStream(input) ) {
+			return convertToMatrix(is, meta);
+		}
 	}
 	
 	/**
@@ -518,7 +513,9 @@ public class Connection implements Closeable
 	 * @throws IOException if IOException occurs
 	 */
 	public MatrixBlock convertToMatrix(String input, int rows, int cols) throws IOException {
-		return convertToMatrix(IOUtilFunctions.toInputStream(input), rows, cols);
+		try( InputStream is = IOUtilFunctions.toInputStream(input) ) {
+			return convertToMatrix(is, rows, cols);
+		}
 	}
 	
 	/**
@@ -664,7 +661,9 @@ public class Connection implements Closeable
 	 * @throws IOException if IOException occurs
 	 */
 	public String[][] convertToStringFrame(String input, int rows, int cols) throws IOException {
-		return convertToStringFrame(IOUtilFunctions.toInputStream(input), rows, cols);
+		try( InputStream is = IOUtilFunctions.toInputStream(input) ) {
+			return convertToStringFrame(is, rows, cols);
+		}
 	}
 	
 	/**
@@ -710,7 +709,9 @@ public class Connection implements Closeable
 	 * @throws IOException if IOException occurs
 	 */
 	public FrameBlock convertToFrame(String input, String meta) throws IOException {
-		return convertToFrame(IOUtilFunctions.toInputStream(input), meta);
+		try( InputStream is = IOUtilFunctions.toInputStream(input) ) {
+			return convertToFrame(is, meta);
+		}
 	}
 	
 	/**
@@ -752,7 +753,9 @@ public class Connection implements Closeable
 	 * @throws IOException if IOException occurs
 	 */
 	public FrameBlock convertToFrame(String input, int rows, int cols) throws IOException {
-		return convertToFrame(IOUtilFunctions.toInputStream(input), rows, cols);
+		try( InputStream is = IOUtilFunctions.toInputStream(input) ) {
+			return convertToFrame(is, rows, cols);
+		}
 	}
 	
 	/**

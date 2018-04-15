@@ -43,29 +43,23 @@ public class CastSPInstruction extends UnarySPInstruction {
 		super(SPType.Cast, op, in, out, opcode, istr);
 	}
 
-	public static CastSPInstruction parseInstruction ( String str ) 
-		throws DMLRuntimeException 
-	{
+	public static CastSPInstruction parseInstruction ( String str ) {
 		String[] parts = InstructionUtils.getInstructionPartsWithValueType(str);
 		InstructionUtils.checkNumFields(parts, 2);
-		
 		String opcode = parts[0];
 		CPOperand in = new CPOperand(parts[1]);
 		CPOperand out = new CPOperand(parts[2]);
-
 		return new CastSPInstruction(null, in, out, opcode, str);
 	}
 	
 	@Override
 	@SuppressWarnings("unchecked")
-	public void processInstruction(ExecutionContext ec)
-			throws DMLRuntimeException 
-	{
+	public void processInstruction(ExecutionContext ec) {
 		SparkExecutionContext sec = (SparkExecutionContext)ec;
 		String opcode = getOpcode();
 		
 		//get input RDD and prepare output
-		JavaPairRDD<?,?> in = sec.getRDDHandleForVariable( input1.getName(), InputInfo.BinaryBlockInputInfo );
+		JavaPairRDD<?,?> in = sec.getRDDHandleForVariable(input1.getName(), InputInfo.BinaryBlockInputInfo, -1, true);
 		MatrixCharacteristics mcIn = sec.getMatrixCharacteristics( input1.getName() );
 		JavaPairRDD<?,?> out = null;
 		

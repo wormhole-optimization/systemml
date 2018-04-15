@@ -60,8 +60,8 @@ object ParseExplain {
         val children = parseChildrenString(tmp, literals, memo)
         val dim1 = match.groupValues[4].toLong()
         val dim2 = match.groupValues[5].toLong()
-        val rowsInBlock = match.groupValues[6].toLong()
-        val colsInBlock = match.groupValues[7].toLong()
+        val rowsInBlock = match.groupValues[6].toInt()
+        val colsInBlock = match.groupValues[7].toInt()
         val nnz = match.groupValues[8].toLong()
         val dataType = when(match.groupValues[9][0]) {
             'M' -> Expression.DataType.MATRIX
@@ -172,7 +172,7 @@ object ParseExplain {
     }
 
     private fun createHop(id: Long, opString: String, inp: List<Hop>,
-                          dim1: Long, dim2: Long, rowsInBlock: Long, colsInBlock: Long, nnz: Long,
+                          dim1: Long, dim2: Long, rowsInBlock: Int, colsInBlock: Int, nnz: Long,
                           dataType: Expression.DataType, valueType: Expression.ValueType,
                           literals: HashMap<String, Long>, memo: HashMap<Long, Hop>
     ): Hop {

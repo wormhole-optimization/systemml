@@ -61,7 +61,6 @@ import org.apache.sysml.lops.CSVReBlock;
 import org.apache.sysml.lops.DataGen;
 import org.apache.sysml.lops.Lop;
 import org.apache.sysml.lops.LopProperties.ExecType;
-import org.apache.sysml.lops.LopsException;
 import org.apache.sysml.lops.ReBlock;
 import org.apache.sysml.lops.compile.Dag;
 import org.apache.sysml.parser.DMLProgram;
@@ -154,7 +153,6 @@ public class Recompiler
 	
 	public static ArrayList<Instruction> recompileHopsDag( StatementBlock sb, ArrayList<Hop> hops, 
 			LocalVariableMap vars, RecompileStatus status, boolean inplace, boolean replaceLit, long tid ) 
-		throws DMLRuntimeException, HopsException, LopsException
 	{
 		ArrayList<Instruction> newInst = null;
 		inplace = !ConfigurationManager.isSpoofEnabled() && inplace;
@@ -182,7 +180,6 @@ public class Recompiler
 	
 	public static ArrayList<Instruction> recompileHopsDag( Hop hop, LocalVariableMap vars, 
 			RecompileStatus status, boolean inplace, boolean replaceLit, long tid ) 
-		throws DMLRuntimeException, HopsException, LopsException
 	{
 		ArrayList<Instruction> newInst;
 		inplace = !ConfigurationManager.isSpoofEnabled() && inplace;
@@ -205,7 +202,6 @@ public class Recompiler
 	}
 	
 	public static ArrayList<Instruction> recompileHopsDag2Forced( StatementBlock sb, ArrayList<Hop> hops, long tid, ExecType et )
-		throws DMLRuntimeException, HopsException, LopsException
 	{
 		ArrayList<Instruction> newInst = null;
 		
@@ -228,7 +224,6 @@ public class Recompiler
 	}
 	
 	public static ArrayList<Instruction> recompileHopsDag2Forced( Hop hop, long tid, ExecType et ) 
-		throws DMLRuntimeException, HopsException, LopsException
 	{
 		ArrayList<Instruction> newInst = null;
 
@@ -251,7 +246,6 @@ public class Recompiler
 	}
 
 	public static ArrayList<Instruction> recompileHopsDagInstructions( StatementBlock sb, ArrayList<Hop> hops ) 
-		throws DMLRuntimeException, HopsException, LopsException
 	{
 		ArrayList<Instruction> newInst = null;
 
@@ -270,7 +264,6 @@ public class Recompiler
 	}
 
 	public static ArrayList<Instruction> recompileHopsDagInstructions( Hop hop )
-		throws DMLRuntimeException, HopsException, LopsException
 	{
 		ArrayList<Instruction> newInst = null;
 
@@ -304,13 +297,9 @@ public class Recompiler
 	 * @param et given execution type
 	 * @param tid thread id, 0 for main or before worker creation
 	 * @return modified list of instructions
-	 * @throws HopsException if hop compile error
-	 * @throws LopsException if lop compile error
-	 * @throws DMLRuntimeException if runtime error on literal replacement
 	 */
 	private static ArrayList<Instruction> recompile(StatementBlock sb, ArrayList<Hop> hops, LocalVariableMap vars, RecompileStatus status,
 		boolean inplace, boolean replaceLit, boolean updateStats, boolean forceEt, boolean pred, ExecType et, long tid ) 
-			throws HopsException, LopsException, DMLRuntimeException
 	{
 		// prepare hops dag for recompile
 		if( !inplace ){ 
@@ -409,9 +398,7 @@ public class Recompiler
 		return newInst;
 	}
 	
-	private static void logExplainDAG(StatementBlock sb, ArrayList<Hop> hops, ArrayList<Instruction> inst)
-		throws DMLRuntimeException
-	{
+	private static void logExplainDAG(StatementBlock sb, ArrayList<Hop> hops, ArrayList<Instruction> inst) {
 		if( DMLScript.EXPLAIN == ExplainType.RECOMPILE_HOPS ) {
 			LOG.info("EXPLAIN RECOMPILE \nGENERIC (lines "+sb.getBeginLine()+"-"+sb.getEndLine()+"):\n" +
 			Explain.explainHops(hops, 1));
@@ -422,31 +409,18 @@ public class Recompiler
 		}
 	}
 	
-	private static void logExplainPred(Hop hops, ArrayList<Instruction> inst)
-		throws DMLRuntimeException
-	{
+	private static void logExplainPred(Hop hops, ArrayList<Instruction> inst) {
 		if( DMLScript.EXPLAIN == ExplainType.RECOMPILE_HOPS )
 			LOG.info("EXPLAIN RECOMPILE \nPRED (line "+hops.getBeginLine()+"):\n" + Explain.explain(hops,1));
 		if( DMLScript.EXPLAIN == ExplainType.RECOMPILE_RUNTIME )
 			LOG.info("EXPLAIN RECOMPILE \nPRED (line "+hops.getBeginLine()+"):\n" + Explain.explain(inst,1));
 	}
 
-	public static void recompileProgramBlockHierarchy( ArrayList<ProgramBlock> pbs, LocalVariableMap vars, long tid, ResetType resetRecompile ) 
-		throws DMLRuntimeException
-	{
-		try 
-		{
-			RecompileStatus status = new RecompileStatus();
-			
-			synchronized( pbs )
-			{
-				for( ProgramBlock pb : pbs )
-					rRecompileProgramBlock(pb, vars, status, tid, resetRecompile);
-			}
-		}
-		catch(Exception ex)
-		{
-			throw new DMLRuntimeException("Unable to recompile program block hierarchy.", ex);
+	public static void recompileProgramBlockHierarchy( ArrayList<ProgramBlock> pbs, LocalVariableMap vars, long tid, ResetType resetRecompile ) {
+		RecompileStatus status = new RecompileStatus();
+		synchronized( pbs ) {
+			for( ProgramBlock pb : pbs )
+				rRecompileProgramBlock(pb, vars, status, tid, resetRecompile);
 		}
 	}
 	
@@ -459,22 +433,11 @@ public class Recompiler
 	 * @param tid thread id
 	 * @param fnStack function stack
 	 * @param et execution type
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public static void recompileProgramBlockHierarchy2Forced( ArrayList<ProgramBlock> pbs, long tid, HashSet<String> fnStack, ExecType et ) 
-		throws DMLRuntimeException
-	{
-		try 
-		{
-			synchronized( pbs )
-			{
-				for( ProgramBlock pb : pbs )
-					rRecompileProgramBlock2Forced(pb, tid, fnStack, et);
-			}
-		}
-		catch(Exception ex)
-		{
-			throw new DMLRuntimeException("Unable to recompile program block hierarchy to CP.", ex);
+	public static void recompileProgramBlockHierarchy2Forced( ArrayList<ProgramBlock> pbs, long tid, HashSet<String> fnStack, ExecType et ) {
+		synchronized( pbs ) {
+			for( ProgramBlock pb : pbs )
+				rRecompileProgramBlock2Forced(pb, tid, fnStack, et);
 		}
 	}
 	
@@ -485,13 +448,10 @@ public class Recompiler
 	 * and better performance for recompiling individual program blocks.  
 	 * 
 	 * @param pb program block
-	 * @throws HopsException if HopsException occurs
-	 * @throws LopsException if LopsException occurs
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 * @throws IOException if IOException occurs
 	 */
 	public static void recompileProgramBlockInstructions(ProgramBlock pb) 
-		throws HopsException, LopsException, DMLRuntimeException, IOException
+		throws IOException
 	{
 		if( pb instanceof WhileProgramBlock )
 		{
@@ -556,10 +516,8 @@ public class Recompiler
 	 * 
 	 * @param hops list of high-level operators
 	 * @return list of high-level operators
-	 * @throws HopsException if HopsException occurs
 	 */
 	public static ArrayList<Hop> deepCopyHopsDag( List<Hop> hops )
-		throws HopsException 
 	{
 		ArrayList<Hop> ret = new ArrayList<>(hops.size());
 		
@@ -582,11 +540,8 @@ public class Recompiler
 	 * 
 	 * @param hops high-level operator
 	 * @return high-level operator
-	 * @throws HopsException if HopsException occurs
 	 */
-	public static Hop deepCopyHopsDag( Hop hops )
-		throws HopsException 
-	{
+	public static Hop deepCopyHopsDag( Hop hops ) {
 		Hop ret = null;
 		
 		try {
@@ -655,7 +610,6 @@ public class Recompiler
 	
 	private static void rRecompileProgramBlock( ProgramBlock pb, LocalVariableMap vars, 
 		RecompileStatus status, long tid, ResetType resetRecompile ) 
-		throws HopsException, DMLRuntimeException, LopsException, IOException
 	{
 		if (pb instanceof WhileProgramBlock)
 		{
@@ -977,7 +931,6 @@ public class Recompiler
 	//helper functions for predicate recompile
 	
 	private static void recompileIfPredicate( IfProgramBlock ipb, IfStatementBlock isb, LocalVariableMap vars, RecompileStatus status, long tid, ResetType resetRecompile ) 
-		throws DMLRuntimeException, HopsException, LopsException, IOException
 	{
 		if( isb == null )
 			return;
@@ -995,9 +948,7 @@ public class Recompiler
 		}
 	}
 	
-	private static void recompileWhilePredicate( WhileProgramBlock wpb, WhileStatementBlock wsb, LocalVariableMap vars, RecompileStatus status, long tid, ResetType resetRecompile ) 
-		throws DMLRuntimeException, HopsException, LopsException, IOException
-	{
+	private static void recompileWhilePredicate( WhileProgramBlock wpb, WhileStatementBlock wsb, LocalVariableMap vars, RecompileStatus status, long tid, ResetType resetRecompile ) {
 		if( wsb == null )
 			return;
 		
@@ -1014,9 +965,7 @@ public class Recompiler
 		}
 	}
 	
-	private static void recompileForPredicates( ForProgramBlock fpb, ForStatementBlock fsb, LocalVariableMap vars, RecompileStatus status, long tid, ResetType resetRecompile ) 
-		throws DMLRuntimeException, HopsException, LopsException, IOException
-	{
+	private static void recompileForPredicates( ForProgramBlock fpb, ForStatementBlock fsb, LocalVariableMap vars, RecompileStatus status, long tid, ResetType resetRecompile ) {
 		if( fsb != null )
 		{
 			Hop fromHops = fsb.getFromHops();
@@ -1068,9 +1017,7 @@ public class Recompiler
 		}
 	}
 	
-	private static void rRecompileProgramBlock2Forced( ProgramBlock pb, long tid, HashSet<String> fnStack, ExecType et ) 
-		throws HopsException, DMLRuntimeException, LopsException, IOException
-	{
+	private static void rRecompileProgramBlock2Forced( ProgramBlock pb, long tid, HashSet<String> fnStack, ExecType et ) {
 		if (pb instanceof WhileProgramBlock)
 		{
 			WhileProgramBlock pbTmp = (WhileProgramBlock)pb;
@@ -1335,7 +1282,6 @@ public class Recompiler
 	}
 	
 	public static void rUpdateStatistics( Hop hop, LocalVariableMap vars ) 
-		throws DMLRuntimeException
 	{
 		if( hop.isVisited() )
 			return;
@@ -1472,10 +1418,8 @@ public class Recompiler
 	 * @param vars local variable map
 	 * @param scalarsOnly if true, replace only scalar variables but no matrix operations;
 	 *            if false, apply full literal replacement
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public static void rReplaceLiterals( Hop hop, LocalVariableMap vars, boolean scalarsOnly ) 
-		throws DMLRuntimeException
+	public static void rReplaceLiterals( Hop hop, LocalVariableMap vars, boolean scalarsOnly )
 	{
 		//public interface 
 		LiteralReplacement.rReplaceLiterals(hop, vars, scalarsOnly);
@@ -1505,11 +1449,10 @@ public class Recompiler
 	 * @param inputs the inputs
 	 * @return return true if and only if all instructions are reblock instructions and all
 	 * individual reblock oeprations fir in the current memory budget.
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 * @throws IOException if IOException occurs
 	 */
 	public static boolean checkCPReblock(MRJobInstruction inst, MatrixObject[] inputs) 
-		throws DMLRuntimeException, IOException 
+		throws IOException 
 	{
 		boolean ret = true;
 		
@@ -1631,10 +1574,8 @@ public class Recompiler
 	 * @param ec execution context
 	 * @param varin variable
 	 * @return true if CP reblock?
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
 	public static boolean checkCPReblock(ExecutionContext ec, String varin) 
-		throws DMLRuntimeException
 	{
 		CacheableData<?> obj = ec.getCacheableData(varin);
 		MatrixCharacteristics mc = ec.getMatrixCharacteristics(varin);
@@ -1691,7 +1632,6 @@ public class Recompiler
 	}
 	
 	public static boolean checkCPDataGen( MRJobInstruction inst, String updatedRandInst ) 
-		throws DMLRuntimeException 
 	{
 		boolean ret = true;
 		
@@ -1757,9 +1697,7 @@ public class Recompiler
 		return ret;
 	}
 	
-	public static void executeInMemoryMatrixReblock(ExecutionContext ec, String varin, String varout) 
-		throws DMLRuntimeException
-	{
+	public static void executeInMemoryMatrixReblock(ExecutionContext ec, String varin, String varout) {
 		MatrixObject in = ec.getMatrixObject(varin);
 		MatrixObject out = ec.getMatrixObject(varout);
 
@@ -1770,11 +1708,10 @@ public class Recompiler
 		//set output (incl update matrix characteristics)
 		out.acquireModify( mb );
 		out.release();
-		in.release();				
+		in.release();
 	}
 	
 	public static void executeInMemoryFrameReblock(ExecutionContext ec, String varin, String varout) 
-		throws DMLRuntimeException
 	{
 		FrameObject in = ec.getFrameObject(varin);
 		FrameObject out = ec.getFrameObject(varout);
@@ -1786,11 +1723,10 @@ public class Recompiler
 		//set output (incl update matrix characteristics)
 		out.acquireModify( fb );
 		out.release();
-		in.release();				
+		in.release();
 	}
 	
 	private static void tryReadMetaDataFileMatrixCharacteristics( DataOp dop )
-		throws DMLRuntimeException
 	{
 		try
 		{
@@ -1817,8 +1753,7 @@ public class Recompiler
 				}
 			}
 		}
-		catch(Exception ex)
-		{
+		catch(Exception ex) {
 			throw new DMLRuntimeException(ex);
 		}
 	}

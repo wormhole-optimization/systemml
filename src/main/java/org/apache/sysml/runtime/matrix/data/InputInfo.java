@@ -54,10 +54,15 @@ public class InputInfo implements Serializable
 		inputValueClass=valueCls;
 	}
 
-	public void setMetaData(MetaData md)
-	{
+	public void setMetaData(MetaData md) {
 		metadata=md;
 	}
+	
+	public boolean isTextIJV() {
+		return this == InputInfo.TextCellInputInfo
+			|| this == InputInfo.MatrixMarketInputInfo;
+	}
+	
 	public static final InputInfo TextCellInputInfo=new InputInfo(TextInputFormat.class, 
 			 LongWritable.class, Text.class);
 	public static final InputInfo MatrixMarketInputInfo = new InputInfo (TextInputFormat.class, 
@@ -83,7 +88,7 @@ public class InputInfo implements Serializable
 	public static final InputInfo CSVInputInfo=new InputInfo(TextInputFormat.class, 
 			 LongWritable.class, Text.class);
 	
-	public static OutputInfo getMatchingOutputInfo(InputInfo ii) throws DMLRuntimeException {
+	public static OutputInfo getMatchingOutputInfo(InputInfo ii) {
 		if ( ii == InputInfo.BinaryBlockInputInfo )
 			return OutputInfo.BinaryBlockOutputInfo;
 		else if ( ii == InputInfo.MatrixMarketInputInfo)
@@ -140,9 +145,7 @@ public class InputInfo implements Serializable
 		return null;
 	}
 	
-	public static String inputInfoToString (InputInfo ii) 
-		throws DMLRuntimeException 
-	{
+	public static String inputInfoToString (InputInfo ii) {
 		if ( ii == TextCellInputInfo )
 			return "textcell";
 		else if ( ii == BinaryCellInputInfo )

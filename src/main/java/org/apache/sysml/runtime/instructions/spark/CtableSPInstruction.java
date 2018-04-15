@@ -61,10 +61,10 @@ public class CtableSPInstruction extends ComputationSPInstruction {
 	private boolean _isExpand;
 	private boolean _ignoreZeros;
 
-	private CtableSPInstruction(Operator op, CPOperand in1, CPOperand in2, CPOperand in3, CPOperand out,
+	private CtableSPInstruction(CPOperand in1, CPOperand in2, CPOperand in3, CPOperand out,
 			String outputDim1, boolean dim1Literal, String outputDim2, boolean dim2Literal, boolean isExpand,
 			boolean ignoreZeros, String opcode, String istr) {
-		super(SPType.Ctable, op, in1, in2, in3, out, opcode, istr);
+		super(SPType.Ctable, null, in1, in2, in3, out, opcode, istr);
 		_outDim1 = outputDim1;
 		_dim1Literal = dim1Literal;
 		_outDim2 = outputDim2;
@@ -73,9 +73,7 @@ public class CtableSPInstruction extends ComputationSPInstruction {
 		_ignoreZeros = ignoreZeros;
 	}
 
-	public static CtableSPInstruction parseInstruction(String inst) 
-		throws DMLRuntimeException
-	{	
+	public static CtableSPInstruction parseInstruction(String inst) {
 		String[] parts = InstructionUtils.getInstructionPartsWithValueType(inst);
 		InstructionUtils.checkNumFields ( parts, 7 );
 		
@@ -100,14 +98,12 @@ public class CtableSPInstruction extends ComputationSPInstruction {
 		boolean ignoreZeros = Boolean.parseBoolean(parts[7]);
 		
 		// ctable does not require any operator, so we simply pass-in a dummy operator with null functionobject
-		return new CtableSPInstruction(new SimpleOperator(null), in1, in2, in3, out, dim1Fields[0], Boolean.parseBoolean(dim1Fields[1]), dim2Fields[0], Boolean.parseBoolean(dim2Fields[1]), isExpand, ignoreZeros, opcode, inst);
+		return new CtableSPInstruction(in1, in2, in3, out, dim1Fields[0], Boolean.parseBoolean(dim1Fields[1]), dim2Fields[0], Boolean.parseBoolean(dim2Fields[1]), isExpand, ignoreZeros, opcode, inst);
 	}
 
 
 	@Override
-	public void processInstruction(ExecutionContext ec) 
-		throws DMLRuntimeException 
-	{	
+	public void processInstruction(ExecutionContext ec) {
 		SparkExecutionContext sec = (SparkExecutionContext)ec;
 	
 		//get input rdd handle

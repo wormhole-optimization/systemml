@@ -24,8 +24,8 @@ import java.util.HashMap;
 
 import org.apache.sysml.hops.DataOp;
 import org.apache.sysml.hops.Hop;
-import org.apache.sysml.hops.HopsException;
 import org.apache.sysml.hops.LiteralOp;
+import org.apache.sysml.hops.Hop.DataOpTypes;
 
 /**
  * Rule: CommonSubexpressionElimination. For all statement blocks, 
@@ -51,7 +51,6 @@ public class RewriteCommonSubexpressionElimination extends HopRewriteRule
 	
 	@Override
 	public ArrayList<Hop> rewriteHopDAGs(ArrayList<Hop> roots, ProgramRewriteStatus state) 
-		throws HopsException
 	{
 		if( roots == null )
 			return null;
@@ -76,7 +75,6 @@ public class RewriteCommonSubexpressionElimination extends HopRewriteRule
 
 	@Override
 	public Hop rewriteHopDAG(Hop root, ProgramRewriteStatus state) 
-		throws HopsException 
 	{
 		if( root == null )
 			return null;
@@ -97,13 +95,13 @@ public class RewriteCommonSubexpressionElimination extends HopRewriteRule
 	}
 	
 	private int rule_CommonSubexpressionElimination_MergeLeafs( Hop hop, HashMap<String, Hop> dataops, HashMap<String, Hop> literalops ) 
-		throws HopsException 
 	{
 		int ret = 0;
 		if( hop.isVisited() )
 			return ret;
 
-		if( hop.getInput().isEmpty() ) //LEAF NODE
+		if( hop.getInput().isEmpty() //LEAF NODE
+			|| HopRewriteUtils.isData(hop, DataOpTypes.TRANSIENTREAD) )
 		{
 			if( hop instanceof LiteralOp )
 			{
@@ -159,7 +157,6 @@ public class RewriteCommonSubexpressionElimination extends HopRewriteRule
 	}
 
 	private int rule_CommonSubexpressionElimination( Hop hop ) 
-		throws HopsException 
 	{
 		int ret = 0;
 		if( hop.isVisited() )
@@ -219,5 +216,4 @@ public class RewriteCommonSubexpressionElimination extends HopRewriteRule
 
 		return ret;
 	}
-
 }

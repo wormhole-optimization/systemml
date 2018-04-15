@@ -28,8 +28,8 @@ n = as.integer(args[1]);
 X = matrix(0, n, 0);
 R = rbind(rbind(rbind(rbind(
   as.matrix(sum(X)==0),
-  as.matrix(min(X)==(1.0/0.0))),
-  as.matrix(max(X)==(-1.0/0.0))),
+  as.matrix(min(X)==Inf)),
+  as.matrix(max(X)==-Inf)),
   as.matrix(is.nan(mean(X)))),
   as.matrix(is.na(sd(X))));
 

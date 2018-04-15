@@ -67,22 +67,19 @@ public class DataConverter
 	///////
 
 	public static void writeMatrixToHDFS(MatrixBlock mat, String dir, OutputInfo outputinfo,  MatrixCharacteristics mc )
-		throws IOException
-	{
+		throws IOException {
 		writeMatrixToHDFS(mat, dir, outputinfo, mc, -1, null);
 	}
 
 	public static void writeMatrixToHDFS(MatrixBlock mat, String dir, OutputInfo outputinfo, MatrixCharacteristics mc, int replication, FileFormatProperties formatProperties)
-		throws IOException
-	{
-		try {
-			MatrixWriter writer = MatrixWriterFactory.createMatrixWriter( outputinfo, replication, formatProperties );
-			writer.writeMatrixToHDFS(mat, dir, mc.getRows(), mc.getCols(), mc.getRowsPerBlock(), mc.getColsPerBlock(), mc.getNonZeros());
-		}
-		catch(Exception e)
-		{
-			throw new IOException(e);
-		}
+		throws IOException {
+		writeMatrixToHDFS(mat, dir, outputinfo, mc, -1, null, false);
+	}
+	
+	public static void writeMatrixToHDFS(MatrixBlock mat, String dir, OutputInfo outputinfo, MatrixCharacteristics mc, int replication, FileFormatProperties formatProperties, boolean diag)
+		throws IOException {
+		MatrixWriter writer = MatrixWriterFactory.createMatrixWriter( outputinfo, replication, formatProperties );
+		writer.writeMatrixToHDFS(mat, dir, mc.getRows(), mc.getCols(), mc.getRowsPerBlock(), mc.getColsPerBlock(), mc.getNonZeros(), diag);
 	}
 
 	public static MatrixBlock readMatrixFromHDFS(String dir, InputInfo inputinfo, long rlen, long clen, int brlen, int bclen, boolean localFS) 
@@ -410,11 +407,8 @@ public class DataConverter
 	 * 
 	 * @param data 2d double array
 	 * @return matrix block
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public static MatrixBlock convertToMatrixBlock( double[][] data ) 
-		throws DMLRuntimeException
-	{
+	public static MatrixBlock convertToMatrixBlock( double[][] data ) {
 		int rows = data.length;
 		int cols = (rows > 0)? data[0].length : 0;
 		MatrixBlock mb = new MatrixBlock(rows, cols, false);
@@ -437,25 +431,14 @@ public class DataConverter
 	 * @param data double array
 	 * @param columnVector if true, create matrix with single column. if false, create matrix with single row
 	 * @return matrix block
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public static MatrixBlock convertToMatrixBlock( double[] data, boolean columnVector ) 
-		throws DMLRuntimeException
-	{
+	public static MatrixBlock convertToMatrixBlock( double[] data, boolean columnVector ) {
 		int rows = columnVector ? data.length : 1;
 		int cols = columnVector ? 1 : data.length;
 		MatrixBlock mb = new MatrixBlock(rows, cols, false);
-		
-		try
-		{ 
-			//copy data to mb (can be used because we create a dense matrix)
-			mb.init( data, rows, cols );
-		} 
-		catch (Exception e){} //can never happen
-		
-		//check and convert internal representation
+		//copy data to mb (can be used because we create a dense matrix)
+		mb.init( data, rows, cols );
 		mb.examSparsity();
-		
 		return mb;
 	}
 
@@ -551,10 +534,8 @@ public class DataConverter
 	 * 
 	 * @param frame frame block
 	 * @return matrix block
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
 	public static MatrixBlock convertToMatrixBlock(FrameBlock frame) 
-		throws DMLRuntimeException
 	{
 		int m = frame.getNumRows();
 		int n = frame.getNumColumns();
@@ -744,7 +725,6 @@ public class DataConverter
 	}
 
 	public static MatrixBlock[] convertToMatrixBlockPartitions( MatrixBlock mb, boolean colwise ) 
-		throws DMLRuntimeException
 	{
 		MatrixBlock[] ret = null;
 		int rows = mb.getNumRows();
@@ -799,11 +779,8 @@ public class DataConverter
 	 * 
 	 * @param mo matrix object
 	 * @return matrix as a commons-math3 Array2DRowRealMatrix
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public static Array2DRowRealMatrix convertToArray2DRowRealMatrix(MatrixObject mo) 
-		throws DMLRuntimeException 
-	{
+	public static Array2DRowRealMatrix convertToArray2DRowRealMatrix(MatrixObject mo) {
 		MatrixBlock mb = mo.acquireRead();
 		double[][] data = DataConverter.convertToDoubleMatrix(mb);
 		mo.release();

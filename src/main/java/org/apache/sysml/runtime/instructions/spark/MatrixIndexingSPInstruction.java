@@ -56,7 +56,6 @@ import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.matrix.data.MatrixIndexes;
 import org.apache.sysml.runtime.matrix.data.OperationsOnMatrixValues;
 import org.apache.sysml.runtime.matrix.mapred.IndexedMatrixValue;
-import org.apache.sysml.runtime.matrix.operators.Operator;
 import org.apache.sysml.runtime.util.IndexRange;
 import org.apache.sysml.runtime.util.UtilFunctions;
 
@@ -66,22 +65,20 @@ import org.apache.sysml.runtime.util.UtilFunctions;
 public class MatrixIndexingSPInstruction extends IndexingSPInstruction {
 	private final LixCacheType _type;
 
-	protected MatrixIndexingSPInstruction(Operator op, CPOperand in, CPOperand rl, CPOperand ru, CPOperand cl,
+	protected MatrixIndexingSPInstruction(CPOperand in, CPOperand rl, CPOperand ru, CPOperand cl,
 			CPOperand cu, CPOperand out, SparkAggType aggtype, String opcode, String istr) {
-		super(op, in, rl, ru, cl, cu, out, aggtype, opcode, istr);
+		super(in, rl, ru, cl, cu, out, aggtype, opcode, istr);
 		_type = LixCacheType.NONE;
 	}
 
-	protected MatrixIndexingSPInstruction(Operator op, CPOperand lhsInput, CPOperand rhsInput, CPOperand rl,
+	protected MatrixIndexingSPInstruction(CPOperand lhsInput, CPOperand rhsInput, CPOperand rl,
 			CPOperand ru, CPOperand cl, CPOperand cu, CPOperand out, LixCacheType type, String opcode, String istr) {
-		super(op, lhsInput, rhsInput, rl, ru, cl, cu, out, opcode, istr);
+		super(lhsInput, rhsInput, rl, ru, cl, cu, out, opcode, istr);
 		_type = type;
 	}
 
 	@Override
-	public void processInstruction(ExecutionContext ec)
-			throws DMLRuntimeException 
-	{	
+	public void processInstruction(ExecutionContext ec) {
 		SparkExecutionContext sec = (SparkExecutionContext)ec;
 		String opcode = getOpcode();
 		
@@ -177,7 +174,7 @@ public class MatrixIndexingSPInstruction extends IndexingSPInstruction {
 
 
 	public static MatrixBlock inmemoryIndexing(JavaPairRDD<MatrixIndexes,MatrixBlock> in1, 
-			 MatrixCharacteristics mcIn, MatrixCharacteristics mcOut, IndexRange ixrange) throws DMLRuntimeException {
+			 MatrixCharacteristics mcIn, MatrixCharacteristics mcOut, IndexRange ixrange) {
 		if( isSingleBlockLookup(mcIn, ixrange) ) {
 			return singleBlockIndexing(in1, mcIn, mcOut, ixrange);
 		}
@@ -189,7 +186,7 @@ public class MatrixIndexingSPInstruction extends IndexingSPInstruction {
 	}
 	
 	private static MatrixBlock multiBlockIndexing(JavaPairRDD<MatrixIndexes,MatrixBlock> in1, 
-			 MatrixCharacteristics mcIn, MatrixCharacteristics mcOut, IndexRange ixrange) throws DMLRuntimeException {
+			 MatrixCharacteristics mcIn, MatrixCharacteristics mcOut, IndexRange ixrange) {
 		//create list of all required matrix indexes
 		List<MatrixIndexes> filter = new ArrayList<>();
 		long rlix = UtilFunctions.computeBlockIndex(ixrange.rowStart, mcIn.getRowsPerBlock());
@@ -212,7 +209,7 @@ public class MatrixIndexingSPInstruction extends IndexingSPInstruction {
 	}
 	
 	private static MatrixBlock singleBlockIndexing(JavaPairRDD<MatrixIndexes,MatrixBlock> in1, 
-			 MatrixCharacteristics mcIn, MatrixCharacteristics mcOut, IndexRange ixrange) throws DMLRuntimeException {
+			 MatrixCharacteristics mcIn, MatrixCharacteristics mcOut, IndexRange ixrange) {
 		//single block output via lookup (on partitioned inputs, this allows for single partition
 		//access to avoid a full scan of the input; note that this is especially important for 
 		//out-of-core datasets as entire partitions are read, not just keys as in the in-memory setting.
@@ -254,9 +251,7 @@ public class MatrixIndexingSPInstruction extends IndexingSPInstruction {
 		return out;
 	}
 	
-	private static void checkValidOutputDimensions(MatrixCharacteristics mcOut) 
-		throws DMLRuntimeException
-	{
+	private static void checkValidOutputDimensions(MatrixCharacteristics mcOut) {
 		if(!mcOut.dimsKnown()) {
 			throw new DMLRuntimeException("MatrixIndexingSPInstruction: The updated output dimensions are invalid: " + mcOut);
 		}

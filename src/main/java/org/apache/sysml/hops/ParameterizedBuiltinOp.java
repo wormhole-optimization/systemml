@@ -33,7 +33,6 @@ import org.apache.sysml.lops.GroupedAggregate;
 import org.apache.sysml.lops.GroupedAggregateM;
 import org.apache.sysml.lops.Lop;
 import org.apache.sysml.lops.LopProperties.ExecType;
-import org.apache.sysml.lops.LopsException;
 import org.apache.sysml.lops.PMMJ;
 import org.apache.sysml.lops.PartialAggregate.CorrectionLocationType;
 import org.apache.sysml.lops.ParameterizedBuiltin;
@@ -52,8 +51,7 @@ import org.apache.sysml.runtime.util.UtilFunctions;
  * 
  */
 public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
-{	
-	private static boolean COMPILE_PARALLEL_REMOVEEMPTY = true;
+{
 	public static boolean FORCE_DIST_RM_EMPTY = false;
 
 	//operator type
@@ -109,7 +107,7 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 	}
 
 	@Override
-	public void checkArity() throws HopsException {
+	public void checkArity() {
 		int sz = _input.size();
 		int pz = _paramIndexMap.size();
 		HopsException.check(sz == pz, this, "has %d inputs but %d parameters", sz, pz);
@@ -158,8 +156,7 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 	
 	@Override
 	public Lop constructLops() 
-		throws HopsException, LopsException 
-	{		
+	{
 		//return already created lops
 		if( getLops() != null )
 			return getLops();
@@ -177,7 +174,6 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 			}
 			case RMEMPTY: {
 				ExecType et = optFindExecType();
-				et = (et == ExecType.MR && !COMPILE_PARALLEL_REMOVEEMPTY ) ? ExecType.CP_FILE : et;
 				constructLopsRemoveEmpty(inputlops, et);
 				break;
 			} 
@@ -189,6 +185,8 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 			case CDF:
 			case INVCDF: 
 			case REPLACE:
+			case LOWER_TRI:
+			case UPPER_TRI:
 			case TRANSFORMAPPLY:
 			case TRANSFORMDECODE:
 			case TRANSFORMCOLMAP:
@@ -213,7 +211,6 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 	}
 	
 	private void constructLopsGroupedAggregate(HashMap<String, Lop> inputlops, ExecType et) 
-		throws HopsException, LopsException 
 	{
 		//reset reblock requirement (see MR aggregate / construct lops)
 		setRequiresReblock( false );
@@ -403,14 +400,13 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 	}
 
 	private void constructLopsRemoveEmpty(HashMap<String, Lop> inputlops, ExecType et) 
-		throws HopsException, LopsException 
 	{
 		Hop targetHop = getTargetHop();
 		Hop marginHop = getParameterHop("margin");
 		Hop selectHop = getParameterHop("select");
 		Hop emptyRet = getParameterHop("empty.return");
 		
-		if( et == ExecType.CP || et == ExecType.CP_FILE )
+		if( et == ExecType.CP )
 		{
 			ParameterizedBuiltin pbilop = new ParameterizedBuiltin(inputlops,HopsParameterizedBuiltinLops.get(_op), getDataType(), getValueType(), et);
 			setOutputDimensions(pbilop);
@@ -480,8 +476,8 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 	 		{
 				//get input vector (without materializing diag())
 				Hop input = targetHop.getInput().get(0);
-				long brlen = input.getRowsInBlock();
-				long bclen = input.getColsInBlock();
+				int brlen = input.getRowsInBlock();
+				int bclen = input.getColsInBlock();
 				MemoTable memo = new MemoTable();
 			
 				boolean isPPredInput = (input instanceof BinaryOp && ((BinaryOp)input).isPPredOperation());
@@ -545,8 +541,8 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 				Hop input = targetHop;
 				long rlen = input.getDim1();
 				long clen = input.getDim2();
-				long brlen = input.getRowsInBlock();
-				long bclen = input.getColsInBlock();
+				int brlen = input.getRowsInBlock();
+				int bclen = input.getColsInBlock();
 				long nnz = input.getNnz();
 				boolean rmRows = ((LiteralOp)marginHop).getStringValue().equals("rows");
 				
@@ -576,7 +572,7 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 				Hop cumsumInput = emptyInd;
 				if( !rmRows ){
 					cumsumInput = HopRewriteUtils.createTranspose(emptyInd);
-					HopRewriteUtils.updateHopCharacteristics(cumsumInput, brlen, bclen, this);	
+					HopRewriteUtils.updateHopCharacteristics(cumsumInput, brlen, bclen, this);
 				}
 			
 				UnaryOp cumsum = HopRewriteUtils.createUnary(cumsumInput, OpOp1.CUMSUM); 
@@ -673,8 +669,8 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 			Hop input = targetHop;
 			long rlen = input.getDim1();
 			long clen = input.getDim2();
-			long brlen = input.getRowsInBlock();
-			long bclen = input.getColsInBlock();
+			int brlen = input.getRowsInBlock();
+			int bclen = input.getColsInBlock();
 			boolean rmRows = ((LiteralOp)marginHop).getStringValue().equals("rows");
 			
 			//construct lops via new partial hop dag and subsequent lops construction 
@@ -749,7 +745,6 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 	}
 
 	private void constructLopsRExpand(HashMap<String, Lop> inputlops, ExecType et) 
-		throws HopsException, LopsException 
 	{
 		if( et == ExecType.CP || et == ExecType.SPARK )
 		{
@@ -1040,7 +1035,6 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 	
 	@Override
 	protected ExecType optFindExecType() 
-		throws HopsException 
 	{
 		checkAndSetForcedPlatform();
 
@@ -1123,6 +1117,13 @@ public class ParameterizedBuiltinOp extends Hop implements MultiThreadedHop
 						setDim1( target.getDim1() );
 				}
 				setNnz( target.getNnz() );
+				break;
+			}
+			case LOWER_TRI:
+			case UPPER_TRI: {
+				Hop target = getTargetHop();
+				setDim1(target.getDim1());
+				setDim2(target.getDim2());
 				break;
 			}
 			case REPLACE: {

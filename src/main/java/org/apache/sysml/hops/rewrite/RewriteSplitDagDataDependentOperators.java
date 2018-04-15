@@ -79,7 +79,6 @@ public class RewriteSplitDagDataDependentOperators extends StatementBlockRewrite
 	
 	@Override
 	public List<StatementBlock> rewriteStatementBlock(StatementBlock sb, ProgramRewriteStatus state)
-		throws HopsException 
 	{
 		//DAG splits not required for forced single node
 		if( DMLScript.rtplatform == RUNTIME_PLATFORM.SINGLE_NODE
@@ -126,8 +125,8 @@ public class RewriteSplitDagDataDependentOperators extends StatementBlockRewrite
 					long clen = c.getDim2();
 					long nnz = c.getNnz();
 					UpdateType update = c.getUpdateType();
-					long brlen = c.getRowsInBlock();
-					long bclen = c.getColsInBlock();
+					int brlen = c.getRowsInBlock();
+					int bclen = c.getColsInBlock();
 					
 					if( hasTWrites && moveTWrite) //reuse existing transient_write
 					{
@@ -482,8 +481,7 @@ public class RewriteSplitDagDataDependentOperators extends StatementBlockRewrite
 	}
 	
 	@Override
-	public List<StatementBlock> rewriteStatementBlocks(List<StatementBlock> sbs, 
-			ProgramRewriteStatus sate) throws HopsException {
+	public List<StatementBlock> rewriteStatementBlocks(List<StatementBlock> sbs, ProgramRewriteStatus sate) {
 		return sbs;
 	}
 	

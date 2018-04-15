@@ -36,6 +36,7 @@ import org.apache.sysml.runtime.instructions.cp.CPOperand;
 import org.apache.sysml.runtime.instructions.spark.utils.RDDAggregateUtils;
 import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.matrix.data.MatrixIndexes;
+import org.apache.sysml.runtime.matrix.data.OperationsOnMatrixValues;
 import org.apache.sysml.runtime.matrix.operators.AggregateBinaryOperator;
 import org.apache.sysml.runtime.matrix.operators.AggregateOperator;
 import org.apache.sysml.runtime.matrix.operators.Operator;
@@ -51,9 +52,7 @@ public class ZipmmSPInstruction extends BinarySPInstruction {
 		_tRewrite = tRewrite;
 	}
 
-	public static ZipmmSPInstruction parseInstruction( String str ) 
-		throws DMLRuntimeException 
-	{
+	public static ZipmmSPInstruction parseInstruction( String str ) {
 		String[] parts = InstructionUtils.getInstructionPartsWithValueType(str);
 		String opcode = parts[0];
 
@@ -70,13 +69,10 @@ public class ZipmmSPInstruction extends BinarySPInstruction {
 		else {
 			throw new DMLRuntimeException("ZipmmSPInstruction.parseInstruction():: Unknown opcode " + opcode);
 		}
-		
 	}
 	
 	@Override
-	public void processInstruction(ExecutionContext ec) 
-		throws DMLRuntimeException
-	{	
+	public void processInstruction(ExecutionContext ec) {
 		SparkExecutionContext sec = (SparkExecutionContext)ec;
 		
 		//get rdd inputs (for computing r = t(X)%*%y via r = t(t(y)%*%X))
@@ -129,7 +125,8 @@ public class ZipmmSPInstruction extends BinarySPInstruction {
 			MatrixBlock tmp = (MatrixBlock)in2.reorgOperations(_rop, new MatrixBlock(), 0, 0, 0);
 				
 			//core matrix multiplication (for t(y)%*%X or t(X)%*%y)
-			return tmp.aggregateBinaryOperations(tmp, in1, new MatrixBlock(), _abop);
+			return OperationsOnMatrixValues
+				.performAggregateBinaryIgnoreIndexes(tmp, in1, new MatrixBlock(), _abop);
 		}
 	}
 }

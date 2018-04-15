@@ -23,7 +23,6 @@ import java.util.*;
 
 import org.apache.sysml.hops.BinaryOp;
 import org.apache.sysml.hops.Hop;
-import org.apache.sysml.hops.HopsException;
 import org.apache.sysml.hops.LiteralOp;
 import org.apache.sysml.parser.Expression;
 
@@ -48,7 +47,7 @@ import org.apache.sysml.parser.Expression;
  */
 public class RewriteElementwiseMultChainOptimization extends HopRewriteRule {
 	@Override
-	public ArrayList<Hop> rewriteHopDAGs(ArrayList<Hop> roots, ProgramRewriteStatus state) throws HopsException {
+	public ArrayList<Hop> rewriteHopDAGs(ArrayList<Hop> roots, ProgramRewriteStatus state) {
 		if( roots == null )
 			return null;
 		for( int i=0; i<roots.size(); i++ ) {
@@ -59,7 +58,7 @@ public class RewriteElementwiseMultChainOptimization extends HopRewriteRule {
 	}
 
 	@Override
-	public Hop rewriteHopDAG(Hop root, ProgramRewriteStatus state) throws HopsException {
+	public Hop rewriteHopDAG(Hop root, ProgramRewriteStatus state) {
 		if( root == null )
 			return null;
 		return rule_RewriteEMult(root);

@@ -59,8 +59,7 @@ public class ReblockSPInstruction extends UnarySPInstruction {
 		outputEmptyBlocks = emptyBlocks;
 	}
 
-	public static ReblockSPInstruction parseInstruction(String str)  throws DMLRuntimeException 
-	{
+	public static ReblockSPInstruction parseInstruction(String str) {
 		String parts[] = InstructionUtils.getInstructionPartsWithValueType(str);
 		String opcode = parts[0];
 		
@@ -77,12 +76,9 @@ public class ReblockSPInstruction extends UnarySPInstruction {
 		Operator op = null; // no operator for ReblockSPInstruction
 		return new ReblockSPInstruction(op, in, out, brlen, bclen, outputEmptyBlocks, opcode, str);
 	}
-	
 
 	@Override
-	public void processInstruction(ExecutionContext ec)
-		throws DMLRuntimeException 
-	{
+	public void processInstruction(ExecutionContext ec) {
 		SparkExecutionContext sec = (SparkExecutionContext)ec;
 
 		//set the output characteristics
@@ -114,9 +110,7 @@ public class ReblockSPInstruction extends UnarySPInstruction {
 	}
 
 	@SuppressWarnings("unchecked")
-	protected void processMatrixReblockInstruction(SparkExecutionContext sec, InputInfo iinfo) 
-		throws DMLRuntimeException
-	{
+	protected void processMatrixReblockInstruction(SparkExecutionContext sec, InputInfo iinfo) {
 		MatrixObject mo = sec.getMatrixObject(input1.getName());
 		MatrixCharacteristics mc = sec.getMatrixCharacteristics(input1.getName());
 		MatrixCharacteristics mcOut = sec.getMatrixCharacteristics(output.getName());
@@ -124,7 +118,7 @@ public class ReblockSPInstruction extends UnarySPInstruction {
 		if(iinfo == InputInfo.TextCellInputInfo || iinfo == InputInfo.MatrixMarketInputInfo ) {
 			//get the input textcell rdd
 			JavaPairRDD<LongWritable, Text> lines = (JavaPairRDD<LongWritable, Text>)
-				sec.getRDDHandleForVariable(input1.getName(), iinfo);
+				sec.getRDDHandleForMatrixObject(mo, iinfo);
 			
 			//convert textcell to binary block
 			JavaPairRDD<MatrixIndexes, MatrixBlock> out =
@@ -158,7 +152,7 @@ public class ReblockSPInstruction extends UnarySPInstruction {
 		}
 		else if(iinfo == InputInfo.BinaryCellInputInfo) 
 		{
-			JavaPairRDD<MatrixIndexes, MatrixCell> binaryCells = (JavaPairRDD<MatrixIndexes, MatrixCell>) sec.getRDDHandleForVariable(input1.getName(), iinfo);
+			JavaPairRDD<MatrixIndexes, MatrixCell> binaryCells = (JavaPairRDD<MatrixIndexes, MatrixCell>) sec.getRDDHandleForMatrixObject(mo, iinfo);
 			JavaPairRDD<MatrixIndexes, MatrixBlock> out = RDDConverterUtils.binaryCellToBinaryBlock(sec.getSparkContext(), binaryCells, mcOut, outputEmptyBlocks);
 			
 			//put output RDD handle into symbol table
@@ -191,7 +185,6 @@ public class ReblockSPInstruction extends UnarySPInstruction {
 
 	@SuppressWarnings("unchecked")
 	protected void processFrameReblockInstruction(SparkExecutionContext sec, InputInfo iinfo) 
-		throws DMLRuntimeException
 	{
 		FrameObject fo = sec.getFrameObject(input1.getName());
 		MatrixCharacteristics mcOut = sec.getMatrixCharacteristics(output.getName());
@@ -199,7 +192,7 @@ public class ReblockSPInstruction extends UnarySPInstruction {
 		if(iinfo == InputInfo.TextCellInputInfo ) {
 			//get the input textcell rdd
 			JavaPairRDD<LongWritable, Text> lines = (JavaPairRDD<LongWritable, Text>) 
-				sec.getRDDHandleForVariable(input1.getName(), iinfo);
+				sec.getRDDHandleForFrameObject(fo, iinfo);
 			
 			//convert textcell to binary block
 			JavaPairRDD<Long, FrameBlock> out = 

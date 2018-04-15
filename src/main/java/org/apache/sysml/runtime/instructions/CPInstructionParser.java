@@ -64,14 +64,10 @@ import org.apache.sysml.runtime.instructions.cp.UaggOuterChainCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.UnaryCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.VariableCPInstruction;
 import org.apache.sysml.runtime.instructions.cpfile.MatrixIndexingCPFileInstruction;
-import org.apache.sysml.runtime.instructions.cpfile.ParameterizedBuiltinCPFileInstruction;
 
 public class CPInstructionParser extends InstructionParser 
 {
-	
 	public static final HashMap<String, CPType> String2CPInstructionType;
-	public static final HashMap<String, CPType> String2CPFileInstructionType;
-	
 	static {
 		String2CPInstructionType = new HashMap<>();
 		String2CPInstructionType.put( "ba+*"   	, CPType.AggregateBinary);
@@ -102,11 +98,14 @@ public class CPInstructionParser extends InstructionParser
 		String2CPInstructionType.put( "uar+"    , CPType.AggregateUnary);
 		String2CPInstructionType.put( "uac+"    , CPType.AggregateUnary);
 		String2CPInstructionType.put( "ua*"     , CPType.AggregateUnary);
+		String2CPInstructionType.put( "uar*"    , CPType.AggregateUnary);
+		String2CPInstructionType.put( "uac*"    , CPType.AggregateUnary);
 		String2CPInstructionType.put( "uatrace" , CPType.AggregateUnary);
 		String2CPInstructionType.put( "uaktrace", CPType.AggregateUnary);
 		String2CPInstructionType.put( "nrow"    ,CPType.AggregateUnary);
 		String2CPInstructionType.put( "ncol"    ,CPType.AggregateUnary);
 		String2CPInstructionType.put( "length"  ,CPType.AggregateUnary);
+		String2CPInstructionType.put( "exists"  ,CPType.AggregateUnary);
 
 		String2CPInstructionType.put( "uaggouterchain", CPType.UaggOuterChain);
 		
@@ -185,17 +184,19 @@ public class CPInstructionParser extends InstructionParser
 		String2CPInstructionType.put( "eval" , CPType.BuiltinNary);
 
 		// Parameterized Builtin Functions
-		String2CPInstructionType.put( "cdf"	 		, CPType.ParameterizedBuiltin);
-		String2CPInstructionType.put( "invcdf"	 	, CPType.ParameterizedBuiltin);
-		String2CPInstructionType.put( "groupedagg"	, CPType.ParameterizedBuiltin);
-		String2CPInstructionType.put( "rmempty"	    , CPType.ParameterizedBuiltin);
-		String2CPInstructionType.put( "replace"	    , CPType.ParameterizedBuiltin);
-		String2CPInstructionType.put( "rexpand"	    , CPType.ParameterizedBuiltin);
-		String2CPInstructionType.put( "toString"    , CPType.ParameterizedBuiltin);
-		String2CPInstructionType.put( "transformapply",CPType.ParameterizedBuiltin);
+		String2CPInstructionType.put( "cdf",            CPType.ParameterizedBuiltin);
+		String2CPInstructionType.put( "invcdf",         CPType.ParameterizedBuiltin);
+		String2CPInstructionType.put( "groupedagg",     CPType.ParameterizedBuiltin);
+		String2CPInstructionType.put( "rmempty" ,       CPType.ParameterizedBuiltin);
+		String2CPInstructionType.put( "replace",        CPType.ParameterizedBuiltin);
+		String2CPInstructionType.put( "lowertri",       CPType.ParameterizedBuiltin);
+		String2CPInstructionType.put( "uppertri",       CPType.ParameterizedBuiltin);
+		String2CPInstructionType.put( "rexpand",        CPType.ParameterizedBuiltin);
+		String2CPInstructionType.put( "toString",       CPType.ParameterizedBuiltin);
+		String2CPInstructionType.put( "transformapply", CPType.ParameterizedBuiltin);
 		String2CPInstructionType.put( "transformdecode",CPType.ParameterizedBuiltin);
 		String2CPInstructionType.put( "transformcolmap",CPType.ParameterizedBuiltin);
-		String2CPInstructionType.put( "transformmeta",CPType.ParameterizedBuiltin);
+		String2CPInstructionType.put( "transformmeta",  CPType.ParameterizedBuiltin);
 		String2CPInstructionType.put( "transformencode",CPType.MultiReturnParameterizedBuiltin);
 		
 		// Ternary Instruction Opcodes
@@ -286,19 +287,11 @@ public class CPInstructionParser extends InstructionParser
 		String2CPInstructionType.put( "partition", 	CPType.Partition);
 		String2CPInstructionType.put( "compress", 	CPType.Compression);
 		String2CPInstructionType.put( "spoof", 		CPType.SpoofFused);
-
-		
-		//CP FILE instruction
-		String2CPFileInstructionType = new HashMap<>();
-		String2CPFileInstructionType.put( "rmempty"	    , CPType.ParameterizedBuiltin);
 	}
 
-	public static CPInstruction parseSingleInstruction (String str ) 
-		throws DMLRuntimeException 
-	{
+	public static CPInstruction parseSingleInstruction (String str ) {
 		if ( str == null || str.isEmpty() )
 			return null;
-
 		CPType cptype = InstructionUtils.getCPType(str); 
 		if ( cptype == null ) 
 			throw new DMLRuntimeException("Unable derive cptype for instruction: " + str);
@@ -308,16 +301,11 @@ public class CPInstructionParser extends InstructionParser
 		return cpinst;
 	}
 	
-	public static CPInstruction parseSingleInstruction ( CPType cptype, String str ) 
-		throws DMLRuntimeException 
-	{
+	public static CPInstruction parseSingleInstruction ( CPType cptype, String str ) {
 		ExecType execType = null; 
-		
 		if ( str == null || str.isEmpty() ) 
 			return null;
-		
-		switch(cptype) 
-		{
+		switch(cptype) {
 			case AggregateUnary:
 				return AggregateUnaryCPInstruction.parseInstruction(str);
 			
@@ -371,14 +359,10 @@ public class CPInstructionParser extends InstructionParser
 				
 			case External:
 				return FunctionCallCPInstruction.parseInstruction(str);
-				
+			
 			case ParameterizedBuiltin: 
-				execType = ExecType.valueOf( str.split(Instruction.OPERAND_DELIM)[0] ); 
-				if( execType == ExecType.CP )
-					return ParameterizedBuiltinCPInstruction.parseInstruction(str);
-				else //exectype CP_FILE
-					return ParameterizedBuiltinCPFileInstruction.parseInstruction(str);
-	
+				return ParameterizedBuiltinCPInstruction.parseInstruction(str);
+			
 			case MultiReturnParameterizedBuiltin:
 				return MultiReturnParameterizedBuiltinCPInstruction.parseInstruction(str);
 				

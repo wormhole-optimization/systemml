@@ -43,9 +43,6 @@ import org.apache.sysml.udf.Scalar.ScalarValueType;
 
 /**
  * Class to maintain external function invocation instructions.
- * 
- * 
- * 
  */
 public class ExternalFunctionInvocationInstruction extends Instruction 
 {
@@ -65,17 +62,18 @@ public class ExternalFunctionInvocationInstruction extends Instruction
 		this.baseDir = baseDir;
 		this.iinfo = format;
 	}
+	
+	@Override
+	public IType getType() {
+		return IType.CONTROL_PROGRAM;
+	}
 
 	@Override
-	public void processInstruction(ExecutionContext ec)
-			throws DMLRuntimeException 
-	{
+	public void processInstruction(ExecutionContext ec) {
 		// get the inputs, wrapped into external data types
 		fun.setFunctionInputs(getInputObjects(inputs, ec.getVariables()));
-		
 		//executes function
 		fun.execute(ec);
-		
 		// get and verify the outputs
 		verifyAndAttachOutputs(ec, fun, outputs);
 	}
@@ -122,7 +120,6 @@ public class ExternalFunctionInvocationInstruction extends Instruction
 	}
 	
 	private void verifyAndAttachOutputs(ExecutionContext ec, PackageFunction fun, CPOperand[] outputs) 
-		throws DMLRuntimeException 
 	{
 		for( int i = 0; i < outputs.length; i++) {
 			CPOperand output = outputs[i];
@@ -161,8 +158,7 @@ public class ExternalFunctionInvocationInstruction extends Instruction
 		}
 	}
 	
-	private MatrixObject createOutputMatrixObject(Matrix m) throws DMLRuntimeException
-	{
+	private MatrixObject createOutputMatrixObject(Matrix m) {
 		MatrixObject ret = m.getMatrixObject();
 		
 		if( ret == null ) { //otherwise, pass in-memory matrix from extfunct back to invoking program

@@ -38,9 +38,9 @@ public class MatrixIndexingGPUInstruction extends GPUInstruction {
 	CPOperand input2;
 	CPOperand output;
 
-	private MatrixIndexingGPUInstruction(Operator op, CPOperand in, CPOperand rl, CPOperand ru, CPOperand cl,
+	private MatrixIndexingGPUInstruction(CPOperand in, CPOperand rl, CPOperand ru, CPOperand cl,
 			CPOperand cu, CPOperand out, String opcode, String istr) {
-		super(op, opcode, istr);
+		super(null, opcode, istr);
 		_gputype = GPUINSTRUCTION_TYPE.MatrixIndexing;
 		rowLower = rl;
 		rowUpper = ru;
@@ -63,7 +63,7 @@ public class MatrixIndexingGPUInstruction extends GPUInstruction {
 		output = out;
 	}
 
-	public static MatrixIndexingGPUInstruction parseInstruction ( String str ) throws DMLRuntimeException {
+	public static MatrixIndexingGPUInstruction parseInstruction ( String str ) {
 		String[] parts = InstructionUtils.getInstructionPartsWithValueType(str);
 		String opcode = parts[0];
 		
@@ -77,7 +77,7 @@ public class MatrixIndexingGPUInstruction extends GPUInstruction {
 				cu = new CPOperand(parts[5]);
 				out = new CPOperand(parts[6]);
 				if( in.getDataType()==DataType.MATRIX )
-					return new MatrixIndexingGPUInstruction(new SimpleOperator(null), in, rl, ru, cl, cu, out, opcode, str);
+					return new MatrixIndexingGPUInstruction(in, rl, ru, cl, cu, out, opcode, str);
 				else 
 					throw new DMLRuntimeException("Can index only on Matrices in GPU");
 			}
@@ -117,8 +117,7 @@ public class MatrixIndexingGPUInstruction extends GPUInstruction {
 	}
 
 	@Override
-	public void processInstruction(ExecutionContext ec)
-			throws DMLRuntimeException {
+	public void processInstruction(ExecutionContext ec) {
 		GPUStatistics.incrementNoOfExecutedGPUInst();
 		String opcode = getOpcode();
 		
@@ -134,11 +133,11 @@ public class MatrixIndexingGPUInstruction extends GPUInstruction {
 		}
 	}
 	
-	IndexRange getIndexRange(ExecutionContext ec) throws DMLRuntimeException {
+	IndexRange getIndexRange(ExecutionContext ec) {
 		return new IndexRange( //rl, ru, cl, ru
 			(int)(ec.getScalarInput(rowLower.getName(), rowLower.getValueType(), rowLower.isLiteral()).getLongValue()-1),
 			(int)(ec.getScalarInput(rowUpper.getName(), rowUpper.getValueType(), rowUpper.isLiteral()).getLongValue()-1),
 			(int)(ec.getScalarInput(colLower.getName(), colLower.getValueType(), colLower.isLiteral()).getLongValue()-1),
-			(int)(ec.getScalarInput(colUpper.getName(), colUpper.getValueType(), colUpper.isLiteral()).getLongValue()-1));		
+			(int)(ec.getScalarInput(colUpper.getName(), colUpper.getValueType(), colUpper.isLiteral()).getLongValue()-1));
 	}
 }

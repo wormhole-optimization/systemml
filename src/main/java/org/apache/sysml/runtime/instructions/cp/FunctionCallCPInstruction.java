@@ -21,7 +21,6 @@ package org.apache.sysml.runtime.instructions.cp;
 
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Map.Entry;
 
 import org.apache.sysml.api.DMLScript;
 import org.apache.sysml.lops.Lop;
@@ -63,9 +62,7 @@ public class FunctionCallCPInstruction extends CPInstruction {
 		return _namespace;
 	}
 	
-	public static FunctionCallCPInstruction parseInstruction(String str) 
-		throws DMLRuntimeException 
-	{
+	public static FunctionCallCPInstruction parseInstruction(String str) {
 		//schema: extfunct, fname, num inputs, num outputs, inputs, outputs
 		String[] parts = InstructionUtils.getInstructionPartsWithValueType ( str );
 		String namespace = parts[1];
@@ -86,28 +83,20 @@ public class FunctionCallCPInstruction extends CPInstruction {
 	}
 	
 	@Override
-	public Instruction preprocessInstruction(ExecutionContext ec)
-		throws DMLRuntimeException 
-	{
+	public Instruction preprocessInstruction(ExecutionContext ec) {
 		//default pre-process behavior
 		Instruction tmp = super.preprocessInstruction(ec);
-		
 		//maintain debug state (function call stack) 
-		if( DMLScript.ENABLE_DEBUG_MODE ) {
+		if( DMLScript.ENABLE_DEBUG_MODE )
 			ec.handleDebugFunctionEntry((FunctionCallCPInstruction) tmp);
-		}
-
 		return tmp;
 	}
 
 	@Override
-	public void processInstruction(ExecutionContext ec) 
-		throws DMLRuntimeException 
-	{
+	public void processInstruction(ExecutionContext ec) {
 		if( LOG.isTraceEnabled() ){
 			LOG.trace("Executing instruction : " + this.toString());
 		}
-		
 		// get the function program block (stored in the Program object)
 		FunctionProgramBlock fpb = ec.getProgram().getFunctionProgramBlock(_namespace, _functionName);
 		
@@ -176,12 +165,13 @@ public class FunctionCallCPInstruction extends CPInstruction {
 			expectRetVars.add(di.getName());
 		
 		LocalVariableMap retVars = fn_ec.getVariables();
-		for( Entry<String,Data> var : retVars.entrySet() ) {
-			if( expectRetVars.contains(var.getKey()) )
+		for( String varName : new ArrayList<>(retVars.keySet()) ) {
+			if( expectRetVars.contains(varName) )
 				continue;
 			//cleanup unexpected return values to avoid leaks
-			if( var.getValue() instanceof CacheableData )
-				fn_ec.cleanupCacheableData((CacheableData<?>)var.getValue());
+			Data var = fn_ec.removeVariable(varName);
+			if( var instanceof CacheableData )
+				fn_ec.cleanupCacheableData((CacheableData<?>)var);
 		}
 		
 		// Unpin the pinned variables
@@ -206,14 +196,10 @@ public class FunctionCallCPInstruction extends CPInstruction {
 	}
 
 	@Override
-	public void postprocessInstruction(ExecutionContext ec)
-		throws DMLRuntimeException 
-	{
+	public void postprocessInstruction(ExecutionContext ec) {
 		//maintain debug state (function call stack) 
-		if (DMLScript.ENABLE_DEBUG_MODE ) {
+		if (DMLScript.ENABLE_DEBUG_MODE )
 			ec.handleDebugFunctionExit( this );
-		}
-		
 		//default post-process behavior
 		super.postprocessInstruction(ec);
 	}

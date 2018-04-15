@@ -82,8 +82,8 @@ public abstract class Hop implements ParseInfo
 	protected boolean _visited = false;
 	protected long _dim1 = -1;
 	protected long _dim2 = -1;
-	protected long _rows_in_block = -1;
-	protected long _cols_in_block = -1;
+	protected int _rows_in_block = -1;
+	protected int _cols_in_block = -1;
 	protected long _nnz = -1;
 	protected UpdateType _updateType = UpdateType.COPY;
 
@@ -153,9 +153,8 @@ public abstract class Hop implements ParseInfo
 	 *
 	 * Parameterized Hops (such as DataOp) can check that the number of parameters matches the number of inputs.
 	 *
-	 * @throws HopsException if this Hop has an illegal number of inputs (a kind of Illegal State)
 	 */
-	public abstract void checkArity() throws HopsException;
+	public abstract void checkArity();
 	
 	public ExecType getExecType()
 	{
@@ -255,7 +254,7 @@ public abstract class Hop implements ParseInfo
 		return false;
 	}
 	
-	public void setOutputBlocksizes( long brlen, long bclen ) {
+	public void setOutputBlocksizes(int brlen, int bclen) {
 		setRowsInBlock( brlen );
 		setColsInBlock( bclen );
 	}
@@ -284,9 +283,7 @@ public abstract class Hop implements ParseInfo
 		return _requiresCompression;
 	}
 	
-	public void constructAndSetLopsDataFlowProperties() 
-		throws HopsException
-	{
+	public void constructAndSetLopsDataFlowProperties() {
 		//Step 1: construct reblock lop if required (output of hop)
 		constructAndSetReblockLopIfRequired();
 		
@@ -298,7 +295,6 @@ public abstract class Hop implements ParseInfo
 	}
 
 	private void constructAndSetReblockLopIfRequired() 
-		throws HopsException
 	{
 		//determine execution type
 		ExecType et = ExecType.CP;
@@ -339,9 +335,7 @@ public abstract class Hop implements ParseInfo
 		}
 	}
 
-	private void constructAndSetCheckpointLopIfRequired() 
-		throws HopsException
-	{
+	private void constructAndSetCheckpointLopIfRequired() {
 		//determine execution type
 		ExecType et = ExecType.CP;
 		if( OptimizerUtils.isSparkExecutionMode() 
@@ -399,7 +393,6 @@ public abstract class Hop implements ParseInfo
 	}
 
 	private void constructAndSetCompressionLopIfRequired() 
-		throws HopsException
 	{
 		//determine execution type
 		ExecType et = ExecType.CP;
@@ -437,7 +430,6 @@ public abstract class Hop implements ParseInfo
 	}
 
 	public static Lop createOffsetLop( Hop hop, boolean repCols ) 
-		throws HopsException, LopsException
 	{
 		Lop offset = null;
 		
@@ -789,19 +781,19 @@ public abstract class Hop implements ParseInfo
 		h._parent.add(this);
 	}
 
-	public long getRowsInBlock() {
+	public int getRowsInBlock() {
 		return _rows_in_block;
 	}
 
-	public void setRowsInBlock(long rowsInBlock) {
+	public void setRowsInBlock(int rowsInBlock) {
 		_rows_in_block = rowsInBlock;
 	}
 
-	public long getColsInBlock() {
+	public int getColsInBlock() {
 		return _cols_in_block;
 	}
 
-	public void setColsInBlock(long colsInBlock) {
+	public void setColsInBlock(int colsInBlock) {
 		_cols_in_block = colsInBlock;
 	}
 
@@ -821,11 +813,9 @@ public abstract class Hop implements ParseInfo
 		return _updateType;
 	}
 
-	public abstract Lop constructLops() 
-		throws HopsException, LopsException;
+	public abstract Lop constructLops();
 
-	protected abstract ExecType optFindExecType() 
-		throws HopsException;
+	protected abstract ExecType optFindExecType();
 	
 	public abstract String getOpString();
 
@@ -1002,9 +992,7 @@ public abstract class Hop implements ParseInfo
 		return OptimizerUtils.getSparsity(_dim1, _dim2, _nnz);
 	}
 	
-	protected void setOutputDimensions(Lop lop) 
-		throws HopsException
-	{
+	protected void setOutputDimensions(Lop lop) {
 		lop.getOutputParameters().setDimensions(
 			getDim1(), getDim2(), getRowsInBlock(), getColsInBlock(), getNnz(), getUpdateType());	
 	}
@@ -1065,7 +1053,7 @@ public abstract class Hop implements ParseInfo
 		NOT, ABS, SIN, COS, TAN, ASIN, ACOS, ATAN, SINH, COSH, TANH, SIGN, SQRT, LOG, EXP,
 		CAST_AS_SCALAR, CAST_AS_MATRIX, CAST_AS_FRAME, CAST_AS_DOUBLE, CAST_AS_INT, CAST_AS_BOOLEAN,
 		PRINT, ASSERT, EIGEN, NROW, NCOL, LENGTH, ROUND, IQM, STOP, CEIL, FLOOR, MEDIAN, INVERSE, CHOLESKY,
-		SVD,
+		SVD, EXISTS,
 		//cumulative sums, products, extreme values
 		CUMSUM, CUMPROD, CUMMIN, CUMMAX,
 		//fused ML-specific operators for performance 
@@ -1090,7 +1078,7 @@ public abstract class Hop implements ParseInfo
 	public enum OpOp2 {
 		PLUS, MINUS, MULT, DIV, MODULUS, INTDIV, LESS, LESSEQUAL, GREATER, GREATEREQUAL, EQUAL, NOTEQUAL, 
 		MIN, MAX, AND, OR, XOR, LOG, POW, PRINT, CONCAT, QUANTILE, INTERQUANTILE, IQM,
-		CENTRALMOMENT, COVARIANCE, CBIND, RBIND, SOLVE, MEDIAN, INVALID,
+		MOMENT, COV, CBIND, RBIND, SOLVE, MEDIAN, INVALID,
 		//fused ML-specific operators for performance
 		MINUS_NZ, //sparse-safe minus: X-(mean*ppred(X,0,!=))
 		LOG_NZ, //sparse-safe log; ppred(X,0,"!=")*log(X,0.5)
@@ -1122,7 +1110,7 @@ public abstract class Hop implements ParseInfo
 
 	// Operations that require 3 operands
 	public enum OpOp3 {
-		QUANTILE, INTERQUANTILE, CTABLE, CENTRALMOMENT, COVARIANCE, PLUS_MULT, MINUS_MULT, IFELSE
+		QUANTILE, INTERQUANTILE, CTABLE, MOMENT, COV, PLUS_MULT, MINUS_MULT, IFELSE
 	}
 	
 	// Operations that require 4 operands
@@ -1144,7 +1132,7 @@ public abstract class Hop implements ParseInfo
 	}
 
 	public enum ReOrgOp {
-		TRANSPOSE, DIAG, RESHAPE, SORT, REV
+		TRANS, DIAG, RESHAPE, SORT, REV
 		//Note: Diag types are invalid because for unknown sizes this would 
 		//create incorrect plans (now we try to infer it for memory estimates
 		//and rewrites but the final choice is made during runtime)
@@ -1152,8 +1140,8 @@ public abstract class Hop implements ParseInfo
 	}
 	
 	public enum ConvOp {
-		MAX_POOLING, MAX_POOLING_BACKWARD, AVG_POOLING, AVG_POOLING_BACKWARD,
-		DIRECT_CONV2D, DIRECT_CONV2D_BACKWARD_FILTER, DIRECT_CONV2D_BACKWARD_DATA,
+		MAX_POOL, MAX_POOL_BACKWARD, AVG_POOL, AVG_POOL_BACKWARD,
+		CONV2D, CONV2D_BACKWARD_FILTER, CONV2D_BACKWARD_DATA,
 		BIAS_ADD, BIAS_MULTIPLY
 	}
 	
@@ -1162,7 +1150,8 @@ public abstract class Hop implements ParseInfo
 	}
 
 	public enum ParamBuiltinOp {
-		INVALID, CDF, INVCDF, GROUPEDAGG, RMEMPTY, REPLACE, REXPAND, 
+		INVALID, CDF, INVCDF, GROUPEDAGG, RMEMPTY, REPLACE, REXPAND,
+		LOWER_TRI, UPPER_TRI,
 		TRANSFORMAPPLY, TRANSFORMDECODE, TRANSFORMCOLMAP, TRANSFORMMETA,
 		TOSTRING
 	}
@@ -1206,7 +1195,7 @@ public abstract class Hop implements ParseInfo
 	protected static final HashMap<ReOrgOp, org.apache.sysml.lops.Transform.OperationTypes> HopsTransf2Lops;
 	static {
 		HopsTransf2Lops = new HashMap<>();
-		HopsTransf2Lops.put(ReOrgOp.TRANSPOSE, org.apache.sysml.lops.Transform.OperationTypes.Transpose);
+		HopsTransf2Lops.put(ReOrgOp.TRANS, org.apache.sysml.lops.Transform.OperationTypes.Transpose);
 		HopsTransf2Lops.put(ReOrgOp.REV, org.apache.sysml.lops.Transform.OperationTypes.Rev);
 		HopsTransf2Lops.put(ReOrgOp.DIAG, org.apache.sysml.lops.Transform.OperationTypes.Diag);
 		HopsTransf2Lops.put(ReOrgOp.RESHAPE, org.apache.sysml.lops.Transform.OperationTypes.Reshape);
@@ -1217,15 +1206,15 @@ public abstract class Hop implements ParseInfo
 	protected static final HashMap<ConvOp, org.apache.sysml.lops.ConvolutionTransform.OperationTypes> HopsConv2Lops;
 	static {
 		HopsConv2Lops = new HashMap<>();
-		HopsConv2Lops.put(ConvOp.MAX_POOLING, org.apache.sysml.lops.ConvolutionTransform.OperationTypes.MAX_POOLING);
-		HopsConv2Lops.put(ConvOp.MAX_POOLING_BACKWARD, org.apache.sysml.lops.ConvolutionTransform.OperationTypes.MAX_POOLING_BACKWARD);
-		HopsConv2Lops.put(ConvOp.AVG_POOLING, org.apache.sysml.lops.ConvolutionTransform.OperationTypes.AVG_POOLING);
-		HopsConv2Lops.put(ConvOp.AVG_POOLING_BACKWARD, org.apache.sysml.lops.ConvolutionTransform.OperationTypes.AVG_POOLING_BACKWARD);
-		HopsConv2Lops.put(ConvOp.DIRECT_CONV2D, org.apache.sysml.lops.ConvolutionTransform.OperationTypes.DIRECT_CONV2D);
+		HopsConv2Lops.put(ConvOp.MAX_POOL, org.apache.sysml.lops.ConvolutionTransform.OperationTypes.MAX_POOL);
+		HopsConv2Lops.put(ConvOp.MAX_POOL_BACKWARD, org.apache.sysml.lops.ConvolutionTransform.OperationTypes.MAX_POOL_BACKWARD);
+		HopsConv2Lops.put(ConvOp.AVG_POOL, org.apache.sysml.lops.ConvolutionTransform.OperationTypes.AVG_POOL);
+		HopsConv2Lops.put(ConvOp.AVG_POOL_BACKWARD, org.apache.sysml.lops.ConvolutionTransform.OperationTypes.AVG_POOL_BACKWARD);
+		HopsConv2Lops.put(ConvOp.CONV2D, org.apache.sysml.lops.ConvolutionTransform.OperationTypes.CONV2D);
 		HopsConv2Lops.put(ConvOp.BIAS_ADD, org.apache.sysml.lops.ConvolutionTransform.OperationTypes.BIAS_ADD);
 		HopsConv2Lops.put(ConvOp.BIAS_MULTIPLY, org.apache.sysml.lops.ConvolutionTransform.OperationTypes.BIAS_MULTIPLY);
-		HopsConv2Lops.put(ConvOp.DIRECT_CONV2D_BACKWARD_FILTER, org.apache.sysml.lops.ConvolutionTransform.OperationTypes.DIRECT_CONV2D_BACKWARD_FILTER);
-		HopsConv2Lops.put(ConvOp.DIRECT_CONV2D_BACKWARD_DATA, org.apache.sysml.lops.ConvolutionTransform.OperationTypes.DIRECT_CONV2D_BACKWARD_DATA);
+		HopsConv2Lops.put(ConvOp.CONV2D_BACKWARD_FILTER, org.apache.sysml.lops.ConvolutionTransform.OperationTypes.CONV2D_BACKWARD_FILTER);
+		HopsConv2Lops.put(ConvOp.CONV2D_BACKWARD_DATA, org.apache.sysml.lops.ConvolutionTransform.OperationTypes.CONV2D_BACKWARD_DATA);
 	}
 
 	protected static final HashMap<Hop.Direction, org.apache.sysml.lops.PartialAggregate.DirectionTypes> HopsDirection2Lops;
@@ -1392,6 +1381,7 @@ public abstract class Hop implements ParseInfo
 		HopsOpOp1LopsUS.put(OpOp1.NROW, org.apache.sysml.lops.UnaryCP.OperationTypes.NROW);
 		HopsOpOp1LopsUS.put(OpOp1.NCOL, org.apache.sysml.lops.UnaryCP.OperationTypes.NCOL);
 		HopsOpOp1LopsUS.put(OpOp1.LENGTH, org.apache.sysml.lops.UnaryCP.OperationTypes.LENGTH);
+		HopsOpOp1LopsUS.put(OpOp1.EXISTS, org.apache.sysml.lops.UnaryCP.OperationTypes.EXISTS);
 		HopsOpOp1LopsUS.put(OpOp1.PRINT, org.apache.sysml.lops.UnaryCP.OperationTypes.PRINT);
 		HopsOpOp1LopsUS.put(OpOp1.ASSERT, org.apache.sysml.lops.UnaryCP.OperationTypes.ASSERT);
 		HopsOpOp1LopsUS.put(OpOp1.ROUND, org.apache.sysml.lops.UnaryCP.OperationTypes.ROUND);
@@ -1465,6 +1455,8 @@ public abstract class Hop implements ParseInfo
 		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.RMEMPTY, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.RMEMPTY);
 		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.REPLACE, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.REPLACE);
 		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.REXPAND, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.REXPAND);
+		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.LOWER_TRI, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.LOWER_TRI);
+		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.UPPER_TRI, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.UPPER_TRI);
 		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.TRANSFORMAPPLY, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.TRANSFORMAPPLY);
 		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.TRANSFORMDECODE, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.TRANSFORMDECODE);
 		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.TRANSFORMCOLMAP, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.TRANSFORMCOLMAP);
@@ -1502,8 +1494,8 @@ public abstract class Hop implements ParseInfo
 		HopsOpOp2String.put(OpOp2.INTERQUANTILE, "interquantile");
 		HopsOpOp2String.put(OpOp2.IQM, "IQM");
 		HopsOpOp2String.put(OpOp2.MEDIAN, "median");
-		HopsOpOp2String.put(OpOp2.CENTRALMOMENT, "cm");
-		HopsOpOp2String.put(OpOp2.COVARIANCE, "cov");
+		HopsOpOp2String.put(OpOp2.MOMENT, "cm");
+		HopsOpOp2String.put(OpOp2.COV, "cov");
 		HopsOpOp2String.put(OpOp2.CBIND, "cbind");
 		HopsOpOp2String.put(OpOp2.RBIND, "rbind");
 		HopsOpOp2String.put(OpOp2.SOLVE, "solve");
@@ -1525,8 +1517,8 @@ public abstract class Hop implements ParseInfo
 		HopsOpOp3String.put(OpOp3.QUANTILE, "quantile");
 		HopsOpOp3String.put(OpOp3.INTERQUANTILE, "interquantile");
 		HopsOpOp3String.put(OpOp3.CTABLE, "ctable");
-		HopsOpOp3String.put(OpOp3.CENTRALMOMENT, "cm");
-		HopsOpOp3String.put(OpOp3.COVARIANCE, "cov");
+		HopsOpOp3String.put(OpOp3.MOMENT, "cm");
+		HopsOpOp3String.put(OpOp3.COV, "cov");
 		HopsOpOp3String.put(OpOp3.PLUS_MULT, "+*");
 		HopsOpOp3String.put(OpOp3.MINUS_MULT, "-*");
 		HopsOpOp3String.put(OpOp3.IFELSE, "ifelse");
@@ -1568,7 +1560,7 @@ public abstract class Hop implements ParseInfo
 	public static final HashMap<Hop.ReOrgOp, String> HopsTransf2String;
 	static {
 		HopsTransf2String = new HashMap<>();
-		HopsTransf2String.put(ReOrgOp.TRANSPOSE, "t");
+		HopsTransf2String.put(ReOrgOp.TRANS, "t");
 		HopsTransf2String.put(ReOrgOp.DIAG, "diag");
 		HopsTransf2String.put(ReOrgOp.RESHAPE, "rshape");
 		HopsTransf2String.put(ReOrgOp.SORT, "sort");

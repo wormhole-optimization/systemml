@@ -27,8 +27,6 @@ import org.apache.sysml.runtime.matrix.data.MatrixValue;
 import org.apache.sysml.runtime.matrix.data.OperationsOnMatrixValues;
 import org.apache.sysml.runtime.matrix.mapred.CachedValueMap;
 import org.apache.sysml.runtime.matrix.mapred.IndexedMatrixValue;
-import org.apache.sysml.runtime.matrix.operators.Operator;
-import org.apache.sysml.runtime.matrix.operators.ZeroOutOperator;
 import org.apache.sysml.runtime.util.IndexRange;
 import org.apache.sysml.runtime.util.UtilFunctions;
 
@@ -41,38 +39,31 @@ public class ZeroOutInstruction extends UnaryMRInstructionBase {
 	private IndexRange tempRange = new IndexRange(-1, -1, -1, -1);
 	public boolean complementary = false;
 
-	private ZeroOutInstruction(Operator op, byte in, byte out, IndexRange rng, String istr) {
-		super(MRType.ZeroOut, op, in, out);
+	private ZeroOutInstruction(byte in, byte out, IndexRange rng, String istr) {
+		super(MRType.ZeroOut, null, in, out);
 		instString = istr;
 		indexRange = rng;
 	}
 
-	public static ZeroOutInstruction parseInstruction ( String str ) throws DMLRuntimeException {
-		
+	public static ZeroOutInstruction parseInstruction ( String str ) {
 		InstructionUtils.checkNumFields ( str, 6 );
-		
 		String[] parts = InstructionUtils.getInstructionParts ( str );
-		
 		String opcode = parts[0];
 		if(!opcode.equalsIgnoreCase("zeroOut"))
 			throw new DMLRuntimeException("Unknown opcode while parsing a zeroout: " + str);
 		byte in = Byte.parseByte(parts[1]);
-
-		//IndexRange rng=new IndexRange(Long.parseLong(parts[2]), Long.parseLong(parts[3]), Long.parseLong(parts[4]), Long.parseLong(parts[5]));
 		IndexRange rng=new IndexRange(UtilFunctions.parseToLong(parts[2]), 
 				UtilFunctions.parseToLong(parts[3]), 
 				UtilFunctions.parseToLong(parts[4]), 
 				UtilFunctions.parseToLong(parts[5]));
 		byte out = Byte.parseByte(parts[6]);
-		return new ZeroOutInstruction(new ZeroOutOperator(), in, out, rng, str);
+		return new ZeroOutInstruction(in, out, rng, str);
 	}
 	
 	@Override
 	public void processInstruction(Class<? extends MatrixValue> valueClass,
 			CachedValueMap cachedValues, IndexedMatrixValue tempValue,
-			IndexedMatrixValue zeroInput, int blockRowFactor, int blockColFactor)
-			throws DMLRuntimeException {
-		
+			IndexedMatrixValue zeroInput, int blockRowFactor, int blockColFactor) {
 		ArrayList<IndexedMatrixValue> blkList = cachedValues.get(input);
 		
 		if( blkList != null )

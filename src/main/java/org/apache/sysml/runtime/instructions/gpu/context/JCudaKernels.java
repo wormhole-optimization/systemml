@@ -55,10 +55,8 @@ public class JCudaKernels {
 	/**
 	 * Loads the kernels in the file ptxFileName. Though cubin files are also supported, we will stick with
 	 * ptx file as they are target-independent similar to Java's .class files.
-	 *
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	JCudaKernels() throws DMLRuntimeException {
+	JCudaKernels() {
 		module = new CUmodule();
 		// Load the kernels specified in the ptxFileName file
 		checkResult(cuModuleLoadDataEx(module, initKernels(ptxFileName), 0, new int[0], Pointer.to(new int[0])));
@@ -71,9 +69,8 @@ public class JCudaKernels {
 	 * @param name      name of the kernel
 	 * @param config    execution configuration
 	 * @param arguments can be of type Pointer, long, double, float and int
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public void launchKernel(String name, ExecutionConfig config, Object... arguments) throws DMLRuntimeException {
+	public void launchKernel(String name, ExecutionConfig config, Object... arguments) {
 		name = name + LibMatrixCUDA.customKernelSuffix;
 		CUfunction function = kernels.get(name);
 		
@@ -115,7 +112,7 @@ public class JCudaKernels {
 			JCuda.cudaDeviceSynchronize();
 	}
 
-	public static void checkResult(int cuResult) throws DMLRuntimeException {
+	public static void checkResult(int cuResult) {
 		if (cuResult != CUresult.CUDA_SUCCESS) {
 			throw new DMLRuntimeException(CUresult.stringFor(cuResult));
 		}
@@ -126,13 +123,10 @@ public class JCudaKernels {
 	 *
 	 * @param ptxFileName
 	 * @return
-	 * @throws DMLRuntimeException
 	 */
-	private static Pointer initKernels(String ptxFileName) throws DMLRuntimeException {
-		InputStream in = null;
+	private static Pointer initKernels(String ptxFileName) {
 		ByteArrayOutputStream out = null;
-		try {
-			in = JCudaKernels.class.getResourceAsStream(ptxFileName);
+		try( InputStream in = JCudaKernels.class.getResourceAsStream(ptxFileName) ) {
 			if (in != null) {
 				out = new ByteArrayOutputStream();
 				byte buffer[] = new byte[8192];
@@ -153,7 +147,6 @@ public class JCudaKernels {
 			throw new DMLRuntimeException("Could not initialize the kernels", e);
 		} finally {
 			IOUtilFunctions.closeSilently(out);
-			IOUtilFunctions.closeSilently(in);
 		}
 	}
 }

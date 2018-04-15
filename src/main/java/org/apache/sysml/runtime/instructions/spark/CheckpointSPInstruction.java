@@ -24,7 +24,6 @@ import org.apache.spark.storage.StorageLevel;
 import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.lops.Checkpoint;
 import org.apache.sysml.parser.Expression.DataType;
-import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.controlprogram.caching.CacheableData;
 import org.apache.sysml.runtime.controlprogram.context.ExecutionContext;
 import org.apache.sysml.runtime.controlprogram.context.SparkExecutionContext;
@@ -42,6 +41,7 @@ import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.matrix.data.MatrixIndexes;
 import org.apache.sysml.runtime.matrix.data.SparseBlock;
 import org.apache.sysml.runtime.matrix.operators.Operator;
+import org.apache.sysml.runtime.util.UtilFunctions;
 
 public class CheckpointSPInstruction extends UnarySPInstruction {
 	// default storage level
@@ -52,9 +52,7 @@ public class CheckpointSPInstruction extends UnarySPInstruction {
 		_level = level;
 	}
 
-	public static CheckpointSPInstruction parseInstruction ( String str ) 
-		throws DMLRuntimeException 
-	{
+	public static CheckpointSPInstruction parseInstruction ( String str ) {
 		String[] parts = InstructionUtils.getInstructionPartsWithValueType(str);
 		InstructionUtils.checkNumFields(parts, 3);
 		
@@ -68,9 +66,7 @@ public class CheckpointSPInstruction extends UnarySPInstruction {
 	
 	@Override
 	@SuppressWarnings("unchecked")
-	public void processInstruction(ExecutionContext ec)
-			throws DMLRuntimeException 
-	{
+	public void processInstruction(ExecutionContext ec) {
 		SparkExecutionContext sec = (SparkExecutionContext)ec;
 		
 		// Step 1: early abort on non-existing or in-memory (cached) inputs
@@ -94,7 +90,7 @@ public class CheckpointSPInstruction extends UnarySPInstruction {
 		}
 		
 		//get input rdd handle (for matrix or frame)
-		JavaPairRDD<?,?> in = sec.getRDDHandleForVariable( input1.getName(), InputInfo.BinaryBlockInputInfo );
+		JavaPairRDD<?,?> in = sec.getRDDHandleForVariable(input1.getName(), InputInfo.BinaryBlockInputInfo, -1, true);
 		MatrixCharacteristics mcIn = sec.getMatrixCharacteristics( input1.getName() );
 		
 		// Step 2: Checkpoint given rdd (only if currently in different storage level to prevent redundancy)
@@ -105,19 +101,28 @@ public class CheckpointSPInstruction extends UnarySPInstruction {
 		JavaPairRDD<?,?> out = null;
 		if( !in.getStorageLevel().equals( _level ) ) 
 		{
-			//(trigger coalesce if intended number of partitions exceeded by 20%
-			//and not hash partitioned to avoid losing the existing partitioner)
+			//determine need for coalesce or repartition, and csr conversion
 			int numPartitions = SparkUtils.getNumPreferredPartitions(mcIn, in);
 			boolean coalesce = ( 1.2*numPartitions < in.getNumPartitions()
 				&& !SparkUtils.isHashPartitioned(in) && in.getNumPartitions()
 				> SparkExecutionContext.getDefaultParallelism(true));
+			boolean repartition = mcIn.dimsKnown(true) && mcIn.isUltraSparse()
+				&& numPartitions > in.getNumPartitions();
+			boolean mcsr2csr = input1.getDataType()==DataType.MATRIX 
+				&& OptimizerUtils.checkSparseBlockCSRConversion(mcIn)
+				&& !_level.equals(Checkpoint.SER_STORAGE_LEVEL);
 			
 			//checkpoint pre-processing rdd operations
 			if( coalesce ) {
 				//merge partitions without shuffle if too many partitions
 				out = in.coalesce( numPartitions );
 			}
-			else {
+			else if( repartition ) {
+				//repartition to preferred size as multiple of default parallelism
+				out = in.repartition(UtilFunctions.roundToNext(numPartitions,
+					SparkExecutionContext.getDefaultParallelism(true)));
+			}
+			else if( !mcsr2csr ) {
 				//since persist is an in-place marker for a storage level, we 
 				//apply a narrow shallow copy to allow for short-circuit collects 
 				if( input1.getDataType() == DataType.MATRIX )
@@ -125,13 +130,14 @@ public class CheckpointSPInstruction extends UnarySPInstruction {
 						(JavaPairRDD<MatrixIndexes,MatrixBlock>)in, false);
 				else if( input1.getDataType() == DataType.FRAME)
 					out = ((JavaPairRDD<Long,FrameBlock>)in)
-						.mapValues(new CopyFrameBlockFunction(false));	
+						.mapValues(new CopyFrameBlockFunction(false));
+			}
+			else {
+				out = in;
 			}
 			
 			//convert mcsr into memory-efficient csr if potentially sparse
-			if( input1.getDataType()==DataType.MATRIX 
-				&& OptimizerUtils.checkSparseBlockCSRConversion(mcIn)
-				&& !_level.equals(Checkpoint.SER_STORAGE_LEVEL) ) {
+			if( mcsr2csr ) {
 				out = ((JavaPairRDD<MatrixIndexes,MatrixBlock>)out)
 					.mapValues(new CreateSparseBlockFunction(SparseBlock.Type.CSR));
 			}

@@ -27,7 +27,6 @@ import org.apache.commons.math3.distribution.ExponentialDistribution;
 import org.apache.commons.math3.distribution.FDistribution;
 import org.apache.commons.math3.distribution.NormalDistribution;
 import org.apache.commons.math3.distribution.TDistribution;
-import org.apache.commons.math3.exception.MathArithmeticException;
 
 import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.util.UtilFunctions;
@@ -45,7 +44,7 @@ public class ParameterizedBuiltin extends ValueFunction
 	private static final long serialVersionUID = -5966242955816522697L;
 	
 	public enum ParameterizedBuiltinCode { 
-		CDF, INVCDF, RMEMPTY, REPLACE, REXPAND,
+		CDF, INVCDF, RMEMPTY, REPLACE, REXPAND, LOWER_TRI, UPPER_TRI,
 		TRANSFORMAPPLY, TRANSFORMDECODE }
 	public enum ProbabilityDistributionCode { 
 		INVALID, NORMAL, EXP, CHISQ, F, T }
@@ -60,6 +59,8 @@ public class ParameterizedBuiltin extends ValueFunction
 		String2ParameterizedBuiltinCode.put( "invcdf", ParameterizedBuiltinCode.INVCDF);
 		String2ParameterizedBuiltinCode.put( "rmempty", ParameterizedBuiltinCode.RMEMPTY);
 		String2ParameterizedBuiltinCode.put( "replace", ParameterizedBuiltinCode.REPLACE);
+		String2ParameterizedBuiltinCode.put( "lowertri", ParameterizedBuiltinCode.LOWER_TRI);
+		String2ParameterizedBuiltinCode.put( "uppertri", ParameterizedBuiltinCode.UPPER_TRI);
 		String2ParameterizedBuiltinCode.put( "rexpand", ParameterizedBuiltinCode.REXPAND);
 		String2ParameterizedBuiltinCode.put( "transformapply", ParameterizedBuiltinCode.TRANSFORMAPPLY);
 		String2ParameterizedBuiltinCode.put( "transformdecode", ParameterizedBuiltinCode.TRANSFORMDECODE);
@@ -89,11 +90,11 @@ public class ParameterizedBuiltin extends ValueFunction
 		distFunc = dist;
 	}
 
-	public static ParameterizedBuiltin getParameterizedBuiltinFnObject (String str) throws DMLRuntimeException {
+	public static ParameterizedBuiltin getParameterizedBuiltinFnObject (String str) {
 		return getParameterizedBuiltinFnObject (str, null);
 	}
 
-	public static ParameterizedBuiltin getParameterizedBuiltinFnObject (String str, String str2) throws DMLRuntimeException {
+	public static ParameterizedBuiltin getParameterizedBuiltinFnObject (String str, String str2) {
 		
 		ParameterizedBuiltinCode code = String2ParameterizedBuiltinCode.get(str);
 		
@@ -163,6 +164,12 @@ public class ParameterizedBuiltin extends ValueFunction
 			case REPLACE:
 				return new ParameterizedBuiltin(ParameterizedBuiltinCode.REPLACE);
 			
+			case LOWER_TRI:
+				return new ParameterizedBuiltin(ParameterizedBuiltinCode.LOWER_TRI);
+			
+			case UPPER_TRI:
+				return new ParameterizedBuiltin(ParameterizedBuiltinCode.UPPER_TRI);
+			
 			case REXPAND:
 				return new ParameterizedBuiltin(ParameterizedBuiltinCode.REXPAND);
 			
@@ -178,7 +185,7 @@ public class ParameterizedBuiltin extends ValueFunction
 	}
 	
 	@Override
-	public double execute(HashMap<String,String> params) throws DMLRuntimeException {
+	public double execute(HashMap<String,String> params) {
 		switch(bFunc) {
 		case CDF:
 		case INVCDF:
@@ -205,10 +212,8 @@ public class ParameterizedBuiltin extends ValueFunction
 	 * @param params map of parameters
 	 * @param inverse true if inverse
 	 * @return cdf or inverse cdf
-	 * @throws MathArithmeticException if MathArithmeticException occurs
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	private static double computeFromDistribution (ProbabilityDistributionCode dcode, HashMap<String,String> params, boolean inverse ) throws MathArithmeticException, DMLRuntimeException {
+	private static double computeFromDistribution (ProbabilityDistributionCode dcode, HashMap<String,String> params, boolean inverse ) {
 		
 		// given value is "quantile" when inverse=false, and it is "probability" when inverse=true
 		double val = Double.parseDouble(params.get("target"));

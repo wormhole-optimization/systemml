@@ -20,7 +20,6 @@
 package org.apache.sysml.runtime.instructions.spark;
 
 import org.apache.sysml.lops.runtime.RunMRJobs;
-import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.controlprogram.context.ExecutionContext;
 import org.apache.sysml.runtime.instructions.Instruction;
 import org.apache.sysml.runtime.instructions.SPInstructionParser;
@@ -51,12 +50,16 @@ public abstract class SPInstruction extends Instruction {
 	protected SPInstruction(SPType type, Operator op, String opcode, String istr) {
 		_sptype = type;
 		_optr = op;
-		super.type = IType.SPARK;
 		instString = istr;
 
 		// prepare opcode and update requirement for repeated usage
 		instOpcode = opcode;
 		_requiresLabelUpdate = super.requiresLabelUpdate();
+	}
+	
+	@Override
+	public IType getType() {
+		return IType.SPARK;
 	}
 
 	public SPType getSPInstructionType() {
@@ -74,9 +77,7 @@ public abstract class SPInstruction extends Instruction {
 	}
 	
 	@Override
-	public Instruction preprocessInstruction(ExecutionContext ec)
-		throws DMLRuntimeException 
-	{
+	public Instruction preprocessInstruction(ExecutionContext ec) {
 		//default pre-process behavior (e.g., debug state)
 		Instruction tmp = super.preprocessInstruction(ec);
 		
@@ -92,13 +93,10 @@ public abstract class SPInstruction extends Instruction {
 	}
 
 	@Override 
-	public abstract void processInstruction(ExecutionContext ec)
-			throws DMLRuntimeException;
+	public abstract void processInstruction(ExecutionContext ec);
 
 	@Override
-	public void postprocessInstruction(ExecutionContext ec)
-			throws DMLRuntimeException 
-	{
+	public void postprocessInstruction(ExecutionContext ec) {
 		//maintain statistics
 		Statistics.incrementNoOfExecutedSPInst();
 		

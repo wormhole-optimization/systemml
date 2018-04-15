@@ -37,6 +37,7 @@ import org.apache.sysml.conf.ConfigurationManager;
 import org.apache.sysml.conf.DMLConfig;
 import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.runtime.DMLRuntimeException;
+import org.apache.sysml.runtime.io.IOUtilFunctions;
 
 /**
  * This class helps in loading native library.
@@ -97,9 +98,8 @@ public class NativeHelper {
 	 * 
 	 * @param customLibPath specified by sysml.native.blas.directory
 	 * @param userSpecifiedBLAS specified by sysml.native.blas
-	 * @throws DMLRuntimeException if error
 	 */
-	public static void initialize(String customLibPath, String userSpecifiedBLAS) throws DMLRuntimeException {
+	public static void initialize(String customLibPath, String userSpecifiedBLAS) {
 		if(isBLASLoaded() && isSupportedBLAS(userSpecifiedBLAS) && !blasType.equalsIgnoreCase(userSpecifiedBLAS)) {
 			throw new DMLRuntimeException("Cannot replace previously loaded blas \"" + blasType + "\" with \"" + userSpecifiedBLAS + "\".");
 		}
@@ -292,33 +292,25 @@ public class NativeHelper {
 
 
 	private static boolean loadLibraryHelper(String path)  {
-		InputStream in = null; OutputStream out = null;
-		try {
-			// This logic is added because Java doesnot allow to load library from a resource file.
-			in = NativeHelper.class.getResourceAsStream("/lib/"+path);
+		OutputStream out = null;
+		try( InputStream in = NativeHelper.class.getResourceAsStream("/lib/"+path) ) {
+			// This logic is added because Java does not allow to load library from a resource file.
 			if(in != null) {
 				File temp = File.createTempFile(path, "");
 				temp.deleteOnExit();
 				out = FileUtils.openOutputStream(temp);
 				IOUtils.copy(in, out);
-				in.close(); in = null;
-				out.close(); out = null;
 				System.load(temp.getAbsolutePath());
 				return true;
 			}
 			else
 				LOG.warn("No lib available in the jar:" + path);
-		} catch(IOException e) {
+		}
+		catch(IOException e) {
 			LOG.warn("Unable to load library " + path + " from resource:" + e.getMessage());
-		} finally {
-			if(out != null)
-				try {
-					out.close();
-				} catch (IOException e) {}
-			if(in != null)
-				try {
-					in.close();
-				} catch (IOException e) {}
+		}
+		finally {
+			IOUtilFunctions.closeSilently(out);
 		}
 		return false;
 	}

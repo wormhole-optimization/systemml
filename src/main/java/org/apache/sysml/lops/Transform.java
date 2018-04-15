@@ -42,14 +42,16 @@ public class Transform extends Lop
 	
 	private OperationTypes operation = null;
 	private boolean _bSortIndInMem = false;
+	private boolean _outputEmptyBlock = true;
 	private int _numThreads = 1;
 	
 	public Transform(Lop input, Transform.OperationTypes op, DataType dt, ValueType vt, ExecType et) {
 		this(input, op, dt, vt, et, 1);
 	}
 	
-	public Transform(Lop[] inputs, Transform.OperationTypes op, DataType dt, ValueType vt, ExecType et) {
+	public Transform(Lop[] inputs, Transform.OperationTypes op, DataType dt, ValueType vt, boolean outputEmptyBlock, ExecType et) {
 		this(inputs, op, dt, vt, et, 1);
+		_outputEmptyBlock = outputEmptyBlock;
 	}
 	
 	public Transform(Lop input, Transform.OperationTypes op, DataType dt, ValueType vt, ExecType et, int k)  {
@@ -167,9 +169,7 @@ public class Transform extends Lop
 	//CP instructions
 	
 	@Override
-	public String getInstructions(String input1, String output) 
-		throws LopsException 
-	{
+	public String getInstructions(String input1, String output) {
 		StringBuilder sb = new StringBuilder();
 		sb.append( getExecType() );
 		sb.append( OPERAND_DELIMITOR );
@@ -178,7 +178,7 @@ public class Transform extends Lop
 		sb.append( getInputs().get(0).prepInputOperand(input1));
 		sb.append( OPERAND_DELIMITOR );
 		sb.append( this.prepOutputOperand(output));
-
+		
 		if( getExecType()==ExecType.CP && operation == OperationTypes.Transpose ) {
 			sb.append( OPERAND_DELIMITOR );
 			sb.append( _numThreads );
@@ -188,9 +188,7 @@ public class Transform extends Lop
 	}
 
 	@Override
-	public String getInstructions(String input1, String input2, String input3, String input4, String output) 
-		throws LopsException 
-	{
+	public String getInstructions(String input1, String input2, String input3, String input4, String output) {
 		//only used for reshape
 		
 		StringBuilder sb = new StringBuilder();
@@ -213,6 +211,11 @@ public class Transform extends Lop
 		sb.append( OPERAND_DELIMITOR );
 		sb.append( this.prepOutputOperand(output));
 		
+		if( getExecType()==ExecType.SPARK && operation == OperationTypes.Reshape ) {
+			sb.append( OPERAND_DELIMITOR );
+			sb.append( _outputEmptyBlock );
+		}
+		
 		if( getExecType()==ExecType.SPARK && operation == OperationTypes.Sort ){
 			sb.append( OPERAND_DELIMITOR );
 			sb.append( _bSortIndInMem );
@@ -224,9 +227,7 @@ public class Transform extends Lop
 	//MR instructions
 
 	@Override 
-	public String getInstructions(int input_index, int output_index) 
-		throws LopsException
-	{
+	public String getInstructions(int input_index, int output_index) {
 		StringBuilder sb = new StringBuilder();
 		sb.append( getExecType() );
 		sb.append( OPERAND_DELIMITOR );
@@ -240,9 +241,7 @@ public class Transform extends Lop
 	}
 	
 	@Override 
-	public String getInstructions(int input_index1, int input_index2, int input_index3, int input_index4, int output_index) 
-		throws LopsException
-	{
+	public String getInstructions(int input_index1, int input_index2, int input_index3, int input_index4, int output_index) {
 		//only used for reshape
 		
 		StringBuilder sb = new StringBuilder();

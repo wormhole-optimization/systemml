@@ -71,14 +71,15 @@ public class MatrixObject extends CacheableData<MatrixBlock>
 	
 	//additional matrix-specific flags
 	private UpdateType _updateType = UpdateType.COPY; 
-	
+	private boolean _diag = false;
+
 	//information relevant to partitioned matrices.
 	private boolean _partitioned = false; //indicates if obj partitioned
 	private PDataPartitionFormat _partitionFormat = null; //indicates how obj partitioned
 	private int _partitionSize = -1; //indicates n for BLOCKWISE_N
 	private String _partitionCacheName = null; //name of cache block
 	private MatrixBlock _partitionInMemory = null;
-
+	
 	/**
 	 * Constructor that takes the value type and the HDFS filename.
 	 * 
@@ -119,6 +120,7 @@ public class MatrixObject extends CacheableData<MatrixBlock>
 				                             metaOld.getOutputInfo(), metaOld.getInputInfo());
 		
 		_updateType = mo._updateType;
+		_diag = mo._diag;
 		_partitioned = mo._partitioned;
 		_partitionFormat = mo._partitionFormat;
 		_partitionSize = mo._partitionSize;
@@ -133,6 +135,14 @@ public class MatrixObject extends CacheableData<MatrixBlock>
 		return _updateType;
 	}
 	
+	public boolean isDiag() {
+		return _diag;
+	}
+	
+	public void setDiag(boolean diag) {
+		_diag = diag;
+	}
+	
 	@Override
 	public void updateMatrixCharacteristics (MatrixCharacteristics mc) {
 		_metaData.getMatrixCharacteristics().set(mc);
@@ -140,15 +150,11 @@ public class MatrixObject extends CacheableData<MatrixBlock>
 
 	/**
 	 * Make the matrix metadata consistent with the in-memory matrix data
-	 * 
-	 * @throws CacheException if CacheException occurs
 	 */
 	@Override
-	public void refreshMetaData() 
-		throws CacheException
-	{
+	public void refreshMetaData() {
 		if ( _data == null || _metaData ==null ) //refresh only for existing data
-			throw new CacheException("Cannot refresh meta data because there is no data or meta data. "); 
+			throw new DMLRuntimeException("Cannot refresh meta data because there is no data or meta data. "); 
 			//we need to throw an exception, otherwise input/output format cannot be inferred
 		
 		MatrixCharacteristics mc = _metaData.getMatrixCharacteristics();
@@ -233,17 +239,14 @@ public class MatrixObject extends CacheableData<MatrixBlock>
 	 * 
 	 * @param pred index range
 	 * @return matrix block
-	 * @throws CacheException if CacheException occurs
 	 */
-	public synchronized MatrixBlock readMatrixPartition( IndexRange pred ) 
-		throws CacheException
-	{
+	public synchronized MatrixBlock readMatrixPartition( IndexRange pred ) {
 		if( LOG.isTraceEnabled() )
 			LOG.trace("Acquire partition "+hashCode()+" "+pred);
 		long t0 = DMLScript.STATISTICS ? System.nanoTime() : 0;
 		
 		if ( !_partitioned )
-			throw new CacheException ("MatrixObject not available to indexed read.");
+			throw new DMLRuntimeException("MatrixObject not available to indexed read.");
 		
 		//return static partition of set from outside of the program
 		if( _partitionInMemory != null )
@@ -302,7 +305,7 @@ public class MatrixObject extends CacheableData<MatrixBlock>
 						cols = _partitionSize;
 						break;	
 					default:
-						throw new CacheException("Unsupported partition format: "+_partitionFormat);
+						throw new DMLRuntimeException("Unsupported partition format: "+_partitionFormat);
 				}
 				
 				
@@ -338,9 +341,8 @@ public class MatrixObject extends CacheableData<MatrixBlock>
 			//NOTE: currently no special treatment of non-existing partitions necessary 
 			//      because empty blocks are written anyway
 		}
-		catch(Exception ex)
-		{
-			throw new CacheException(ex);
+		catch(Exception ex) {
+			throw new DMLRuntimeException(ex);
 		}
 		
 		if( DMLScript.STATISTICS ){
@@ -352,10 +354,9 @@ public class MatrixObject extends CacheableData<MatrixBlock>
 	}
 
 	public String getPartitionFileName( IndexRange pred, int brlen, int bclen ) 
-		throws CacheException
 	{
 		if ( !_partitioned )
-			throw new CacheException ("MatrixObject not available to indexed read.");
+			throw new DMLRuntimeException("MatrixObject not available to indexed read.");
 		
 		StringBuilder sb = new StringBuilder();
 		sb.append(_hdfsFileName);
@@ -387,7 +388,7 @@ public class MatrixObject extends CacheableData<MatrixBlock>
 				sb.append((pred.colStart-1)/_partitionSize+1);
 				break;	
 			default:
-				throw new CacheException ("MatrixObject not available to indexed read.");
+				throw new DMLRuntimeException("MatrixObject not available to indexed read.");
 		}
 
 		return sb.toString();
@@ -405,7 +406,7 @@ public class MatrixObject extends CacheableData<MatrixBlock>
 		
 	@Override
 	protected boolean isBelowCachingThreshold() {
-		return super.isBelowCachingThreshold()
+		return LazyWriteBuffer.getCacheBlockSize(_data) <= CACHING_THRESHOLD
 			|| getUpdateType() == UpdateType.INPLACE_PINNED;
 	}
 	
@@ -430,7 +431,8 @@ public class MatrixObject extends CacheableData<MatrixBlock>
 		}
 		
 		//read matrix and maintain meta data
-		double sparsity = (mc.getNonZeros() >= 0 ? ((double)mc.getNonZeros())/(mc.getRows()*mc.getCols()) : 1.0d); 
+		double sparsity = (mc.getNonZeros() < 0) ? (iimd.getInputInfo().isTextIJV()?-1:1) :
+			OptimizerUtils.getSparsity(mc.getNonZeros(),mc.getRows(),mc.getCols());
 		MatrixBlock newData = DataConverter.readMatrixFromHDFS(fname, iimd.getInputInfo(), rlen, clen,
 				mc.getRowsPerBlock(), mc.getColsPerBlock(), sparsity, getFileFormatProperties());
 		setHDFSFileExists(true);
@@ -539,10 +541,11 @@ public class MatrixObject extends CacheableData<MatrixBlock>
 			if ( oinfo == OutputInfo.BinaryBlockOutputInfo && DMLScript.rtplatform == RUNTIME_PLATFORM.SINGLE_NODE &&
 				(mc.getRowsPerBlock() != ConfigurationManager.getBlocksize() || mc.getColsPerBlock() != ConfigurationManager.getBlocksize()) ) 
 			{
-				DataConverter.writeMatrixToHDFS(_data, fname, oinfo, new MatrixCharacteristics(mc.getRows(), mc.getCols(), ConfigurationManager.getBlocksize(), ConfigurationManager.getBlocksize(), mc.getNonZeros()), rep, fprop);
+				DataConverter.writeMatrixToHDFS(_data, fname, oinfo, new MatrixCharacteristics(mc.getRows(), mc.getCols(),
+					ConfigurationManager.getBlocksize(), ConfigurationManager.getBlocksize(), mc.getNonZeros()), rep, fprop, _diag);
 			}
 			else {
-				DataConverter.writeMatrixToHDFS(_data, fname, oinfo, mc, rep, fprop);
+				DataConverter.writeMatrixToHDFS(_data, fname, oinfo, mc, rep, fprop, _diag);
 			}
 
 			if( LOG.isTraceEnabled() )

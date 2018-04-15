@@ -22,7 +22,6 @@ package org.apache.sysml.runtime.compress;
 import java.util.Arrays;
 import java.util.Iterator;
 
-import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.functionobjects.Builtin;
 import org.apache.sysml.runtime.functionobjects.KahanFunction;
 import org.apache.sysml.runtime.functionobjects.KahanPlus;
@@ -118,7 +117,6 @@ public abstract class ColGroupDDC extends ColGroupValue
 	
 	@Override
 	public void unaryAggregateOperations(AggregateUnaryOperator op, MatrixBlock result, int rl, int ru)
-		throws DMLRuntimeException 
 	{
 		//sum and sumsq (reduceall/reducerow over tuples and counts)
 		if( op.aggOp.increOp.fn instanceof KahanPlus || op.aggOp.increOp.fn instanceof KahanPlusSq ) 
@@ -199,7 +197,7 @@ public abstract class ColGroupDDC extends ColGroupValue
 		
 		for( int i=rl; i<ru; i++ )
 			for( int j=0; j<ncol; j++ )
-				c[i] = builtin.execute2(c[i], getData(i, j));
+				c[i] = builtin.execute(c[i], getData(i, j));
 	}
 	
 	protected final void postScaling(double[] vals, double[] c) {

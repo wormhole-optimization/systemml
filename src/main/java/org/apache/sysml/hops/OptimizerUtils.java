@@ -33,6 +33,7 @@ import org.apache.sysml.conf.DMLConfig;
 import org.apache.sysml.hops.Hop.DataOpTypes;
 import org.apache.sysml.hops.Hop.FileFormatTypes;
 import org.apache.sysml.hops.Hop.OpOp2;
+import org.apache.sysml.hops.Hop.ReOrgOp;
 import org.apache.sysml.hops.rewrite.HopRewriteUtils;
 import org.apache.sysml.lops.Checkpoint;
 import org.apache.sysml.lops.Lop;
@@ -262,12 +263,11 @@ public class OptimizerUtils
 		return (getOptLevel() == level);
 	}
 	
-	public static CompilerConfig constructCompilerConfig( DMLConfig dmlconf ) throws DMLRuntimeException {
+	public static CompilerConfig constructCompilerConfig( DMLConfig dmlconf ) {
 		return constructCompilerConfig(new CompilerConfig(), dmlconf);
 	}
 	
 	public static CompilerConfig constructCompilerConfig( CompilerConfig cconf, DMLConfig dmlconf ) 
-		throws DMLRuntimeException
 	{
 		//each script sets its own block size, opt level etc
 		cconf.set(ConfigType.BLOCK_SIZE, dmlconf.getIntValue( DMLConfig.DEFAULT_BLOCK_SIZE ));
@@ -919,19 +919,17 @@ public class OptimizerUtils
 			+ Dag.getNextUniqueFilenameSuffix();
 	}
 
-	public static boolean allowsToFilterEmptyBlockOutputs( Hop hop ) 
-		throws HopsException
-	{
+	public static boolean allowsToFilterEmptyBlockOutputs( Hop hop ) {
 		boolean ret = true;
 		for( Hop p : hop.getParent() ) {
 			p.optFindExecType(); //ensure exec type evaluated
-			ret &=   (  p.getExecType()==ExecType.CP 
-					 ||(p instanceof AggBinaryOp && allowsToFilterEmptyBlockOutputs(p) )
-					 ||(p instanceof DataOp && ((DataOp)p).getDataOpType()==DataOpTypes.PERSISTENTWRITE && ((DataOp)p).getInputFormatType()==FileFormatTypes.TEXT))
-				  && !(p instanceof FunctionOp || (p instanceof DataOp && ((DataOp)p).getInputFormatType()!=FileFormatTypes.TEXT) ); //no function call or transient write
+			ret &= ( p.getExecType()==ExecType.CP 
+				||(p instanceof AggBinaryOp && allowsToFilterEmptyBlockOutputs(p) )
+				||(HopRewriteUtils.isReorg(p, ReOrgOp.RESHAPE, ReOrgOp.TRANS) && allowsToFilterEmptyBlockOutputs(p) )
+				||(HopRewriteUtils.isData(p, DataOpTypes.PERSISTENTWRITE) && ((DataOp)p).getInputFormatType()==FileFormatTypes.TEXT))
+				&& !(p instanceof FunctionOp || (p instanceof DataOp && ((DataOp)p).getInputFormatType()!=FileFormatTypes.TEXT) ); //no function call or transient write
 		}
-			
-		return ret;	
+		return ret;
 	}
 
 	public static int getConstrainedNumThreads(int maxNumThreads)
@@ -1206,10 +1204,8 @@ public class OptimizerUtils
 	 * @param root the root high-level operator
 	 * @param valMemo ?
 	 * @return size expression
-	 * @throws HopsException if HopsException occurs
 	 */
 	public static long rEvalSimpleLongExpression( Hop root, HashMap<Long, Long> valMemo ) 
-		throws HopsException
 	{
 		long ret = Long.MAX_VALUE;
 		
@@ -1223,7 +1219,6 @@ public class OptimizerUtils
 	}
 	
 	public static long rEvalSimpleLongExpression( Hop root, HashMap<Long, Long> valMemo, LocalVariableMap vars ) 
-		throws HopsException
 	{
 		long ret = Long.MAX_VALUE;
 		
@@ -1237,7 +1232,6 @@ public class OptimizerUtils
 	}
 	
 	public static double rEvalSimpleDoubleExpression( Hop root, HashMap<Long, Double> valMemo ) 
-		throws HopsException
 	{
 		//memoization (prevent redundant computation of common subexpr)
 		if( valMemo.containsKey(root.getHopID()) )
@@ -1263,7 +1257,6 @@ public class OptimizerUtils
 	}
 	
 	public static double rEvalSimpleDoubleExpression( Hop root, HashMap<Long, Double> valMemo, LocalVariableMap vars ) 
-		throws HopsException
 	{
 		//memoization (prevent redundant computation of common subexpr)
 		if( valMemo.containsKey(root.getHopID()) )
@@ -1292,7 +1285,6 @@ public class OptimizerUtils
 	}
 
 	protected static double rEvalSimpleUnaryDoubleExpression( Hop root, HashMap<Long, Double> valMemo ) 
-		throws HopsException
 	{
 		//memoization (prevent redundant computation of common subexpr)
 		if( valMemo.containsKey(root.getHopID()) )
@@ -1331,7 +1323,6 @@ public class OptimizerUtils
 	}
 
 	protected static double rEvalSimpleUnaryDoubleExpression( Hop root, HashMap<Long, Double> valMemo, LocalVariableMap vars ) 
-		throws HopsException
 	{
 		//memoization (prevent redundant computation of common subexpr)
 		if( valMemo.containsKey(root.getHopID()) )
@@ -1370,7 +1361,6 @@ public class OptimizerUtils
 	}
 
 	protected static double rEvalSimpleBinaryDoubleExpression( Hop root, HashMap<Long, Double> valMemo ) 
-		throws HopsException
 	{
 		//memoization (prevent redundant computation of common subexpr)
 		if( valMemo.containsKey(root.getHopID()) )
@@ -1406,7 +1396,6 @@ public class OptimizerUtils
 	}
 
 	protected static double rEvalSimpleBinaryDoubleExpression( Hop root, HashMap<Long, Double> valMemo, LocalVariableMap vars ) 
-		throws HopsException
 	{
 		//memoization (prevent redundant computation of common subexpr)
 		if( valMemo.containsKey(root.getHopID()) )

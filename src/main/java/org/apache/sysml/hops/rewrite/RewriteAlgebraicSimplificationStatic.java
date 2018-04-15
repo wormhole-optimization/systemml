@@ -41,7 +41,6 @@ import org.apache.sysml.hops.Hop.OpOp3;
 import org.apache.sysml.hops.Hop.OpOpN;
 import org.apache.sysml.hops.Hop.ParamBuiltinOp;
 import org.apache.sysml.hops.Hop.ReOrgOp;
-import org.apache.sysml.hops.HopsException;
 import org.apache.sysml.hops.LiteralOp;
 import org.apache.sysml.hops.NaryOp;
 import org.apache.sysml.hops.OptimizerUtils;
@@ -82,7 +81,6 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	
 	@Override
 	public ArrayList<Hop> rewriteHopDAGs(ArrayList<Hop> roots, ProgramRewriteStatus state) 
-		throws HopsException
 	{
 		if( roots == null )
 			return roots;
@@ -102,7 +100,6 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 
 	@Override
 	public Hop rewriteHopDAG(Hop root, ProgramRewriteStatus state) 
-		throws HopsException
 	{
 		if( root == null )
 			return root;
@@ -127,10 +124,8 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	 * 
 	 * @param hop high-level operator
 	 * @param descendFirst if process children recursively first
-	 * @throws HopsException if HopsException occurs
 	 */
 	private void rule_AlgebraicSimplification(Hop hop, boolean descendFirst) 
-		throws HopsException 
 	{
 		if(hop.isVisited())
 			return;
@@ -260,10 +255,8 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	 * @param hi high-level operator
 	 * @param pos position
 	 * @return high-level operator
-	 * @throws HopsException if HopsException occurs
 	 */
 	private static Hop removeUnnecessaryBinaryOperation( Hop parent, Hop hi, int pos ) 
-		throws HopsException
 	{
 		if( hi instanceof BinaryOp )
 		{
@@ -348,11 +341,9 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	 * 
 	 * @param hi high-order operation
 	 * @return high-level operator
-	 * @throws HopsException if HopsException occurs
 	 */
 	@SuppressWarnings("incomplete-switch")
 	private static Hop fuseDatagenAndBinaryOperation( Hop hi ) 
-		throws HopsException
 	{
 		if( hi instanceof BinaryOp )
 		{
@@ -447,10 +438,8 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 					&& HopRewriteUtils.isLiteralOfValue(min, 0)
 					&& HopRewriteUtils.isLiteralOfValue(max, 0) )
 				{
-					gen.setInput(DataExpression.RAND_MIN, right);
-					gen.setInput(DataExpression.RAND_MAX, right);
-					right.getParent().add(gen);
-					right.getParent().add(gen);
+					gen.setInput(DataExpression.RAND_MIN, right, true);
+					gen.setInput(DataExpression.RAND_MAX, right, true);
 					//rewire all parents (avoid anomalies with replicated datagen)
 					List<Hop> parents = new ArrayList<>(bop.getParent());
 					for( Hop p : parents )
@@ -465,8 +454,8 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 					&& HopRewriteUtils.isLiteralOfValue(max, 1) )
 				{
 					if( HopRewriteUtils.isLiteralOfValue(min, 1) )
-						gen.setInput(DataExpression.RAND_MIN, right);
-					gen.setInput(DataExpression.RAND_MAX, right);
+						gen.setInput(DataExpression.RAND_MIN, right, true);
+					gen.setInput(DataExpression.RAND_MAX, right, true);
 					//rewire all parents (avoid anomalies with replicated datagen)
 					List<Hop> parents = new ArrayList<>(bop.getParent());
 					for( Hop p : parents )
@@ -482,7 +471,6 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	}
 	
 	private static Hop fuseDatagenAndMinusOperation( Hop hi ) 
-		throws HopsException
 	{
 		if( hi instanceof BinaryOp )
 		{
@@ -532,7 +520,6 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	}
 	
 	private static Hop foldMultipleAppendOperations(Hop hi) 
-		throws HopsException
 	{
 		if( hi.getDataType().isMatrix() //no string appends or frames
 			&& (HopRewriteUtils.isBinary(hi, OpOp2.CBIND, OpOp2.RBIND) 
@@ -590,10 +577,8 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	 * @param hi high-level operator
 	 * @param pos position
 	 * @return high-level operator
-	 * @throws HopsException if HopsException occurs
 	 */
 	private static Hop simplifyBinaryToUnaryOperation( Hop parent, Hop hi, int pos ) 
-		throws HopsException
 	{
 		if( hi instanceof BinaryOp )
 		{
@@ -650,10 +635,8 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	 * 
 	 * @param hi high-level operator
 	 * @return high-level operator
-	 * @throws HopsException if HopsException occurs
 	 */
 	private static Hop canonicalizeMatrixMultScalarAdd( Hop hi ) 
-		throws HopsException
 	{
 		//pattern: binary operation (+ or -) of matrix mult and scalar 
 		if( hi instanceof BinaryOp )
@@ -686,7 +669,6 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	}
 	
 	private static Hop simplifyCTableWithConstMatrixInputs( Hop hi ) 
-		throws HopsException
 	{
 		//pattern: table(X, matrix(1,...), matrix(7, ...)) -> table(X, 1, 7)
 		if( HopRewriteUtils.isTernary(hi, OpOp3.CTABLE) ) {
@@ -713,10 +695,8 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	 * @param hi high-level operator
 	 * @param pos position
 	 * @return high-level operator
-	 * @throws HopsException if HopsException occurs
 	 */
 	private static Hop simplifyReverseOperation( Hop parent, Hop hi, int pos ) 
-		throws HopsException
 	{
 		if(    hi instanceof AggBinaryOp 
 			&& hi.getInput().get(0) instanceof TernaryOp )
@@ -928,7 +908,7 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 		   && hi.getInput().get(0) instanceof ReorgOp  ) //reorg operation
 		{
 			ReorgOp rop = (ReorgOp)hi.getInput().get(0);
-			if(   (rop.getOp()==ReOrgOp.TRANSPOSE || rop.getOp()==ReOrgOp.RESHAPE
+			if(   (rop.getOp()==ReOrgOp.TRANS || rop.getOp()==ReOrgOp.RESHAPE
 					|| rop.getOp() == ReOrgOp.REV )         //valid reorg
 				&& rop.getParent().size()==1 )              //uagg only reorg consumer
 			{
@@ -974,7 +954,6 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	}
 	
 	private static Hop simplifyBinaryMatrixScalarOperation( Hop parent, Hop hi, int pos ) 
-		throws HopsException
 	{
 		// Note: This rewrite is not applicable for all binary operations because some of them 
 		// are undefined over scalars. We explicitly exclude potential conflicting matrix-scalar binary
@@ -1066,7 +1045,7 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 			BinaryOp binary = (BinaryOp) hi.getInput().get(0);
 			
 			if( HopRewriteUtils.containsTransposeOperation(X.getParent()) 
-				&& !HopRewriteUtils.isValidOp(binary.getOp(), new OpOp2[]{OpOp2.CENTRALMOMENT, OpOp2.QUANTILE})) 
+				&& !HopRewriteUtils.isValidOp(binary.getOp(), new OpOp2[]{OpOp2.MOMENT, OpOp2.QUANTILE})) 
 			{
 				//clear existing wiring
 				HopRewriteUtils.removeChildReferenceByPos(parent, hi, pos);	
@@ -1087,7 +1066,7 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 		return hi;
 	}
 
-	private static Hop pushdownSumBinaryMult(Hop parent, Hop hi, int pos ) throws HopsException {
+	private static Hop pushdownSumBinaryMult(Hop parent, Hop hi, int pos ) {
 		//pattern:  sum(lamda*X) -> lamda*sum(X)
 		if( hi instanceof AggUnaryOp && ((AggUnaryOp)hi).getDirection()==Direction.RowCol
 				&& ((AggUnaryOp)hi).getOp()==Hop.AggOp.SUM // only one parent which is the sum
@@ -1177,10 +1156,8 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	 * @param parent parent high-level operator
 	 * @param hi high-level operator
 	 * @param pos position
-	 * @throws HopsException if HopsException occurs
 	 */
 	private static Hop fuseBinarySubDAGToUnaryOperation( Hop parent, Hop hi, int pos ) 
-		throws HopsException
 	{
 		if( hi instanceof BinaryOp )
 		{
@@ -1365,7 +1342,6 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	}
 	
 	private static Hop simplifySlicedMatrixMult(Hop parent, Hop hi, int pos) 
-		throws HopsException
 	{
 		//e.g., (X%*%Y)[1,1] -> X[1,] %*% Y[,1] 
 		if( hi instanceof IndexingOp 
@@ -1406,7 +1382,6 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	}
 
 	private static Hop simplifyConstantSort(Hop parent, Hop hi, int pos) 
-		throws HopsException
 	{
 		//order(matrix(7), indexreturn=FALSE) -> matrix(7)
 		//order(matrix(7), indexreturn=TRUE) -> seq(1,nrow(X),1)
@@ -1445,7 +1420,6 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	}
 	
 	private static Hop simplifyOrderedSort(Hop parent, Hop hi, int pos) 
-		throws HopsException
 	{
 		//order(seq(2,N+1,1), indexreturn=FALSE) -> matrix(7)
 		//order(seq(2,N+1,1), indexreturn=TRUE) -> seq(1,N,1)/seq(N,1,-1)
@@ -1490,7 +1464,6 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	}
 
 	private static Hop fuseOrderOperationChain(Hop hi) 
-		throws HopsException
 	{
 		//order(order(X,2),1) -> order(X, (12)), 
 		if( HopRewriteUtils.isReorg(hi, ReOrgOp.SORT)
@@ -1554,10 +1527,8 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	 * @param hi high-level operator
 	 * @param pos position
 	 * @return high-level operator
-	 * @throws HopsException if HopsException occurs
 	 */
 	private static Hop simplifyTransposeAggBinBinaryChains(Hop parent, Hop hi, int pos) 
-		throws HopsException
 	{
 		if( HopRewriteUtils.isTransposeOperation(hi)
 			&& hi.getInput().get(0) instanceof BinaryOp                       //basic binary
@@ -1592,7 +1563,6 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	
 	// Patterns: X + (X==0) * s -> replace(X, 0, s)
 	private static Hop simplifyReplaceZeroOperation(Hop parent, Hop hi, int pos) 
-		throws HopsException
 	{
 		if( HopRewriteUtils.isBinary(hi, OpOp2.PLUS) && hi.getInput().get(0).isMatrix()
 			&& HopRewriteUtils.isBinary(hi.getInput().get(1), OpOp2.MULT)
@@ -1623,7 +1593,7 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	 */
 	private static Hop removeUnnecessaryReorgOperation(Hop parent, Hop hi, int pos)
 	{
-		ReOrgOp[] lookup = new ReOrgOp[]{ReOrgOp.TRANSPOSE, ReOrgOp.REV};
+		ReOrgOp[] lookup = new ReOrgOp[]{ReOrgOp.TRANS, ReOrgOp.REV};
 		
 		if( hi instanceof ReorgOp && HopRewriteUtils.isValidOp(((ReorgOp)hi).getOp(), lookup)  ) //first reorg
 		{
@@ -1645,7 +1615,6 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	}
 
 	private static Hop removeUnnecessaryMinus(Hop parent, Hop hi, int pos) 
-		throws HopsException
 	{
 		if( hi.getDataType() == DataType.MATRIX && hi instanceof BinaryOp 
 			&& ((BinaryOp)hi).getOp()==OpOp2.MINUS  						//first minus
@@ -1700,7 +1669,6 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	}
 	
 	private static Hop fuseMinusNzBinaryOperation(Hop parent, Hop hi, int pos) 
-		throws HopsException
 	{
 		//pattern X - (s * ppred(X,0,!=)) -> X -nz s
 		//note: this is done as a hop rewrite in order to significantly reduce the 
@@ -1734,7 +1702,6 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	}
 	
 	private static Hop fuseLogNzUnaryOperation(Hop parent, Hop hi, int pos) 
-		throws HopsException
 	{
 		//pattern ppred(X,0,"!=")*log(X) -> log_nz(X)
 		//note: this is done as a hop rewrite in order to significantly reduce the 
@@ -1766,7 +1733,6 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	}
 
 	private static Hop fuseLogNzBinaryOperation(Hop parent, Hop hi, int pos) 
-		throws HopsException
 	{
 		//pattern ppred(X,0,"!=")*log(X,0.5) -> log_nz(X,0.5)
 		//note: this is done as a hop rewrite in order to significantly reduce the 
@@ -1799,7 +1765,6 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	}
 
 	private static Hop simplifyOuterSeqExpand(Hop parent, Hop hi, int pos) 
-		throws HopsException
 	{
 		//pattern: outer(v, t(seq(1,m)), "==") -> rexpand(v, max=m, dir=row, ignore=true, cast=false)
 		//note: this rewrite supports both left/right sequence 
@@ -1852,11 +1817,9 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 	 * @param hi high-level operator
 	 * @param pos position
 	 * @return high-level operator
-	 * @throws HopsException if HopsException occurs
 	 */
 	@SuppressWarnings("unused")
 	private static Hop removeUnecessaryPPred(Hop parent, Hop hi, int pos) 
-		throws HopsException
 	{
 		if( hi instanceof BinaryOp )
 		{

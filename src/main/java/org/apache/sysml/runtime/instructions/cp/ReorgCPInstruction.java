@@ -85,9 +85,7 @@ public class ReorgCPInstruction extends UnaryCPInstruction {
 		_ixret = ixret;
 	}
 
-	public static ReorgCPInstruction parseInstruction ( String str ) 
-		throws DMLRuntimeException 
-	{
+	public static ReorgCPInstruction parseInstruction ( String str ) {
 		CPOperand in = new CPOperand("", ValueType.UNKNOWN, DataType.UNKNOWN);
 		CPOperand out = new CPOperand("", ValueType.UNKNOWN, DataType.UNKNOWN);
 		
@@ -125,9 +123,7 @@ public class ReorgCPInstruction extends UnaryCPInstruction {
 	}
 	
 	@Override
-	public void processInstruction(ExecutionContext ec)
-			throws DMLRuntimeException 
-	{
+	public void processInstruction(ExecutionContext ec) {
 		//acquire inputs
 		MatrixBlock matBlock = ec.getMatrixInput(input1.getName(), getExtendedOpcode());
 		ReorgOperator r_op = (ReorgOperator) _optr;
@@ -148,5 +144,7 @@ public class ReorgCPInstruction extends UnaryCPInstruction {
 			ec.releaseMatrixInput(_col.getName());
 		ec.releaseMatrixInput(input1.getName(), getExtendedOpcode());
 		ec.setMatrixOutput(output.getName(), soresBlock, getExtendedOpcode());
+		if( r_op.fn instanceof DiagIndex && soresBlock.getNumColumns()>1 ) //diagV2M
+			ec.getMatrixObject(output.getName()).setDiag(true);
 	}
 }

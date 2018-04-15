@@ -20,7 +20,6 @@
 package org.apache.sysml.runtime.instructions.cp;
 
 import org.apache.sysml.lops.runtime.RunMRJobs;
-import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.controlprogram.context.ExecutionContext;
 import org.apache.sysml.runtime.instructions.CPInstructionParser;
 import org.apache.sysml.runtime.instructions.Instruction;
@@ -65,12 +64,16 @@ public abstract class CPInstruction extends Instruction
 	protected CPInstruction(CPType type, Operator op, String opcode, String istr) {
 		_cptype = type;
 		_optr = op;
-		super.type = IType.CONTROL_PROGRAM;
 		instString = istr;
 
 		// prepare opcode and update requirement for repeated usage
 		instOpcode = opcode;
 		_requiresLabelUpdate = super.requiresLabelUpdate();
+	}
+	
+	@Override
+	public IType getType() {
+		return IType.CONTROL_PROGRAM;
 	}
 
 	public CPType getCPInstructionType() {
@@ -88,24 +91,18 @@ public abstract class CPInstruction extends Instruction
 	}
 
 	@Override
-	public Instruction preprocessInstruction(ExecutionContext ec)
-		throws DMLRuntimeException 
-	{
+	public Instruction preprocessInstruction(ExecutionContext ec) {
 		//default preprocess behavior (e.g., debug state)
 		Instruction tmp = super.preprocessInstruction(ec);
-		
 		//instruction patching
-		if( tmp.requiresLabelUpdate() ) //update labels only if required
-		{
+		if( tmp.requiresLabelUpdate() ) { //update labels only if required
 			//note: no exchange of updated instruction as labels might change in the general case
 			String updInst = RunMRJobs.updateLabels(tmp.toString(), ec.getVariables());
 			tmp = CPInstructionParser.parseSingleInstruction(updInst);
 		}
-
 		return tmp;
 	}
 
 	@Override 
-	public abstract void processInstruction(ExecutionContext ec)
-			throws DMLRuntimeException;
+	public abstract void processInstruction(ExecutionContext ec);
 }

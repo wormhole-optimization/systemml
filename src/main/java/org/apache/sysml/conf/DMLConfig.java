@@ -55,7 +55,7 @@ import org.xml.sax.SAXException;
 
 public class DMLConfig
 {
-	public static final boolean SPOOF_DEBUG = true;
+	public static final boolean SPOOF_DEBUG = false;
 
 	public static final String DEFAULT_SYSTEMML_CONFIG_FILEPATH = "./SystemML-config.xml";
 	
@@ -151,13 +151,13 @@ public class DMLConfig
 	}
 
 	public DMLConfig(String fileName) 
-		throws ParseException, FileNotFoundException
+		throws FileNotFoundException
 	{
 		this( fileName, false );
 	}
 	
 	public DMLConfig(String fileName, boolean silent) 
-		throws ParseException, FileNotFoundException
+		throws FileNotFoundException
 	{
 		_fileName = fileName;
 		try {
@@ -283,9 +283,8 @@ public class DMLConfig
 	 * Method to update the key value
 	 * @param paramName parameter name
 	 * @param paramValue parameter value
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public void setTextValue(String paramName, String paramValue) throws DMLRuntimeException {
+	public void setTextValue(String paramName, String paramValue) {
 		if(_xmlRoot != null) {
 			NodeList list = _xmlRoot.getElementsByTagName(paramName);
 			if (list != null && list.getLength() > 0) {
@@ -340,11 +339,9 @@ public class DMLConfig
 	}
 	
 	public synchronized String serializeDMLConfig() 
-		throws DMLRuntimeException
 	{
 		String ret = null;
-		try
-		{		
+		try {
 			Transformer transformer = TransformerFactory.newInstance().newTransformer();
 			transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");
 			//transformer.setOutputProperty(OutputKeys.INDENT, "yes");
@@ -353,17 +350,14 @@ public class DMLConfig
 			transformer.transform(source, result);
 			ret = result.getWriter().toString();
 		}
-		catch(Exception ex)
-		{
+		catch(Exception ex) {
 			throw new DMLRuntimeException("Unable to serialize DML config.", ex);
 		}
 		
 		return ret;
 	}
 	
-	public static DMLConfig parseDMLConfig( String content ) 
-		throws DMLRuntimeException
-	{
+	public static DMLConfig parseDMLConfig( String content ) {
 		DMLConfig ret = null;
 		try {
 			DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
@@ -387,11 +381,10 @@ public class DMLConfig
 	 *
 	 * @param configPath User-defined path of the configuration file.
 	 * @return dml configuration
-	 * @throws ParseException if ParseException occurs
 	 * @throws FileNotFoundException if FileNotFoundException occurs
 	 */
 	public static DMLConfig readConfigurationFile(String configPath)
-		throws ParseException, FileNotFoundException
+		throws FileNotFoundException
 	{
 		// Always start with the internal defaults
 		DMLConfig config = new DMLConfig();

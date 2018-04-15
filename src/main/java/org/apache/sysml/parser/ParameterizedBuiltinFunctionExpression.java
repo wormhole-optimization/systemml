@@ -47,11 +47,13 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 	private static HashMap<String, Expression.ParameterizedBuiltinFunctionOp> opcodeMap;
 	static {
 		opcodeMap = new HashMap<>();
-		opcodeMap.put("aggregate", Expression.ParameterizedBuiltinFunctionOp.GROUPEDAGG);
+		opcodeMap.put("aggregate",        Expression.ParameterizedBuiltinFunctionOp.GROUPEDAGG);
 		opcodeMap.put("groupedAggregate", Expression.ParameterizedBuiltinFunctionOp.GROUPEDAGG);
-		opcodeMap.put("removeEmpty",Expression.ParameterizedBuiltinFunctionOp.RMEMPTY);
-		opcodeMap.put("replace", 	Expression.ParameterizedBuiltinFunctionOp.REPLACE);
-		opcodeMap.put("order", 		Expression.ParameterizedBuiltinFunctionOp.ORDER);
+		opcodeMap.put("removeEmpty",      Expression.ParameterizedBuiltinFunctionOp.RMEMPTY);
+		opcodeMap.put("replace",          Expression.ParameterizedBuiltinFunctionOp.REPLACE);
+		opcodeMap.put("order",            Expression.ParameterizedBuiltinFunctionOp.ORDER);
+		opcodeMap.put("lower.tri",        Expression.ParameterizedBuiltinFunctionOp.LOWER_TRI);
+		opcodeMap.put("upper.tri",        Expression.ParameterizedBuiltinFunctionOp.UPPER_TRI);
 		
 		// Distribution Functions
 		opcodeMap.put("cdf",	Expression.ParameterizedBuiltinFunctionOp.CDF);
@@ -86,6 +88,8 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		pbHopMap.put(Expression.ParameterizedBuiltinFunctionOp.GROUPEDAGG, ParamBuiltinOp.GROUPEDAGG);
 		pbHopMap.put(Expression.ParameterizedBuiltinFunctionOp.RMEMPTY, ParamBuiltinOp.RMEMPTY);
 		pbHopMap.put(Expression.ParameterizedBuiltinFunctionOp.REPLACE, ParamBuiltinOp.REPLACE);
+		pbHopMap.put(Expression.ParameterizedBuiltinFunctionOp.LOWER_TRI, ParamBuiltinOp.LOWER_TRI);
+		pbHopMap.put(Expression.ParameterizedBuiltinFunctionOp.UPPER_TRI, ParamBuiltinOp.UPPER_TRI);
 		
 		// For order, a ReorgOp is constructed with ReorgOp.SORT type
 		pbHopMap.put(Expression.ParameterizedBuiltinFunctionOp.ORDER, ParamBuiltinOp.INVALID);
@@ -144,7 +148,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 	}
 
 	@Override
-	public Expression rewriteExpression(String prefix) throws LanguageException {
+	public Expression rewriteExpression(String prefix) {
 		HashMap<String,Expression> newVarParams = new HashMap<>();
 		for (String key : _varParams.keySet()){
 			Expression newExpr = _varParams.get(key).rewriteExpression(prefix);
@@ -181,8 +185,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 	 */
 	@Override
 	public void validateExpression(HashMap<String, DataIdentifier> ids, HashMap<String, ConstIdentifier> constVars, boolean conditional)
-			throws LanguageException 
-	{		
+	{
 		// validate all input parameters
 		for ( String s : getVarParams().keySet() ) {
 			Expression paramExpr = getVarParam(s);
@@ -247,6 +250,11 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 			validateTransformMeta(output, conditional);
 			break;
 			
+		case LOWER_TRI:
+		case UPPER_TRI:
+			validateExtractTriangular(output, getOpCode(), conditional);
+			break;
+			
 		case TOSTRING:
 			validateCastAsString(output, conditional);
 			break;
@@ -264,7 +272,6 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 
 	@Override
 	public void validateExpression(MultiAssignmentStatement stmt, HashMap<String, DataIdentifier> ids, HashMap<String, ConstIdentifier> constVars, boolean conditional)
-		throws LanguageException 
 	{
 		// validate all input parameters
 		for ( String s : getVarParams().keySet() ) {
@@ -296,7 +303,6 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 	
 	// example: A = transformapply(target=X, meta=M, spec=s)
 	private void validateTransformApply(DataIdentifier output, boolean conditional) 
-		throws LanguageException 
 	{
 		//validate data / metadata (recode maps)
 		checkDataType("transformapply", TF_FN_PARAM_DATA, DataType.FRAME, conditional);
@@ -313,7 +319,6 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 	}
 	
 	private void validateTransformDecode(DataIdentifier output, boolean conditional) 
-		throws LanguageException 
 	{
 		//validate data / metadata (recode maps) 
 		checkDataType("transformdecode", TF_FN_PARAM_DATA, DataType.MATRIX, conditional);
@@ -330,7 +335,6 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 	}
 	
 	private void validateTransformColmap(DataIdentifier output, boolean conditional) 
-		throws LanguageException 
 	{
 		//validate data / metadata (recode maps) 
 		Expression exprTarget = getVarParam(Statement.GAGG_TARGET);
@@ -347,7 +351,6 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 	}
 	
 	private void validateTransformMeta(DataIdentifier output, boolean conditional) 
-		throws LanguageException 
 	{
 		//validate specification
 		checkDataValueType("transformmeta", TF_FN_PARAM_SPEC, DataType.SCALAR, ValueType.STRING, conditional);
@@ -363,7 +366,6 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 	}
 	
 	private void validateTransformEncode(DataIdentifier output1, DataIdentifier output2, boolean conditional) 
-		throws LanguageException 
 	{
 		//validate data / metadata (recode maps) 
 		checkDataType("transformencode", TF_FN_PARAM_DATA, DataType.FRAME, conditional);
@@ -381,7 +383,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		output2.setDimensions(-1, -1);
 	}
 	
-	private void validateTransformSpec(String pname, boolean conditional) throws LanguageException {
+	private void validateTransformSpec(String pname, boolean conditional) {
 		Expression data = getVarParam(pname);
 		if( data instanceof StringIdentifier ) {
 			try {
@@ -395,15 +397,36 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		}
 	}
 	
-	private void validateReplace(DataIdentifier output, boolean conditional) throws LanguageException {
+	private void validateExtractTriangular(DataIdentifier output,  ParameterizedBuiltinFunctionOp op, boolean conditional) {
+		
+		//check for invalid parameters
+		Set<String> valid = UtilFunctions.asSet("target", "diag", "values");
+		Set<String> invalid = _varParams.keySet().stream()
+			.filter(k -> !valid.contains(k)).collect(Collectors.toSet());
+		if( !invalid.isEmpty() )
+			raiseValidateError("Invalid parameters for " + op.name() + ": "
+				+ Arrays.toString(invalid.toArray(new String[0])), false);
+		
+		//check existence and correctness of arguments
+		checkTargetParam(getVarParam("target"), conditional);
+		checkOptionalBooleanParam(getVarParam("diag"), "diag", conditional);
+		checkOptionalBooleanParam(getVarParam("values"), "values", conditional);
+		if( getVarParam("diag") == null ) //default handling
+			_varParams.put("diag", new BooleanIdentifier(false));
+		if( getVarParam("values") == null ) //default handling
+			_varParams.put("values", new BooleanIdentifier(false));
+		
+		// Output is a matrix with unknown dims
+		Identifier in = getVarParam("target").getOutput();
+		output.setDataType(DataType.MATRIX);
+		output.setValueType(ValueType.DOUBLE);
+		output.setDimensions(in.getDim1(), in.getDim2());
+	}
+	
+	private void validateReplace(DataIdentifier output, boolean conditional) {
 		//check existence and correctness of arguments
 		Expression target = getVarParam("target");
-		if( target==null ) {				
-			raiseValidateError("Named parameter 'target' missing. Please specify the input matrix.", conditional, LanguageErrorCodes.INVALID_PARAMETERS);
-		}
-		else if( target.getOutput().getDataType() != DataType.MATRIX ){
-			raiseValidateError("Input matrix 'target' is of type '"+target.getOutput().getDataType()+"'. Please specify the input matrix.", conditional, LanguageErrorCodes.INVALID_PARAMETERS);
-		}	
+		checkTargetParam(target, conditional);
 		
 		Expression pattern = getVarParam("pattern");
 		if( pattern==null ) {
@@ -427,15 +450,10 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		output.setDimensions(target.getOutput().getDim1(), target.getOutput().getDim2());
 	}
 
-	private void validateOrder(DataIdentifier output, boolean conditional) throws LanguageException {
+	private void validateOrder(DataIdentifier output, boolean conditional) {
 		//check existence and correctness of arguments
-		Expression target = getVarParam("target"); //[MANDATORY] TARGET
-		if( target==null ) {				
-			raiseValidateError("Named parameter 'target' missing. Please specify the input matrix.", conditional, LanguageErrorCodes.INVALID_PARAMETERS);
-		}
-		else if( target.getOutput().getDataType() != DataType.MATRIX ){
-			raiseValidateError("Input matrix 'target' is of type '"+target.getOutput().getDataType()+"'. Please specify the input matrix.", conditional, LanguageErrorCodes.INVALID_PARAMETERS);
-		}	
+		Expression target = getVarParam("target");
+		checkTargetParam(target, conditional);
 		
 		//check for unsupported parameters
 		for(String param : getVarParams().keySet())
@@ -478,7 +496,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		
 	}
 
-	private void validateRemoveEmpty(DataIdentifier output, boolean conditional) throws LanguageException {
+	private void validateRemoveEmpty(DataIdentifier output, boolean conditional) {
 		
 		//check for invalid parameters
 		Set<String> valid = UtilFunctions.asSet("target", "margin", "select", "empty.return");
@@ -489,13 +507,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 				+ Arrays.toString(invalid.toArray(new String[0])), false);
 		
 		//check existence and correctness of arguments
-		Expression target = getVarParam("target");
-		if( target==null ) {
-			raiseValidateError("Named parameter 'target' missing. Please specify the input matrix.", conditional, LanguageErrorCodes.INVALID_PARAMETERS);
-		}
-		else if( target.getOutput().getDataType() != DataType.MATRIX ){
-			raiseValidateError("Input matrix 'target' is of type '"+target.getOutput().getDataType()+"'. Please specify the input matrix.", conditional, LanguageErrorCodes.INVALID_PARAMETERS);
-		}
+		checkTargetParam(getVarParam("target"), conditional);
 		
 		Expression margin = getVarParam("margin");
 		if( margin==null ){
@@ -525,7 +537,6 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 	}
 	
 	private void validateGroupedAgg(DataIdentifier output, boolean conditional) 
-		throws LanguageException 
 	{
 		//check existing target and groups
 		if (getVarParam(Statement.GAGG_TARGET)  == null || getVarParam(Statement.GAGG_GROUPS) == null){
@@ -630,7 +641,23 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		output.setDimensions(outputDim1, outputDim2);
 	}
 	
-	private void validateDistributionFunctions(DataIdentifier output, boolean conditional) throws LanguageException {
+	private void checkTargetParam(Expression target, boolean conditional) {
+		if( target==null )
+			raiseValidateError("Named parameter 'target' missing. Please specify the input matrix.",
+				conditional, LanguageErrorCodes.INVALID_PARAMETERS);
+		else if( target.getOutput().getDataType() != DataType.MATRIX )
+			raiseValidateError("Input matrix 'target' is of type '"+target.getOutput().getDataType()
+				+"'. Please specify the input matrix.", conditional, LanguageErrorCodes.INVALID_PARAMETERS);
+	}
+	
+	private void checkOptionalBooleanParam(Expression param, String name, boolean conditional) {
+		if( param!=null && (!param.getOutput().getDataType().isScalar() || param.getOutput().getValueType() != ValueType.BOOLEAN) ){
+			raiseValidateError("Boolean parameter '"+name+"' is of type "+param.getOutput().getDataType()
+				+"["+param.getOutput().getValueType()+"].", conditional, LanguageErrorCodes.INVALID_PARAMETERS);
+		}
+	}
+	
+	private void validateDistributionFunctions(DataIdentifier output, boolean conditional) {
 		// CDF and INVCDF expects one unnamed parameter, it must be renamed as "quantile" 
 		// (i.e., we must compute P(X <= x) where x is called as "quantile" )
 		
@@ -712,9 +739,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		output.setDimensions(0, 0);
 	}
 	
-	private void validateCastAsString(DataIdentifier output, boolean conditional) 
-		throws LanguageException 
-	{
+	private void validateCastAsString(DataIdentifier output, boolean conditional) {
 		HashMap<String, Expression> varParams = getVarParams();
 		
 		// replace parameter name for matrix argument
@@ -737,21 +762,18 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		output.setDimensions(0, 0);
 	}
 
-	private void checkDataType( String fname, String pname, DataType dt, boolean conditional ) 
-		throws LanguageException 
-	{
+	private void checkDataType( String fname, String pname, DataType dt, boolean conditional ) {
 		Expression data = getVarParam(pname);
-		if( data==null )				
+		if( data==null )
 			raiseValidateError("Named parameter '" + pname + "' missing. Please specify the input.", conditional, LanguageErrorCodes.INVALID_PARAMETERS);
 		else if( data.getOutput().getDataType() != dt )
 			raiseValidateError("Input to "+fname+"::"+pname+" must be of type '"+dt.toString()+"'. It is of type '"+data.getOutput().getDataType()+"'.", conditional, LanguageErrorCodes.INVALID_PARAMETERS);		
 	}
 
 	private void checkDataValueType( String fname, String pname, DataType dt, ValueType vt, boolean conditional ) 
-		throws LanguageException 
 	{
 		Expression data = getVarParam(pname);
-		if( data==null )				
+		if( data==null )
 			raiseValidateError("Named parameter '" + pname + "' missing. Please specify the input.", conditional, LanguageErrorCodes.INVALID_PARAMETERS);
 		else if( data.getOutput().getDataType() != dt || data.getOutput().getValueType() != vt )
 			raiseValidateError("Input to "+fname+"::"+pname+" must be of type '"+dt.toString()+"', '"+vt.toString()+"'. "

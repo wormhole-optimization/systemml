@@ -24,7 +24,6 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.sysml.api.DMLScript;
 import org.apache.sysml.lops.Lop;
 import org.apache.sysml.parser.DataIdentifier;
-import org.apache.sysml.runtime.DMLRuntimeException;
 import org.apache.sysml.runtime.controlprogram.context.ExecutionContext;
 
 
@@ -50,7 +49,6 @@ public abstract class Instruction
 	public static final String GPU_INST_PREFIX = "gpu_";
 	
 	//basic instruction meta data
-	protected IType type = null;
 	protected String instString = null;
 	protected String instOpcode = null;
 	private String extendedOpcode = null;
@@ -82,14 +80,8 @@ public abstract class Instruction
 	public int getEndColumn() {
 		return endCol;
 	}
-
-	public void setType (IType tp ) {
-		type = tp;
-	}
 	
-	public IType getType() {
-		return type;
-	}
+	public abstract IType getType();
 	
 	public void setLocation(String filename, int beginLine, int endLine, int beginCol, int endCol) {
 		this.filename = filename;
@@ -179,18 +171,18 @@ public abstract class Instruction
 				scriptInfo = " [" + filename + " " + beginLine + ":" + beginCol + "-" + endLine + ":" + endCol + "]";
 			else
 				scriptInfo = " [" + beginLine + ":" + beginCol + "-" + endLine + ":" + endCol + "]";
-			if( type == IType.SPARK )
+			if( getType() == IType.SPARK )
 				extendedOpcode = SP_INST_PREFIX + getOpcode() + scriptInfo;
-			else if( type == IType.GPU )
+			else if( getType() == IType.GPU )
 				extendedOpcode = GPU_INST_PREFIX + getOpcode() + scriptInfo;
 			else
 				extendedOpcode = getOpcode() + scriptInfo;
 		}
 		else {
 			// This ensures that there is no overhead if finegrained statistics is disabled
-			if( type == IType.SPARK )
+			if( getType() == IType.SPARK )
 				extendedOpcode = SP_INST_PREFIX + getOpcode();
-			else if( type == IType.GPU )
+			else if( getType() == IType.GPU )
 				extendedOpcode = GPU_INST_PREFIX + getOpcode();
 			else
 				extendedOpcode = getOpcode();
@@ -210,11 +202,8 @@ public abstract class Instruction
 	 * 
 	 * @param pattern ?
 	 * @param replace ?
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public void updateInstructionThreadID(String pattern, String replace) 
-		throws DMLRuntimeException
-	{
+	public void updateInstructionThreadID(String pattern, String replace) {
 		//do nothing
 	}
 	
@@ -225,11 +214,8 @@ public abstract class Instruction
 	 * 
 	 * @param ec execution context
 	 * @return instruction
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public Instruction preprocessInstruction(ExecutionContext ec)
-		throws DMLRuntimeException
-	{
+	public Instruction preprocessInstruction(ExecutionContext ec){
 		//update debug status
 		ec.updateDebugState( this );
 		
@@ -241,10 +227,8 @@ public abstract class Instruction
 	 * This method should be used to execute the instruction. 
 	 * 
 	 * @param ec execution context
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public abstract void processInstruction(ExecutionContext ec) 
-		throws DMLRuntimeException;
+	public abstract void processInstruction(ExecutionContext ec);
 	
 	/**
 	 * This method should be used for any tear down after executing this instruction.
@@ -252,11 +236,8 @@ public abstract class Instruction
 	 * call the super method.
 	 * 
 	 * @param ec execution context
-	 * @throws DMLRuntimeException if DMLRuntimeException occurs
 	 */
-	public void postprocessInstruction(ExecutionContext ec)
-		throws DMLRuntimeException
-	{
+	public void postprocessInstruction(ExecutionContext ec) {
 		//do nothing
 	}
 }

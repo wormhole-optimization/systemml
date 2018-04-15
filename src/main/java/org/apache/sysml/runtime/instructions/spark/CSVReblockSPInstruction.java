@@ -61,9 +61,7 @@ public class CSVReblockSPInstruction extends UnarySPInstruction {
 		_fillValue = fillValue;
 	}
 
-	public static CSVReblockSPInstruction parseInstruction(String str)
-			throws DMLRuntimeException 
-	{
+	public static CSVReblockSPInstruction parseInstruction(String str) {
 		String opcode = InstructionUtils.getOpCode(str);
 		if( !opcode.equals("csvrblk") )
 			throw new DMLRuntimeException("Incorrect opcode for CSVReblockSPInstruction:" + opcode);
@@ -87,9 +85,7 @@ public class CSVReblockSPInstruction extends UnarySPInstruction {
 	}
 
 	@Override
-	public void processInstruction(ExecutionContext ec)
-		throws DMLRuntimeException 
-	{
+	public void processInstruction(ExecutionContext ec) {
 		SparkExecutionContext sec = (SparkExecutionContext) ec;
 
 		//sanity check input info
@@ -127,30 +123,26 @@ public class CSVReblockSPInstruction extends UnarySPInstruction {
 	}
 
 	@SuppressWarnings("unchecked")
-	protected JavaPairRDD<MatrixIndexes,MatrixBlock> processMatrixCSVReblockInstruction(SparkExecutionContext sec, MatrixCharacteristics mcOut) 
-		throws DMLRuntimeException
-	{
+	protected JavaPairRDD<MatrixIndexes,MatrixBlock> processMatrixCSVReblockInstruction(SparkExecutionContext sec, MatrixCharacteristics mcOut) {
 		//get input rdd (needs to be longwritable/text for consistency with meta data, in case of
 		//serialization issues create longwritableser/textser as serializable wrappers
-		JavaPairRDD<LongWritable, Text> in = (JavaPairRDD<LongWritable, Text>) 
-				sec.getRDDHandleForVariable(input1.getName(), InputInfo.CSVInputInfo);
-			
+		JavaPairRDD<LongWritable, Text> in = (JavaPairRDD<LongWritable, Text>)
+			sec.getRDDHandleForMatrixObject(sec.getMatrixObject(input1), InputInfo.CSVInputInfo);
+		
 		//reblock csv to binary block
-		return RDDConverterUtils.csvToBinaryBlock(sec.getSparkContext(), 
-				in, mcOut, _hasHeader, _delim, _fill, _fillValue);
+		return RDDConverterUtils.csvToBinaryBlock(sec.getSparkContext(),
+			in, mcOut, _hasHeader, _delim, _fill, _fillValue);
 	}
 
 	@SuppressWarnings("unchecked")
-	protected JavaPairRDD<Long,FrameBlock> processFrameCSVReblockInstruction(SparkExecutionContext sec, MatrixCharacteristics mcOut, ValueType[] schema) 
-		throws DMLRuntimeException
-	{
+	protected JavaPairRDD<Long,FrameBlock> processFrameCSVReblockInstruction(SparkExecutionContext sec, MatrixCharacteristics mcOut, ValueType[] schema) {
 		//get input rdd (needs to be longwritable/text for consistency with meta data, in case of
 		//serialization issues create longwritableser/textser as serializable wrappers
 		JavaPairRDD<LongWritable, Text> in = (JavaPairRDD<LongWritable, Text>) 
-				sec.getRDDHandleForVariable(input1.getName(), InputInfo.CSVInputInfo);
+			sec.getRDDHandleForFrameObject(sec.getFrameObject(input1), InputInfo.CSVInputInfo);
 		
 		//reblock csv to binary block
-		return FrameRDDConverterUtils.csvToBinaryBlock(sec.getSparkContext(), 
-				in, mcOut, schema, _hasHeader, _delim, _fill, _fillValue);
+		return FrameRDDConverterUtils.csvToBinaryBlock(sec.getSparkContext(),
+			in, mcOut, schema, _hasHeader, _delim, _fill, _fillValue);
 	}
 }
