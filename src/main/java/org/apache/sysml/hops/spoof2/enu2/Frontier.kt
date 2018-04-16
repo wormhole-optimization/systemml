@@ -4,10 +4,6 @@ import java.util.*
 
 sealed class Frontier {
 
-//    enum class OrderingStrategy {
-//        SMART, RANDOM;
-//    }
-
     abstract val size: Int
     abstract fun add(c: Construct)
     abstract fun remove(c: Construct)

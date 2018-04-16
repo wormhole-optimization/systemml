@@ -4,9 +4,7 @@ import org.apache.commons.logging.LogFactory
 import org.apache.log4j.Level
 import org.apache.log4j.Logger
 import org.apache.sysml.conf.DMLConfig
-import org.apache.sysml.hops.spoof2.plan.Name
 import org.apache.sysml.hops.spoof2.plan.SNode
-import org.apache.sysml.hops.spoof2.plan.prod
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -16,9 +14,8 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
     val costQueue: PriorityQueue<Construct> = PriorityQueue(compareBy { -it.recCost })
     val stats = this.Statistics()
     val frontier = when (FRONTIER_ORDER_STRATEGY) {
-        "smart" -> Frontier.Smart()
-        "naive" -> Frontier.Random()
-        else -> throw AssertionError()
+        FrontierOrderStrategy.SMART -> Frontier.Smart()
+        FrontierOrderStrategy.RANDOM -> Frontier.Random()
     }
 
     val tgs = TargetGraphs(dogbs, this)
@@ -151,8 +148,15 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
             if (LDEBUG) Logger.getLogger(BottomUpOptimize::class.java).level = Level.TRACE
         }
 
-        internal const val PRUNE_LOCAL_STRATEGY = "cse-aware"
-        private const val FRONTIER_ORDER_STRATEGY = "smart"
+        internal enum class PruneLocalStrategy {
+            CSE_AWARE, NAIVE
+        }
+        private enum class FrontierOrderStrategy {
+            SMART, RANDOM
+        }
+
+        internal val PRUNE_LOCAL_STRATEGY = PruneLocalStrategy.CSE_AWARE
+        private val FRONTIER_ORDER_STRATEGY = FrontierOrderStrategy.SMART
 
         private const val DO_STATS = true
         private const val STAT_FOLDER = "buo_stats"
@@ -214,7 +218,7 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
                 graphFile.writer().buffered().use { graphFileWriter ->
                     graphFileWriter.write("PRUNE_LOCAL_STRATEGY: $PRUNE_LOCAL_STRATEGY\n")
                     graphFileWriter.write("FRONTIER_ORDER_STRATEGY: $FRONTIER_ORDER_STRATEGY\n")
-                    graphFileWriter.write("Original Bases: \n\t${initialBases.joinToString("\n\t") { e -> "${e.base} -- ${e.base.schema} -- nnz ${nnzInfer.infer(e)}"}}\n\n")
+                    graphFileWriter.write("Original Bases: \n\t${initialBases.joinToString("\n\t") { e -> "${e.base.id}@${e.base} -- ${e.base.schema} -- nnz ${nnzInfer.infer(e)}"}}\n\n")
                     graphFileWriter.write("Original GraphBags: \n\t${tgs.origDogbs.graphBags.withIndex().joinToString("\n\t") { (i,g) -> "$i: $g"}}\n")
                     graphFileWriter.write("bestComplete: \n\t${tgs.bestComplete!!.withIndex().joinToString("\n\t") { (i,g) -> "$i: $g"}}\n")
                     graphFileWriter.write("upperBound: ${tgs.upperBound}\n\n")

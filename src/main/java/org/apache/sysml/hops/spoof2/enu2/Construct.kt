@@ -24,6 +24,7 @@ sealed class Construct(
         val outer: ShapeList
 ) {
     val outerSchema = outer.toUnboundSchema() //Schema(outer.mapIndexed { i, s -> AU(i) as Name to s })
+    val fullyScalar: Boolean = children.all { it.fullyScalar } && outer.isEmpty()
 
     override fun toString(): String {
         return "${javaClass.simpleName}$children" // <p:${parents.size}>
@@ -52,12 +53,13 @@ sealed class Construct(
         var coveredBaseNnzSum = if (height == 0) nnz else 0L
         for (c in rc) {
             recCost += c.thisCost
-            recCostNoShare = (2 - c.cmaps.map { it.tgtGraph }.toSet().size) * c.thisCost
+            recCostNoShare += if (c.fullyScalar) c.thisCost else (2 - c.cmaps.map { it.tgtGraph }.toSet().size) * c.thisCost
             if (c.height == 0)
                 coveredBaseNnzSum += c.nnz
         }
         this.recCost = recCost //rc.sumByDouble { it.thisCost } + thisCost
         this.recCostNoShare = recCostNoShare //rc.sumByDouble { c -> (2 - c.cmaps.map { it.tgtGraph }.toSet().size) * c.thisCost } + thisCost
+        assert(recCostNoShare <= recCost)
         this.coveredBaseNnzSum = coveredBaseNnzSum
         recConstructsNoSelf = rc
         recomputePruned = checkRecomputePruned(rc)
@@ -141,17 +143,16 @@ sealed class Construct(
         // for each alternative to this construct,
         // check whether the recCostNoShare of c is greater than that of the alternative. If so, prune.
         when (BottomUpOptimize.PRUNE_LOCAL_STRATEGY) {
-            "naive" -> {
+            BottomUpOptimize.Companion.PruneLocalStrategy.NAIVE -> {
                 for (a in sa)
                     if (recCost > a.recCost)
                         return true
             }
-            "cse-aware" -> {
+            BottomUpOptimize.Companion.PruneLocalStrategy.CSE_AWARE -> {
                 for (a in sa)
                     if (recCostNoShare > a.recCost)
                         return true
             }
-            else -> throw AssertionError()
         }
         return false
     }
