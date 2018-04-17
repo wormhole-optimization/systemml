@@ -15,15 +15,16 @@ sealed class Frontier {
         companion object {
             val orderConstructsToExploreFirst: Comparator<Construct> = Comparator { o1, o2 ->
                 // Bases first: add all bases before doing anything else.
-                // then depth first: taller height before shorter height
+                // then most number of covered edges first
                 // then smallest recCostNoShare / sum of nnz of included edges
-                // then CSE first: most CMaps before fewer CMaps
+                // then most CSE first: most CMaps before fewer CMaps
                 // then by id: smallest ID first
                 // Later add an active component that selects bases not yet filled in
                 when {
                     o1.height == 0 && o2.height == 0 -> o1.id.compareTo(o2.id)
                     o1.height == 0 -> -1
                     o2.height == 0 -> 1
+                    o1.maxCoveredEdges != o2.maxCoveredEdges -> -o1.maxCoveredEdges.compareTo(o2.maxCoveredEdges)
                     o1.recCostNoShare / o1.coveredBaseNnzSum != (o2.recCostNoShare / o2.coveredBaseNnzSum) ->
                         (o1.recCostNoShare / o1.coveredBaseNnzSum).compareTo(o2.recCostNoShare / o2.coveredBaseNnzSum)
                     o1.cmaps.size != o2.cmaps.size -> -o1.cmaps.size.compareTo(o2.cmaps.size)

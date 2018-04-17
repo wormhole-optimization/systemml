@@ -76,6 +76,8 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
         // sum these up in the best possible way using a heuristic.
         val ret = tgs.finish()
         stats.close()
+        if (LOG.isTraceEnabled)
+            LOG.trace("Total number of iterations for BottomUpOptimizer: ${stats.longestIter}")
         return ret
     }
 

@@ -65,6 +65,9 @@ sealed class Construct(
         recomputePruned = checkRecomputePruned(rc)
     }
 
+    val maxCoveredEdges: Int by lazy { cmaps.maxBy { it.coveredEdges.count { it } }?.coveredEdges?.count { it } ?: Int.MAX_VALUE }
+
+
     private fun checkRecomputePruned(rc: Set<Construct>): Boolean {
         val seen = mutableSetOf<Construct>()
         return children.any { it.checkRecomputePruned(rc, seen) }
@@ -121,6 +124,7 @@ sealed class Construct(
             when {
                 it !is MatrixMult -> false
                 c2 == this && it.a == this && it.b == this -> it.type.aj == bj && it.type.bj == aj || it.type.aj == aj && it.type.bj == bj
+                c2 == this -> false
                 it.a == c2 -> it.type.aj == bj && it.type.bj == aj
                 it.b == c2 -> it.type.aj == aj && it.type.bj == bj
                 else -> false
