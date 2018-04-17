@@ -316,6 +316,11 @@ fun <E> MutableCollection<E>.removeFirst(): E? {
     else this.first().also { this.remove(it) }
 }
 
+fun <E> MutableCollection<E>.removeLast(): E? {
+    return if( this.isEmpty() ) null
+    else this.last().also { this.remove(it) }
+}
+
 fun <A:Comparable<A>,B:Comparable<B>> pairComparator(): Comparator<Pair<A,B>> {
     return Comparator.comparing<Pair<A,B>,A> { it.first }.thenBy {it.second}
 }
@@ -515,4 +520,8 @@ inline fun extractHops(roots: List<Hop>, condition: (Hop) -> Boolean): Set<Hop> 
     return found
 }
 
-
+fun <T> listOfEmptyLists(size: Int): List<MutableList<T>> {
+    val l = mutableListOf<MutableList<T>>()
+    repeat(size) { l.add(mutableListOf()) }
+    return l.toList()
+}

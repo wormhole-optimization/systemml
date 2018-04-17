@@ -4,6 +4,8 @@ import org.apache.commons.logging.LogFactory
 import org.apache.log4j.Level
 import org.apache.log4j.Logger
 import org.apache.sysml.conf.DMLConfig
+import org.apache.sysml.hops.spoof2.enu2.Frontier.*
+import org.apache.sysml.hops.spoof2.enu2.Frontier.Random
 import org.apache.sysml.hops.spoof2.plan.SNode
 import java.io.File
 import java.text.SimpleDateFormat
@@ -13,12 +15,8 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
     val nnzInfer: NnzInfer = dogbs.nnzInfer
     val costQueue: PriorityQueue<Construct> = PriorityQueue(compareBy { -it.recCost })
     val stats = this.Statistics()
-    val frontier = when (FRONTIER_ORDER_STRATEGY) {
-        FrontierOrderStrategy.SMART -> Frontier.Smart()
-        FrontierOrderStrategy.RANDOM -> Frontier.Random()
-    }
-
     val tgs = TargetGraphs(dogbs, this)
+    val frontier = FRONTIER_OPENING.make(tgs, FRONTIER_ORDER_STRATEGY.make())
 
     @Suppress("UNCHECKED_CAST")
     val initialBases: List<Edge.C> = tgs.tgtEdgeListNoScalars.flatten().distinctBy { it.base }
@@ -144,7 +142,7 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
         val nnzInferer: NnzInferer = WorstCaseNnz
         private const val MAX_DURATION_MS = 20 * 1000
 
-        private val LOG = LogFactory.getLog(BottomUpOptimize::class.java)!!
+        internal val LOG = LogFactory.getLog(BottomUpOptimize::class.java)!!
         private const val LDEBUG = DMLConfig.SPOOF_DEBUG
         init {
             if (LDEBUG) Logger.getLogger(BottomUpOptimize::class.java).level = Level.TRACE
@@ -153,12 +151,16 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
         internal enum class PruneLocalStrategy {
             CSE_AWARE, NAIVE
         }
-        private enum class FrontierOrderStrategy {
-            SMART, RANDOM
+        private enum class FrontierOrderStrategy(val make: () -> Frontier) {
+            SMART(::Smart), RANDOM(::Random)
+        }
+        private enum class DoOpeningBook(val make: (TargetGraphs, Frontier) -> Frontier) {
+            YES(::OpeningBook), NO({ _, f -> f })
         }
 
         internal val PRUNE_LOCAL_STRATEGY = PruneLocalStrategy.CSE_AWARE
         private val FRONTIER_ORDER_STRATEGY = FrontierOrderStrategy.SMART
+        private val FRONTIER_OPENING = DoOpeningBook.YES
 
         private const val DO_STATS = true
         private const val STAT_FOLDER = "buo_stats"

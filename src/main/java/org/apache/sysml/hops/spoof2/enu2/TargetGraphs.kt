@@ -143,7 +143,7 @@ class TargetGraphs(
     private fun multiplyScalar(bg: Construct, num: Int): Construct {
         val c = getScalar(num)
         // todo: push into * of scalars if bg is an ewise and one of the inputs is the product of scalars
-        return bg.makeAlignedEMultAbove(buo, c)
+        return bg.makeOuterAbove(buo, c) // makeAlignedEMultAbove
     }
 
 
@@ -226,10 +226,10 @@ class TargetGraphs(
             var bg = _bg
             while (num > 1) {
                 if (num % 2 == 0) {
-                    bg = bg.makeAlignedEMultAbove(buo, bg)
+                    bg = bg.makeOuterAbove(buo, bg) // makeAlignedEMultAbove
                     num /= 2
                 } else {
-                    bg = bg.makeAlignedEMultAbove(buo, _bg)
+                    bg = bg.makeOuterAbove(buo, _bg)
                     num--
                 }
             }

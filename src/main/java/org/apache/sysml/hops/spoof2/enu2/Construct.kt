@@ -686,7 +686,7 @@ sealed class Construct(
                                 else -> listOf()
                             }
                             CMap(this, tgi, newVertMap, am.coveredEdges.or(bm.coveredEdges))
-                        }
+                        }.distinct()
                     }
                 }
             }
