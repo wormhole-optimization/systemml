@@ -53,7 +53,7 @@ sealed class Construct(
         var coveredBaseNnzSum = if (height == 0) nnz else 0L
         for (c in rc) {
             recCost += c.thisCost
-            recCostNoShare += if (c.fullyScalar) c.thisCost else (2 - c.cmaps.map { it.tgtGraph }.toSet().size) * c.thisCost
+            recCostNoShare += if (c.fullyScalar) c.thisCost else (2 - c.cmaps.size) * c.thisCost //todo - only count the combinations of cmaps for a particular tgtGraph that could actually coexist, i.e. because of disjoint coveredEdges
             if (c.height == 0)
                 coveredBaseNnzSum += c.nnz
         }
@@ -245,6 +245,8 @@ sealed class Construct(
             recCost >= buo.tgs.upperBound -> Status.PRUNED_GLOBAL
             else -> Status.PRUNED_LOCAL
         }
+        if (LOG.isTraceEnabled)
+            LOG.trace("$status (cost $recCost) $this")
         buo.stats.logPrunedConstruct(status)
     }
 

@@ -560,15 +560,13 @@ class TargetGraphs(
 
     private fun keepOrGlobalPrune(c: Construct, dfi: Set<Construct>): Construct? {
         return if (c.recomputePruned || c.isGlobalPruned()) {
-            if (LOG.isTraceEnabled)
-                LOG.trace("  ${if (c.recomputePruned) "RECOMPUTE " else ""}PRUNED candidate: $c (cost ${c.recCost})")
             c.prune()
             null
         }
         else {
             if (LOG.isTraceEnabled) {
                 if (c in dfi)
-                    LOG.trace("  Duplicate candidate: $c")
+                    LOG.trace("  duplicate: $c")
                 else
                     LOG.trace("  Candidate: $c")
             }
@@ -579,7 +577,7 @@ class TargetGraphs(
 
     fun finish(): List<SNode> {
         if (LOG.isTraceEnabled)
-            LOG.trace("FINAL BESTCOMPLETE: $bestComplete at cost $upperBound")
+            LOG.trace("FINAL BESTCOMPLETE (cost $upperBound): $bestComplete")
         check(bestComplete != null)
 
         return bestComplete!!.map { it.convertToSNode().first }

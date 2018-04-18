@@ -222,6 +222,7 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
                 graphFile.writer().buffered().use { graphFileWriter ->
                     graphFileWriter.write("PRUNE_LOCAL_STRATEGY: $PRUNE_LOCAL_STRATEGY\n")
                     graphFileWriter.write("FRONTIER_ORDER_STRATEGY: $FRONTIER_ORDER_STRATEGY\n")
+                    graphFileWriter.write("FRONTIER_OPENING: $FRONTIER_OPENING\n")
                     graphFileWriter.write("Original Bases: \n\t${initialBases.joinToString("\n\t") { e -> "${e.base.id}@${e.base} -- ${e.base.schema} -- nnz ${nnzInfer.infer(e)}"}}\n\n")
                     graphFileWriter.write("Original GraphBags: \n\t${tgs.origDogbs.graphBags.withIndex().joinToString("\n\t") { (i,g) -> "$i: $g"}}\n")
                     graphFileWriter.write("bestComplete: \n\t${tgs.bestComplete!!.withIndex().joinToString("\n\t") { (i,g) -> "$i: $g"}}\n")

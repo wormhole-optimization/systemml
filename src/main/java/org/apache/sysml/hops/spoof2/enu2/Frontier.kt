@@ -1,6 +1,11 @@
 package org.apache.sysml.hops.spoof2.enu2
 
+import org.apache.commons.logging.LogFactory
+import org.apache.log4j.Level
+import org.apache.log4j.Logger
+import org.apache.sysml.conf.DMLConfig
 import org.apache.sysml.hops.spoof2.plan.listOfEmptyLists
+import org.apache.sysml.hops.spoof2.plan.removeFirst
 import org.apache.sysml.hops.spoof2.plan.removeLast
 import java.util.*
 
@@ -32,6 +37,14 @@ sealed class Frontier {
         c.status = Construct.Status.NONE
         _size--
         return c
+    }
+    
+    companion object {
+        private val LOG = LogFactory.getLog(BottomUpOptimize::class.java)!!
+        private const val LDEBUG = DMLConfig.SPOOF_DEBUG
+        init {
+            if (LDEBUG) Logger.getLogger(Frontier::class.java).level = Level.TRACE
+        }
     }
 
     class Smart : Frontier() {
@@ -86,14 +99,14 @@ sealed class Frontier {
 
     class OpeningBook(val tgs: TargetGraphs, val nextFrontier: Frontier) : Frontier() {
         private val numTgts: Int = tgs.tgts.size
-        private val bases: MutableList<Construct.Base> = mutableListOf()
-        private val complete: MutableList<Construct> = mutableListOf()
+        private val bases: PriorityQueue<Construct.Base> = PriorityQueue(compareByNnz)
+        private val complete: MutableSet<Construct> = mutableSetOf()
         private val aggMap: List<MutableList<Construct.Agg>> = listOfEmptyLists(numTgts)
         private val emultMap: List<MutableList<Construct.EWiseMult>> = listOfEmptyLists(numTgts)
         private val mxmMap: List<MutableList<Construct.MatrixMult>> = listOfEmptyLists(numTgts)
         private val coveredEdges: List<MutableList<BooleanArray>> = listOfEmptyLists(numTgts)
         private var finished = false
-        private val other: MutableList<Construct> = mutableListOf()
+        private val other: MutableSet<Construct> = mutableSetOf()
 
         companion object {
             private fun isSubsetOfAny(b: BooleanArray, l: List<BooleanArray>): Boolean = l.any { b2 ->
@@ -102,14 +115,15 @@ sealed class Frontier {
             private fun removeSubsetsOf(b: BooleanArray, l: MutableList<BooleanArray>) = l.removeIf { b2 ->
                 b2.withIndex().all { (i,v) -> !v || b[i] }
             }
+            private val compareByNnz: Comparator<Construct> = compareBy { it.nnz }
         }
 
         // if cmap is complete, add it to complete. Return complete first
 
         override fun _add(c: Construct) {
-            if (finished) return nextFrontier._add(c)
-            var added = false
-            val comp = c.cmaps.find(CMap::complete)?.let { comp ->
+            if (finished) 
+                return nextFrontier._add(c)
+            c.cmaps.find(CMap::complete)?.let { comp ->
                 coveredEdges[comp.tgtGraph].clear()
                 coveredEdges[comp.tgtGraph] += comp.coveredEdges
                 complete += c
@@ -118,53 +132,39 @@ sealed class Frontier {
             when (c) {
                 is Construct.Base -> bases.add(c)
                 is Construct.Agg -> c.cmaps.forEach {
-                    if (it.complete) {
-                        coveredEdges[it.tgtGraph].clear()
-                        coveredEdges[it.tgtGraph] += it.coveredEdges
-                        complete += c
-                    } else {
-                        aggMap[it.tgtGraph].add(c)
-                    }
+                    aggMap[it.tgtGraph].add(c)
                 }
-                is Construct.EWiseMult -> c.cmaps.forEach {
-                    if (it.complete) {
-                        coveredEdges[it.tgtGraph].clear()
-                        coveredEdges[it.tgtGraph] += it.coveredEdges
-                        complete += c
-                    } else if (isSubsetOfAny(it.coveredEdges, coveredEdges[it.tgtGraph])) {
-                        other.add(c)
-                        if (BottomUpOptimize.LOG.isTraceEnabled)
-                            BottomUpOptimize.LOG.trace("    <deferred>")
-                    }
-                    else {
-                        emultMap[it.tgtGraph].add(c)
-                        removeSubsetsOf(it.coveredEdges, coveredEdges[it.tgtGraph])
-                        coveredEdges[it.tgtGraph] += it.coveredEdges
-                    }
-                }
-                is Construct.MatrixMult -> c.cmaps.forEach {
-                    if (it.complete) {
-                        coveredEdges[it.tgtGraph].clear()
-                        coveredEdges[it.tgtGraph] += it.coveredEdges
-                        complete += c
-                    } else if (isSubsetOfAny(it.coveredEdges, coveredEdges[it.tgtGraph])) {
-                        other.add(c)
-                        if (BottomUpOptimize.LOG.isTraceEnabled)
-                            BottomUpOptimize.LOG.trace("    <deferred>")
-                    } else {
-                        mxmMap[it.tgtGraph].add(c)
-                        removeSubsetsOf(it.coveredEdges, coveredEdges[it.tgtGraph])
-                        coveredEdges[it.tgtGraph] += it.coveredEdges
-                    }
-                }
+                is Construct.EWiseMult -> c.cmaps
+                        .filter { !isSubsetOfAny(it.coveredEdges, coveredEdges[it.tgtGraph]) }
+                        .let { cmaps ->
+                            if (cmaps.isEmpty()) {
+                                other.add(c)
+                                if (LOG.isTraceEnabled)
+                                    LOG.trace("~deferred $c")
+                            } else cmaps.forEach {
+                                emultMap[it.tgtGraph].add(c)
+                                removeSubsetsOf(it.coveredEdges, coveredEdges[it.tgtGraph])
+                                coveredEdges[it.tgtGraph] += it.coveredEdges
+                            }
+                        }
+                        
+                is Construct.MatrixMult -> c.cmaps
+                        .filter { !isSubsetOfAny(it.coveredEdges, coveredEdges[it.tgtGraph]) }
+                        .let { cmaps ->
+                            if (cmaps.isEmpty()) {
+                                other.add(c)
+                                if (LOG.isTraceEnabled)
+                                    LOG.trace("~deferred $c")
+                            } else cmaps.forEach {
+                                mxmMap[it.tgtGraph].add(c)
+                                removeSubsetsOf(it.coveredEdges, coveredEdges[it.tgtGraph])
+                                coveredEdges[it.tgtGraph] += it.coveredEdges
+                            }
+                        } 
                 else -> {
-                    if (c.cmaps.any(CMap::complete))
-                        complete += c
-                    else {
-                        other.add(c)
-                        if (BottomUpOptimize.LOG.isTraceEnabled)
-                            BottomUpOptimize.LOG.trace("    <deferred>")
-                    }
+                    other.add(c)
+                    if (LOG.isTraceEnabled)
+                        LOG.trace("~deferred $c")
                 }
             }
         }
@@ -187,11 +187,11 @@ sealed class Frontier {
                 finished = true
                 return nextFrontier._popNextToExplore()
             }
-            val r = bases.removeLast() ?:
-                    complete.removeLast()?:
-                    aggMap.find { it.isNotEmpty() }?.removeLast()?:
-                    emultMap.find { it.isNotEmpty() }?.removeLast()?:
-                    mxmMap.find { it.isNotEmpty() }?.removeLast()?: throw AssertionError()
+            val r = bases.poll() ?:
+                    complete.removeFirst()?:
+                    aggMap.find { it.isNotEmpty() }?.removeFirst()?:
+                    emultMap.find { it.isNotEmpty() }?.removeFirst()?:
+                    mxmMap.find { it.isNotEmpty() }?.removeFirst()?: throw AssertionError()
             _remove(r)
             return r
         }
