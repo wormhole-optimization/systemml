@@ -578,7 +578,7 @@ class TargetGraphs(
     fun finish(): List<SNode> {
         if (LOG.isTraceEnabled)
             LOG.trace("FINAL BESTCOMPLETE (cost $upperBound): $bestComplete")
-        check(bestComplete != null)
+        check(bestComplete != null) {"invComplete: ${invComplete.map { it.size }} \n$invComplete"}
 
         return bestComplete!!.map { it.convertToSNode().first }
 

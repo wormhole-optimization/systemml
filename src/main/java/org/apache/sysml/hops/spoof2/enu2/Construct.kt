@@ -669,7 +669,7 @@ sealed class Construct(
                 val tgts = buo.tgs.tgts[tgi]
                 val tgtVertToAdjEdges = buo.tgs.tgtVertToAdjEdges[tgi]
 
-                aml.flatMapTo(cmaps) { am ->
+                cmaps += aml.flatMap { am ->
                     val aj = am.vertMap[type.aj]
                     if (aj in tgts.outs)
                         listOf()
@@ -690,7 +690,7 @@ sealed class Construct(
                             CMap(this, tgi, newVertMap, am.coveredEdges.or(bm.coveredEdges))
                         }.distinct()
                     }
-                }
+                }.toSet()
             }
         }
 
@@ -724,6 +724,8 @@ sealed class Construct(
     class Agg private constructor(
             buo: BottomUpOptimize, val a: Construct, nnz: Nnz, thisCost: Double, val aggPos: Int
     ) : Construct(buo, listOf(a), nnz, thisCost, a.outer.allBut(aggPos)) {
+
+        override fun toString() = "Agg<$aggPos>($a)"
 
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
@@ -764,14 +766,14 @@ sealed class Construct(
                 val tg = buo.tgs.tgts[tgi]
                 val tgtEdges = buo.tgs.tgtEdgeListNoScalars[tgi]
 
-                aml.mapNotNullTo(cmaps) { am ->
+                cmaps += aml.mapNotNull { am ->
                     val aggVert = am.vertMap[aggPos]
                     if (aggVert in tg.aggs && am.coveredEdges.withIndex().all { (ei, b) ->
                         b || aggVert !in tgtEdges[ei].verts
                     })
                         CMap(this, am.tgtGraph, am.vertMap.allBut(aggPos), am.coveredEdges)
                     else null
-                }
+                }.toSet()
             }
         }
 

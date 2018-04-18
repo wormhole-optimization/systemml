@@ -26,12 +26,6 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
             val c = Construct.Base.NonScalar(this, b, nnzInfer.infer(b), tgs)
             frontier.add(c)
         }
-        val initialUpperBound = initialUpperBound()
-        if (tgs.upperBound == Double.POSITIVE_INFINITY) {
-            tgs.upperBound = initialUpperBound
-            if (LOG.isTraceEnabled)
-                LOG.trace("Initial Upper Bound: $initialUpperBound")
-        }
         val startTime = System.currentTimeMillis()
         stats.setStart(startTime)
         var counter = 0L
@@ -78,64 +72,6 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
             LOG.trace("Total number of iterations for BottomUpOptimizer: ${stats.longestIter}")
         return ret
     }
-
-    fun initialUpperBound(): Double {
-        // multiply_nnz_estimate for each graph
-        // 2* that for each if agg is necessary
-        // add them up
-        // todo - incorporate cost of +
-//        val initialUpperBound = tgs.tgts.map { tg ->
-//            val d = tg.edges.flatMap { it.verts }.toSet().map { it.a as Name to it.s }.toMap()
-//            val cz = tg.edges.map { nnzInfer.infer(it) }
-//            val cd = tg.edges.map { it.verts.map { it.a as Name to it.s }.toMap() }
-//            val multNnz = nnzInferer.inferMult(d, cz, cd)
-//            if (tg.aggs.isEmpty()) multNnz else 2*multNnz
-//        }.sum()
-
-//        // attempt 2: pairwise multiplying together
-//        val initialUpperBound = tgs.tgts.map { tg ->
-//            var totalCost = 0L
-//            val frontier = tg.edges.map { it to nnzInfer.infer(it) }
-//                    .groupBy { it.first.verts.map { it.a }.toSet() }
-//                    .map { (k,v) ->
-//                        // multiply within groups in some arbitrary order
-////                        val shape = v.first().first.verts.map(ABS::s).prod()
-//                        val nnzSmall = v.minBy { it.second }!!.second
-//                        totalCost += nnzSmall * (v.size-1)
-//                        v.first().first.verts to nnzSmall
-//                    }.toMap().toMutableMap()
-//            // multiply across groups
-//            // build degree map - vertex to incident edges; vertex to number of incident vertices
-//            // process starting with vertices of degree
-//            fun vertMinAdj(): ABS {
-//                return frontier.keys.flatMap { if (it.size == 2) listOf(it[0] to it[1], it[1] to it[0]) else listOf() }
-//                        .groupBy { it.first }
-//                        .minBy { (_, v) -> v.size }!!.key
-//            }
-//
-//            while (frontier.size > 1) {
-//                val vertMin = vertMinAdj()
-//                val adj = frontier.filterKeys { vertMin in it }
-//                assert(adj.size in 1..2)
-//                if (adj.size == 2) { // MxM
-//                    // remove edges from frontier
-//                    // add new edges on the output vertices to the new nnz
-//                    val (a,b) = adj.entries.toList()
-//                    val comm = a.key.find {  }
-//                    a.key.map { it !in b.key } + b.key.map { it !in a.key }
-//
-//                }
-//            }
-
-//            val d = tg.edges.flatMap { it.verts }.toSet().map { it.a as Name to it.s }.toMap()
-//            val cz = tg.edges.map { nnzInfer.infer(it) }
-//            val cd = tg.edges.map { it.verts.map { it.a as Name to it.s }.toMap() }
-//            val multNnz = nnzInferer.inferMult(d, cz, cd)
-//            if (tg.aggs.isEmpty()) multNnz else 2*multNnz
-//        }.sum()
-        return Double.POSITIVE_INFINITY //initialUpperBound
-    }
-
 
 
     companion object {

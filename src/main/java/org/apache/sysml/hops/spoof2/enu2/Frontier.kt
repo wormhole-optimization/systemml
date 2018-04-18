@@ -4,9 +4,8 @@ import org.apache.commons.logging.LogFactory
 import org.apache.log4j.Level
 import org.apache.log4j.Logger
 import org.apache.sysml.conf.DMLConfig
-import org.apache.sysml.hops.spoof2.plan.listOfEmptyLists
+import org.apache.sysml.hops.spoof2.plan.fixedListOf
 import org.apache.sysml.hops.spoof2.plan.removeFirst
-import org.apache.sysml.hops.spoof2.plan.removeLast
 import java.util.*
 
 sealed class Frontier {
@@ -24,18 +23,24 @@ sealed class Frontier {
         c.status = Construct.Status.FRONTIER
         _add(c)
         _size++
+        if (CHECK_SIZE && this is OpeningBook)
+            assert(size == this.manualSize()) {"size $size; manual ${this.manualSize()}"}
     }
     protected fun _addAll(cc: Collection<Construct>) = cc.forEach { _add(it) }
     fun remove(c: Construct): Boolean {
         c.status = Construct.Status.NONE
         val r = _remove(c)
         if (r) _size--
+        if (CHECK_SIZE && this is OpeningBook)
+            assert(size == this.manualSize()) {"size $size; manual ${this.manualSize()}"}
         return r
     }
     fun popNextToExplore(): Construct {
         val c = _popNextToExplore()
         c.status = Construct.Status.NONE
         _size--
+        if (CHECK_SIZE && this is OpeningBook)
+            assert(size == this.manualSize()) {"size $size; manual ${this.manualSize()}"}
         return c
     }
     
@@ -45,6 +50,7 @@ sealed class Frontier {
         init {
             if (LDEBUG) Logger.getLogger(Frontier::class.java).level = Level.TRACE
         }
+        private const val CHECK_SIZE = false
     }
 
     class Smart : Frontier() {
@@ -68,7 +74,7 @@ sealed class Frontier {
                 }
             }
         }
-        private val exploreQueue: PriorityQueue<Construct> = PriorityQueue(orderConstructsToExploreFirst)
+        internal val exploreQueue: PriorityQueue<Construct> = PriorityQueue(orderConstructsToExploreFirst)
 
         override fun _add(c: Construct) {
             exploreQueue.add(c)
@@ -83,7 +89,7 @@ sealed class Frontier {
 
 
     class Random : Frontier() {
-        private val storage: MutableList<Construct> = LinkedList()
+        internal val storage: MutableList<Construct> = LinkedList()
 
         override fun _add(c: Construct) {
             storage.add(c)
@@ -100,22 +106,24 @@ sealed class Frontier {
     class OpeningBook(val tgs: TargetGraphs, val nextFrontier: Frontier) : Frontier() {
         private val numTgts: Int = tgs.tgts.size
         private val bases: PriorityQueue<Construct.Base> = PriorityQueue(compareByNnz)
-        private val complete: MutableSet<Construct> = mutableSetOf()
-        private val aggMap: List<MutableList<Construct.Agg>> = listOfEmptyLists(numTgts)
-        private val emultMap: List<MutableList<Construct.EWiseMult>> = listOfEmptyLists(numTgts)
-        private val mxmMap: List<MutableList<Construct.MatrixMult>> = listOfEmptyLists(numTgts)
-        private val coveredEdges: List<MutableList<BooleanArray>> = listOfEmptyLists(numTgts)
+        private val aggs: MutableList<Construct.Agg> = mutableListOf()
+        private val completeMap: List<PriorityQueue<Construct>> = fixedListOf(numTgts) { PriorityQueue(compareByCost) }
+        private val emultMap: List<PriorityQueue<Construct.EWiseMult>> = fixedListOf(numTgts) { PriorityQueue(compareByNnz as Comparator<Construct.EWiseMult>) }
+        private val mxmMap: List<PriorityQueue<Construct.MatrixMult>> = fixedListOf(numTgts) { PriorityQueue(compareByInputNnz as Comparator<Construct.MatrixMult>) }
+        private val exploredCoveredEdgeMap: List<MutableSet<Int>> = fixedListOf(numTgts, ::mutableSetOf)
+        private val reserveMap: List<MutableSet<Construct>> = fixedListOf(numTgts, ::mutableSetOf)
         private var finished = false
-        private val other: MutableSet<Construct> = mutableSetOf()
 
         companion object {
-            private fun isSubsetOfAny(b: BooleanArray, l: List<BooleanArray>): Boolean = l.any { b2 ->
-                b.withIndex().all { (i,v) -> !v || b2[i] }
-            }
-            private fun removeSubsetsOf(b: BooleanArray, l: MutableList<BooleanArray>) = l.removeIf { b2 ->
-                b2.withIndex().all { (i,v) -> !v || b[i] }
-            }
+//            private fun isSubsetOfAny(b: BooleanArray, l: List<BooleanArray>): Boolean = l.any { b2 ->
+//                b.withIndex().all { (i,v) -> !v || b2[i] }
+//            }
+//            private fun removeSubsetsOf(b: BooleanArray, l: MutableList<BooleanArray>) = l.removeIf { b2 ->
+//                b2.withIndex().all { (i,v) -> !v || b[i] }
+//            }
+            private val compareByCost: Comparator<Construct> = compareBy { it.recCost }
             private val compareByNnz: Comparator<Construct> = compareBy { it.nnz }
+            private val compareByInputNnz: Comparator<Construct> = compareBy { it.children.minBy { it.nnz }?.nnz ?: 0L }
         }
 
         // if cmap is complete, add it to complete. Return complete first
@@ -123,49 +131,22 @@ sealed class Frontier {
         override fun _add(c: Construct) {
             if (finished) 
                 return nextFrontier._add(c)
-            c.cmaps.find(CMap::complete)?.let { comp ->
-                coveredEdges[comp.tgtGraph].clear()
-                coveredEdges[comp.tgtGraph] += comp.coveredEdges
-                complete += c
-                return
-            }
             when (c) {
                 is Construct.Base -> bases.add(c)
-                is Construct.Agg -> c.cmaps.forEach {
-                    aggMap[it.tgtGraph].add(c)
-                }
+                is Construct.Agg -> aggs.add(c)
                 is Construct.EWiseMult -> c.cmaps
-                        .filter { !isSubsetOfAny(it.coveredEdges, coveredEdges[it.tgtGraph]) }
-                        .let { cmaps ->
-                            if (cmaps.isEmpty()) {
-                                other.add(c)
-                                if (LOG.isTraceEnabled)
-                                    LOG.trace("~deferred $c")
-                            } else cmaps.forEach {
-                                emultMap[it.tgtGraph].add(c)
-                                removeSubsetsOf(it.coveredEdges, coveredEdges[it.tgtGraph])
-                                coveredEdges[it.tgtGraph] += it.coveredEdges
-                            }
+                        .distinctBy { it.tgtGraph }
+                        .forEach {
+                            if (it.complete) completeMap[it.tgtGraph].add(c)
+                            else emultMap[it.tgtGraph].add(c)
                         }
-                        
                 is Construct.MatrixMult -> c.cmaps
-                        .filter { !isSubsetOfAny(it.coveredEdges, coveredEdges[it.tgtGraph]) }
-                        .let { cmaps ->
-                            if (cmaps.isEmpty()) {
-                                other.add(c)
-                                if (LOG.isTraceEnabled)
-                                    LOG.trace("~deferred $c")
-                            } else cmaps.forEach {
-                                mxmMap[it.tgtGraph].add(c)
-                                removeSubsetsOf(it.coveredEdges, coveredEdges[it.tgtGraph])
-                                coveredEdges[it.tgtGraph] += it.coveredEdges
-                            }
-                        } 
-                else -> {
-                    other.add(c)
-                    if (LOG.isTraceEnabled)
-                        LOG.trace("~deferred $c")
-                }
+                        .distinctBy { it.tgtGraph }
+                        .forEach {
+                            if (it.complete) completeMap[it.tgtGraph].add(c)
+                            else mxmMap[it.tgtGraph].add(c)
+                        }
+                else -> throw AssertionError()
             }
         }
 
@@ -173,11 +154,12 @@ sealed class Frontier {
             return if (finished) nextFrontier._remove(c)
             else when (c) {
                 is Construct.Base -> bases.remove(c)
-                is Construct.Agg -> c.cmaps.fold(false) { acc, it -> aggMap[it.tgtGraph].remove(c) || acc }
+                is Construct.Agg -> aggs.remove(c)
                 is Construct.EWiseMult -> c.cmaps.fold(false) { acc, it -> emultMap[it.tgtGraph].remove(c) || acc }
                 is Construct.MatrixMult -> c.cmaps.fold(false) { acc, it -> mxmMap[it.tgtGraph].remove(c) || acc }
                 else -> false
-            } or complete.remove(c) or other.remove(c)
+            } or completeMap.fold(false) { acc, it -> it.remove(c) || acc } or // todo - some needless removal
+                    reserveMap.fold(false) { acc, it -> it.remove(c) || acc }
         }
 
         override fun _popNextToExplore(): Construct {
@@ -188,22 +170,70 @@ sealed class Frontier {
                 return nextFrontier._popNextToExplore()
             }
             val r = bases.poll() ?:
-                    complete.removeFirst()?:
-                    aggMap.find { it.isNotEmpty() }?.removeFirst()?:
-                    emultMap.find { it.isNotEmpty() }?.removeFirst()?:
-                    mxmMap.find { it.isNotEmpty() }?.removeFirst()?: throw AssertionError()
+                    findRemove(completeMap)?:
+                    aggs.removeFirst()?:
+                    findRemove(emultMap)?:
+                    findRemove(mxmMap)?:
+                    findRemove(reserveMap)?:
+                    throw AssertionError("somehow ran out of constructs in Frontier Opening Book")
             _remove(r)
             return r
+        }
+
+        private fun findRemove(ma: List<MutableCollection<out Construct>>): Construct? {
+            for ((i, q) in ma.withIndex()) {
+                if (tgs.invComplete[i].isNotEmpty())
+                    continue
+                if (ma === completeMap || ma === reserveMap)
+                    if (q.isEmpty())
+                        continue
+                    else
+                        return q.removeFirst()
+                val iter = q.iterator()
+                while (iter.hasNext()) {
+                    val c = iter.next()
+                    // if c is okay, then remove and return it. Otherwise remove it and put it in the reserves.
+                    iter.remove()
+                    val ok = c.cmaps.any { it.tgtGraph == i && Arrays.hashCode(it.coveredEdges) !in exploredCoveredEdgeMap[i] }
+                    if (ok) {
+                        c.cmaps.forEach {
+                            if (!it.complete)
+                                exploredCoveredEdgeMap[it.tgtGraph].add(Arrays.hashCode(it.coveredEdges))
+                        }
+                        return c
+                    } else {
+                        reserveMap[i].add(c)
+                    }
+                }
+            }
+            return null
+        }
+
+        fun manualSize(): Int {
+            if (finished)
+                return when (nextFrontier) {
+                    is Smart -> nextFrontier.exploreQueue.size
+                    is Random -> nextFrontier.storage.size
+                    else -> throw AssertionError()
+                }
+            val s = mutableSetOf<Construct>()
+            s.addAll(bases)
+            s.addAll(aggs)
+            completeMap.forEach { s.addAll(it) }
+            emultMap.forEach { s.addAll(it) }
+            mxmMap.forEach { s.addAll(it) }
+            reserveMap.forEach { s.addAll(it) }
+            return s.size
         }
 
         private fun transferConstructs() {
             assert(bases.isEmpty())
             val s = mutableSetOf<Construct>()
-            s.addAll(complete); complete.clear()
-            aggMap.forEach { s.addAll(it); it.clear() }
+            s.addAll(aggs); aggs.clear()
+            completeMap.forEach { s.addAll(it); it.clear() }
             emultMap.forEach { s.addAll(it); it.clear() }
             mxmMap.forEach { s.addAll(it); it.clear() }
-            s.addAll(other); other.clear()
+            reserveMap.forEach { s.addAll(it); it.clear() }
             nextFrontier._addAll(s)
         }
     }

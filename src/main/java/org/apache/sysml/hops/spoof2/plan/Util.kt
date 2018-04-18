@@ -520,8 +520,14 @@ inline fun extractHops(roots: List<Hop>, condition: (Hop) -> Boolean): Set<Hop> 
     return found
 }
 
-fun <T> listOfEmptyLists(size: Int): List<MutableList<T>> {
-    val l = mutableListOf<MutableList<T>>()
-    repeat(size) { l.add(mutableListOf()) }
+inline fun <T> fixedListOf(size: Int, initial: () -> T): List<T> {
+    val l = mutableListOf<T>()
+    repeat(size) { l.add(initial()) }
     return l.toList()
 }
+
+inline fun <T> Iterable<T>.findIndexed(predicate: (Int, T) -> Boolean): T? {
+    for ((i, element) in this.withIndex()) if (predicate(i, element)) return element
+    return null
+}
+
