@@ -59,8 +59,12 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
 
             if (counter % 1000 == 0L && tgs.bestComplete != null) {
                 val elapsed = System.currentTimeMillis() - startTime
-                if (elapsed > MAX_DURATION_MS)
+                if (elapsed > MAX_DURATION_MS) {
+                    if (LOG.isTraceEnabled)
+                        LOG.trace("Timeout! $elapsed ms")
+                    stats.logTimeout()
                     break
+                }
             }
         }
 
@@ -131,6 +135,7 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
         var cntLocalPruned = 0L
         var cntRecomputePruned = 0L
         var longestIter = 0L
+        var timeout = false
 
         fun logBuoIteration(iter: Long) {
             longestIter = iter
@@ -164,6 +169,7 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
                     graphFileWriter.write("bestComplete: \n\t${tgs.bestComplete!!.withIndex().joinToString("\n\t") { (i,g) -> "$i: $g"}}\n")
                     graphFileWriter.write("upperBound: ${tgs.upperBound}\n\n")
                     graphFileWriter.write("tgts: \n\t${tgs.tgts.withIndex().joinToString("\n\t") { (i,g) -> "$i: $g"}}\n")
+                    if (timeout) graphFileWriter.write("Timeout!")
                 }
             }
         }
@@ -187,6 +193,7 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
 
         fun Long.toStringNoZero(): String = if (this == 0L) "" else this.toString()
 
+        fun logTimeout() { timeout = true }
     }
 
 
