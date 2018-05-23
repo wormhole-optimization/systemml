@@ -64,7 +64,7 @@ import org.apache.sysml.hops.spoof2.plan.SNodeNary.NaryOp
  *             ->                C
  * ```
  */
-class RewritePullAggAboveMult : SPlanRewriteRule() {
+class RewritePullAggAboveMult : SPlanRewriteRule() { // todo change to object
 
     override fun rewriteNode(parent: SNode, node: SNode, inputPosition: Int, allRoots: List<SNode>): RewriteResult {
         if( node !is SNodeNary || node.op != NaryOp.MULT ) // todo generalize to other * functions that are semiring to +

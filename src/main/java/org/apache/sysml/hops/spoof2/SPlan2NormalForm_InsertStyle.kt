@@ -10,7 +10,7 @@ import org.apache.sysml.utils.Explain
 /**
  * Put an SPlan DAG in normal form.
  */
-object SPlan2NormalForm_InsertStyle : SPlanRewriter {
+class SPlan2NormalForm_InsertStyle(val useDistr: Boolean) : SPlanRewriter {
     // replaces the following rules
 //    private val _rulesToNormalForm: List<SPlanRewriteRule> = listOf(
 //            RewriteMultiplyPlusSimplify(),
@@ -22,12 +22,33 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
 //            RewritePushAggIntoPlus()
 ////            RewritePullAggAbovePlus()
 //    )
-    /** Whether to invoke the SPlanValidator after every rewrite pass. */
-    private const val CHECK = true
-    private val LOG = SPlanRewriteRule.LOG
-    private const val CHECK_DURING_RECURSION = false
-    private const val EXPLAIN_DURING_RECURSION = false
-    private val rewritePullAggAboveMult = org.apache.sysml.hops.spoof2.rewrite.RewritePullAggAboveMult()
+    companion object {
+        /** Whether to invoke the SPlanValidator after every rewrite pass. */
+        private const val CHECK = true
+        private val LOG = SPlanRewriteRule.LOG
+        private const val CHECK_DURING_RECURSION = true
+        private const val EXPLAIN_DURING_RECURSION = true
+        private val rewritePullAggAboveMult = org.apache.sysml.hops.spoof2.rewrite.RewritePullAggAboveMult()
+
+
+        /**
+         * Create a copy of [input] that has exactly one parent: [parent].
+         * [parent] is removed from the original [input]'s parents.
+         * Return the copy.
+         */
+        fun <N : SNode> splitCse(parent: SNode, input: N): N {
+            // split CSE
+            val copy = input.shallowCopyNoParentsYesInputs()
+            parent.inputs.mapInPlace {
+                if (it == input) {
+                    input.parents -= parent
+                    copy.parents += parent
+                    copy
+                } else it
+            }
+            return copy
+        }
+    }
 
     override fun rewriteSPlan(roots: ArrayList<SNode>): SPlanRewriter.RewriterResult {
         // classic cse eliminator - could reduce the amount of work to rewrite to normal form.
@@ -212,6 +233,9 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
                     else { bind.refreshSchema(); insertBind(bind, true) }
                 }
                 // push down bind-unbind
+
+//                RewriteBindUnify().rewriteNodeUp(bind)
+
                 val renamings = mutableMapOf<AB, AB>()
                 val iter = bind.bindings.iterator()
                 while (iter.hasNext()) {
@@ -227,7 +251,32 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
                     if (LOG.isTraceEnabled)
                         LOG.trace("SPlan2NormalForm_InsertStyle: Insert Bind: rename down (${bind.id})bind-(${unbind.id})unbind by renaming $renamings")
                     val unbindChild = unbind.inputs[0]
+
                     renameDownSplitCse(unbindChild, renamings, unbind)
+
+//                    if (renamings.size == 1) {
+//                        val (old, new) = renamings.entries.first()
+//                        val result = RewriteBindUnify.tryRenameSingle(unbind, old, new)
+//                        assert(result) {"RewriteBingUnify failed"}
+//                    } else if (renamings.size == 2) {
+//                        val l = renamings.toList()
+//                        val (old, new) = l[0]
+//                        val (old1, new1) = l[1]
+//                        var res = RewriteBindUnify.tryRenameSingle(unbind, old, new)
+//                        if (res) {
+//                            res = RewriteBindUnify.tryRenameSingle(unbind, old1, new1)
+//                            assert(res) {"RewriteBingUnify failed $renamings"}
+//                        } else {
+//                            res = RewriteBindUnify.tryRenameSingle(unbind, old1, new1)
+//                            assert(res) {"RewriteBingUnify failed $renamings"}
+//                            res = RewriteBindUnify.tryRenameSingle(unbind, old, new)
+//                            assert(res) {"RewriteBingUnify failed $renamings"}
+//                        }
+//                    } else assert(false) {"renamings not 1 or 2: $renamings"}
+////                    renamings.forEach { old, new ->
+////                        val result = RewriteBindUnify.tryRenameSingle(unbind, old, new)
+////                        assert(result) {"RewriteBingUnify failed"}
+////                    }
 
                     // Common case: the resulting bind-unbind is empty.
                     // when would we end up with a bind-unbind that is disjoint? Never?
@@ -293,34 +342,36 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
 
     private fun insertMult(mult: SNodeNary, allRoots: List<SNode>): Pair<Boolean, SNode> {
         val modify = checkModifyConditionsOnInputs(mult) { input ->
-            input is SNodeNary && (input.op == SNodeNary.NaryOp.PLUS || input.op == SNodeNary.NaryOp.MULT) ||
+            input is SNodeNary && (useDistr && input.op == SNodeNary.NaryOp.PLUS || input.op == SNodeNary.NaryOp.MULT) ||
                     input is SNodeAggregate && input.op == Hop.AggOp.SUM
         }
         if (!modify)
             return false to mult
-        val (inPlus, inNotPlus) = mult.inputs.partition { it is SNodeNary && it.op == SNodeNary.NaryOp.PLUS }
-        if( inPlus.isNotEmpty() ) {
-            if (LOG.isTraceEnabled)
-                LOG.trace("SPlan2NormalForm_InsertStyle: Insert * (${mult.id}): distribute into + children")
-            // take Cartesian product of plus inputs. Distribute non-plus multiply inputs to plus inputs.
-            inNotPlus.forEach { it.parents -= mult }
-            val listOfPlusInputs = inPlus.map { p ->
-                p.inputs.forEach { it.parents -= p }
-                p.inputs
+        if (useDistr) {
+            val (inPlus, inNotPlus) = mult.inputs.partition { it is SNodeNary && it.op == SNodeNary.NaryOp.PLUS }
+            if (inPlus.isNotEmpty()) { // TODO!!
+                if (LOG.isTraceEnabled)
+                    LOG.trace("SPlan2NormalForm_InsertStyle: Insert * (${mult.id}): distribute into + children")
+                // take Cartesian product of plus inputs. Distribute non-plus multiply inputs to plus inputs.
+                inNotPlus.forEach { it.parents -= mult }
+                val listOfPlusInputs = inPlus.map { p ->
+                    p.inputs.forEach { it.parents -= p }
+                    p.inputs
+                }
+                val newPlusInputs: List<SNodeNary> = listOfPlusInputs
+                        .cartesian()
+                        .map { inputsToMult: List<SNode> ->
+                            SNodeNary(SNodeNary.NaryOp.MULT, inputsToMult + inNotPlus).apply { visited = true } // distribute
+                        }.toList()
+                val newPlus = SNodeNary(SNodeNary.NaryOp.PLUS, newPlusInputs).apply { visited = true }
+                // move parents of * onto the final +
+                mult.parents.forEach {
+                    it.inputs[it.inputs.indexOf(mult)] = newPlus
+                    newPlus.parents += it
+                }
+                newPlusInputs.forEach { insertMult(it, allRoots) }
+                return true to newPlus
             }
-            val newPlusInputs: List<SNodeNary> = listOfPlusInputs
-                    .cartesian()
-                    .map { inputsToMult: List<SNode> ->
-                        SNodeNary(SNodeNary.NaryOp.MULT, inputsToMult + inNotPlus).apply { visited = true } // distribute
-                    }.toList()
-            val newPlus = SNodeNary(SNodeNary.NaryOp.PLUS, newPlusInputs).apply { visited = true }
-            // move parents of * onto the final +
-            mult.parents.forEach {
-                it.inputs[it.inputs.indexOf(mult)] = newPlus
-                newPlus.parents += it
-            }
-            newPlusInputs.forEach { insertMult(it, allRoots) }
-            return true to newPlus
         }
         val inAgg = mult.inputs.filter { it is SNodeAggregate && it.op == Hop.AggOp.SUM }
         if( inAgg.isNotEmpty() ) {
@@ -523,23 +574,7 @@ object SPlan2NormalForm_InsertStyle : SPlanRewriter {
         }
     }
 
-    /**
-     * Create a copy of [input] that has exactly one parent: [parent].
-     * [parent] is removed from the original [input]'s parents.
-     * Return the copy.
-     */
-    fun <N : SNode> splitCse(parent: SNode, input: N): N {
-        // split CSE
-        val copy = input.shallowCopyNoParentsYesInputs()
-        parent.inputs.mapInPlace {
-            if (it == input) {
-                input.parents -= parent
-                copy.parents += parent
-                copy
-            } else it
-        }
-        return copy
-    }
+
 }
 
 

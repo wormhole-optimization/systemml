@@ -2,6 +2,7 @@ package org.apache.sysml.hops.spoof2.enu2
 
 import org.apache.sysml.hops.spoof2.Spoof2Compiler
 import org.apache.sysml.hops.spoof2.plan.SNode
+import org.apache.sysml.utils.Explain
 
 class SPlanEnumerate4(initialRoots: Collection<SNode>) {
     constructor(vararg inputs: SNode) : this(inputs.asList())
@@ -37,5 +38,7 @@ class SPlanEnumerate4(initialRoots: Collection<SNode>) {
                 bc.parents.add(p)
             }
         }
+        if( Spoof2Compiler.LOG.isTraceEnabled )
+            Spoof2Compiler.LOG.trace("After SPlanEnumerate4: "+ Explain.explainSPlan(_origRoots))
     }
 }

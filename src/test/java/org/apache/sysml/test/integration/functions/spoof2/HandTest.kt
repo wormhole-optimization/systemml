@@ -237,7 +237,7 @@ class HandTest {
         val roots = arrayListOf<SNode>(w1, w2)
 
         println(Explain.explainSPlan(roots))
-        SPlan2NormalForm_InsertStyle.rewriteSPlan(roots)
+        SPlan2NormalForm_InsertStyle(true).rewriteSPlan(roots)
 
         testHash(w1.inputs[0], w2.inputs[0])
 
@@ -439,7 +439,7 @@ class HandTest {
         val roots = arrayListOf<SNode>(w1, w2)
 
         println(Explain.explainSPlan(roots))
-        SPlan2NormalForm_InsertStyle.rewriteSPlan(roots)
+        SPlan2NormalForm_InsertStyle(true).rewriteSPlan(roots)
 
 //        testHash(w1.inputs[0], w2.inputs[0]) // todo test GraphCanonizer
 
@@ -487,7 +487,7 @@ class HandTest {
         val roots = arrayListOf<SNode>(w1)
 
         println(Explain.explainSPlan(roots))
-        SPlan2NormalForm_InsertStyle.rewriteSPlan(roots)
+        SPlan2NormalForm_InsertStyle(true).rewriteSPlan(roots)
 
 //        testHash(w1.inputs[0], w2.inputs[0]) // todo test GraphCanonizer
 
@@ -541,7 +541,7 @@ class HandTest {
         val roots = arrayListOf<SNode>(w1, w2)
 
         println(Explain.explainSPlan(roots))
-        SPlan2NormalForm_InsertStyle.rewriteSPlan(roots)
+        SPlan2NormalForm_InsertStyle(true).rewriteSPlan(roots)
 
 //        testHash(w1.inputs[0], w2.inputs[0]) // todo test GraphCanonizer
 
@@ -592,7 +592,7 @@ class HandTest {
         val roots = arrayListOf<SNode>(w1)
 
         println(Explain.explainSPlan(roots))
-        SPlan2NormalForm_InsertStyle.rewriteSPlan(roots)
+        SPlan2NormalForm_InsertStyle(true).rewriteSPlan(roots)
 
         println("Explain before enu: "+Explain.explainSPlan(roots))
         val enu = SPlanEnumerate3(roots)
@@ -620,7 +620,7 @@ class HandTest {
         val roots = arrayListOf<SNode>(w1)
 
         println(Explain.explainSPlan(roots))
-        SPlan2NormalForm_InsertStyle.rewriteSPlan(roots)
+        SPlan2NormalForm_InsertStyle(true).rewriteSPlan(roots)
 
         println("Explain before enu: "+Explain.explainSPlan(roots))
         val enu = SPlanEnumerate3(roots)

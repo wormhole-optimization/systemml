@@ -11,13 +11,12 @@ import org.apache.sysml.hops.rewrite.*
 import org.apache.sysml.hops.spoof2.enu.NormalFormExploreEq
 import org.apache.sysml.hops.spoof2.enu2.*
 import org.apache.sysml.hops.spoof2.plan.*
-import org.apache.sysml.hops.spoof2.rewrite.RewriteFlattenOrNode
-import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriteRule
-import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriter
-import org.apache.sysml.hops.spoof2.rewrite.SPlanTopDownRewriter
+import org.apache.sysml.hops.spoof2.rewrite.*
 import org.apache.sysml.parser.*
 import org.apache.sysml.runtime.DMLRuntimeException
 import org.apache.sysml.utils.Explain
+import java.io.File
+import java.io.FileWriter
 import java.util.*
 
 object Spoof2Compiler {
@@ -238,10 +237,6 @@ object Spoof2Compiler {
 
 //        if (LOG.isTraceEnabled)
 //            LOG.trace("Explain after initial SPlan construction: " + Explain.explainSPlan(sroots))
-
-        val result2NormalForm = SPlan2NormalForm_InsertStyle.rewriteSPlan(sroots) // SPlan2NormalForm.rewriteSPlan(sroots)
-        sroots = result2NormalForm.replace(sroots)
-
 //        if( result2NormalForm != SPlanRewriter.RewriterResult.NoChange ) {
 //            sroots = NormalFormExploreEq().rewriteSPlan(sroots).replace(sroots)
 
@@ -251,14 +246,51 @@ object Spoof2Compiler {
 //            // after plan enumeration, we can throw away the memo tables and we can flatten chains of OrNodes
 //            SPlanTopDownRewriter.rewriteDown(sroots, RewriteFlattenOrNode(), RewriteSelectRandom())
 
-        SPlanEnumerate4(sroots).execute()
+
+//        SPlanEnumerate4(sroots).execute()
+
+
+
+
+        // TODO - do 2 regimes and compare their cost on SNodes afterward.
+        var srootsNoDistr = SNode.deepCopySPlan(sroots)
+        var srootsDistr = sroots
+
+        srootsNoDistr = SPlan2NormalForm_InsertStyle(false).rewriteSPlan(srootsNoDistr).replace(srootsNoDistr) // SPlan2NormalForm.rewriteSPlan(sroots)
+        srootsDistr = SPlan2NormalForm_InsertStyle(true).rewriteSPlan(srootsDistr).replace(srootsDistr) // SPlan2NormalForm.rewriteSPlan(sroots)
+
+
+        val nnzInferNoDistr = NnzInfer(BottomUpOptimize.nnzInferer)
+        val nnzInferDistr = NnzInfer(BottomUpOptimize.nnzInferer)
+        SPlanEnumerate4(srootsNoDistr).execute()
+        SPlanEnumerate4(srootsDistr).execute()
+
+        val costerNoDistr = PlanCost(nnzInferNoDistr)
+        val costerDistr = PlanCost(nnzInferDistr)
+        val costNoDistr = costerNoDistr.costRec(srootsNoDistr)
+        val costDistr = costerDistr.costRec(srootsDistr)
+
+        val f = File("costComp.tsv")
+        FileWriter(f, true).use { fw ->
+            fw.appendln("$costNoDistr\t$costDistr")
+        }
+
+        val (keep, delete) = if (costNoDistr <= costDistr) {
+            SPlanRewriteRule.LOG.trace("Best plan uses the + factorization given by the script: costs $costNoDistr <= $costDistr")
+            srootsNoDistr to srootsDistr
+        } else {
+            SPlanRewriteRule.LOG.trace("Best plan does not use + factorization: costs $costNoDistr > $costDistr")
+            srootsDistr to srootsNoDistr
+        }
+//        SNode.completeDelete(delete)
+        sroots = keep
+
 
             if( SPlanRewriteRule.LOG.isTraceEnabled )
                 SPlanRewriteRule.LOG.trace("After plan selection: "+Explain.explainSPlan(sroots))
 //        }
 
         //re-construct modified HOP DAG
-//        sroots = SPlan2HopReady.rewriteSPlan(sroots).replace(sroots) // put in SPlan2Hop
         var roots2 = SPlan2Hop.splan2Hop(sroots)
 
         val baseInputs2 = sroots.map { sroot ->

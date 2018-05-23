@@ -39,14 +39,13 @@ class PlanCost(
 //    }
 
     fun costNonRec(node: SNode): Double {
-        if (node.id in costMemo) return costMemo[node.id]!!
-        val cost = when(node) {
-            is SNodeAggregate -> costAgg(node)
-            is SNodeNary -> costNary(node)
-            else -> 0.0
+        return costMemo.getOrPut(node.id) {
+            when(node) {
+                is SNodeAggregate -> costAgg(node)
+                is SNodeNary -> costNary(node)
+                else -> 0.0
+            }
         }
-        costMemo[node.id] = cost
-        return cost
     }
 
     private fun getNnz(node: SNode): Nnz = nnzInfer.infer(node)
@@ -59,34 +58,34 @@ class PlanCost(
             return 0.0
 
         // check MxM
-        val mult = agg.input
-        if( mult is SNodeNary && mult.op == SNodeNary.NaryOp.MULT
-                && mult.inputs.size == 2
-                && agg.aggs.size == 1 // todo check this - what about rowSums after MxM?
-                && mult.inputs[0].schema.names.intersect(mult.inputs[1].schema.names).first() == agg.aggs.names.first() // forbear element-wise multiplication followed by agg
-                ) {
-            var mult0 = mult.inputs[0]
-            var mult1 = mult.inputs[1]
-            // options: MxM, MxV/VxM, Inner
-            // cost of MxM is x*y*z for * and +.
-            // cost of MxV is x*y for * and +.
-            // cost of Inner is x for * and +.
-            if( mult0.schema.size == 2 && mult1.schema.size == 2) { // MxM
-
-            } else if( mult0.schema.size == 1 && mult1.schema.size == 1 ) { // Inner
-
-            } else { // MxV
-                if( mult0.schema.size == 2 && mult1.schema.size == 1 )
-                else if( mult0.schema.size == 1 && mult1.schema.size == 2 ) {
-                    mult0.let { mult0 = mult1; mult1 = it }
-                } else {
-                    return Double.POSITIVE_INFINITY
-                }
-            }
-            val flops = getNnz(mult).toDouble()
-            costMemo[mult.id] = flops // in addition to agg
-            return flops
-        }
+//        val mult = agg.input
+//        if( mult is SNodeNary && mult.op == SNodeNary.NaryOp.MULT
+//                && mult.inputs.size == 2
+//                && agg.aggs.size == 1 // todo check this - what about rowSums after MxM?
+//                && mult.inputs[0].schema.names.intersect(mult.inputs[1].schema.names).first() == agg.aggs.names.first() // forbear element-wise multiplication followed by agg
+//                ) {
+//            var mult0 = mult.inputs[0]
+//            var mult1 = mult.inputs[1]
+//            // options: MxM, MxV/VxM, Inner
+//            // cost of MxM is x*y*z for * and +.
+//            // cost of MxV is x*y for * and +.
+//            // cost of Inner is x for * and +.
+//            if( mult0.schema.size == 2 && mult1.schema.size == 2) { // MxM
+//
+//            } else if( mult0.schema.size == 1 && mult1.schema.size == 1 ) { // Inner
+//
+//            } else { // MxV
+//                if( mult0.schema.size == 2 && mult1.schema.size == 1 )
+//                else if( mult0.schema.size == 1 && mult1.schema.size == 2 ) {
+//                    mult0.let { mult0 = mult1; mult1 = it }
+//                } else {
+//                    return Double.POSITIVE_INFINITY
+//                }
+//            }
+//            val flops = getNnz(mult).toDouble()
+//            costMemo[mult.id] = flops // in addition to agg
+//            return flops
+//        }
 
         // general agg - sums over all data
         val aggInputNnz = getNnz(agg.input).toDouble()
@@ -102,32 +101,32 @@ class PlanCost(
             return getNnz(nary).toDouble()
         if( nary.op != SNodeNary.NaryOp.MULT && nary.op != SNodeNary.NaryOp.PLUS )
             return 0.0
-        if( nary.schema.size >= 3 )
-            return Double.POSITIVE_INFINITY
+//        if( nary.schema.size >= 3 )
+//            return 0.0 //Double.POSITIVE_INFINITY // This cost is counted by the agg above
 
-        if( nary.inputs.map { it.schema.names }.toSet().size == nary.inputs.size ) {
+//        if( nary.inputs.map { it.schema.names }.toSet().size == nary.inputs.size ) {
             // all schema equal; it's a big element-wise multiply/add
             // only count multiplying scalars once
             val countScalars = nary.inputs.count { it.schema.isEmpty() }
             val multiplyInputCount = nary.inputs.size - 1 - maxOf(countScalars - 1, 0)
             return multiplyInputCount * getNnz(nary).toDouble()
-        }
+//        }
 
-        if( nary.schema.size == 2 && nary.inputs.size == 2 ) {
-            val sizes = nary.inputs.map { it.schema.size }.sorted()
-            if (sizes == listOf(1, 1)) { // Outer
-                return getNnz(nary).toDouble()
-            }
-
-            if( sizes == listOf(1, 2)) { // MeV or VeM
-                return getNnz(nary).toDouble()
-            }
-
-            if( sizes[0] == 0 ) { // multiply with constant
-                return getNnz(nary).toDouble()
-            }
-        }
-        return Double.POSITIVE_INFINITY
+//        if( nary.schema.size == 2 && nary.inputs.size == 2 ) {
+//            val sizes = nary.inputs.map { it.schema.size }.sorted()
+//            if (sizes == listOf(1, 1)) { // Outer
+//                return getNnz(nary).toDouble()
+//            }
+//
+//            if( sizes == listOf(1, 2)) { // MeV or VeM
+//                return getNnz(nary).toDouble()
+//            }
+//
+//            if( sizes[0] == 0 ) { // multiply with constant
+//                return getNnz(nary).toDouble()
+//            }
+//        }
+//        return Double.POSITIVE_INFINITY
     }
 
     fun costRecUpperBound(b: GraphBag): Double {
@@ -161,6 +160,10 @@ class PlanCost(
         return recChildrenMemo.getOrPut(node.id) {
             node.inputs.map { getChildrenAtBelow(it) }.reduce { a, b -> a+b } + node
         }
+    }
+
+    fun costRec(roots: List<SNode>): Double {
+        return roots.flatMap { getChildrenAtBelow(it) }.toSet().sumByDouble { costNonRec(it) }
     }
 
 }

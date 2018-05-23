@@ -427,7 +427,6 @@ object SPlan2Hop {
             return hopMemo[current]!!
         }
         try {
-
             val node: Pair<Hop, Map<AU, AB>> = when (current) {
                 is SNodeData -> {
                     //recursively process child nodes

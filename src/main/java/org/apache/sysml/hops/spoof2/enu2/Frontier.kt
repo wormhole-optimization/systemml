@@ -209,7 +209,7 @@ sealed class Frontier {
             return null
         }
 
-        fun manualSize(): Int {
+        internal fun manualSize(): Int {
             if (finished)
                 return when (nextFrontier) {
                     is Smart -> nextFrontier.exploreQueue.size

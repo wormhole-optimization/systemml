@@ -178,7 +178,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
                     val aboveName = above.bindings[unbindBindPos]!!
                     val nodeName = node.unbindings[unbindBindPos]!!
                     // exception: if aboveName has a parent that is an SNodeAggregate, then reverse the ordering
-                    val flip = above.parents.any { it is SNodeAggregate && nodeName in it.aggs }
+//                    val flip = above.parents.any { it is SNodeAggregate && nodeName in it.aggs }
                     val success = if(aboveName > nodeName) // flip!
                         tryRenameSingle(above, aboveName, nodeName)
                     else

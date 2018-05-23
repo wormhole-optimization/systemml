@@ -410,6 +410,7 @@ class DagOfGraphBag private constructor(
             val memoGraph: MutableMap<Id, Graph> = mutableMapOf()
             val memoAttrPosList: MutableMap<Id, List<AB>> = mutableMapOf()
             val parentToGraphBag: MutableMap<SNode, MutableList<Int>> = mutableMapOf()
+            val bases: MutableSet<SNode> = mutableSetOf()
         }
 
         fun form(initialRoots: Collection<SNode>): DagOfGraphBag {
@@ -520,21 +521,23 @@ class DagOfGraphBag private constructor(
         }
 
         private fun toEdge(n: SNode, b: Builder): Edge.C {
-            var base = toBase(n)
+            var base = toBase(n, b)
             val attrPosList = SHash.createAttributePositionList(n, b.memoAttrPosList)
             // if the base has bound schema, then set the base to an Unbind above the base. Postcondition: base is unbound.
             if (base.schema.names.any { it.isBound() }) {
-                base = makeUnbindAbove(base, attrPosList.filter { it in base.schema }.mapIndexed { i,a -> AU(i) to a }.toMap())
+                val baseApl = SHash.createAttributePositionList(base, b.memoAttrPosList)
+                base = makeUnbindAbove(base, baseApl.filter { it in base.schema }.mapIndexed { i,a -> AU(i) to a }.toMap())
             }
 //            basesForExpand += base
             val verts = attrPosList.map { ABS(it, n.schema[it]!!) }
+            b.bases += base
             return Edge.C(base, verts)
         }
 
-        private fun toBase(node0: SNode): SNode {
+        private fun toBase(node0: SNode, b: Builder): SNode {
             var node = node0
             while (node is SNodeBind || node is SNodeUnbind) {
-                if (node.parents.isEmpty())
+                if (node.parents.isEmpty() && node !in b.bases)
                     node.inputs[0].parents -= node
                 node = node.inputs[0]
             }
