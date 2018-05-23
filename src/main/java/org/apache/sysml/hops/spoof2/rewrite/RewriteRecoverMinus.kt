@@ -69,6 +69,7 @@ class RewriteRecoverMinus : SPlanRewriteRule() {
                     }
                     val parents = ArrayList(plus.parents)
                     plus.parents.clear()
+                    plus.refreshSchema()
                     val minus = SNodeNary(SNodeNary.NaryOp.MINUS, plus, plusNegative)
                     parents.forEach { it.inputs[it.inputs.indexOf(plus)] = minus; minus.parents += it }
 
