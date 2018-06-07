@@ -5,6 +5,7 @@ import com.google.common.collect.ListMultimap
 import org.apache.commons.logging.LogFactory
 import org.apache.log4j.Level
 import org.apache.log4j.Logger
+import org.apache.sysml.conf.ConfigurationManager
 import org.apache.sysml.conf.DMLConfig
 import org.apache.sysml.hops.*
 import org.apache.sysml.hops.rewrite.*
@@ -251,44 +252,54 @@ object Spoof2Compiler {
 
 
 
+        val useScriptFact = ConfigurationManager.isSpoofUseScriptFact()
+        if( SPlanRewriteRule.LOG.isDebugEnabled )
+            SPlanRewriteRule.LOG.debug("Use Script Factorization Mode: $useScriptFact")
 
-        // TODO - do 2 regimes and compare their cost on SNodes afterward.
-        var srootsNoDistr = SNode.deepCopySPlan(sroots)
-        var srootsDistr = sroots
+        when (useScriptFact) {
+            "best" -> {
+                // do 2 regimes and compare their cost on SNodes afterward.
+                var srootsNoDistr = SNode.deepCopySPlan(sroots)
+                var srootsDistr = sroots
 
-        srootsNoDistr = SPlan2NormalForm_InsertStyle(false).rewriteSPlan(srootsNoDistr).replace(srootsNoDistr) // SPlan2NormalForm.rewriteSPlan(sroots)
-        srootsDistr = SPlan2NormalForm_InsertStyle(true).rewriteSPlan(srootsDistr).replace(srootsDistr) // SPlan2NormalForm.rewriteSPlan(sroots)
+                srootsNoDistr = SPlan2NormalForm_InsertStyle(false).rewriteSPlan(srootsNoDistr).replace(srootsNoDistr) // SPlan2NormalForm.rewriteSPlan(sroots)
+                srootsDistr = SPlan2NormalForm_InsertStyle(true).rewriteSPlan(srootsDistr).replace(srootsDistr) // SPlan2NormalForm.rewriteSPlan(sroots)
 
 
-        val nnzInferNoDistr = NnzInfer(BottomUpOptimize.nnzInferer)
-        val nnzInferDistr = NnzInfer(BottomUpOptimize.nnzInferer)
-        SPlanEnumerate4(srootsNoDistr).execute()
-        SPlanEnumerate4(srootsDistr).execute()
+                val nnzInferNoDistr = NnzInfer(BottomUpOptimize.nnzInferer)
+                val nnzInferDistr = NnzInfer(BottomUpOptimize.nnzInferer)
+                SPlanEnumerate4(srootsNoDistr).execute()
+                SPlanEnumerate4(srootsDistr).execute()
 
-        val costerNoDistr = PlanCost(nnzInferNoDistr)
-        val costerDistr = PlanCost(nnzInferDistr)
-        val costNoDistr = costerNoDistr.costRec(srootsNoDistr)
-        val costDistr = costerDistr.costRec(srootsDistr)
+                val costerNoDistr = PlanCost(nnzInferNoDistr)
+                val costerDistr = PlanCost(nnzInferDistr)
+                val costNoDistr = costerNoDistr.costRec(srootsNoDistr)
+                val costDistr = costerDistr.costRec(srootsDistr)
 
-        val f = File("costComp.tsv")
-        FileWriter(f, true).use { fw ->
-            fw.appendln("$costNoDistr\t$costDistr")
+                val f = File("costComp.tsv")
+                FileWriter(f, true).use { fw ->
+                    fw.appendln("$costNoDistr\t$costDistr")
+                }
+
+                val (keep, delete) = if (costNoDistr <= costDistr) {
+                    SPlanRewriteRule.LOG.trace("Best plan uses the + factorization given by the script: costs $costNoDistr <= $costDistr")
+                    srootsNoDistr to srootsDistr
+                } else {
+                    SPlanRewriteRule.LOG.trace("Best plan does not use + factorization: costs $costNoDistr > $costDistr")
+                    srootsDistr to srootsNoDistr
+                }
+//              SNode.completeDelete(delete)
+                sroots = keep
+            }
+            else -> {
+                sroots = SPlan2NormalForm_InsertStyle(useScriptFact == "no").rewriteSPlan(sroots).replace(sroots)
+                SPlanEnumerate4(sroots).execute()
+            }
         }
 
-        val (keep, delete) = if (costNoDistr <= costDistr) {
-            SPlanRewriteRule.LOG.trace("Best plan uses the + factorization given by the script: costs $costNoDistr <= $costDistr")
-            srootsNoDistr to srootsDistr
-        } else {
-            SPlanRewriteRule.LOG.trace("Best plan does not use + factorization: costs $costNoDistr > $costDistr")
-            srootsDistr to srootsNoDistr
-        }
-//        SNode.completeDelete(delete)
-        sroots = keep
 
-
-            if( SPlanRewriteRule.LOG.isTraceEnabled )
-                SPlanRewriteRule.LOG.trace("After plan selection: "+Explain.explainSPlan(sroots))
-//        }
+        if( SPlanRewriteRule.LOG.isTraceEnabled )
+            SPlanRewriteRule.LOG.trace("After plan selection: "+Explain.explainSPlan(sroots))
 
         //re-construct modified HOP DAG
         var roots2 = SPlan2Hop.splan2Hop(sroots)

@@ -79,6 +79,7 @@ public class DMLConfig
 	public static final String NATIVE_BLAS          = "sysml.native.blas";
 	public static final String NATIVE_BLAS_DIR      = "sysml.native.blas.directory";
     public static final String SPOOF                = "sysml.spoof.enabled"; //boolean
+    public static final String SPOOF_USE_SCRIPT_FACT= "sysml.spoof.use_script_fact"; //string: no, script, best -- whether to use the script factorization. Best means take the best costing among using it or not using it.
 	public static final String CODEGEN              = "sysml.codegen.enabled"; //boolean
 	public static final String CODEGEN_COMPILER     = "sysml.codegen.compiler"; //see SpoofCompiler.CompilerType
 	public static final String CODEGEN_OPTIMIZER    = "sysml.codegen.optimizer"; //see SpoofCompiler.PlanSelector
@@ -129,6 +130,7 @@ public class DMLConfig
 		_defaultVals.put(CP_PARALLEL_IO,         "true" );
 		_defaultVals.put(COMPRESSED_LINALG,      Compression.CompressConfig.AUTO.name() );
 		_defaultVals.put(SPOOF,                  "true" );  // hehe
+		_defaultVals.put(SPOOF_USE_SCRIPT_FACT,  "best" );
 		_defaultVals.put(CODEGEN,                "false" );
 		_defaultVals.put(CODEGEN_COMPILER,       CompilerType.AUTO.name() );
 		_defaultVals.put(CODEGEN_OPTIMIZER,      PlanSelector.FUSE_COST_BASED_V2.name() );

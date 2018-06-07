@@ -202,6 +202,10 @@ public class ConfigurationManager
 	public static boolean isSpoofEnabled() {
 		return getDMLConfig().getBooleanValue(DMLConfig.SPOOF);
 	}
+
+	public static String isSpoofUseScriptFact() {
+		return getDMLConfig().getTextValue(DMLConfig.SPOOF_USE_SCRIPT_FACT);
+	}
 	
 	///////////////////////////////////////
 	// Thread-local classes

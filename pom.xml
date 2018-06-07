@@ -73,7 +73,7 @@
 		<jcuda.version>0.8.0</jcuda.version>
 		<!-- OS-specific JVM arguments for running integration tests -->
 		<integrationTestExtraJVMArgs />
-        <kotlin.version>1.2.31</kotlin.version>
+        <kotlin.version>1.2.41</kotlin.version>
     </properties>
 
 	<repositories>

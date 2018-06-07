@@ -2,5 +2,5 @@ kmeans
 #linregcg
 l2svm
 mlogreg
-als-cg
+#als-cg
 #autoencoder
