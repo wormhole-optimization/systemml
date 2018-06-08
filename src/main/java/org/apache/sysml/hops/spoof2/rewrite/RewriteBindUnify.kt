@@ -1,6 +1,5 @@
 package org.apache.sysml.hops.spoof2.rewrite
 
-import org.apache.sysml.hops.spoof2.enu.ENode
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.SPlanRewriteRule.RewriteResult
 import java.util.*
@@ -301,7 +300,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
 //        }
 
         private fun BAD_COND(newName: AB, it: SNode): Boolean =
-            newName in it.schema || (it is SNodeAggregate && newName in it.aggs) || it is ENode || it is SNodeUnbind && newName in it.unbindings.values
+            newName in it.schema || (it is SNodeAggregate && newName in it.aggs) || it is SNodeUnbind && newName in it.unbindings.values //|| it is ENode
 
         private fun BAD_COND_REC(newName: AB, it: SNode): Boolean =
             if( it.isBindOrUnbind() ) it.parents.all { BAD_COND_REC(newName, it) }
@@ -367,7 +366,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
 
                     bind2parentsNoOverlap.toSet().forEach {
                         if (newName !in it.schema
-                                &&  (it !is SNodeAggregate || newName !in it.aggs) && it !is ENode && (it !is SNodeUnbind || newName !in it.unbindings.values)
+                                &&  (it !is SNodeAggregate || newName !in it.aggs) && (it !is SNodeUnbind || newName !in it.unbindings.values) // && it !is ENode
                                 ) // we may handle a parent in the middle of rRenamePropagate
                             rRenamePropagate(oldName, newName, it, bindNewName)
                     }
@@ -430,7 +429,7 @@ class RewriteBindUnify : SPlanRewriteRuleBottomUp() {
             // Stop on Name Conflict.
 //        if( node is SNodeAggregate && newName in node.aggs )
 //            return
-            if (newName in node.schema || node is SNodeAggregate && newName in node.aggs || node is ENode || node is SNodeUnbind && newName in node.unbindings.values) {
+            if (newName in node.schema || node is SNodeAggregate && newName in node.aggs || node is SNodeUnbind && newName in node.unbindings.values) { //|| node is ENode
                 if (fromInput) {
                     val au = fromNode.schema.leastFreeUnbound() //fromNode.schema.names.indexOf(newName)
                     val unbindNew = SNodeUnbind(fromNode, mapOf(au to newName)).apply { this.visited = fromNode.visited }

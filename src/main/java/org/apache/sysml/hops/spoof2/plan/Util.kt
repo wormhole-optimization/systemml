@@ -2,7 +2,7 @@ package org.apache.sysml.hops.spoof2.plan
 
 import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.HopsException
-import org.apache.sysml.hops.spoof2.enu.SumProduct
+//import org.apache.sysml.hops.spoof2.enu.SumProduct
 import org.apache.sysml.parser.Expression
 import java.util.*
 
@@ -15,10 +15,10 @@ typealias Shape = Long
 typealias Dim = Int
 typealias Id = Long
 typealias Rep = String
-typealias SPB = SumProduct.Block
-typealias ESP = SumProduct.EBlock
-typealias SP = SumProduct
-typealias SPI = SumProduct.Input
+//typealias SPB = SumProduct.Block
+//typealias ESP = SumProduct.EBlock
+//typealias SP = SumProduct
+//typealias SPI = SumProduct.Input
 typealias Nnz = Long
 
 /**

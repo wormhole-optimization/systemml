@@ -9,7 +9,6 @@ import org.apache.sysml.conf.ConfigurationManager
 import org.apache.sysml.conf.DMLConfig
 import org.apache.sysml.hops.*
 import org.apache.sysml.hops.rewrite.*
-import org.apache.sysml.hops.spoof2.enu.NormalFormExploreEq
 import org.apache.sysml.hops.spoof2.enu2.*
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.*

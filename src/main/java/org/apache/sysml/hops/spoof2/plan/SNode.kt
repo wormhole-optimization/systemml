@@ -2,8 +2,6 @@ package org.apache.sysml.hops.spoof2.plan
 
 import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.HopsException
-import org.apache.sysml.hops.spoof2.enu.EPath
-import org.apache.sysml.hops.spoof2.enu.SPCost
 import java.util.ArrayList
 
 import org.apache.sysml.runtime.controlprogram.parfor.util.IDSequence
@@ -286,10 +284,6 @@ abstract class SNode(inputs: List<SNode>) {
      * and input identity equality (all inputs are referentially equal).
      */
     abstract fun compare(o: SNode): Boolean
-
-    val ePathLabels: ArrayList<EPath> = arrayListOf()
-    var cachedCost: SPCost = SPCost.ZERO_COST
-    var onRootPath: Boolean = false
 }
 
 /** Create a copy of this SNode whose inputs point to the given new inputs, adding the new copy to the new inputs' parents.

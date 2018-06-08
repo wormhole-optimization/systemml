@@ -36,10 +36,6 @@ import org.apache.sysml.hops.codegen.cplan.CNode;
 import org.apache.sysml.hops.codegen.cplan.CNodeMultiAgg;
 import org.apache.sysml.hops.codegen.cplan.CNodeTpl;
 import org.apache.sysml.hops.ipa.FunctionCallGraph;
-import org.apache.sysml.hops.rewrite.HopRewriteUtils;
-import org.apache.sysml.hops.spoof2.enu.ENode;
-import org.apache.sysml.hops.spoof2.enu.EPath;
-import org.apache.sysml.hops.spoof2.enu.SPCost;
 import org.apache.sysml.hops.spoof2.plan.SNode;
 import org.apache.sysml.lops.Lop;
 import org.apache.sysml.parser.DMLProgram;
@@ -89,7 +85,7 @@ public class Explain
 	public static boolean SHOW_VISIT_STATUS = false; // modified for SPlans in SNodeValidator, to help debug visit status
 	private static final boolean HOP_SHOW_PARENTS = false;
 	private static final boolean SNODE_SHOW_PARENTS = true;
-	private static final boolean SNODE_SHOW_CACHED_COST = true;
+//	private static final boolean SNODE_SHOW_CACHED_COST = true;
 	static final int LITERAL_EXPLAIN_CUTOFF = 10;
 
 	//different explain levels
@@ -1092,12 +1088,12 @@ public class Explain
 		//schema and tensor characteristics
 		sb.append(' ').append(snode.getSchema());
 
-		if( SNODE_SHOW_CACHED_COST ) {
-			if( !snode.getCachedCost().equals(SPCost.Companion.getZERO_COST()) )
-				sb.append(' ').append(snode.getCachedCost());
-			if( snode.getOnRootPath() )
-				sb.append('R');
-		}
+//		if( SNODE_SHOW_CACHED_COST ) {
+//			if( !snode.getCachedCost().equals(SPCost.Companion.getZERO_COST()) )
+//				sb.append(' ').append(snode.getCachedCost());
+//			if( snode.getOnRootPath() )
+//				sb.append('R');
+//		}
 
 		if( SNODE_SHOW_PARENTS ) {
 			sb.append(snode.getParents().stream().mapToLong(SNode::getId).mapToObj(Long::toString)

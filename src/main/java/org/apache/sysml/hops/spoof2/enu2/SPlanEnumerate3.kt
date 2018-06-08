@@ -3,7 +3,6 @@ package org.apache.sysml.hops.spoof2.enu2
 import org.apache.commons.logging.LogFactory
 import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.spoof2.*
-import org.apache.sysml.hops.spoof2.enu.ENode
 import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone
 import org.apache.sysml.hops.spoof2.enu2.PrefixRejectTopIter.PrefixRejectZone.Companion.orderGenPrz
 import org.apache.sysml.hops.spoof2.plan.*
@@ -96,7 +95,7 @@ class SPlanEnumerate3(initialRoots: Collection<SNode>) {
             is SNodeUnbind -> return expand(node.input)
             is SNodeBind -> return expand(node.input)
             is OrNode -> return // OrNodes are already expanded.
-            is ENode -> throw AssertionError("unexpected ENode")
+//            is ENode -> throw AssertionError("unexpected ENode")
             is SNodeAggregate -> if (node.op != Hop.AggOp.SUM ) return expand(node.input)
             is SNodeNary -> if (node.op != SNodeNary.NaryOp.MULT && node.op != SNodeNary.NaryOp.PLUS) {
                return node.inputs.indices.forEach { expand(node.inputs[it]) }

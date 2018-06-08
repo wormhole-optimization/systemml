@@ -7,7 +7,6 @@ import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.LiteralOp
 import org.apache.sysml.hops.spoof2.SHash
 import org.apache.sysml.hops.spoof2.SPlan2NormalForm_InsertStyle
-import org.apache.sysml.hops.spoof2.enu.ENode
 import org.apache.sysml.hops.spoof2.plan.*
 import org.apache.sysml.hops.spoof2.rewrite.RewriteBindElim.Companion.eliminateNode
 
@@ -44,7 +43,7 @@ class SPlanEnumerate(initialRoots: Collection<SNode>) {
             is SNodeUnbind -> return expand(node.input)
             is SNodeBind -> return expand(node.input)
             is OrNode -> return // OrNodes are already expanded.
-            is ENode -> throw AssertionError("unexpected ENode")
+//            is ENode -> throw AssertionError("unexpected ENode")
         }
 
         // node is SNodeNary or SNodeAggregate in normal form. Check if a semantically equivalent node is in hash table.

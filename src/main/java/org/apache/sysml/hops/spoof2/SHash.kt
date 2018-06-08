@@ -1,7 +1,6 @@
 package org.apache.sysml.hops.spoof2
 
 import org.apache.sysml.hops.Hop
-import org.apache.sysml.hops.spoof2.enu.ENode
 import org.apache.sysml.hops.spoof2.enu2.OrNode
 import org.apache.sysml.hops.spoof2.plan.*
 
@@ -41,7 +40,7 @@ object SHash {
                 listOf()
             }
             is OrNode -> createAttributePositionList(node.inputs[0], memo)
-            is ENode -> throw IllegalStateException("There should not be an ENode present during createAttributePositionList")
+//            is ENode -> throw IllegalStateException("There should not be an ENode present during createAttributePositionList")
             else -> throw IllegalStateException("Unrecognized: $node")
         }
 
@@ -85,7 +84,7 @@ object SHash {
                 val body = naryInputsToString(node.inputs, inputsHashes, inputAttributePositions)
                 return "${node.op}($body)"
             }
-            is ENode -> throw IllegalStateException("There should not be an ENode present during canonize")
+//            is ENode -> throw IllegalStateException("There should not be an ENode present during canonize")
             else -> throw IllegalStateException("Unrecognized: $node")
         }
 //        println("(${node.id}) $node ==> $h")

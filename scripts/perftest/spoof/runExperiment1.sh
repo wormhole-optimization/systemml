@@ -8,7 +8,7 @@ script_start="$(date '+%Y%m%d.%H%M%S')"
 
 sparsity=1.0
 addOpts="--stats --explain2 hops" # --explain2 hops"
-genData=1
+genData=0
 reps=1
 saveTimes=1
 

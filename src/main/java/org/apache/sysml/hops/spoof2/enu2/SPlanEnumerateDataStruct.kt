@@ -6,7 +6,6 @@ import org.apache.sysml.hops.spoof2.GraphBagCanon
 import org.apache.sysml.hops.spoof2.GraphCanon
 import org.apache.sysml.hops.spoof2.GraphCanonizer
 import org.apache.sysml.hops.spoof2.SHash
-import org.apache.sysml.hops.spoof2.enu.ENode
 import org.apache.sysml.hops.spoof2.plan.*
 import java.util.ArrayList
 import kotlin.math.roundToInt
@@ -445,7 +444,7 @@ class DagOfGraphBag private constructor(
                 is SNodeUnbind -> return findGraphs(n.input, b)
                 is SNodeBind -> return findGraphs(n.input, b)
                 is OrNode -> throw AssertionError("unexpected OrNode") // return // OrNodes are already expanded.
-                is ENode -> throw AssertionError("unexpected ENode")
+//                is ENode -> throw AssertionError("unexpected ENode")
                 is SNodeAggregate -> if (n.op != Hop.AggOp.SUM) return findGraphs(n.input, b)
                 is SNodeNary -> if (n.op != SNodeNary.NaryOp.MULT && n.op != SNodeNary.NaryOp.PLUS) return recurOnInputs()
             }
@@ -477,7 +476,7 @@ class DagOfGraphBag private constructor(
             // A * node transformed into a Graph may be reused as part of a different GraphBag. Put the parents in a map to recover the graph, should we encounter a parent +.
             // filter parents to + nodes
             if (bag.size == 1)
-                pa.filter { it is SNodeAggregate && it.op == Hop.AggOp.SUM || it is SNodeNary && it.op == SNodeNary.NaryOp.PLUS }
+                pa.filter { it is SNodeAggregate && it.op == Hop.AggOp.SUM || it is SNodeNary && it.op == SNodeNary.NaryOp.PLUS } // MULT clause added for non-normal form (it.op == SNodeNary.NaryOp.PLUS || it.op == SNodeNary.NaryOp.MULT)
                         .forEach { b.parentToGraphBag.getOrPut(it) { mutableListOf() } += b.graphBags.size - 1 }
         }
 

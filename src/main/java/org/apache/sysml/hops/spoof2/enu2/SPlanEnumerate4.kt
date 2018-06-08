@@ -2,13 +2,22 @@ package org.apache.sysml.hops.spoof2.enu2
 
 import org.apache.sysml.hops.spoof2.Spoof2Compiler
 import org.apache.sysml.hops.spoof2.plan.SNode
+import org.apache.sysml.hops.spoof2.rewrite.SPlanTopDownRewriter
 import org.apache.sysml.utils.Explain
 
 class SPlanEnumerate4(initialRoots: Collection<SNode>) {
     constructor(vararg inputs: SNode) : this(inputs.asList())
     private val _origRoots = initialRoots.toList()
+    private val _preRules = listOf(
+            RewriteMultPlusToNotNot
+    )
+    private val _postRules = listOf(
+            RewriteNotNotElim
+    )
 
     fun execute() {
+        SPlanTopDownRewriter.rewriteDown(_origRoots, _preRules)
+
         val dogbs = DagOfGraphBag.form(_origRoots)
 
         if (Spoof2Compiler.LOG.isTraceEnabled) {
@@ -38,6 +47,9 @@ class SPlanEnumerate4(initialRoots: Collection<SNode>) {
                 bc.parents.add(p)
             }
         }
+
+        SPlanTopDownRewriter.rewriteDown(_origRoots, _postRules)
+
         if( Spoof2Compiler.LOG.isTraceEnabled )
             Spoof2Compiler.LOG.trace("After SPlanEnumerate4: "+ Explain.explainSPlan(_origRoots))
     }
