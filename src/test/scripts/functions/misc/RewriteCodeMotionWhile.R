@@ -7,9 +7,9 @@
 # to you under the Apache License, Version 2.0 (the
 # "License"); you may not use this file except in compliance
 # with the License.  You may obtain a copy of the License at
-#
+# 
 #   http://www.apache.org/licenses/LICENSE-2.0
-#
+# 
 # Unless required by applicable law or agreed to in writing,
 # software distributed under the License is distributed on an
 # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -19,33 +19,21 @@
 #
 #-------------------------------------------------------------
 
-source("scalable_linalg/triangular_inv.dml") as inv
+args<-commandArgs(TRUE)
+options(digits=22)
+library("Matrix")
+library("matrixStats")
 
-LU = function(Matrix[double] A, int nb)
-  return(Matrix[double] P, Matrix[double] L, Matrix[double] U) {
-    n = ncol(A)
-    if (n <= nb) {
-      [P, L, U] = lu(A)
-    } else {
-      k = as.integer(floor(n/2))
-      A11 = A[1:k,1:k]
-      A12 = A[1:k,k+1:n]
-      A21 = A[k+1:n,1:k]
-      A22 = A[k+1:n,k+1:n]
+X = as.matrix(readMM(paste(args[1], "X.mtx", sep="")))
 
-      [P11, L11, U11] = LU(A11, nb)
-      L11inv = inv::L_triangular_inv(L11)
-      U11inv = inv::U_triangular_inv(U11)
-      U12 = L11inv %*% (P11 %*% A12)
-      A22 = A22 - A21 %*% U11inv %*% U12
-      [P22, L22, U22] = LU(A22, nb)
-      L21 = P22 %*% A21 %*% U11inv
-
-      Z12 = matrix(0, rows=nrow(A11), cols=ncol(A22))
-      Z21 = matrix(0, rows=nrow(A22), cols=ncol(A11))
-
-      L = rbind(cbind(L11, Z12), cbind(L21, L22))
-      U = rbind(cbind(U11, U12), cbind(Z21, U22))
-      P = rbind(cbind(P11, Z12), cbind(Z21, P22))
-    }
+R = matrix(0, 1, 1);
+i = 1;
+while( i <= as.integer(args[2]) ) {
+   t1 = X - sum(X);
+   t2 = X + max(X/i);
+   R = R + min(t1 * t2);
+   i = i + 1;
 }
+
+writeMM(as(R, "CsparseMatrix"), paste(args[3], "R", sep=""));
+

@@ -20,6 +20,7 @@
 package org.apache.sysml.hops;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -45,6 +46,7 @@ import org.apache.sysml.lops.ReBlock;
 import org.apache.sysml.lops.Ternary;
 import org.apache.sysml.lops.Unary;
 import org.apache.sysml.lops.UnaryCP;
+import org.apache.sysml.lops.ParameterizedBuiltin;
 import org.apache.sysml.parser.Expression.DataType;
 import org.apache.sysml.parser.Expression.ValueType;
 import org.apache.sysml.parser.ParseInfo;
@@ -461,6 +463,19 @@ public abstract class Hop implements ParseInfo
 		return _outputEmptyBlocks;
 	}
 	
+
+	protected double getInputOutputSize() {
+		return _outputMemEstimate
+			+ _processingMemEstimate
+			+ getInputSize();
+	}
+	
+	public double getInputOutputSize(Collection<String> exclVars) {
+		return _outputMemEstimate
+			+ _processingMemEstimate
+			+ getInputSize(exclVars);
+	}
+	
 	/**
 	 * Returns the memory estimate for the output produced from this Hop.
 	 * It must be invoked only within Hops. From outside Hops, one must 
@@ -469,21 +484,22 @@ public abstract class Hop implements ParseInfo
 	 * 
 	 * @return output size memory estimate
 	 */
-	protected double getOutputSize() 
-	{
+	protected double getOutputSize() {
 		return _outputMemEstimate;
 	}
+	
+	protected double getInputSize() {
+		return getInputSize(null);
+	}
 
-	protected double getInputSize() 
-	{
-		double sum = 0;		
+	protected double getInputSize(Collection<String> exclVars) {
+		double sum = 0;
 		int len = _input.size();
-		
-		for( int i=0; i<len; i++ ) //for all inputs
-		{
+		for( int i=0; i<len; i++ ) { //for all inputs
 			Hop hi = _input.get(i);
+			if( exclVars != null && exclVars.contains(hi.getName()) )
+				continue;
 			double hmout = hi.getOutputMemEstimate();
-			
 			if( hmout > 1024*1024 ) {//for relevant sizes
 				//check if already included in estimate (if an input is used
 				//multiple times it is still only required once in memory)
@@ -493,23 +509,8 @@ public abstract class Hop implements ParseInfo
 					flag |= (hi == _input.get(j));
 				hmout = flag ? 0 : hmout;
 			}
-			
 			sum += hmout;
 		}
-		
-		//for(Hop h : _input ) {
-		//	sum += h._outputMemEstimate;
-		//}
-		
-		return sum;
-	}
-
-	protected double getInputOutputSize() 
-	{
-		double sum = 0;
-		sum += _outputMemEstimate;
-		sum += _processingMemEstimate;
-		sum += getInputSize();
 		
 		return sum;
 	}
@@ -612,8 +613,7 @@ public abstract class Hop implements ParseInfo
 		
 		switch( getDataType() )
 		{
-			case SCALAR:
-			{
+			case SCALAR: {
 				//memory estimate always known
 				if( getValueType()== ValueType.DOUBLE) //default case
 					_outputMemEstimate = OptimizerUtils.DOUBLE_SIZE;
@@ -668,8 +668,8 @@ public abstract class Hop implements ParseInfo
 				break;
 			}
 			case OBJECT:
-			case UNKNOWN:	
-			{
+			case UNKNOWN:
+			case LIST: {
 				//memory estimate always unknown
 				_outputMemEstimate = OptimizerUtils.DEFAULT_SIZE;
 				break;
@@ -919,12 +919,13 @@ public abstract class Hop implements ParseInfo
 		}
 	}
 	
-	public void resetVisitStatus()  {
+	public Hop resetVisitStatus()  {
 		if( !isVisited() )
-			return;
+			return this;
 		for( Hop h : getInput() )
 			h.resetVisitStatus();
 		setVisited(false);
+		return this;
 	}
 	
 	public void resetVisitStatusForced(HashSet<Long> memo) {
@@ -1124,7 +1125,7 @@ public abstract class Hop implements ParseInfo
 	
 	// Operations that require a variable number of operands
 	public enum OpOpN {
-		PRINTF, CBIND, RBIND, EVAL
+		PRINTF, CBIND, RBIND, EVAL, LIST
 	}
 	
 	public enum AggOp {
@@ -1153,7 +1154,7 @@ public abstract class Hop implements ParseInfo
 		INVALID, CDF, INVCDF, GROUPEDAGG, RMEMPTY, REPLACE, REXPAND,
 		LOWER_TRI, UPPER_TRI,
 		TRANSFORMAPPLY, TRANSFORMDECODE, TRANSFORMCOLMAP, TRANSFORMMETA,
-		TOSTRING
+		TOSTRING, LIST, PARAMSERV
 	}
 
 	public enum FileFormatTypes {
@@ -1411,6 +1412,7 @@ public abstract class Hop implements ParseInfo
 		HopsOpOpNLops.put(OpOpN.CBIND, Nary.OperationType.CBIND);
 		HopsOpOpNLops.put(OpOpN.RBIND, Nary.OperationType.RBIND);
 		HopsOpOpNLops.put(OpOpN.EVAL, Nary.OperationType.EVAL);
+		HopsOpOpNLops.put(OpOpN.LIST, Nary.OperationType.LIST);
 	}
 
 	public static final HashMap<Hop.OpOp1, String> HopsOpOp12String;
@@ -1450,18 +1452,20 @@ public abstract class Hop implements ParseInfo
 	protected static final HashMap<Hop.ParamBuiltinOp, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes> HopsParameterizedBuiltinLops;
 	static {
 		HopsParameterizedBuiltinLops = new HashMap<>();
-		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.CDF, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.CDF);
-		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.INVCDF, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.INVCDF);
-		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.RMEMPTY, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.RMEMPTY);
-		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.REPLACE, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.REPLACE);
-		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.REXPAND, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.REXPAND);
-		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.LOWER_TRI, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.LOWER_TRI);
-		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.UPPER_TRI, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.UPPER_TRI);
-		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.TRANSFORMAPPLY, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.TRANSFORMAPPLY);
-		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.TRANSFORMDECODE, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.TRANSFORMDECODE);
-		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.TRANSFORMCOLMAP, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.TRANSFORMCOLMAP);
-		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.TRANSFORMMETA, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.TRANSFORMMETA);
-		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.TOSTRING, org.apache.sysml.lops.ParameterizedBuiltin.OperationTypes.TOSTRING);		
+		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.CDF, ParameterizedBuiltin.OperationTypes.CDF);
+		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.INVCDF, ParameterizedBuiltin.OperationTypes.INVCDF);
+		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.RMEMPTY, ParameterizedBuiltin.OperationTypes.RMEMPTY);
+		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.REPLACE, ParameterizedBuiltin.OperationTypes.REPLACE);
+		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.REXPAND, ParameterizedBuiltin.OperationTypes.REXPAND);
+		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.LOWER_TRI, ParameterizedBuiltin.OperationTypes.LOWER_TRI);
+		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.UPPER_TRI, ParameterizedBuiltin.OperationTypes.UPPER_TRI);
+		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.TRANSFORMAPPLY, ParameterizedBuiltin.OperationTypes.TRANSFORMAPPLY);
+		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.TRANSFORMDECODE, ParameterizedBuiltin.OperationTypes.TRANSFORMDECODE);
+		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.TRANSFORMCOLMAP, ParameterizedBuiltin.OperationTypes.TRANSFORMCOLMAP);
+		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.TRANSFORMMETA, ParameterizedBuiltin.OperationTypes.TRANSFORMMETA);
+		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.TOSTRING, ParameterizedBuiltin.OperationTypes.TOSTRING);
+		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.LIST, ParameterizedBuiltin.OperationTypes.LIST);
+		HopsParameterizedBuiltinLops.put(ParamBuiltinOp.PARAMSERV, ParameterizedBuiltin.OperationTypes.PARAMSERV);
 	}
 
 	public static final HashMap<Hop.OpOp2, String> HopsOpOp2String;
@@ -1755,11 +1759,11 @@ public abstract class Hop implements ParseInfo
 		return ret;
 	}
 	
-	public double computeBoundsInformation( Hop input, LocalVariableMap vars ) {
+	public final double computeBoundsInformation( Hop input, LocalVariableMap vars ) {
 		return computeBoundsInformation(input, vars, new HashMap<Long, Double>());
 	}
 	
-	public double computeBoundsInformation( Hop input, LocalVariableMap vars, HashMap<Long, Double> memo ) {
+	public final double computeBoundsInformation( Hop input, LocalVariableMap vars, HashMap<Long, Double> memo ) {
 		double ret = Double.MAX_VALUE;
 		try {
 			ret = OptimizerUtils.rEvalSimpleDoubleExpression(input, memo, vars);

@@ -29,6 +29,8 @@ import java.util.concurrent.Future;
 
 import org.apache.sysml.lops.PartialAggregate.CorrectionLocationType;
 import org.apache.sysml.runtime.DMLRuntimeException;
+import org.apache.sysml.runtime.codegen.SpoofOperator.SideInput;
+import org.apache.sysml.runtime.codegen.SpoofOperator.SideInputSparseCell;
 import org.apache.sysml.runtime.controlprogram.caching.MatrixObject.UpdateType;
 import org.apache.sysml.runtime.controlprogram.parfor.stat.InfrastructureAnalyzer;
 import org.apache.sysml.runtime.functionobjects.Builtin;
@@ -120,11 +122,22 @@ public class LibMatrixAgg
 	 * @param in input matrix
 	 * @param aggVal current aggregate values (in/out)
 	 * @param aggCorr current aggregate correction (in/out)
+	 * @param deep deep copy flag
 	 */
-	public static void aggregateBinaryMatrix(MatrixBlock in, MatrixBlock aggVal, MatrixBlock aggCorr) {
+	public static void aggregateBinaryMatrix(MatrixBlock in, MatrixBlock aggVal, MatrixBlock aggCorr, boolean deep) {
 		//Timing time = new Timing(true);
 		//boolean saggVal = aggVal.sparse, saggCorr = aggCorr.sparse;
 		//long naggVal = aggVal.nonZeros, naggCorr = aggCorr.nonZeros;
+		
+		//common empty block handling
+		if( in.isEmptyBlock(false) ) {
+			return;
+		}
+		if( !deep && aggVal.isEmptyBlock(false) ) {
+			//shallow copy without correction allocation
+			aggVal.copyShallow(in);
+			return;
+		}
 		
 		//ensure MCSR instead of CSR for update in-place
 		if( aggVal.sparse && aggVal.isAllocated() && aggVal.getSparseBlock() instanceof SparseBlockCSR )
@@ -897,37 +910,35 @@ public class LibMatrixAgg
 				cmValues[i][j] = new CM_COV_Object();
 		
 		//column vector or matrix
-		if( target.sparse ) //SPARSE target
-		{
+		if( target.sparse ) { //SPARSE target
+			//note: we create a sparse side input for a linear scan (w/o binary search)
+			//over the sparse representation despite the sparse-unsafe operations 
 			SparseBlock a = target.sparseBlock;
+			SideInputSparseCell sa = new SideInputSparseCell(
+				new SideInput(null, target, target.clen));
 			
-			for( int i=0; i < groups.getNumRows(); i++ ) 
-			{
+			for( int i=0; i < groups.getNumRows(); i++ ) {
 				int g = (int) groups.quickGetValue(i, 0);
-				if ( g > numGroups )
-					continue;
+				if( g > numGroups ) continue;
 				
-				if( !a.isEmpty(i) )
-				{
-					int pos = a.pos(i);
-					int len = a.size(i);
-					int[] aix = a.indexes(i);
-					double[] avals = a.values(i);
-					int j = (cl==0) ? 0 : a.posFIndexGTE(i,cl);
-					j = (j >= 0) ? pos+j : pos+len;
-					
-					for( ; j<pos+len && aix[j]<cu; j++ ) //for each nnz
-					{
-						if ( weights != null )
-							w = weights.quickGetValue(i, 0);
-						cmFn.execute(cmValues[g-1][aix[j]-cl], avals[j], w);
-					}
-					//TODO sparse unsafe correction
+				//sparse unsafe correction empty row
+				if( a.isEmpty(i) ){
+					w = (weights != null) ? weights.quickGetValue(i,0) : w;
+					for( int j=cl; j<cu; j++ )
+						cmFn.execute(cmValues[g-1][j-cl], 0, w);
+					continue;
+				}
+				
+				//process non-empty row
+				for( int j=cl; j<cu; j++ ) {
+					double d = sa.getValue(i, j);
+					if ( weights != null )
+						w = weights.quickGetValue(i,0);
+					cmFn.execute(cmValues[g-1][j-cl], d, w);
 				}
 			}
 		}
-		else //DENSE target
-		{
+		else { //DENSE target
 			DenseBlock a = target.getDenseBlock();
 			for( int i=0; i < groups.getNumRows(); i++ ) {
 				int g = (int) groups.quickGetValue(i, 0);
@@ -977,9 +988,6 @@ public class LibMatrixAgg
 	}
 
 	private static void aggregateBinaryMatrixAllDense(MatrixBlock in, MatrixBlock aggVal, MatrixBlock aggCorr) {
-		if( in.denseBlock==null || in.isEmptyBlock(false) )
-			return;
-		
 		//allocate output arrays (if required)
 		aggVal.allocateDenseBlock(); //should always stay in dense
 		aggCorr.allocateDenseBlock(); //should always stay in dense
@@ -1011,9 +1019,6 @@ public class LibMatrixAgg
 	}
 
 	private static void aggregateBinaryMatrixSparseDense(MatrixBlock in, MatrixBlock aggVal, MatrixBlock aggCorr) {
-		if( in.isEmptyBlock(false) )
-			return;
-		
 		//allocate output arrays (if required)
 		aggVal.allocateDenseBlock(); //should always stay in dense
 		aggCorr.allocateDenseBlock(); //should always stay in dense
@@ -1055,9 +1060,6 @@ public class LibMatrixAgg
 	}
 
 	private static void aggregateBinaryMatrixSparseGeneric(MatrixBlock in, MatrixBlock aggVal, MatrixBlock aggCorr) {
-		if( in.isEmptyBlock(false) )
-			return;
-		
 		SparseBlock a = in.getSparseBlock();
 		
 		KahanObject buffer1 = new KahanObject(0, 0);
@@ -1095,9 +1097,6 @@ public class LibMatrixAgg
 	}
 
 	private static void aggregateBinaryMatrixDenseGeneric(MatrixBlock in, MatrixBlock aggVal, MatrixBlock aggCorr) {
-		if( in.denseBlock==null || in.isEmptyBlock(false) )
-			return;
-		
 		final int m = in.rlen;
 		final int n = in.clen;
 		
@@ -2519,7 +2518,7 @@ public class LibMatrixAgg
 		// in order to know if for example a colMax of -8 is true or need
 		// to be replaced with a 0 because there was a missing nonzero. 
 		for( int i=0; i<n; i++ )
-			if( cnt[i] < m ) //no dense column
+			if( cnt[i] < ru-rl ) //no dense column
 				c[i] = builtin.execute(c[i], 0);
 	}
 
@@ -3099,7 +3098,7 @@ public class LibMatrixAgg
 		return minindex;
 	}
 
-	private static void countAgg( double[] a, int[] c, int[] aix, int ai, final int len ) {
+	public static void countAgg( double[] a, int[] c, int[] aix, int ai, final int len ) {
 		final int bn = len%8;
 		//compute rest, not aligned to 8-block
 		for( int i=ai; i<ai+bn; i++ )

@@ -28,7 +28,6 @@ import org.apache.sysml.hops.Hop;
 import org.apache.sysml.hops.Hop.DataOpTypes;
 import org.apache.sysml.hops.Hop.OpOp1;
 import org.apache.sysml.hops.Hop.OpOp2;
-import org.apache.sysml.hops.HopsException;
 import org.apache.sysml.hops.LiteralOp;
 import org.apache.sysml.hops.UnaryOp;
 import org.apache.sysml.hops.recompile.Recompiler;
@@ -41,6 +40,7 @@ import org.apache.sysml.runtime.controlprogram.context.ExecutionContext;
 import org.apache.sysml.runtime.controlprogram.context.ExecutionContextFactory;
 import org.apache.sysml.runtime.instructions.Instruction;
 import org.apache.sysml.runtime.instructions.cp.ScalarObject;
+import org.apache.sysml.runtime.instructions.cp.ScalarObjectFactory;
 
 /**
  * Rule: Constant Folding. For all statement blocks, 
@@ -104,16 +104,13 @@ public class RewriteConstantFolding extends HopRewriteRule
 			catch(Exception ex) {
 				LOG.error("Failed to execute constant folding instructions. No abort.", ex);
 			}
-			
 		}
 		//fold conjunctive predicate if at least one input is literal 'false'
-		else if( isApplicableFalseConjunctivePredicate(root) )
-		{
+		else if( isApplicableFalseConjunctivePredicate(root) ) {
 			literal = new LiteralOp(false);
 		}
 		//fold disjunctive predicate if at least one input is literal 'true'
-		else if( isApplicableTrueDisjunctivePredicate(root) )
-		{
+		else if( isApplicableTrueDisjunctivePredicate(root) ) {
 			literal = new LiteralOp(true);
 		}
 		
@@ -185,15 +182,7 @@ public class RewriteConstantFolding extends HopRewriteRule
 		//get scalar result (check before invocation) and create literal according
 		//to observed scalar output type (not hop type) for runtime consistency
 		ScalarObject so = (ScalarObject) ec.getVariable(TMP_VARNAME);
-		LiteralOp literal = null;
-		switch( so.getValueType() ){
-			case DOUBLE:  literal = new LiteralOp(so.getDoubleValue()); break;
-			case INT:     literal = new LiteralOp(so.getLongValue()); break;
-			case BOOLEAN: literal = new LiteralOp(so.getBooleanValue()); break;
-			case STRING:  literal = new LiteralOp(so.getStringValue()); break;	
-			default:
-				throw new HopsException("Unsupported literal value type: "+bop.getValueType());
-		}
+		LiteralOp literal = ScalarObjectFactory.createLiteralOp(so);
 		
 		//cleanup
 		tmpWrite.getInput().clear();

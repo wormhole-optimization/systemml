@@ -102,14 +102,15 @@ public class SpoofCompiler
 	private static final Log LOG = LogFactory.getLog(SpoofCompiler.class.getName());
 	
 	//internal configuration flags
-	public static boolean LDEBUG                      = false;
-	public static CompilerType JAVA_COMPILER          = CompilerType.JANINO; 
-	public static PlanSelector PLAN_SEL_POLICY        = PlanSelector.FUSE_COST_BASED_V2; 
-	public static IntegrationType INTEGRATION         = IntegrationType.RUNTIME;
-	public static final boolean RECOMPILE_CODEGEN     = true;
-	public static final boolean PRUNE_REDUNDANT_PLANS = true;
-	public static PlanCachePolicy PLAN_CACHE_POLICY   = PlanCachePolicy.CSLH;
-	public static final int PLAN_CACHE_SIZE           = 1024; //max 1K classes 
+	public static final boolean LDEBUG                 = false;
+	public static CompilerType JAVA_COMPILER           = CompilerType.JANINO; 
+	public static PlanSelector PLAN_SEL_POLICY         = PlanSelector.FUSE_COST_BASED_V2; 
+	public static final IntegrationType INTEGRATION    = IntegrationType.RUNTIME;
+	public static final boolean RECOMPILE_CODEGEN      = true;
+	public static final boolean PRUNE_REDUNDANT_PLANS  = true;
+	public static PlanCachePolicy PLAN_CACHE_POLICY    = PlanCachePolicy.CSLH;
+	public static final int PLAN_CACHE_SIZE            = 1024; //max 1K classes
+	public static final RegisterAlloc REG_ALLOC_POLICY = RegisterAlloc.EXACT;
 	
 	public enum CompilerType {
 		AUTO,
@@ -146,6 +147,11 @@ public class SpoofCompiler
 		public static PlanCachePolicy get(boolean planCache, boolean compileLiterals) {
 			return !planCache ? NONE : compileLiterals ? CONSTANT : CSLH;
 		}
+	}
+	
+	public enum RegisterAlloc {
+		HEURISTIC,
+		EXACT,
 	}
 	
 	static {
@@ -665,8 +671,10 @@ public class SpoofCompiler
 			CNodeTpl tpl = e.getValue().getValue();
 			Hop[] inHops = e.getValue().getKey();
 			
-			//remove invalid plans with null inputs 
-			if( Arrays.stream(inHops).anyMatch(h -> (h==null)) )
+			//remove invalid plans with null, empty, or all scalar inputs 
+			if( inHops == null || inHops.length == 0
+				|| Arrays.stream(inHops).anyMatch(h -> (h==null))
+				|| Arrays.stream(inHops).allMatch(h -> h.isScalar()))
 				continue;
 			
 			//perform simplifications and cse rewrites

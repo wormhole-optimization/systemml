@@ -109,6 +109,7 @@ public class DMLScript
 		LFU, 				// Evict the least frequently used GPUObject. 
 		MIN_EVICT,
 		MRU, 				// http://www.vldb.org/conf/1985/P127.PDF
+		ALIGN_MEMORY
 		// TODO:
 		// ARC, // https://dbs.uni-leipzig.de/file/ARC.pdf
 		// LOOP_AWARE 		// different policies for operations in for/while/parfor loop vs out-side the loop
@@ -169,7 +170,8 @@ public class DMLScript
 	public static ExplainType       EXPLAIN             = DMLOptions.defaultOptions.explainType; // explain type
 	public static String            DML_FILE_PATH_ANTLR_PARSER = DMLOptions.defaultOptions.filePath; // filename of dml/pydml script
 	public static String            FLOATING_POINT_PRECISION = "double"; 							// data type to use internally
-	public static EvictionPolicy	GPU_EVICTION_POLICY = EvictionPolicy.LRU;						// currently employed GPU eviction policy
+	public static EvictionPolicy	GPU_EVICTION_POLICY = EvictionPolicy.ALIGN_MEMORY;				// currently employed GPU eviction policy
+	public static boolean 			PRINT_GPU_MEMORY_INFO = false;									// whether to print GPU memory-related information
 
 	/**
 	 * Global variable indicating the script type (DML or PYDML). Can be used
@@ -676,8 +678,8 @@ public class DMLScript
 		try {
 			DMLScript.GPU_EVICTION_POLICY = EvictionPolicy.valueOf(evictionPolicy);
 		} catch(IllegalArgumentException e) {
-            throw new RuntimeException("Unsupported eviction policy:" + evictionPolicy);
-        }
+			throw new RuntimeException("Unsupported eviction policy:" + evictionPolicy);
+		}
 
 		//Step 2: set local/remote memory if requested (for compile in AM context)
 		if( dmlconf.getBooleanValue(DMLConfig.YARN_APPMASTER) ){
@@ -691,7 +693,7 @@ public class DMLScript
 		
 		//Step 4: construct HOP DAGs (incl LVA, validate, and setup)
 		DMLTranslator dmlt = new DMLTranslator(prog);
-		dmlt.liveVariableAnalysis(prog);			
+		dmlt.liveVariableAnalysis(prog);
 		dmlt.validateParseTree(prog);
 		dmlt.constructHops(prog);
 		
@@ -729,11 +731,11 @@ public class DMLScript
 		//Step 9: prepare statistics [and optional explain output]
 		//count number compiled MR jobs / SP instructions	
 		ExplainCounts counts = Explain.countDistributedOperations(rtprog);
-		Statistics.resetNoOfCompiledJobs( counts.numJobs );				
+		Statistics.resetNoOfCompiledJobs( counts.numJobs );
 		
 		//explain plan of program (hops or runtime)
 		if( EXPLAIN != ExplainType.NONE )
-			LOG.info(Explain.display(prog, rtprog, EXPLAIN, counts));
+			System.out.println(Explain.display(prog, rtprog, EXPLAIN, counts));
 		
 		Statistics.stopCompileTimer();
 		
@@ -766,7 +768,7 @@ public class DMLScript
 //					spoof2NormalFormNameLength.get(), Statistics.spoof2NormalFormAggs,
 //					Statistics.spoof2NormalFormNumForks, Statistics.spoof2NormalFormFactoredSpb);
 		}
-	}		
+	}
 	
 	/**
 	 * Launcher for DML debugger. This method should be called after 

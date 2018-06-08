@@ -31,7 +31,6 @@ import java.util.Map.Entry;
 import org.apache.commons.math3.linear.Array2DRowRealMatrix;
 import org.apache.sysml.parser.Expression.ValueType;
 import org.apache.sysml.runtime.DMLRuntimeException;
-import org.apache.sysml.runtime.controlprogram.caching.MatrixObject;
 import org.apache.sysml.runtime.instructions.cp.BooleanObject;
 import org.apache.sysml.runtime.io.MatrixReader;
 import org.apache.sysml.runtime.io.MatrixReaderFactory;
@@ -95,7 +94,6 @@ public class DataConverter
 		prop.bclen = bclen;
 		prop.localFS = localFS;
 		
-		//expected matrix is sparse (default SystemML usecase)
 		return readMatrixFromHDFS(prop);
 	}
 
@@ -111,11 +109,10 @@ public class DataConverter
 		prop.brlen = brlen;
 		prop.bclen = bclen;
 		
-		//expected matrix is sparse (default SystemML usecase)
 		return readMatrixFromHDFS(prop);
 	}
 
-	public static MatrixBlock readMatrixFromHDFS(String dir, InputInfo inputinfo, long rlen, long clen, int brlen, int bclen, double expectedSparsity) 
+	public static MatrixBlock readMatrixFromHDFS(String dir, InputInfo inputinfo, long rlen, long clen, int brlen, int bclen, long expectedNnz) 
 		throws IOException
 	{
 		ReadProperties prop = new ReadProperties();
@@ -126,13 +123,13 @@ public class DataConverter
 		prop.clen = clen;
 		prop.brlen = brlen;
 		prop.bclen = bclen;
-		prop.expectedSparsity = expectedSparsity;
+		prop.expectedNnz = expectedNnz;
 		
 		return readMatrixFromHDFS(prop);
 	}
 
 	public static MatrixBlock readMatrixFromHDFS(String dir, InputInfo inputinfo, long rlen, long clen, 
-			int brlen, int bclen, double expectedSparsity, boolean localFS) 
+			int brlen, int bclen, long expectedNnz, boolean localFS) 
 		throws IOException
 	{
 		ReadProperties prop = new ReadProperties();
@@ -143,14 +140,14 @@ public class DataConverter
 		prop.clen = clen;
 		prop.brlen = brlen;
 		prop.bclen = bclen;
-		prop.expectedSparsity = expectedSparsity;
+		prop.expectedNnz = expectedNnz;
 		prop.localFS = localFS;
 		
 		return readMatrixFromHDFS(prop);
 	}
 
 	public static MatrixBlock readMatrixFromHDFS(String dir, InputInfo inputinfo, long rlen, long clen, 
-			int brlen, int bclen, double expectedSparsity, FileFormatProperties formatProperties) 
+			int brlen, int bclen, long expectedNnz, FileFormatProperties formatProperties) 
 	throws IOException
 	{
 		ReadProperties prop = new ReadProperties();
@@ -161,10 +158,9 @@ public class DataConverter
 		prop.clen = clen;
 		prop.brlen = brlen;
 		prop.bclen = bclen;
-		prop.expectedSparsity = expectedSparsity;
+		prop.expectedNnz = expectedNnz;
 		prop.formatProperties = formatProperties;
 		
-		//prop.printMe();
 		return readMatrixFromHDFS(prop);
 	}
 	
@@ -194,14 +190,11 @@ public class DataConverter
 	{	
 		//Timing time = new Timing(true);
 		
-		long estnnz = (prop.expectedSparsity <= 0 || prop.rlen <= 0 || prop.clen <= 0) ? 
-			-1 : (long)(prop.expectedSparsity*prop.rlen*prop.clen);
-	
 		//core matrix reading 
 		MatrixBlock ret = null;
 		try {
 			MatrixReader reader = MatrixReaderFactory.createMatrixReader(prop);
-			ret = reader.readMatrixFromHDFS(prop.path, prop.rlen, prop.clen, prop.brlen, prop.bclen, estnnz);
+			ret = reader.readMatrixFromHDFS(prop.path, prop.rlen, prop.clen, prop.brlen, prop.bclen, prop.expectedNnz);
 		}
 		catch(DMLRuntimeException rex)
 		{
@@ -780,10 +773,8 @@ public class DataConverter
 	 * @param mo matrix object
 	 * @return matrix as a commons-math3 Array2DRowRealMatrix
 	 */
-	public static Array2DRowRealMatrix convertToArray2DRowRealMatrix(MatrixObject mo) {
-		MatrixBlock mb = mo.acquireRead();
+	public static Array2DRowRealMatrix convertToArray2DRowRealMatrix(MatrixBlock mb) {
 		double[][] data = DataConverter.convertToDoubleMatrix(mb);
-		mo.release();
 		return new Array2DRowRealMatrix(data, false);
 	}
 

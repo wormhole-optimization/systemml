@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 
 import org.apache.commons.lang.ArrayUtils;
 import org.apache.sysml.api.DMLScript;
@@ -485,6 +486,13 @@ public class HopRewriteUtils
 			&& ArrayUtils.contains(ops, ((DataGenOp)hop).getOp()));
 	}
 
+	public static boolean isDataGenOpWithLiteralInputs(Hop hop, DataGenMethod... ops) {
+		boolean ret = isDataGenOp(hop, ops);
+		for( Hop c : hop.getInput() )
+			ret &= c instanceof LiteralOp;
+		return ret;
+	}
+
 	public static boolean isDataGenOpWithConstantValue(Hop hop) {
 		return hop instanceof DataGenOp
 			&& ((DataGenOp)hop).getOp()==DataGenMethod.RAND
@@ -501,6 +509,30 @@ public class HopRewriteUtils
 		return ((DataGenOp) hop).getConstantValue();
 	}
 
+	public static DataOp createTransientRead(String name, Hop h) {
+		//note: different constructor necessary for formattype
+		DataOp tread = new DataOp(name, h.getDataType(), h.getValueType(),
+			DataOpTypes.TRANSIENTREAD, null, h.getDim1(), h.getDim2(), h.getNnz(),
+			h.getUpdateType(), h.getRowsInBlock(), h.getColsInBlock());
+		tread.setVisited();
+		copyLineNumbers(h, tread);
+		return tread;
+	}
+
+	public static DataOp createTransientWrite(String name, Hop in) {
+		return createDataOp(name, in, DataOpTypes.TRANSIENTWRITE);
+	}
+
+	public static DataOp createDataOp(String name, Hop in, DataOpTypes type) {
+		DataOp dop = new DataOp(name, in.getDataType(),
+			in.getValueType(), in, type, null);
+		dop.setVisited();
+		dop.setOutputParams(in.getDim1(), in.getDim2(), in.getNnz(),
+			in.getUpdateType(), in.getRowsInBlock(), in.getColsInBlock());
+		copyLineNumbers(in, dop);
+		return dop;
+	}
+	
 	public static ReorgOp createTranspose(Hop input) {
 		return createReorg(input, ReOrgOp.TRANS);
 	}
@@ -596,7 +628,7 @@ public class HopRewriteUtils
 		return mmult;
 	}
 	
-	public static ParameterizedBuiltinOp createParameterizedBuiltinOp(Hop input, HashMap<String,Hop> args, ParamBuiltinOp op) {
+	public static ParameterizedBuiltinOp createParameterizedBuiltinOp(Hop input, LinkedHashMap<String,Hop> args, ParamBuiltinOp op) {
 		ParameterizedBuiltinOp pbop = new ParameterizedBuiltinOp("tmp", DataType.MATRIX, ValueType.DOUBLE, op, args);
 		pbop.setOutputBlocksizes(input.getRowsInBlock(), input.getColsInBlock());
 		copyLineNumbers(input, pbop);
@@ -692,15 +724,7 @@ public class HopRewriteUtils
 		ternOp.refreshSizeInformation();
 		return ternOp;
 	}
-	
-	public static DataOp createDataOp(String name, Hop input, DataOpTypes type) {
-		DataOp dop = new DataOp(name, input.getDataType(), input.getValueType(), input, type, null);
-		dop.setOutputBlocksizes(input.getRowsInBlock(), input.getColsInBlock());
-		copyLineNumbers(input, dop);
-		dop.refreshSizeInformation();
-		return dop;
-	}
-	
+
 	public static void setOutputParameters( Hop hop, long rlen, long clen, int brlen, int bclen, long nnz ) {
 		hop.setDim1( rlen );
 		hop.setDim2( clen );
@@ -819,20 +843,16 @@ public class HopRewriteUtils
 	public static boolean isSparse( Hop hop, double threshold ) {
 		return hop.getSparsity() < threshold;
 	}
-
-	public static boolean isEqualValue( LiteralOp hop1, LiteralOp hop2 )
-	{
+	
+	public static boolean isEqualValue( LiteralOp hop1, LiteralOp hop2 ) {
 		//check for string (no defined double value)
-		if(    hop1.getValueType()==ValueType.STRING 
-			|| hop2.getValueType()==ValueType.STRING )
-		{
-			return false;
+		if( hop1.getValueType()==ValueType.STRING
+			|| hop2.getValueType()==ValueType.STRING ) {
+			return hop1.getStringValue()
+				.equals(hop2.getStringValue());
 		}
-		
-		double val1 = getDoubleValue(hop1);
-		double val2 = getDoubleValue(hop2);
-		
-		return ( val1 == val2 );
+		return getDoubleValue(hop1)
+			== getDoubleValue(hop2);
 	}
 	
 	public static boolean isNotMatrixVectorBinaryOperation( Hop hop )
@@ -1007,7 +1027,11 @@ public class HopRewriteUtils
 	public static boolean isSumSq(Hop hop) {
 		return (hop instanceof AggUnaryOp && ((AggUnaryOp)hop).getOp()==AggOp.SUM_SQ);
 	}
-	
+
+	public static boolean isParameterBuiltinOp(Hop hop, ParamBuiltinOp type) {
+		return hop instanceof ParameterizedBuiltinOp && ((ParameterizedBuiltinOp) hop).getOp().equals(type);
+	}
+
 	public static boolean isNary(Hop hop, OpOpN type) {
 		return hop instanceof NaryOp && ((NaryOp)hop).getOp()==type;
 	}
@@ -1164,13 +1188,10 @@ public class HopRewriteUtils
 			|| (isColumnRightIndexing(input) && size.getInput().get(0)==input.getInput().get(0))));
 	}
 	
-	public static boolean hasOnlyWriteParents( Hop hop, boolean inclTransient, boolean inclPersistent )
-	{
+	public static boolean hasOnlyWriteParents( Hop hop, boolean inclTransient, boolean inclPersistent ) {
 		boolean ret = true;
-		
 		ArrayList<Hop> parents = hop.getParent();
-		for( Hop p : parents )
-		{
+		for( Hop p : parents ) {
 			if( inclTransient && inclPersistent )
 				ret &= ( p instanceof DataOp && (((DataOp)p).getDataOpType()==DataOpTypes.TRANSIENTWRITE
 				|| ((DataOp)p).getDataOpType()==DataOpTypes.PERSISTENTWRITE));
@@ -1179,8 +1200,14 @@ public class HopRewriteUtils
 			else if(inclPersistent)
 				ret &= ( p instanceof DataOp && ((DataOp)p).getDataOpType()==DataOpTypes.PERSISTENTWRITE);
 		}
-			
-				
+		return ret;
+	}
+
+	public static boolean hasOnlyUnaryBinaryParents(Hop hop, boolean disallowLhs) {
+		boolean ret = true;
+		for( Hop p : hop.getParent() )
+			ret &= (p instanceof UnaryOp || (p instanceof BinaryOp
+				&& (!disallowLhs || p.getInput().get(1)==hop)));
 		return ret;
 	}
 	
@@ -1304,6 +1331,11 @@ public class HopRewriteUtils
 			|| sb instanceof ForStatementBlock); //incl parfor
 	}
 	
+	public static boolean isLoopStatementBlock(StatementBlock sb) {
+		return sb instanceof WhileStatementBlock
+			|| sb instanceof ForStatementBlock; //incl parfor
+	}
+
 	public static long getMaxNrowInput(Hop hop) {
 		return getMaxInputDim(hop, true);
 	}
@@ -1327,5 +1359,18 @@ public class HopRewriteUtils
 	public static boolean hasValidInputDims(Hop hop, boolean dim1) {
 		return hop.getInput().stream().allMatch(
 			h -> dim1 ? h.rowsKnown() : h.colsKnown());
+	}
+
+	public static boolean containsSecondOrderBuiltin(ArrayList<Hop> roots) {
+		Hop.resetVisitStatus(roots);
+		return roots.stream().anyMatch(r -> containsSecondOrderBuiltin(r));
+	}
+
+	private static boolean containsSecondOrderBuiltin(Hop hop) {
+		if( hop.isVisited() ) return false;
+		hop.setVisited();
+		return HopRewriteUtils.isNary(hop, OpOpN.EVAL)
+			|| HopRewriteUtils.isParameterBuiltinOp(hop, Hop.ParamBuiltinOp.PARAMSERV)
+			|| hop.getInput().stream().anyMatch(c -> containsSecondOrderBuiltin(c));
 	}
 }

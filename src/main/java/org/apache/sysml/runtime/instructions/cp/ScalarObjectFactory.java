@@ -19,6 +19,7 @@
 
 package org.apache.sysml.runtime.instructions.cp;
 
+import org.apache.sysml.hops.HopsException;
 import org.apache.sysml.hops.LiteralOp;
 import org.apache.sysml.parser.Expression.ValueType;
 import org.apache.sysml.runtime.util.UtilFunctions;
@@ -65,6 +66,10 @@ public abstract class ScalarObjectFactory
 		}
 	}
 	
+	public static ScalarObject createScalarObject(LiteralOp lit) {
+		return createScalarObject(lit.getValueType(), lit);
+	}
+	
 	public static ScalarObject createScalarObject(ValueType vt, LiteralOp lit) {
 		switch( vt ) {
 			case DOUBLE:  return new DoubleObject(lit.getDoubleValue());
@@ -72,6 +77,17 @@ public abstract class ScalarObjectFactory
 			case BOOLEAN: return new BooleanObject(lit.getBooleanValue());
 			case STRING:  return new StringObject(lit.getStringValue());
 			default: throw new RuntimeException("Unsupported scalar value type: "+vt.name());
+		}
+	}
+	
+	public static LiteralOp createLiteralOp(ScalarObject so) {
+		switch( so.getValueType() ){
+			case DOUBLE:  return new LiteralOp(so.getDoubleValue());
+			case INT:     return new LiteralOp(so.getLongValue());
+			case BOOLEAN: return new LiteralOp(so.getBooleanValue());
+			case STRING:  return new LiteralOp(so.getStringValue());
+			default:
+				throw new HopsException("Unsupported literal value type: "+so.getValueType());
 		}
 	}
 }

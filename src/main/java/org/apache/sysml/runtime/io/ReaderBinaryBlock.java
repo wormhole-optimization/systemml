@@ -54,6 +54,10 @@ public class ReaderBinaryBlock extends MatrixReader
 	public MatrixBlock readMatrixFromHDFS(String fname, long rlen, long clen, int brlen, int bclen, long estnnz) 
 		throws IOException, DMLRuntimeException 
 	{
+		//early abort for known empty matrices (e.g., remote parfor result vars)
+		if( RETURN_EMPTY_NNZ0 && estnnz == 0 )
+			return new MatrixBlock((int)rlen, (int)clen, true);
+		
 		//allocate output matrix block
 		MatrixBlock ret = createOutputMatrixBlock(rlen, clen, brlen, bclen, estnnz, false, false);
 		
@@ -109,7 +113,7 @@ public class ReaderBinaryBlock extends MatrixReader
 		//where ultra-sparse deserialization only reuses CSR blocks
 		MatrixBlock value = new MatrixBlock(brlen, bclen, sparse);
 		if( sparse ) {
-			value.allocateAndResetSparseRowsBlock(true, SparseBlock.Type.CSR);
+			value.allocateAndResetSparseBlock(true, SparseBlock.Type.CSR);
 			value.getSparseBlock().allocate(0, brlen*bclen);
 		}
 		return value;

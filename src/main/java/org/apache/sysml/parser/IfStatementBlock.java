@@ -48,7 +48,7 @@ public class IfStatementBlock extends StatementBlock
 		//validate conditional predicate (incl constant propagation)
 		Expression pred = ifstmt.getConditionalPredicate().getPredicate();
 		pred.validateExpression(ids.getVariables(), constVars, conditional);
-		if( pred instanceof DataIdentifier && constVars.containsKey( ((DataIdentifier)pred).getName()) ) {
+		if( pred instanceof DataIdentifier && constVars.containsKey( ((DataIdentifier)pred).getName()) && !conditional ) {
 			ifstmt.getConditionalPredicate().setPredicate(constVars.get(((DataIdentifier)pred).getName()));
 		}
 		
@@ -287,7 +287,6 @@ public class IfStatementBlock extends StatementBlock
 	{
 		IfStatement ifstmt = (IfStatement)_statements.get(0);
 		if (_statements.size() > 1){
-			LOG.error(ifstmt.printErrorLocation() + "IfStatementBlock should have only 1 statement (if statement)");
 			throw new LanguageException(ifstmt.printErrorLocation() + "IfStatementBlock should have only 1 statement (if statement)");
 		}
 		_read = new VariableSet();
@@ -420,7 +419,6 @@ public class IfStatementBlock extends StatementBlock
 	{
 		IfStatement ifstmt = (IfStatement)_statements.get(0);
 		if (_statements.size() > 1){
-			LOG.error(ifstmt.printErrorLocation() + "IfStatementBlock should have only 1 statement (if statement)");
 			throw new LanguageException(ifstmt.printErrorLocation() + "IfStatementBlock should have only 1 statement (if statement)");
 		}
 		
@@ -454,11 +452,11 @@ public class IfStatementBlock extends StatementBlock
 		return _predicateHops;
 	}
 	
-	public Lop get_predicateLops() {
+	public Lop getPredicateLops() {
 		return _predicateLops;
 	}
 
-	public void set_predicateLops(Lop predicateLops) {
+	public void setPredicateLops(Lop predicateLops) {
 		_predicateLops = predicateLops;
 	}
 

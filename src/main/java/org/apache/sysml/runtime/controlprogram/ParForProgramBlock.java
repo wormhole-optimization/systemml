@@ -26,6 +26,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -103,6 +104,7 @@ import org.apache.sysml.runtime.instructions.cp.BooleanObject;
 import org.apache.sysml.runtime.instructions.cp.Data;
 import org.apache.sysml.runtime.instructions.cp.DoubleObject;
 import org.apache.sysml.runtime.instructions.cp.IntObject;
+import org.apache.sysml.runtime.instructions.cp.ListObject;
 import org.apache.sysml.runtime.instructions.cp.StringObject;
 import org.apache.sysml.runtime.instructions.cp.VariableCPInstruction;
 import org.apache.sysml.runtime.io.IOUtilFunctions;
@@ -308,15 +310,16 @@ public class ParForProgramBlock extends ForProgramBlock
 	public static final boolean FORCE_CP_ON_REMOTE_MR       = true; // compile body to CP if exec type forced to MR
 	public static final boolean LIVEVAR_AWARE_EXPORT        = true; // export only read variables according to live variable analysis
 	public static final boolean RESET_RECOMPILATION_FLAGs   = true;
- 	
- 	public static final String PARFOR_FNAME_PREFIX          = "/parfor/"; 
+	public static final boolean ALLOW_BROADCAST_INPUTS      = false; // enables to broadcast inputs for remote_spark
+	
+	public static final String PARFOR_FNAME_PREFIX          = "/parfor/"; 
 	public static final String PARFOR_MR_TASKS_TMP_FNAME    = PARFOR_FNAME_PREFIX + "%ID%_MR_taskfile"; 
 	public static final String PARFOR_MR_RESULT_TMP_FNAME   = PARFOR_FNAME_PREFIX + "%ID%_MR_results"; 
 	public static final String PARFOR_MR_RESULTMERGE_FNAME  = PARFOR_FNAME_PREFIX + "%ID%_resultmerge%VAR%"; 
 	public static final String PARFOR_DATAPARTITIONS_FNAME  = PARFOR_FNAME_PREFIX + "%ID%_datapartitions%VAR%"; 
 	
 	public static final String PARFOR_COUNTER_GROUP_NAME    = "SystemML ParFOR Counters";
-	
+
 	// static ID generator sequences
 	private final static IDSequence _pfIDSeq = new IDSequence();
 	private final static IDSequence _pwIDSeq = new IDSequence();
@@ -1042,8 +1045,9 @@ public class ParForProgramBlock extends ForProgramBlock
 		exportMatricesToHDFS(ec);
 		
 		// Step 3) submit Spark parfor job (no lazy evaluation, since collect on result)
-		//MatrixObject colocatedDPMatrixObj = (_colocatedDPMatrix!=null)? (MatrixObject)ec.getVariable(_colocatedDPMatrix) : null;
-		RemoteParForJobReturn ret = RemoteParForSpark.runJob(_ID, program, clsMap, tasks, ec, _enableCPCaching, _numThreads);
+		boolean topLevelPF = OptimizerUtils.isTopLevelParFor();
+		RemoteParForJobReturn ret = RemoteParForSpark.runJob(_ID, program,
+			clsMap, tasks, ec, _resultVars, _enableCPCaching, _numThreads, topLevelPF);
 		
 		if( _monitor ) 
 			StatisticMonitor.putPFStat(_ID, Stat.PARFOR_WAIT_EXEC_T, time.stop());
@@ -1138,7 +1142,7 @@ public class ParForProgramBlock extends ForProgramBlock
 			if( sb == null )
 				throw new DMLRuntimeException("ParFor statement block required for reasoning about data partitioning.");
 			
-			for( String var : sb.getReadOnlyParentVars() )
+			for( String var : sb.getReadOnlyParentMatrixVars() )
 			{
 				Data dat = ec.getVariable(var);
 				//skip non-existing input matrices (which are due to unknown sizes marked for
@@ -1271,6 +1275,9 @@ public class ParForProgramBlock extends ForProgramBlock
 					case FRAME:
 						//currently we do not create any unscoped matrix or frame outputs
 						//because metadata (e.g., outputinfo) not known at this place.
+						break;
+					case LIST:
+						dataObj = new ListObject(Collections.emptyList());
 						break;
 					case UNKNOWN:
 						break;
@@ -1440,7 +1447,9 @@ public class ParForProgramBlock extends ForProgramBlock
 		DataPartitioner dp = null;
 		
 		//determine max degree of parallelism
-		int numReducers = ConfigurationManager.getNumReducers();
+		int numReducers = OptimizerUtils.isSparkExecutionMode() ?
+			SparkExecutionContext.getDefaultParallelism(false) :
+			ConfigurationManager.getNumReducers();
 		int maxNumRed = InfrastructureAnalyzer.getRemoteParallelReduceTasks();
 		//correction max number of reducers on yarn clusters
 		if( InfrastructureAnalyzer.isYarnEnabled() )

@@ -19,17 +19,10 @@
 #
 #-------------------------------------------------------------
 
-source("scalable_linalg/triangular_inv.dml") as inv
-source("scalable_linalg/qr.dml") as decomp
+X = matrix(7, 500, 2);
 
-Solve = function(Matrix[double] A, Matrix[double] b, int nb)
-  return(Matrix[double] x) {
-    # TODO: using thin QR may accumulate higher numerical erros.
-    # Some modifications as suggested by Golub may be explored
+while(FALSE){}
 
-    [Q, R] = decomp::QR(A, nb)
+R = X * seq(1,nrow(X)) + seq(nrow(X),1);
 
-    Rinv = inv::U_triangular_inv(R)
-
-    x = Rinv %*% t(Q) %*% b
-}
+write(R, $1)

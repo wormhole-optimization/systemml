@@ -23,6 +23,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -35,9 +37,10 @@ import org.apache.wink.json4j.JSONObject;
 
 public class ParameterizedBuiltinFunctionExpression extends DataIdentifier 
 {
-	
+	//note: we use a linked hashmap to preserve the order of
+	//parameters if needed, such as for named lists
 	private ParameterizedBuiltinFunctionOp _opcode;
-	private HashMap<String,Expression> _varParams;
+	private LinkedHashMap<String,Expression> _varParams;
 	
 	public static final String TF_FN_PARAM_DATA = "target";
 	public static final String TF_FN_PARAM_MTD2 = "meta";
@@ -79,6 +82,9 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 
 		// toString
 		opcodeMap.put("toString", Expression.ParameterizedBuiltinFunctionOp.TOSTRING);
+		opcodeMap.put("list", Expression.ParameterizedBuiltinFunctionOp.LIST);
+
+		opcodeMap.put("paramserv", Expression.ParameterizedBuiltinFunctionOp.PARAMSERV);
 	}
 	
 	public static HashMap<Expression.ParameterizedBuiltinFunctionOp, ParamBuiltinOp> pbHopMap;
@@ -123,17 +129,17 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		if ( pbifop == null ) 
 			return null;
 		
-		HashMap<String,Expression> varParams = new HashMap<>();
+		LinkedHashMap<String,Expression> varParams = new LinkedHashMap<>();
 		for (ParameterExpression pexpr : paramExprsPassed)
 			varParams.put(pexpr.getName(), pexpr.getExpr());
 		
-		ParameterizedBuiltinFunctionExpression retVal = new ParameterizedBuiltinFunctionExpression(ctx, pbifop,
-				varParams, fileName);
+		ParameterizedBuiltinFunctionExpression retVal = 
+			new ParameterizedBuiltinFunctionExpression(ctx, pbifop,varParams, fileName);
 		return retVal;
 	}
 	
 			
-	public ParameterizedBuiltinFunctionExpression(ParserRuleContext ctx, ParameterizedBuiltinFunctionOp op, HashMap<String,Expression> varParams,
+	public ParameterizedBuiltinFunctionExpression(ParserRuleContext ctx, ParameterizedBuiltinFunctionOp op, LinkedHashMap<String,Expression> varParams,
 			String filename) {
 		_opcode = op;
 		_varParams = varParams;
@@ -141,7 +147,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 	}
 
 	public ParameterizedBuiltinFunctionExpression(ParameterizedBuiltinFunctionOp op,
-			HashMap<String, Expression> varParams, ParseInfo parseInfo) {
+			LinkedHashMap<String, Expression> varParams, ParseInfo parseInfo) {
 		_opcode = op;
 		_varParams = varParams;
 		setParseInfo(parseInfo);
@@ -149,7 +155,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 
 	@Override
 	public Expression rewriteExpression(String prefix) {
-		HashMap<String,Expression> newVarParams = new HashMap<>();
+		LinkedHashMap<String,Expression> newVarParams = new LinkedHashMap<>();
 		for (String key : _varParams.keySet()){
 			Expression newExpr = _varParams.get(key).rewriteExpression(prefix);
 			newVarParams.put(key, newExpr);
@@ -258,7 +264,15 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		case TOSTRING:
 			validateCastAsString(output, conditional);
 			break;
-			
+		
+		case LIST:
+			validateNamedList(output, conditional);
+			break;
+
+		case PARAMSERV:
+			validateParamserv(output, conditional);
+			break;
+
 		default: //always unconditional (because unsupported operation)
 			//handle common issue of transformencode
 			if( getOpCode()==ParameterizedBuiltinFunctionOp.TRANSFORMENCODE )
@@ -300,7 +314,58 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 				raiseValidateError("Unsupported parameterized function "+ getOpCode(), false, LanguageErrorCodes.INVALID_PARAMETERS);
 		}
 	}
-	
+
+
+	private void validateParamserv(DataIdentifier output, boolean conditional) {
+		String fname = getOpCode().name();
+		// validate the first five arguments
+		if (getVarParams().size() < 1) {
+			raiseValidateError("Should provide more arguments for function " + fname, false, LanguageErrorCodes.INVALID_PARAMETERS);
+		}
+		//check for invalid parameters
+		Set<String> valid = UtilFunctions.asSet(Statement.PS_MODEL, Statement.PS_FEATURES, Statement.PS_LABELS, Statement.PS_VAL_FEATURES, Statement.PS_VAL_LABELS, Statement.PS_UPDATE_FUN, Statement.PS_AGGREGATION_FUN, Statement.PS_MODE, Statement.PS_UPDATE_TYPE, Statement.PS_FREQUENCY, Statement.PS_EPOCHS, Statement.PS_BATCH_SIZE, Statement.PS_PARALLELISM, Statement.PS_SCHEME, Statement.PS_HYPER_PARAMS, Statement.PS_CHECKPOINTING);
+		checkInvalidParameters(getOpCode(), getVarParams(), valid);
+
+		// check existence and correctness of parameters
+		checkDataType(fname, Statement.PS_MODEL, DataType.LIST, conditional); // check the model which is the only non-parameterized argument
+		checkDataType(fname, Statement.PS_FEATURES, DataType.MATRIX, conditional);
+		checkDataType(fname, Statement.PS_LABELS, DataType.MATRIX, conditional);
+		checkDataType(fname, Statement.PS_VAL_FEATURES, DataType.MATRIX, conditional);
+		checkDataType(fname, Statement.PS_VAL_LABELS, DataType.MATRIX, conditional);
+		checkDataValueType(false, fname, Statement.PS_UPDATE_FUN, DataType.SCALAR, ValueType.STRING, conditional);
+		checkDataValueType(false, fname, Statement.PS_AGGREGATION_FUN, DataType.SCALAR, ValueType.STRING, conditional);
+		checkStringParam(false, fname, Statement.PS_MODE, conditional);
+		checkStringParam(false, fname, Statement.PS_UPDATE_TYPE, conditional);
+		checkStringParam(true, fname, Statement.PS_FREQUENCY, conditional);
+		checkDataValueType(false, fname, Statement.PS_EPOCHS, DataType.SCALAR, ValueType.INT, conditional);
+		checkDataValueType(true, fname, Statement.PS_BATCH_SIZE, DataType.SCALAR, ValueType.INT, conditional);
+		checkDataValueType(true, fname, Statement.PS_PARALLELISM, DataType.SCALAR, ValueType.INT, conditional);
+		checkStringParam(true, fname, Statement.PS_SCHEME, conditional);
+		checkDataValueType(true, fname, Statement.PS_HYPER_PARAMS, DataType.LIST, ValueType.UNKNOWN, conditional);
+		checkStringParam(true, fname, Statement.PS_CHECKPOINTING, conditional);
+
+		// set output characteristics
+		output.setDataType(DataType.LIST);
+		output.setValueType(ValueType.UNKNOWN);
+		output.setDimensions(getVarParam(Statement.PS_MODEL).getOutput().getDim1(), 1);
+		output.setBlockDimensions(-1, -1);
+	}
+
+	private void checkStringParam(boolean optional, String fname, String pname, boolean conditional) {
+		Expression param = getVarParam(pname);
+		if (param == null) {
+			if (optional) {
+				return;
+			}
+			raiseValidateError(String.format("Function %s should provide parameter '%s'", fname, pname), conditional);
+		}
+		if (!(param.getOutput().getDataType().isScalar() && param.getOutput().getValueType().equals(ValueType.STRING))) {
+			raiseValidateError(
+					String.format("Function %s should provide a string value for %s parameter.", fname, pname),
+					conditional);
+		}
+	}
+
 	// example: A = transformapply(target=X, meta=M, spec=s)
 	private void validateTransformApply(DataIdentifier output, boolean conditional) 
 	{
@@ -309,7 +374,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		checkDataType("transformapply", TF_FN_PARAM_MTD2, DataType.FRAME, conditional);
 		
 		//validate specification
-		checkDataValueType("transformapply", TF_FN_PARAM_SPEC, DataType.SCALAR, ValueType.STRING, conditional);
+		checkDataValueType(false, "transformapply", TF_FN_PARAM_SPEC, DataType.SCALAR, ValueType.STRING, conditional);
 		validateTransformSpec(TF_FN_PARAM_SPEC, conditional);
 		
 		//set output dimensions
@@ -325,7 +390,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		checkDataType("transformdecode", TF_FN_PARAM_MTD2, DataType.FRAME, conditional);
 		
 		//validate specification
-		checkDataValueType("transformdecode", TF_FN_PARAM_SPEC, DataType.SCALAR, ValueType.STRING, conditional);
+		checkDataValueType(false, "transformdecode", TF_FN_PARAM_SPEC, DataType.SCALAR, ValueType.STRING, conditional);
 		validateTransformSpec(TF_FN_PARAM_SPEC, conditional);
 		
 		//set output dimensions
@@ -341,7 +406,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		checkDataType("transformcolmap", TF_FN_PARAM_DATA, DataType.FRAME, conditional);
 		
 		//validate specification
-		checkDataValueType("transformcolmap", TF_FN_PARAM_SPEC, DataType.SCALAR, ValueType.STRING, conditional);
+		checkDataValueType(false,"transformcolmap", TF_FN_PARAM_SPEC, DataType.SCALAR, ValueType.STRING, conditional);
 		validateTransformSpec(TF_FN_PARAM_SPEC, conditional);
 		
 		//set output dimensions
@@ -353,11 +418,11 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 	private void validateTransformMeta(DataIdentifier output, boolean conditional) 
 	{
 		//validate specification
-		checkDataValueType("transformmeta", TF_FN_PARAM_SPEC, DataType.SCALAR, ValueType.STRING, conditional);
+		checkDataValueType(false,"transformmeta", TF_FN_PARAM_SPEC, DataType.SCALAR, ValueType.STRING, conditional);
 		validateTransformSpec(TF_FN_PARAM_SPEC, conditional);
 		
 		//validate meta data path 
-		checkDataValueType("transformmeta", TF_FN_PARAM_MTD, DataType.SCALAR, ValueType.STRING, conditional);
+		checkDataValueType(false,"transformmeta", TF_FN_PARAM_MTD, DataType.SCALAR, ValueType.STRING, conditional);
 		
 		//set output dimensions
 		output.setDataType(DataType.FRAME);
@@ -371,7 +436,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		checkDataType("transformencode", TF_FN_PARAM_DATA, DataType.FRAME, conditional);
 		
 		//validate specification
-		checkDataValueType("transformencode", TF_FN_PARAM_SPEC, DataType.SCALAR, ValueType.STRING, conditional);
+		checkDataValueType(false, "transformencode", TF_FN_PARAM_SPEC, DataType.SCALAR, ValueType.STRING, conditional);
 		validateTransformSpec(TF_FN_PARAM_SPEC, conditional);
 		
 		//set output dimensions 
@@ -401,11 +466,7 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		
 		//check for invalid parameters
 		Set<String> valid = UtilFunctions.asSet("target", "diag", "values");
-		Set<String> invalid = _varParams.keySet().stream()
-			.filter(k -> !valid.contains(k)).collect(Collectors.toSet());
-		if( !invalid.isEmpty() )
-			raiseValidateError("Invalid parameters for " + op.name() + ": "
-				+ Arrays.toString(invalid.toArray(new String[0])), false);
+		checkInvalidParameters(op, getVarParams(), valid);
 		
 		//check existence and correctness of arguments
 		checkTargetParam(getVarParam("target"), conditional);
@@ -656,7 +717,19 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 				+"["+param.getOutput().getValueType()+"].", conditional, LanguageErrorCodes.INVALID_PARAMETERS);
 		}
 	}
-	
+
+	private void checkInvalidParameters(ParameterizedBuiltinFunctionOp op, HashMap<String, Expression> params,
+			Set<String> valid) {
+		Set<String> invalid = params.keySet().stream().filter(k -> !valid.contains(k)).collect(Collectors.toSet());
+		if (!invalid.isEmpty()) {
+			List<String> invalidMsg = invalid.stream().map(k -> {
+				String val = params.get(k).getText();
+				return k == null ? val : k + "=" + val;
+			}).collect(Collectors.toList());
+			raiseValidateError(String.format("Invalid parameters for %s: %s", op.name(), invalidMsg), false);
+		}
+	}
+
 	private void validateDistributionFunctions(DataIdentifier output, boolean conditional) {
 		// CDF and INVCDF expects one unnamed parameter, it must be renamed as "quantile" 
 		// (i.e., we must compute P(X <= x) where x is called as "quantile" )
@@ -761,23 +834,39 @@ public class ParameterizedBuiltinFunctionExpression extends DataIdentifier
 		output.setValueType(ValueType.STRING);
 		output.setDimensions(0, 0);
 	}
+	
+	private void validateNamedList(DataIdentifier output, boolean conditional) {
+		HashMap<String, Expression> varParams = getVarParams();
+		
+		// set output characteristics
+		output.setDataType(DataType.LIST);
+		output.setValueType(ValueType.UNKNOWN);
+		output.setDimensions(varParams.size(), 1);
+		output.setBlockDimensions(-1, -1);
+	}
 
 	private void checkDataType( String fname, String pname, DataType dt, boolean conditional ) {
 		Expression data = getVarParam(pname);
 		if( data==null )
 			raiseValidateError("Named parameter '" + pname + "' missing. Please specify the input.", conditional, LanguageErrorCodes.INVALID_PARAMETERS);
 		else if( data.getOutput().getDataType() != dt )
-			raiseValidateError("Input to "+fname+"::"+pname+" must be of type '"+dt.toString()+"'. It is of type '"+data.getOutput().getDataType()+"'.", conditional, LanguageErrorCodes.INVALID_PARAMETERS);		
+			raiseValidateError("Input to "+fname+"::"+pname+" must be of type '"+dt.toString()+"'. It should not be of type '"+data.getOutput().getDataType()+"'.", conditional, LanguageErrorCodes.INVALID_PARAMETERS);
 	}
 
-	private void checkDataValueType( String fname, String pname, DataType dt, ValueType vt, boolean conditional ) 
-	{
+	private void checkDataValueType(boolean optional, String fname, String pname, DataType dt, ValueType vt,
+			boolean conditional) {
 		Expression data = getVarParam(pname);
-		if( data==null )
-			raiseValidateError("Named parameter '" + pname + "' missing. Please specify the input.", conditional, LanguageErrorCodes.INVALID_PARAMETERS);
-		else if( data.getOutput().getDataType() != dt || data.getOutput().getValueType() != vt )
-			raiseValidateError("Input to "+fname+"::"+pname+" must be of type '"+dt.toString()+"', '"+vt.toString()+"'. "
-					+ "It is of type '"+data.getOutput().getDataType().toString()+"', '"+data.getOutput().getValueType().toString()+"'.", conditional, LanguageErrorCodes.INVALID_PARAMETERS);		
+		if (data == null) {
+			if (optional) {
+				return;
+			}
+			raiseValidateError(String.format("Named parameter '%s' is missing. Please specify the input.", fname),
+					conditional, LanguageErrorCodes.INVALID_PARAMETERS);
+		} else if (data.getOutput().getDataType() != dt || data.getOutput().getValueType() != vt)
+			raiseValidateError(String.format("Input to %s::%s must be of type '%s', '%s'.It should not be of type '%s', '%s'.",
+							fname, pname, dt.toString(), vt.toString(), data.getOutput().getDataType().toString(),
+							data.getOutput().getValueType().toString()), conditional,
+					LanguageErrorCodes.INVALID_PARAMETERS);
 	}
 
 	@Override

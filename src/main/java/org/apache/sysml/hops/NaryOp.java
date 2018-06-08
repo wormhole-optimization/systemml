@@ -121,6 +121,19 @@ public class NaryOp extends Hop {
 	}
 
 	@Override
+	public void computeMemEstimate(MemoTable memo) {
+		//overwrites default hops behavior
+		super.computeMemEstimate(memo);
+
+		//specific case for function call
+		if( _op == OpOpN.EVAL ) {
+			_memEstimate = OptimizerUtils.INT_SIZE;
+			_outputMemEstimate = OptimizerUtils.INT_SIZE;
+			_processingMemEstimate = 0;
+		}
+	}
+	
+	@Override
 	protected double computeOutputMemEstimate(long dim1, long dim2, long nnz) {
 		double sparsity = OptimizerUtils.getSparsity(dim1, dim2, nnz);
 		return OptimizerUtils.estimateSizeExactSparsity(dim1, dim2, sparsity);
@@ -155,7 +168,7 @@ public class NaryOp extends Hop {
 		setRequiresRecompileIfNecessary();
 		
 		//ensure cp exec type for single-node operations
-		if ( _op == OpOpN.PRINTF  || _op == OpOpN.EVAL)
+		if ( _op == OpOpN.PRINTF  || _op == OpOpN.EVAL || _op == OpOpN.LIST)
 			_etype = ExecType.CP;
 		
 		return _etype;
@@ -182,6 +195,9 @@ public class NaryOp extends Hop {
 				setDim1(HopRewriteUtils.getSumValidInputDims(this, true));
 				setDim2(HopRewriteUtils.getMaxInputDim(this, false));
 				break;
+			case LIST:
+				setDim1(getInput().size());
+				setDim2(1);
 			case PRINTF:
 			case EVAL:
 				//do nothing:

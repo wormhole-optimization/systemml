@@ -182,6 +182,12 @@ public class OptimizerUtils
 	 */
 	public static boolean ALLOW_LOOP_UPDATE_IN_PLACE = true;
 	
+	/**
+	 * Enables a specific rewrite for code motion, i.e., hoisting loop invariant code
+	 * out of while, for, and parfor loops.
+	 */
+	public static boolean ALLOW_CODE_MOTION = false;
+	
 	
 	/**
 	 * Specifies a multiplier computing the degree of parallelism of parallel
@@ -414,31 +420,37 @@ public class OptimizerUtils
 	 * 
 	 * @return local memory budget
 	 */
-	public static double getLocalMemBudget()
-	{
+	public static double getLocalMemBudget() {
 		double ret = InfrastructureAnalyzer.getLocalMaxMemory();
 		return ret * OptimizerUtils.MEM_UTIL_FACTOR;
 	}
 	
-	public static double getRemoteMemBudgetMap()
-	{
+	public static double getRemoteMemBudgetMap() {
 		return getRemoteMemBudgetMap(false);
 	}
 	
-	public static double getRemoteMemBudgetMap(boolean substractSortBuffer)
-	{
+	public static double getRemoteMemBudgetMap(boolean substractSortBuffer) {
 		double ret = InfrastructureAnalyzer.getRemoteMaxMemoryMap();
 		if( substractSortBuffer )
 			ret -= InfrastructureAnalyzer.getRemoteMaxMemorySortBuffer();
 		return ret * OptimizerUtils.MEM_UTIL_FACTOR;
 	}
 
-	public static double getRemoteMemBudgetReduce()
-	{
+	public static double getRemoteMemBudgetReduce() {
 		double ret = InfrastructureAnalyzer.getRemoteMaxMemoryReduce();
 		return ret * OptimizerUtils.MEM_UTIL_FACTOR;
 	}
+	
+	public static boolean isMaxLocalParallelism(int k) {
+		return InfrastructureAnalyzer.getLocalParallelism() == k;
+	}
 
+	public static boolean isTopLevelParFor() {
+		//since every local parfor with degree of parallelism k>1 changes the
+		//local memory budget, we can simply probe the current memory fraction
+		return InfrastructureAnalyzer.getLocalMaxMemoryFraction() >= 0.99;
+	}
+	
 	public static boolean checkSparkBroadcastMemoryBudget( double size )
 	{
 		double memBudgetExec = SparkExecutionContext.getBroadcastMemoryBudget();
@@ -680,7 +692,7 @@ public class OptimizerUtils
 				mc.getCols(), 
 				mc.getRowsPerBlock(), 
 				mc.getColsPerBlock(), 
-				mc.getNonZeros());
+				mc.getNonZerosBound());
 	}
 	
 	/**
@@ -719,7 +731,7 @@ public class OptimizerUtils
 		long tnrblks = (long)Math.ceil((double)rlen/brlen);
 		long tncblks = (long)Math.ceil((double)clen/bclen);
 		long nnz = (long) Math.ceil(sp * rlen * clen);
-		if( nnz < tnrblks * tncblks ) {
+		if( nnz <= tnrblks * tncblks ) {
 			long lrlen = Math.min(rlen, brlen);
 			long lclen = Math.min(clen, bclen);
 			return nnz * estimateSizeExactSparsity(lrlen, lclen, 1)
@@ -978,7 +990,7 @@ public class OptimizerUtils
 			return Math.min(1, nnz1/m) * Math.min(1, nnz2/n);
 		}
 		else
-			return (1 - Math.pow(1-sp1*sp2, k) );
+			return 1 - Math.pow(1-sp1*sp2, k);
 	}
 
 	public static double getLeftIndexingSparsity( long rlen1, long clen1, long nnz1, long rlen2, long clen2, long nnz2 )

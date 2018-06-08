@@ -177,9 +177,10 @@ public class UnaryOp extends Hop implements MultiThreadedHop
 				}
 				else //default unary 
 				{
-					int k = isCumulativeUnaryOperation() ? OptimizerUtils.getConstrainedNumThreads( _maxNumThreads ) : 1;
-					Unary unary1 = new Unary(input.constructLops(), HopsOpOp1LopsU.get(_op), 
-							                 getDataType(), getValueType(), et, k);
+					int k = isCumulativeUnaryOperation() || isExpensiveUnaryOperation() ?
+						OptimizerUtils.getConstrainedNumThreads( _maxNumThreads ) : 1;
+					Unary unary1 = new Unary(input.constructLops(),
+						HopsOpOp1LopsU.get(_op), getDataType(), getValueType(), et, k);
 					setOutputDimensions(unary1);
 					setLineNumbers(unary1);
 					setLops(unary1);
@@ -612,23 +613,28 @@ public class UnaryOp extends Hop implements MultiThreadedHop
 		return ( _op == OpOp1.INVERSE );
 	}
 
-	public boolean isCumulativeUnaryOperation() 
-	{
-		return (   _op == OpOp1.CUMSUM 
-				|| _op == OpOp1.CUMPROD
-				|| _op == OpOp1.CUMMIN
-				|| _op == OpOp1.CUMMAX  );
+	public boolean isCumulativeUnaryOperation()  {
+		return (_op == OpOp1.CUMSUM
+			|| _op == OpOp1.CUMPROD
+			|| _op == OpOp1.CUMMIN
+			|| _op == OpOp1.CUMMAX);
 	}
 
 	public boolean isCastUnaryOperation() {
-		return (   _op == OpOp1.CAST_AS_MATRIX
-				|| _op == OpOp1.CAST_AS_SCALAR
-				|| _op == OpOp1.CAST_AS_FRAME
-				|| _op == OpOp1.CAST_AS_BOOLEAN
-				|| _op == OpOp1.CAST_AS_DOUBLE
-				|| _op == OpOp1.CAST_AS_INT    );
+		return (_op == OpOp1.CAST_AS_MATRIX
+			|| _op == OpOp1.CAST_AS_SCALAR
+			|| _op == OpOp1.CAST_AS_FRAME
+			|| _op == OpOp1.CAST_AS_BOOLEAN
+			|| _op == OpOp1.CAST_AS_DOUBLE
+			|| _op == OpOp1.CAST_AS_INT);
 	}
 	
+	public boolean isExpensiveUnaryOperation()  {
+		return (_op == OpOp1.EXP
+			|| _op == OpOp1.LOG
+			|| _op == OpOp1.SIGMOID);
+	}
+
 	@Override
 	protected ExecType optFindExecType() 
 	{
@@ -679,8 +685,9 @@ public class UnaryOp extends Hop implements MultiThreadedHop
 		setRequiresRecompileIfNecessary();
 		
 		//ensure cp exec type for single-node operations
-		if( _op == OpOp1.PRINT || _op == OpOp1.ASSERT || _op == OpOp1.STOP 
-			|| _op == OpOp1.INVERSE || _op == OpOp1.EIGEN || _op == OpOp1.CHOLESKY || _op == OpOp1.SVD)
+		if( _op == OpOp1.PRINT || _op == OpOp1.ASSERT || _op == OpOp1.STOP
+			|| _op == OpOp1.INVERSE || _op == OpOp1.EIGEN || _op == OpOp1.CHOLESKY || _op == OpOp1.SVD
+			|| getInput().get(0).getDataType() == DataType.LIST )
 		{
 			_etype = ExecType.CP;
 		}
@@ -695,6 +702,11 @@ public class UnaryOp extends Hop implements MultiThreadedHop
 		{
 			setDim1( 0 );
 			setDim2( 0 );
+		}
+		else if( (_op == OpOp1.CAST_AS_MATRIX || _op == OpOp1.CAST_AS_FRAME
+			|| _op == OpOp1.CAST_AS_SCALAR) && getInput().get(0).getDataType()==DataType.LIST ){
+			setDim1( -1 );
+			setDim2( -1 );
 		}
 		else if( (_op == OpOp1.CAST_AS_MATRIX || _op == OpOp1.CAST_AS_FRAME)
 			&& getInput().get(0).getDataType()==DataType.SCALAR )

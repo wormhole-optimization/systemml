@@ -48,8 +48,10 @@ public class LibMatrixNative
 	
 	// We could encapsulate heuristics in this function
 	// For now, we only consider matrix-vector operation to be memory bound
-	private static boolean isMatMultMemoryBound(int m1Rlen, int m1Clen, int m2Clen) {
-		return m1Rlen == 1 || m1Clen == 1 || m2Clen == 1;
+	public static boolean isMatMultMemoryBound(int m1Rlen, int m1Clen, int m2Clen) {
+		return (m1Rlen == 1 || m1Clen == 1 || m2Clen == 1)
+			&& (8L*m1Rlen*m1Clen > 16 * LibMatrixMult.L3_CACHESIZE 
+				|| 8L*m1Clen*m2Clen > 16 * LibMatrixMult.L3_CACHESIZE);
 	}
 
 	/**
@@ -77,9 +79,11 @@ public class LibMatrixNative
 			return;
 		}
 		
-		if (NativeHelper.isNativeLibraryLoaded()
+		if( NativeHelper.isNativeLibraryLoaded()
 			&& !isMatMultMemoryBound(m1.rlen, m1.clen, m2.clen) 
-			&& !m1.isInSparseFormat() && !m2.isInSparseFormat()) 
+			&& !m1.isInSparseFormat() && !m2.isInSparseFormat()
+			&& m1.getDenseBlock().isContiguous() && m2.getDenseBlock().isContiguous()
+			&& 8L * ret.getLength() < Integer.MAX_VALUE ) //contiguous but not allocated
 		{
 			ret.sparse = false;
 			ret.allocateDenseBlock();
@@ -114,6 +118,31 @@ public class LibMatrixNative
 			LibMatrixMult.matrixMult(m1, m2, ret, !examSparsity);
 		else
 			LibMatrixMult.matrixMult(m1, m2, ret, k);
+	}
+	
+	public static void tsmm(MatrixBlock m1, MatrixBlock ret, boolean leftTrans, int k) {
+		if( m1.isEmptyBlock(false) )
+			return;
+		if( NativeHelper.isNativeLibraryLoaded() && (ret.clen > 1 || ret.getLength()==1)
+			&& (!m1.sparse && m1.getDenseBlock().isContiguous() ) ) {
+			ret.sparse = false;
+			ret.allocateDenseBlock();
+			if( NativeHelper.tsmm(m1.getDenseBlockValues(), 
+				ret.getDenseBlockValues(), m1.rlen, m1.clen, leftTrans, k) ) 
+			{
+				long nnz = (ret.clen==1) ? ret.recomputeNonZeros() :
+					LibMatrixMult.copyUpperToLowerTriangle(ret);
+				ret.setNonZeros(nnz);
+				ret.examSparsity();
+				return;
+			}
+			//fallback to default java implementation
+			Statistics.incrementNativeFailuresCounter();
+		}
+		if( k > 1 )
+			LibMatrixMult.matrixMultTransposeSelf(m1, ret, leftTrans, k);
+		else
+			LibMatrixMult.matrixMultTransposeSelf(m1, ret, leftTrans);
 	}
 	
 	/**
@@ -286,7 +315,7 @@ public class LibMatrixNative
 		return ret2;
 	}
 	
-	private static void fromFloatBuffer(FloatBuffer buff, double[] output) {
+	public static void fromFloatBuffer(FloatBuffer buff, double[] output) {
 		Arrays.parallelSetAll(output, i -> (double)buff.get(i) );
 	}
 }

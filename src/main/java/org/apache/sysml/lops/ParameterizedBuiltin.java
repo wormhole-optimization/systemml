@@ -38,7 +38,7 @@ public class ParameterizedBuiltin extends Lop
 	public enum OperationTypes { 
 		CDF, INVCDF, RMEMPTY, REPLACE, REXPAND, LOWER_TRI, UPPER_TRI,
 		TRANSFORMAPPLY, TRANSFORMDECODE, TRANSFORMCOLMAP, TRANSFORMMETA,
-		TOSTRING
+		TOSTRING, LIST, PARAMSERV
 	}
 	
 	private OperationTypes _operation;
@@ -215,14 +215,27 @@ public class ParameterizedBuiltin extends Lop
 			case TRANSFORMAPPLY:
 			case TRANSFORMDECODE:
 			case TRANSFORMCOLMAP:
-			case TRANSFORMMETA: {
-				sb.append(_operation.toString().toLowerCase()); //opcode
+			case TRANSFORMMETA:{ 
+				sb.append(_operation.name().toLowerCase()); //opcode
 				sb.append(OPERAND_DELIMITOR);
 				sb.append(compileGenericParamMap(_inputParams));
 				break;
-			}			
-			case TOSTRING:{
+			}
+			case LIST: {
+				sb.append("nvlist"); //opcode
+				sb.append(OPERAND_DELIMITOR);
+				sb.append(compileGenericParamMap(_inputParams));
+				break;
+			}
+			case TOSTRING: {
 				sb.append("toString"); //opcode
+				sb.append(OPERAND_DELIMITOR);
+				sb.append(compileGenericParamMap(_inputParams));
+				break;
+			}
+
+			case PARAMSERV: {
+				sb.append("paramserv");
 				sb.append(OPERAND_DELIMITOR);
 				sb.append(compileGenericParamMap(_inputParams));
 				break;
@@ -232,7 +245,7 @@ public class ParameterizedBuiltin extends Lop
 				throw new LopsException(this.printErrorLocation() + "In ParameterizedBuiltin Lop, Unknown operation: " + _operation);
 		}
 		
-		if (_operation == OperationTypes.RMEMPTY) {			
+		if (_operation == OperationTypes.RMEMPTY) {
 			sb.append("bRmEmptyBC");
 			sb.append(NAME_VALUE_SEPARATOR);
 			sb.append( _bRmEmptyBC );

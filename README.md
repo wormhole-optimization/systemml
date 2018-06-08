@@ -21,7 +21,7 @@ limitations under the License.
 
 **Documentation:** [SystemML Documentation](http://systemml.apache.org/documentation)<br/>
 **Mailing List:** [Dev Mailing List](mailto:dev@systemml.apache.org)<br/>
-**Build Status:** [![Build Status](https://sparktc.ibmcloud.com/jenkins/job/SystemML-DailyTest/badge/icon)](https://sparktc.ibmcloud.com/jenkins/job/SystemML-DailyTest)<br/>
+**Build Status:** [![Build Status](https://travis-ci.org/apache/systemml.svg?branch=master)](https://travis-ci.org/apache/systemml)<br/>
 **Issue Tracker:** [JIRA](https://issues.apache.org/jira/browse/SYSTEMML)<br/>
 **Download:** [Download SystemML](http://systemml.apache.org/download.html)<br/>
 
@@ -95,14 +95,13 @@ Before you get started on SystemML, make sure that your environment is set up an
 
   2. **Install Java (need Java 8).**
   ```
-  brew tap caskroom/cask
-  brew install Caskroom/cask/java
+  brew tap caskroom/versions
+  brew cask install java8
   ```
 
-  3. **Install Spark 2.1.**
+  3. **Install Spark (Newest).**
   ```
-  brew tap homebrew/versions
-  brew install apache-spark21
+  brew install apache-spark
   ```
 
   4. **Download SystemML.**

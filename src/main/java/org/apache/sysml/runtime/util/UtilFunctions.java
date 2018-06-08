@@ -22,10 +22,14 @@ package org.apache.sysml.runtime.util;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 import org.apache.commons.lang.ArrayUtils;
+import org.apache.commons.math3.random.RandomDataGenerator;
 import org.apache.sysml.parser.Expression.ValueType;
 import org.apache.sysml.runtime.matrix.MetaDataNumItemsByEachReducer;
 import org.apache.sysml.runtime.matrix.data.FrameBlock;
@@ -512,17 +516,22 @@ public class UtilFunctions
 		return 0; //equal 
 	}
 	
-	public static boolean isIntegerNumber( String str )
-	{
+	public static boolean isIntegerNumber( String str ) {
 		byte[] c = str.getBytes();
 		for( int i=0; i<c.length; i++ )
 			if( c[i] < 48 || c[i] > 57 )
 				return false;
 		return true;
 	}
+	
+	public static int[] getSortedSampleIndexes(int range, int sampleSize) {
+		RandomDataGenerator rng = new RandomDataGenerator();
+		int[] sample = rng.nextPermutation(range, sampleSize);
+		Arrays.sort(sample);
+		return sample;
+	}
 
-	public static byte max( byte[] array )
-	{
+	public static byte max( byte[] array ) {
 		byte ret = Byte.MIN_VALUE;
 		for( int i=0; i<array.length; i++ )
 			ret = (array[i]>ret)?array[i]:ret;
@@ -530,9 +539,9 @@ public class UtilFunctions
 	}
 	
 	public static String unquote(String s) {
-		if (s != null
-				&& s.length() >=2 && ((s.startsWith("\"") && s.endsWith("\"")) 
-					|| (s.startsWith("'") && s.endsWith("'")))) {
+		if (s != null && s.length() >=2 
+			&& ((s.startsWith("\"") && s.endsWith("\"")) 
+			|| (s.startsWith("'") && s.endsWith("'")))) {
 			s = s.substring(1, s.length() - 1);
 		}
 		return s;
@@ -662,5 +671,10 @@ public class UtilFunctions
 		for( T element : inputs )
 			ret.add(element);
 		return ret;
+	}
+	
+	public static <T> Stream<T> getStream(Iterator<T> iter) {
+		Iterable<T> iterable = () -> iter;
+		return StreamSupport.stream(iterable.spliterator(), false);
 	}
 }

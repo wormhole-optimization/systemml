@@ -19,6 +19,8 @@
 
 package org.apache.sysml.hops.codegen.cplan;
 
+import java.util.Arrays;
+
 import org.apache.commons.lang.StringUtils;
 import org.apache.sysml.hops.codegen.template.TemplateUtils;
 import org.apache.sysml.parser.Expression.DataType;
@@ -52,13 +54,11 @@ public class CNodeBinary extends CNode
 		LESS, LESSEQUAL, GREATER, GREATEREQUAL, EQUAL,NOTEQUAL,
 		MIN, MAX, AND, OR, XOR, LOG, LOG_NZ, POW,
 		BITWAND,
+		SEQ_RIX,
 		MINUS1_MULT, MINUS_NZ;
 
 		public static boolean contains(String value) {
-			for( BinType bt : values()  )
-				if( bt.name().equals(value) )
-					return true;
-			return false;
+			return Arrays.stream(values()).anyMatch(bt -> bt.name().equals(value));
 		}
 		
 		public boolean isCommutative() {
@@ -214,7 +214,9 @@ public class CNodeBinary extends CNode
 					return "    double %TMP% = ( (%IN1% != 0) != (%IN2% != 0) ) ? 1 : 0;\n";
 				case BITWAND:
 					return "    double %TMP% = LibSpoofPrimitives.bwAnd(%IN1%, %IN2%);\n";
-
+				case SEQ_RIX:
+					return "    double %TMP% = %IN1% + grix * %IN2%;\n"; //0-based global rix
+				
 				default: 
 					throw new RuntimeException("Invalid binary type: "+this.toString());
 			}
@@ -409,6 +411,7 @@ public class CNodeBinary extends CNode
 			case AND:                      return "b(&)";
 			case XOR:                      return "b(xor)";
 			case BITWAND:                  return "b(bitwAnd)";
+			case SEQ_RIX:                  return "b(seqr)";
 			case MINUS1_MULT:              return "b(1-*)";
 			case MINUS_NZ:                 return "b(-nz)";
 			default: return "b("+_type.name().toLowerCase()+")";
@@ -420,7 +423,7 @@ public class CNodeBinary extends CNode
 	{
 		switch(_type) {
 			//VECT
-			case VECT_MULT_ADD: 
+			case VECT_MULT_ADD:
 			case VECT_DIV_ADD:
 			case VECT_MINUS_ADD:
 			case VECT_PLUS_ADD:
@@ -428,10 +431,10 @@ public class CNodeBinary extends CNode
 			case VECT_MIN_ADD:
 			case VECT_MAX_ADD:
 			case VECT_EQUAL_ADD: 
-			case VECT_NOTEQUAL_ADD: 
-			case VECT_LESS_ADD: 
-			case VECT_LESSEQUAL_ADD: 
-			case VECT_GREATER_ADD: 
+			case VECT_NOTEQUAL_ADD:
+			case VECT_LESS_ADD:
+			case VECT_LESSEQUAL_ADD:
+			case VECT_GREATER_ADD:
 			case VECT_GREATEREQUAL_ADD:
 			case VECT_CBIND_ADD:
 			case VECT_XOR_ADD:
@@ -452,8 +455,8 @@ public class CNodeBinary extends CNode
 				_cols = _inputs.get(1)._cols;
 				_dataType = DataType.MATRIX;
 				break;
-				
-			case VECT_DIV_SCALAR: 	
+			
+			case VECT_DIV_SCALAR:
 			case VECT_MULT_SCALAR:
 			case VECT_MINUS_SCALAR:
 			case VECT_PLUS_SCALAR:
@@ -463,13 +466,13 @@ public class CNodeBinary extends CNode
 			case VECT_MIN_SCALAR:
 			case VECT_MAX_SCALAR:
 			case VECT_EQUAL_SCALAR: 
-			case VECT_NOTEQUAL_SCALAR: 
-			case VECT_LESS_SCALAR: 
-			case VECT_LESSEQUAL_SCALAR: 
+			case VECT_NOTEQUAL_SCALAR:
+			case VECT_LESS_SCALAR:
+			case VECT_LESSEQUAL_SCALAR:
 			case VECT_GREATER_SCALAR: 
 			case VECT_GREATEREQUAL_SCALAR:
 			
-			case VECT_DIV: 	
+			case VECT_DIV:
 			case VECT_MULT:
 			case VECT_MINUS:
 			case VECT_PLUS:
@@ -477,12 +480,12 @@ public class CNodeBinary extends CNode
 			case VECT_BITWAND:
 			case VECT_MIN:
 			case VECT_MAX:
-			case VECT_EQUAL: 
-			case VECT_NOTEQUAL: 
-			case VECT_LESS: 
-			case VECT_LESSEQUAL: 
-			case VECT_GREATER: 
-			case VECT_GREATEREQUAL:	
+			case VECT_EQUAL:
+			case VECT_NOTEQUAL:
+			case VECT_LESS:
+			case VECT_LESSEQUAL:
+			case VECT_GREATER:
+			case VECT_GREATEREQUAL:
 				boolean scalarVector = (_inputs.get(0).getDataType()==DataType.SCALAR);
 				_rows = _inputs.get(scalarVector ? 1 : 0)._rows;
 				_cols = _inputs.get(scalarVector ? 1 : 0)._cols;
@@ -494,39 +497,40 @@ public class CNodeBinary extends CNode
 				_cols = _inputs.get(1)._cols;
 				_dataType = DataType.MATRIX;
 				break;
-				
-			case DOT_PRODUCT: 
+			
+			case DOT_PRODUCT:
 			
 			//SCALAR Arithmetic
-			case MULT: 
-			case DIV: 
-			case PLUS: 
-			case MINUS: 
+			case MULT:
+			case DIV:
+			case PLUS:
+			case MINUS:
 			case MINUS1_MULT:
 			case MINUS_NZ:
-			case MODULUS: 
-			case INTDIV: 	
+			case MODULUS:
+			case INTDIV:
 			//SCALAR Comparison
-			case LESS: 
-			case LESSEQUAL: 
+			case LESS:
+			case LESSEQUAL:
 			case GREATER: 
-			case GREATEREQUAL: 
-			case EQUAL: 
-			case NOTEQUAL: 
+			case GREATEREQUAL:
+			case EQUAL:
+			case NOTEQUAL:
 			//SCALAR LOGIC
-			case MIN: 
-			case MAX: 
-			case AND: 
+			case MIN:
+			case MAX:
+			case AND:
 			case OR:
 			case XOR:
 			case BITWAND:
-			case LOG: 
+			case LOG:
 			case LOG_NZ:
-			case POW: 
+			case POW:
+			case SEQ_RIX:
 				_rows = 0;
 				_cols = 0;
 				_dataType= DataType.SCALAR;
-				break;	
+				break;
 		}
 	}
 	

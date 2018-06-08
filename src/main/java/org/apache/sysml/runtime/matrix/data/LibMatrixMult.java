@@ -26,6 +26,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.stream.IntStream;
 
 import org.apache.commons.math3.util.FastMath;
 import org.apache.sysml.hops.OptimizerUtils;
@@ -42,6 +43,7 @@ import org.apache.sysml.runtime.functionobjects.ValueFunction;
 import org.apache.sysml.runtime.matrix.operators.ReorgOperator;
 import org.apache.sysml.runtime.util.CommonThreadPool;
 import org.apache.sysml.runtime.util.UtilFunctions;
+import org.apache.sysml.utils.NativeHelper;
 
 /**
  * MB: Library for matrix multiplications including MM, MV, VV for all
@@ -59,7 +61,8 @@ public class LibMatrixMult
 	private static final long MEM_OVERHEAD_THRESHOLD = 2L*1024*1024; //MAX 2 MB
 	private static final long PAR_MINFLOP_THRESHOLD1 = 2L*1024*1024; //MIN 2 MFLOP
 	private static final long PAR_MINFLOP_THRESHOLD2 = 128L*1024; //MIN 2 MFLOP
-	private static final int L2_CACHESIZE = 256 *1024; //256KB (common size)
+	public static final int L2_CACHESIZE = 256 * 1024; //256KB (common size)
+	public static final int L3_CACHESIZE = 16 * 1024 * 1024; //16MB (common size)
 	
 	private LibMatrixMult() {
 		//prevent instantiation via private constructor
@@ -335,7 +338,6 @@ public class LibMatrixMult
 		//Timing time = new Timing(true);
 		
 		//pre-processing
-		m1 = prepMatrixMultTransposeSelfInput(m1, leftTranspose);
 		ret.sparse = false;
 		ret.allocateDenseBlock();
 
@@ -368,7 +370,6 @@ public class LibMatrixMult
 		//Timing time = new Timing(true);
 		
 		//pre-processing (no need to check isThreadSafe)
-		m1 = prepMatrixMultTransposeSelfInput(m1, leftTranspose);
 		ret.sparse = false;
 		ret.allocateDenseBlock();
 	
@@ -556,7 +557,13 @@ public class LibMatrixMult
 		ret.allocateBlock();
 		
 		//core weighted square sum mm computation
-		if( !mW.sparse && !mU.sparse && !mV.sparse && !mU.isEmptyBlock() && !mV.isEmptyBlock() )
+		boolean allDense = !mW.sparse && !mU.sparse && !mV.sparse
+			&& !mU.isEmptyBlock() && !mV.isEmptyBlock();
+		if( NativeHelper.isNativeLibraryLoaded() && allDense && (mW.rlen == 1 || mW.clen == 1) 
+			&& !LibMatrixNative.isMatMultMemoryBound(mU.rlen, mU.clen, mV.rlen)
+			&& mW.getDenseBlock().isContiguous() && mU.getDenseBlock().isContiguous() && mV.getDenseBlock().isContiguous() )
+			matrixMultWSigmoidDenseNative(mW, mU, mV, ret, wt);
+		else if( allDense )
 			matrixMultWSigmoidDense(mW, mU, mV, ret, wt, 0, mW.rlen);
 		else if( mW.sparse && !mU.sparse && !mV.sparse && !mU.isEmptyBlock() && !mV.isEmptyBlock())
 			matrixMultWSigmoidSparseDense(mW, mU, mV, ret, wt, 0, mW.rlen);
@@ -1175,7 +1182,7 @@ public class LibMatrixMult
 					c.set(0, 0, dotProduct(a.values(0), b.values(0), a.indexes(0), a.pos(0), 0, a.size(0)));
 			}
 			else if( n==1 && cd<=2*1024 ) { //MATRIX-VECTOR (short rhs)
-				matrixMultSparseDenseMVShortRHS(a, b, c, rl, ru);
+				matrixMultSparseDenseMVShortRHS(a, b, c, cd, rl, ru);
 			}
 			else if( n==1 ) {               //MATRIX-VECTOR (tall rhs)
 				matrixMultSparseDenseMVTallRHS(a, b, c, cd, xsp, rl, ru);
@@ -1213,27 +1220,31 @@ public class LibMatrixMult
 		}
 	}
 	
-	private static void matrixMultSparseDenseMVShortRHS(SparseBlock a, DenseBlock b, DenseBlock c, int rl, int ru) {
+	private static void matrixMultSparseDenseMVShortRHS(SparseBlock a, DenseBlock b, DenseBlock c, int cd, int rl, int ru) {
 		double[] bvals = b.valuesAt(0);
 		double[] cvals = c.valuesAt(0);
-		for( int i=rl; i<ru; i++ )
-			if( !a.isEmpty(i) )
-				cvals[i] = dotProduct(a.values(i), bvals,
-					a.indexes(i), a.pos(i), 0, a.size(i));
+		for( int i=rl; i<ru; i++ ) {
+			if( a.isEmpty(i) ) continue;
+			int alen = a.size(i);
+			int apos = a.pos(i);
+			double[] avals = a.values(i);
+			cvals[i] = (alen==cd) ? dotProduct(avals, bvals, apos, 0, cd) :
+				dotProduct(avals, bvals, a.indexes(i), apos, 0, alen);
+		}
 	}
 	
 	private static void matrixMultSparseDenseMVTallRHS(SparseBlock a, DenseBlock b, DenseBlock c, int cd, long xsp, int rl, int ru) {
 		double[] bvals = b.valuesAt(0);
 		double[] cvals = c.valuesAt(0);
 		
-		final int blocksizeI = 32;
-		final int blocksizeK = (int)Math.max(2*1024,2*1024*xsp/32); //~ 16KB L1
+		final int blocksizeI = 512; //8KB curk+cvals in L1
+		final int blocksizeK = (int)Math.max(2048,2048*xsp/32); //~256KB bvals in L2
 		int[] curk = new int[blocksizeI];
 		
 		for( int bi = rl; bi < ru; bi+=blocksizeI ) {
 			Arrays.fill(curk, 0); //reset positions
 			for( int bk=0, bimin = Math.min(ru, bi+blocksizeI); bk<cd; bk+=blocksizeK ) {
-				for( int i=bi, bkmin = Math.min(bk+blocksizeK, cd); i<bimin; i++) {
+				for( int i=bi, bkmin = bk+blocksizeK; i<bimin; i++) {
 					if( a.isEmpty(i) ) continue;
 					int apos = a.pos(i);
 					int alen = a.size(i);
@@ -1831,28 +1842,36 @@ public class LibMatrixMult
 		SparseBlock a = m1.sparseBlock;
 		DenseBlock c = ret.getDenseBlock();
 		int m = m1.rlen;
-
+		
 		if( leftTranspose ) // t(X)%*%X 
 		{
 			//only general case (because vectors always dense)
 			//algorithm: scan rows, foreach row self join (KIJ)
-			if( LOW_LEVEL_OPTIMIZATION )
-			{
-				int arlen = a.numRows();
+			if( LOW_LEVEL_OPTIMIZATION ) {
+				final int n = m1.clen;
+				final int arlen = a.numRows();
 				for( int r=0; r<arlen; r++ ) {
 					if( a.isEmpty(r) ) continue;
-					int apos = a.pos(r);
 					int alen = a.size(r);
-					int[] aix = a.indexes(r);
 					double[] avals = a.values(r);
-					int rlix = (rl==0) ? 0 : a.posFIndexGTE(r, rl);
-					rlix = (rlix>=0) ? apos+rlix : apos+alen;
-					int len = apos + alen;
-					for(int i = rlix; i < len && aix[i]<ru; i++) {
-						double val = avals[i];
-						if( val != 0 )
-							vectMultiplyAdd(val, avals, c.values(aix[i]),
-								aix, i, c.pos(aix[i]), len-i);
+					if( alen == n ) { //dense row
+						for( int i=rl; i<ru; i++ ) {
+							vectMultiplyAdd(avals[i], avals,
+								c.values(i), i, c.pos(i), n-i);
+						}
+					}
+					else { //non-full sparse row
+						int apos = a.pos(r);
+						int[] aix = a.indexes(r);
+						int rlix = (rl==0) ? 0 : a.posFIndexGTE(r, rl);
+						rlix = (rlix>=0) ? apos+rlix : apos+alen;
+						int len = apos + alen;
+						for(int i = rlix; i < len && aix[i]<ru; i++) {
+							double val = avals[i];
+							if( val != 0 )
+								vectMultiplyAdd(val, avals, c.values(aix[i]),
+									aix, i, c.pos(aix[i]), len-i);
+						}
 					}
 				}
 			}
@@ -2383,6 +2402,34 @@ public class LibMatrixMult
 			dotProduct(tmp1.getDenseBlockValues(), tmp2.getDenseBlockValues(), mU.clen*mU.clen)));
 	}
 
+	private static void matrixMultWSigmoidDenseNative(MatrixBlock mW, MatrixBlock mU, MatrixBlock mV, MatrixBlock ret, WSigmoidType wt) {
+		double[] w = mW.getDenseBlockValues();
+		double[] c = ret.getDenseBlockValues();
+		final int m = mW.rlen, n = mW.clen;
+		final int cd = mU.clen;
+		boolean flagminus = (wt==WSigmoidType.MINUS || wt==WSigmoidType.LOG_MINUS); 
+		boolean flaglog = (wt==WSigmoidType.LOG || wt==WSigmoidType.LOG_MINUS);
+		
+		//note: experiments with a fully native implementation of this method (even with #pragma omp simd)
+		//showed performance regressions compared to this version because we benefit from FastMath.exp 
+		
+		//call native matrix multiplication (only called for single-threaded and matrix-vector
+		//because this ensures that we can deal with the transpose mV without additional transpose)
+		if(!NativeHelper.dmmdd(((m==1)?mV:mU).getDenseBlockValues(),
+			((m==1)?mU:mV).getDenseBlockValues(), c, (m==1)?n:m, cd, 1, 1) )
+			throw new DMLRuntimeException("Error executing native matrix mult.");
+		
+		//compute remaining wsigmoid for all relevant outputs
+		for( int i=0; i<m*n; i++ ) {
+			//compute core sigmoid function
+			double cval = flagminus ?
+				1 / (1 + FastMath.exp(c[i])) :
+				1 / (1 + FastMath.exp(-c[i]));
+			//compute weighted output
+			c[i] = w[i] * ((flaglog) ? Math.log(cval) : cval);
+		}
+	}
+	
 	private static void matrixMultWSigmoidDense(MatrixBlock mW, MatrixBlock mU, MatrixBlock mV, MatrixBlock ret, WSigmoidType wt, int rl, int ru) {
 		DenseBlock w = mW.getDenseBlock();
 		DenseBlock c = ret.getDenseBlock();
@@ -3461,7 +3508,7 @@ public class LibMatrixMult
 		//compute weighted output
 		return wij * ((flaglog) ? Math.log(cval) : cval);
 	}
-
+	
 	private static void wdivmm( final double wij, double[] u, double[] v, double[] c, final int uix, final int vix, final boolean left, final boolean mult, final boolean minus, final int len )
 	{
 		//compute dot product over ui vj
@@ -3624,15 +3671,33 @@ public class LibMatrixMult
 		return nnz;
 	}
 
-	private static MatrixBlock prepMatrixMultTransposeSelfInput( MatrixBlock m1, boolean leftTranspose ) {
+	public static MatrixBlock prepMatrixMultTransposeSelfInput( MatrixBlock m1, boolean leftTranspose, boolean par ) {
 		MatrixBlock ret = m1;
+		final int rlen = m1.rlen;
+		final int clen = m1.clen;
 		
-		if( !leftTranspose && m1.sparse && m1.rlen > 1) //X%*%t(X) SPARSE MATRIX
-		{	
+		if( !leftTranspose && m1.sparse && rlen > 1) { //X%*%t(X) SPARSE MATRIX
 			//directly via LibMatrixReorg in order to prevent sparsity change
-			MatrixBlock tmpBlock = new MatrixBlock(m1.clen, m1.rlen, m1.sparse);
+			MatrixBlock tmpBlock = new MatrixBlock(clen, rlen, m1.sparse);
 			LibMatrixReorg.reorg(m1, tmpBlock, new ReorgOperator(SwapIndex.getSwapIndexFnObject()));
 			ret = tmpBlock;
+		}
+		else if( leftTranspose && m1.sparse && m1.sparseBlock instanceof SparseBlockCSR ) {
+			//for a special case of CSR inputs where all non-empty rows are dense, we can
+			//create a shallow copy of the values arrays to a "dense" block and perform
+			//tsmm with the existing dense block operations w/o unnecessary gather/scatter
+			SparseBlockCSR sblock = (SparseBlockCSR)m1.sparseBlock;
+			boolean convertDense = (par ?
+				IntStream.range(0, rlen).parallel() : IntStream.range(0, rlen))
+				.allMatch(i -> sblock.isEmpty(i) || sblock.size(i)==clen );
+			if( convertDense ) {
+				int rows = (int) sblock.size() / clen;
+				MatrixBlock tmpBlock = new MatrixBlock(rows, clen, false);
+				tmpBlock.denseBlock = DenseBlockFactory
+					.createDenseBlock(sblock.values(), rows, clen);
+				tmpBlock.setNonZeros(m1.nonZeros);
+				ret = tmpBlock;
+			}
 		}
 		
 		return ret;
@@ -3748,6 +3813,23 @@ public class LibMatrixMult
 			}
 		
 		return knnz;
+	}
+	
+	@SuppressWarnings("unused")
+	private static void resetPosVect(int[] curk, SparseBlock sblock, int rl, int ru) {
+		if( sblock instanceof SparseBlockMCSR ) {
+			//all rows start at position 0 (individual arrays)
+			Arrays.fill(curk, 0, ru-rl, 0);
+		}
+		else if( sblock instanceof SparseBlockCSR ) {
+			//row start positions given in row ptr array
+			SparseBlockCSR csr = (SparseBlockCSR) sblock;
+			System.arraycopy(csr.rowPointers(), rl, curk, 0, ru-rl);
+		}
+		else { //general case
+			for(int i=rl; i<ru; i++)
+				curk[i-rl] = sblock.pos(i);
+		}
 	}
 
 	private static void sumScalarResults(List<Future<Double>> tasks, MatrixBlock ret) 

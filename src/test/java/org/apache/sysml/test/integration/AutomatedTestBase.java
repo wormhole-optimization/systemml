@@ -59,6 +59,7 @@ import org.apache.sysml.runtime.matrix.MatrixCharacteristics;
 import org.apache.sysml.runtime.matrix.data.CSVFileFormatProperties;
 import org.apache.sysml.runtime.matrix.data.FrameBlock;
 import org.apache.sysml.runtime.matrix.data.InputInfo;
+import org.apache.sysml.runtime.matrix.data.MatrixBlock;
 import org.apache.sysml.runtime.matrix.data.MatrixValue.CellIndex;
 import org.apache.sysml.runtime.matrix.data.OutputInfo;
 import org.apache.sysml.runtime.util.DataConverter;
@@ -511,6 +512,11 @@ public abstract class AutomatedTestBase
 		return matrix;
 	}
 
+	protected double[][] writeInputMatrixWithMTD(String name, MatrixBlock matrix, boolean bIncludeR) {
+		double[][] data = DataConverter.convertToDoubleMatrix(matrix);
+		return writeInputMatrixWithMTD(name, data, bIncludeR);
+	}
+	
 	protected double[][] writeInputMatrixWithMTD(String name, double[][] matrix, boolean bIncludeR) {
 		MatrixCharacteristics mc = new MatrixCharacteristics(matrix.length, matrix[0].length, OptimizerUtils.DEFAULT_BLOCKSIZE, OptimizerUtils.DEFAULT_BLOCKSIZE, -1);
 		return writeInputMatrixWithMTD(name, matrix, bIncludeR, mc);
@@ -1106,7 +1112,7 @@ public abstract class AutomatedTestBase
 	 *            -1 there is no limit.
 	 */
 	protected void runTest(boolean exceptionExpected, Class<?> expectedException, int maxMRJobs) {
-		runTest(false, exceptionExpected, expectedException, maxMRJobs);
+		runTest(false, exceptionExpected, expectedException, null, maxMRJobs);
 	}
 
 	/**
@@ -1126,6 +1132,29 @@ public abstract class AutomatedTestBase
 	 *            -1 there is no limit.
 	 */
 	protected void runTest(boolean newWay, boolean exceptionExpected, Class<?> expectedException, int maxMRJobs) {
+		runTest(newWay, exceptionExpected, expectedException, null, maxMRJobs);
+	}
+
+	/**
+	 * <p>
+	 * Runs a test for which the exception expectation and the error message
+	 * can be specified as well as the specific expectation which is expected.
+	 * If SystemML executes more MR jobs than specified in maxMRJobs this test
+	 * will fail.
+	 * </p>
+	 * @param newWay
+	 * 			  in the new way if it is set to true
+	 * @param exceptionExpected
+	 *            exception expected
+	 * @param expectedException
+	 *            expected exception
+	 * @param errMessage
+	 * 		      expected error message
+	 * @param maxMRJobs
+	 *            specifies a maximum limit for the number of MR jobs. If set to
+	 *            -1 there is no limit.
+	 */
+	protected void runTest(boolean newWay, boolean exceptionExpected, Class<?> expectedException, String errMessage, int maxMRJobs) {
 
 		String executionFile = sourceDirectory + selectedTest + ".dml";
 
@@ -1228,6 +1257,12 @@ public abstract class AutomatedTestBase
 			if (exceptionExpected)
 				fail("expected exception which has not been raised: " + expectedException);
 		} catch (Exception e) {
+			if (errMessage != null && !errMessage.equals("")) {
+				boolean result = rCompareException(exceptionExpected, errMessage, e, false);
+				if (exceptionExpected && !result) {
+					fail(String.format("expected exception message '%s' has not been raised.", errMessage));
+				}
+			}
 			if (!exceptionExpected || (expectedException != null && !(e.getClass().equals(expectedException)))) {
 				e.printStackTrace();
 				StringBuilder errorMessage = new StringBuilder();
@@ -1357,6 +1392,16 @@ public abstract class AutomatedTestBase
 		} catch (IOException e) {
 			throw new RuntimeException("trouble writing dot to file "+dotFilename, e);
 		}
+	}
+
+	private boolean rCompareException(boolean exceptionExpected, String errMessage, Throwable e, boolean result) {
+		if (e.getCause() != null) {
+			result |= rCompareException(exceptionExpected, errMessage, e.getCause(), result);
+		}
+		if (exceptionExpected && errMessage != null && e.getMessage().contains(errMessage)) {
+			result = true;
+		}
+		return result;
 	}
 
 	public void cleanupScratchSpace()

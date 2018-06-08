@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -81,6 +82,7 @@ import org.apache.sysml.runtime.controlprogram.context.ExecutionContext;
 import org.apache.sysml.runtime.controlprogram.context.SparkExecutionContext;
 import org.apache.sysml.runtime.controlprogram.parfor.ProgramConverter;
 import org.apache.sysml.runtime.controlprogram.parfor.ResultMergeLocalFile;
+import org.apache.sysml.runtime.controlprogram.parfor.opt.CostEstimator.ExcludeType;
 import org.apache.sysml.runtime.controlprogram.parfor.opt.CostEstimator.TestMeasure;
 import org.apache.sysml.runtime.controlprogram.parfor.opt.OptNode.ExecType;
 import org.apache.sysml.runtime.controlprogram.parfor.opt.OptNode.NodeType;
@@ -166,25 +168,22 @@ public class OptimizerRuleBased extends Optimizer
 	protected double _lm = -1; //local memory constraint
 	protected double _rm = -1; //remote memory constraint (mappers)
 	protected double _rm2 = -1; //remote memory constraint (reducers)
-		
+	
 	protected CostEstimator _cost = null;
 
 	@Override
-	public CostModelType getCostModelType() 
-	{
+	public CostModelType getCostModelType() {
 		return CostModelType.STATIC_MEM_METRIC;
 	}
 
 
 	@Override
-	public PlanInputType getPlanInputType() 
-	{
+	public PlanInputType getPlanInputType() {
 		return PlanInputType.ABSTRACT_PLAN;
 	}
 
 	@Override
-	public POptMode getOptMode() 
-	{
+	public POptMode getOptMode() {
 		return POptMode.RULEBASED;
 	}
 	
@@ -261,7 +260,7 @@ public class OptimizerRuleBased extends Optimizer
 			if( flagRecompMR ){
 				//rewrite 5: set operations exec type
 				rewriteSetOperationsExecType( pn, flagRecompMR );
-				M1 = _cost.getEstimate(TestMeasure.MEMORY_USAGE, pn); //reestimate 		
+				M1 = _cost.getEstimate(TestMeasure.MEMORY_USAGE, pn); //reestimate
 			}
 			
 			// rewrite 6: data colocation
@@ -274,7 +273,7 @@ public class OptimizerRuleBased extends Optimizer
 			rewriteSetExportReplicationFactor( pn, ec.getVariables() );
 			
 			// rewrite 10: determine parallelism
-			rewriteSetDegreeOfParallelism( pn, M1, false );
+			rewriteSetDegreeOfParallelism( pn, _cost, ec.getVariables(), M1, false );
 			
 			// rewrite 11: task partitioning 
 			rewriteSetTaskPartitioner( pn, false, flagLIX );
@@ -287,7 +286,7 @@ public class OptimizerRuleBased extends Optimizer
 			
 			// rewrite 14: set in-place result indexing
 			HashSet<ResultVar> inplaceResultVars = new HashSet<>();
-			rewriteSetInPlaceResultIndexing(pn, M1, ec.getVariables(), inplaceResultVars, ec);
+			rewriteSetInPlaceResultIndexing(pn, _cost, ec.getVariables(), inplaceResultVars, ec);
 			
 			// rewrite 15: disable caching
 			rewriteDisableCPCaching(pn, inplaceResultVars, ec.getVariables());
@@ -295,14 +294,14 @@ public class OptimizerRuleBased extends Optimizer
 		else //if( pn.getExecType() == ExecType.CP )
 		{
 			// rewrite 10: determine parallelism
-			rewriteSetDegreeOfParallelism( pn, M1, false );
+			rewriteSetDegreeOfParallelism( pn, _cost, ec.getVariables(), M1, false );
 			
 			// rewrite 11: task partitioning
 			rewriteSetTaskPartitioner( pn, false, false ); //flagLIX always false 
 			
 			// rewrite 14: set in-place result indexing
 			HashSet<ResultVar> inplaceResultVars = new HashSet<>();
-			rewriteSetInPlaceResultIndexing(pn, M1, ec.getVariables(), inplaceResultVars, ec);
+			rewriteSetInPlaceResultIndexing(pn, _cost, ec.getVariables(), inplaceResultVars, ec);
 			
 			if( !OptimizerUtils.isSparkExecutionMode() ) {
 				// rewrite 16: runtime piggybacking
@@ -412,17 +411,13 @@ public class OptimizerRuleBased extends Optimizer
 			&& (_N >= PROB_SIZE_THRESHOLD_PARTITIONING || _Nmax >= PROB_SIZE_THRESHOLD_PARTITIONING) ) //only if beneficial wrt problem size
 		{
 			HashMap<String, PartitionFormat> cand2 = new HashMap<>();
-			for( String c : pfsb.getReadOnlyParentVars() )
-			{
+			for( String c : pfsb.getReadOnlyParentMatrixVars() ) {
 				PartitionFormat dpf = pfsb.determineDataPartitionFormat( c );
-				
 				if( dpf != PartitionFormat.NONE 
-					&& dpf._dpf != PDataPartitionFormat.BLOCK_WISE_M_N ) 
-				{
+					&& dpf._dpf != PDataPartitionFormat.BLOCK_WISE_M_N ) {
 					cand2.put( c, dpf );
 				}
 			}
-			
 			apply = rFindDataPartitioningCandidates(n, cand2, vars, thetaM);
 			if( apply )
 				partitionedMatrices.putAll(cand2);
@@ -442,7 +437,7 @@ public class OptimizerRuleBased extends Optimizer
 	
 		_numEvaluatedPlans++;
 		LOG.debug(getOptMode()+" OPT: rewrite 'set data partitioner' - result="+pdp.toString()+
-				  " ("+ProgramConverter.serializeStringCollection(partitionedMatrices.keySet())+")" );
+			" ("+ProgramConverter.serializeStringCollection(partitionedMatrices.keySet())+")" );
 		
 		return blockwise;
 	}
@@ -1176,25 +1171,36 @@ public class OptimizerRuleBased extends Optimizer
 	//REWRITE set degree of parallelism
 	///
 
-	protected void rewriteSetDegreeOfParallelism(OptNode n, double M, boolean flagNested) 
+	protected void rewriteSetDegreeOfParallelism(OptNode n, CostEstimator cost, LocalVariableMap vars, double M, boolean flagNested) 
 	{
 		ExecType type = n.getExecType();
 		long id = n.getID();
-				
+		
 		//special handling for different exec models (CP, MR, MR nested)
-		ParForProgramBlock pfpb = (ParForProgramBlock) OptTreeConverter
-										.getAbstractPlanMapping().getMappedProg(id)[1];
+		Object[] map = OptTreeConverter.getAbstractPlanMapping().getMappedProg(id);
+		ParForStatementBlock pfsb = (ParForStatementBlock)map[0];
+		ParForProgramBlock pfpb = (ParForProgramBlock)map[1];
 		
 		if( type == ExecType.CP ) 
 		{
 			//determine local max parallelism constraint
 			int kMax = ConfigurationManager.isParallelParFor() ?
-					(n.isCPOnly() ? _lkmaxCP : _lkmaxMR) : 1;
+				(n.isCPOnly() ? _lkmaxCP : _lkmaxMR) : 1;
+			
+			//compute memory budgets and partial estimates for handling shared reads
+			double mem = (OptimizerUtils.isSparkExecutionMode() && !n.isCPOnly()) ? _lm/2 : _lm;
+			double sharedM = 0, nonSharedM = M;
+			if( computeMaxK(M, M, 0, mem) < kMax ) { //account for shared read if necessary
+				sharedM = pfsb.getReadOnlyParentMatrixVars().stream().map(s -> vars.get(s))
+					.filter(d -> d instanceof MatrixObject).mapToDouble(mo -> OptimizerUtils
+					.estimateSize(((MatrixObject)mo).getMatrixCharacteristics())).sum();
+				nonSharedM = cost.getEstimate(TestMeasure.MEMORY_USAGE, n, true,
+					pfsb.getReadOnlyParentMatrixVars(), ExcludeType.SHARED_READ);
+			}
 			
 			//ensure local memory constraint (for spark more conservative in order to 
 			//prevent unnecessary guarded collect)
-			double mem = (OptimizerUtils.isSparkExecutionMode() && !n.isCPOnly()) ? _lm/2 : _lm;
-			kMax = Math.min( kMax, (int)Math.floor( mem / M ) );
+			kMax = Math.min( kMax, computeMaxK(M, nonSharedM, sharedM, mem) );
 			kMax = Math.max( kMax, 1);
 			
 			//constrain max parfor parallelism by problem size
@@ -1229,21 +1235,17 @@ public class OptimizerRuleBased extends Optimizer
 		else // ExecType.MR/ExecType.SPARK
 		{
 			int kMax = -1;
-			if( flagNested )
-			{
+			if( flagNested ) {
 				//determine remote max parallelism constraint
 				pfpb.setDegreeOfParallelism( _rnk ); //guaranteed <= _N (see nested)
-				n.setK( _rnk );	
-			
+				n.setK( _rnk );
 				kMax = _rkmax / _rnk; //per node (CP only inside)
 			}
-			else //not nested (default)
-			{
+			else { //not nested (default)
 				//determine remote max parallelism constraint
 				int tmpK = (int)((_N<_rk)? _N : _rk);
 				pfpb.setDegreeOfParallelism(tmpK);
-				n.setK(tmpK);	
-				
+				n.setK(tmpK);
 				kMax = _rkmax / tmpK; //per node (CP only inside)
 			}
 			
@@ -1255,13 +1257,21 @@ public class OptimizerRuleBased extends Optimizer
 			//disable nested parallelism, if required
 			if( !ALLOW_REMOTE_NESTED_PARALLELISM )
 				kMax = 1;
-					
+			
 			//distribute remaining parallelism and recompile parallel instructions
-			rAssignRemainingParallelism( n, kMax, 1 ); 
-		}		
+			rAssignRemainingParallelism( n, kMax, 1 );
+		}
 		
 		_numEvaluatedPlans++;
 		LOG.debug(getOptMode()+" OPT: rewrite 'set degree of parallelism' - result=(see EXPLAIN)" );
+	}
+	
+	private int computeMaxK(double M, double memNonShared, double memShared, double memBudget) {
+		//note: we compute max K for both w/o and w/ shared reads and take the max, because
+		//the latter might reduce the degree of parallelism if shared reads don't dominate
+		int k1 = (int)Math.floor(memBudget / M);
+		int k2 = (int)Math.floor(memBudget-memShared / memNonShared);
+		return Math.max(k1, k2);
 	}
 
 	protected void rAssignRemainingParallelism(OptNode n, int parforK, int opsK) 
@@ -1299,11 +1309,12 @@ public class OptimizerRuleBased extends Optimizer
 					Hop h = OptTreeConverter.getAbstractPlanMapping().getMappedHop(c.getID());
 					if(    ConfigurationManager.isParallelMatrixOperations() 
 						&& h instanceof MultiThreadedHop //abop, datagenop, qop, paramop
-						&& !( h instanceof ParameterizedBuiltinOp //only paramop-grpagg
+						&& !( h instanceof ParameterizedBuiltinOp //paramop-grpagg, rexpand, paramserv
 							 && !HopRewriteUtils.isValidOp(((ParameterizedBuiltinOp)h).getOp(), 
-								ParamBuiltinOp.GROUPEDAGG, ParamBuiltinOp.REXPAND))
+								ParamBuiltinOp.GROUPEDAGG, ParamBuiltinOp.REXPAND, ParamBuiltinOp.PARAMSERV))
 						&& !( h instanceof UnaryOp //only unaryop-cumulativeagg
-							 && !((UnaryOp)h).isCumulativeUnaryOperation() )
+							 && !((UnaryOp)h).isCumulativeUnaryOperation()
+							 && !((UnaryOp)h).isExpensiveUnaryOperation())
 						&& !( h instanceof ReorgOp //only reorgop-transpose
 							 && ((ReorgOp)h).getOp() != ReOrgOp.TRANS ))
 					{
@@ -1609,7 +1620,7 @@ public class OptimizerRuleBased extends Optimizer
 			if( inMatrix.equals(varName) )
 			{
 				//check that all parents are transpose-safe operations
-				//(even a transient write would not be safe due to indirection into other DAGs)			
+				//(even a transient write would not be safe due to indirection into other DAGs)
 				ArrayList<Hop> parent = h.getParent();
 				for( Hop p : parent )
 					ret &= p.isTransposeSafe();
@@ -1624,7 +1635,7 @@ public class OptimizerRuleBased extends Optimizer
 	//REWRITE set in-place result indexing
 	///
 
-	protected void rewriteSetInPlaceResultIndexing(OptNode pn, double M, LocalVariableMap vars, HashSet<ResultVar> inPlaceResultVars, ExecutionContext ec) 
+	protected void rewriteSetInPlaceResultIndexing(OptNode pn, CostEstimator cost, LocalVariableMap vars, HashSet<ResultVar> inPlaceResultVars, ExecutionContext ec) 
 	{
 		//assertions (warnings of corrupt optimizer decisions)
 		if( pn.getNodeType() != NodeType.PARFOR )
@@ -1639,16 +1650,18 @@ public class OptimizerRuleBased extends Optimizer
 		//only if all fit pinned in remaining budget, we apply this rewrite.
 		ArrayList<ResultVar> retVars = pfpb.getResultVariables();
 		
-		//compute total sum of pinned result variable memory
-		double sum = computeTotalSizeResultVariables(retVars, vars, pfpb.getDegreeOfParallelism());
-		
-		//NOTE: currently this rule is too conservative (the result variable is assumed to be dense and
-		//most importantly counted twice if this is part of the maximum operation)
-		double totalMem = Math.max((M+sum), rComputeSumMemoryIntermediates(pn, new HashSet<ResultVar>()));
-		
-		//optimization decision
-		if( rHasOnlyInPlaceSafeLeftIndexing(pn, retVars) ) //basic correctness constraint
+		//basic correctness constraint
+		double totalMem = -1;
+		if( rHasOnlyInPlaceSafeLeftIndexing(pn, retVars) )
 		{
+			//compute total sum of pinned result variable memory 
+			double sum = computeTotalSizeResultVariables(retVars, vars, pfpb.getDegreeOfParallelism());
+		
+			//compute memory estimate without result indexing, and total sum per worker
+			double M = cost.getEstimate(TestMeasure.MEMORY_USAGE, pn, true, retVars.stream()
+				.map(var -> var._name).collect(Collectors.toList()), ExcludeType.RESULT_LIX);
+			totalMem = M + sum;
+			
 			//result update in-place for MR/Spark (w/ remote memory constraint)
 			if( (  pfpb.getExecMode() == PExecMode.REMOTE_MR_DP || pfpb.getExecMode() == PExecMode.REMOTE_MR
 				|| pfpb.getExecMode() == PExecMode.REMOTE_SPARK_DP || pfpb.getExecMode() == PExecMode.REMOTE_SPARK) 
@@ -1706,14 +1719,9 @@ public class OptimizerRuleBased extends Optimizer
 			if( !(dat instanceof MatrixObject) )
 				continue;
 			MatrixObject mo = (MatrixObject)dat;
-			if( mo.getNnz() == 0 ) 
-				sum += OptimizerUtils.estimateSizeExactSparsity(mo.getNumRows(), mo.getNumColumns(), 1.0);
-			else {
-				// Every worker will consume memory for (MatrixSize/k + nnz) data.
-				// This is applicable only when there is non-zero nnz. 
-				sum += (k+1) * (OptimizerUtils.estimateSizeExactSparsity(mo.getNumRows(), 
-					mo.getNumColumns(), Math.min((1.0/k)+mo.getSparsity(), 1.0)));
-			} 
+			// every worker will consume memory for at most (max_nnz/k + in_nnz)
+			sum += (OptimizerUtils.estimateSizeExactSparsity(mo.getNumRows(), 
+				mo.getNumColumns(), Math.min((1.0/k)+mo.getSparsity(), 1.0)));
 		}
 		return sum;
 	}
@@ -1897,7 +1905,7 @@ public class OptimizerRuleBased extends Optimizer
 			rCollectZipmmPartitioningCandidates(n, cand);
 			
 			//prune updated candidates
-			HashSet<String> probe = new HashSet<>(pfsb.getReadOnlyParentVars());
+			HashSet<String> probe = new HashSet<>(pfsb.getReadOnlyParentMatrixVars());
 			for( String var : cand )
 				if( probe.contains( var ) )
 					ret.add( var );
@@ -2028,7 +2036,7 @@ public class OptimizerRuleBased extends Optimizer
 				//replace existing matrix object with empty matrix
 				MatrixObject mo = (MatrixObject)dat;
 				ec.cleanupCacheableData(mo);
-				ec.setMatrixOutput(rvar._name, new MatrixBlock((int)mo.getNumRows(), (int)mo.getNumColumns(),false), null);
+				ec.setMatrixOutput(rvar._name, new MatrixBlock((int)mo.getNumRows(), (int)mo.getNumColumns(),false));
 				
 				//keep track of cleaned result variables
 				cleanedVars.add(rvar);

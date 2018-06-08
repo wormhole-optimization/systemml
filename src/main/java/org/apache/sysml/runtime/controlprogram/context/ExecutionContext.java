@@ -42,6 +42,7 @@ import org.apache.sysml.runtime.instructions.cp.CPInstruction;
 import org.apache.sysml.runtime.instructions.cp.CPOperand;
 import org.apache.sysml.runtime.instructions.cp.Data;
 import org.apache.sysml.runtime.instructions.cp.FunctionCallCPInstruction;
+import org.apache.sysml.runtime.instructions.cp.ListObject;
 import org.apache.sysml.runtime.instructions.cp.ScalarObject;
 import org.apache.sysml.runtime.instructions.cp.ScalarObjectFactory;
 import org.apache.sysml.runtime.instructions.gpu.context.GPUContext;
@@ -194,6 +195,11 @@ public class ExecutionContext {
 			throw new DMLRuntimeException("Variable '"+varname+"' is not a matrix.");
 		
 		return (MatrixObject) dat;
+	}
+
+	public boolean isFrameObject(String varname) {
+		Data dat = getVariable(varname);
+		return (dat!= null && dat instanceof FrameObject);
 	}
 	
 	public FrameObject getFrameObject(CPOperand input) {
@@ -380,19 +386,17 @@ public class ExecutionContext {
 	 * 
 	 * @param varName variable name
 	 */
+	public void releaseMatrixInput(String varName) {
+		getMatrixObject(varName).release();
+	}
+	
 	public void releaseMatrixInput(String varName, String opcode) {
 		long t1 = opcode != null && DMLScript.STATISTICS && DMLScript.FINEGRAINED_STATISTICS ? System.nanoTime() : 0;
-		MatrixObject mo = getMatrixObject(varName);
-		mo.release(opcode);
+		releaseMatrixInput(varName);
 		if(opcode != null && DMLScript.STATISTICS && DMLScript.FINEGRAINED_STATISTICS) {
 			long t2 = System.nanoTime();
 			GPUStatistics.maintainCPMiscTimes(opcode, CPInstruction.MISC_TIMER_RELEASE_INPUT_MB, t2-t1);
 		}
-	}
-	
-	public void releaseMatrixInput(String varName) {
-		MatrixObject mo = getMatrixObject(varName);
-		mo.release(null);
 	}
 	
 	public void releaseMatrixInputForGPUInstruction(String varName) {
@@ -440,7 +444,17 @@ public class ExecutionContext {
 	public void setScalarOutput(String varName, ScalarObject so) {
 		setVariable(varName, so);
 	}
-	
+
+	public ListObject getListObject(String name) {
+		Data dat = getVariable(name);
+		//error handling if non existing or no list
+		if (dat == null)
+			throw new DMLRuntimeException("Variable '" + name + "' does not exist in the symbol table.");
+		if (!(dat instanceof ListObject))
+			throw new DMLRuntimeException("Variable '" + name + "' is not a list.");
+		return (ListObject) dat;
+	}
+
 	public void releaseMatrixOutputForGPUInstruction(String varName) {
 		MatrixObject mo = getMatrixObject(varName);
 		if(mo.getGPUObject(getGPUContext(0)) == null || !mo.getGPUObject(getGPUContext(0)).isAllocated()) {
@@ -450,25 +464,27 @@ public class ExecutionContext {
 	}
 	
 	public void setMatrixOutput(String varName, MatrixBlock outputData) {
-		setMatrixOutput(varName, outputData, null);
-	}
-
-	public void setMatrixOutput(String varName, MatrixBlock outputData, String opcode) {
 		MatrixObject mo = getMatrixObject(varName);
-		mo.acquireModify(outputData, opcode);
-		mo.release(opcode);
+		mo.acquireModify(outputData);
+		mo.release();
 		setVariable(varName, mo);
 	}
+	
+	public void setMatrixOutput(String varName, MatrixBlock outputData, String opcode) {
+		setMatrixOutput(varName, outputData);
+	}
 
-	public void setMatrixOutput(String varName, MatrixBlock outputData, UpdateType flag, String opcode) {
+	public void setMatrixOutput(String varName, MatrixBlock outputData, UpdateType flag) {
 		if( flag.isInPlace() ) {
 			//modify metadata to carry update status
 			MatrixObject mo = getMatrixObject(varName);
 			mo.setUpdateType( flag );
 		}
-		
-		//default case
-		setMatrixOutput(varName, outputData, opcode);
+		setMatrixOutput(varName, outputData);
+	}
+	
+	public void setMatrixOutput(String varName, MatrixBlock outputData, UpdateType flag, String opcode) {
+		setMatrixOutput(varName, outputData, flag);
 	}
 
 	public void setFrameOutput(String varName, FrameBlock outputData) {
@@ -492,7 +508,7 @@ public class ExecutionContext {
 	 * @param varList variable list
 	 * @return indicator vector of old cleanup state of matrix objects
 	 */
-	public boolean[] pinVariables(ArrayList<String> varList) 
+	public boolean[] pinVariables(List<String> varList) 
 	{
 		//2-pass approach since multiple vars might refer to same matrix object
 		boolean[] varsState = new boolean[varList.size()];
@@ -530,7 +546,7 @@ public class ExecutionContext {
 	 * @param varList variable list
 	 * @param varsState variable state
 	 */
-	public void unpinVariables(ArrayList<String> varList, boolean[] varsState) {
+	public void unpinVariables(List<String> varList, boolean[] varsState) {
 		for( int i=0; i<varList.size(); i++ ) {
 			Data dat = _variables.get(varList.get(i));
 			if( dat instanceof MatrixObject )

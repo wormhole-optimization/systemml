@@ -20,6 +20,7 @@
 package org.apache.sysml.runtime.controlprogram.parfor.opt;
 
 import java.util.ArrayList;
+import java.util.Collection;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -34,9 +35,9 @@ import org.apache.sysml.runtime.controlprogram.parfor.opt.OptNode.ParamType;
  * 
  */
 public abstract class CostEstimator 
-{	
+{
 	protected static final Log LOG = LogFactory.getLog(CostEstimator.class.getName());
-    	
+
 	//default parameters
 	public static final double DEFAULT_EST_PARALLELISM = 1.0; //default degree of parallelism: serial
 	public static final long   FACTOR_NUM_ITERATIONS   = 10; //default problem size
@@ -45,16 +46,20 @@ public abstract class CostEstimator
 	public static final double DEFAULT_MEM_ESTIMATE_MR = 20*1024*1024; //default memory consumption: 20MB 
 
 	public enum TestMeasure {
-		EXEC_TIME,
-		MEMORY_USAGE	
+		EXEC_TIME, MEMORY_USAGE
 	}
 	
 	public enum DataFormat {
-		DENSE,
-		SPARSE
+		DENSE, SPARSE
+	}
+	
+	public enum ExcludeType {
+		NONE, SHARED_READ, RESULT_LIX
 	}
 	
 	protected boolean _inclCondPart = false;
+	protected Collection<String> _exclVars = null;
+	protected ExcludeType _exclType = ExcludeType.NONE;
 	
 	/**
 	 * Main leaf node estimation method - to be overwritten by specific cost estimators
@@ -93,12 +98,20 @@ public abstract class CostEstimator
 	}
 	
 	public double getEstimate( TestMeasure measure, OptNode node, boolean inclCondPart ) {
-		//temporarily change local flag and get estimate
-		boolean oldInclCondPart = _inclCondPart;
-		_inclCondPart = inclCondPart; 
+		_inclCondPart = inclCondPart; //temporary
 		double val = getEstimate(measure, node, null);
-		//reset local flag and return
-		_inclCondPart = oldInclCondPart;
+		_inclCondPart = false;
+		return val;
+	}
+	
+	public double getEstimate(TestMeasure measure, OptNode node, boolean inclCondPart, Collection<String> vars, ExcludeType extype) {
+		_inclCondPart = inclCondPart; //temporary
+		_exclVars = vars;
+		_exclType = extype;
+		double val = getEstimate(measure, node, null);
+		_inclCondPart = false; 
+		_exclVars = null;
+		_exclType = ExcludeType.NONE;
 		return val;
 	}
 	
@@ -125,8 +138,6 @@ public abstract class CostEstimator
 		else
 		{
 			//aggreagtion methods for different program block types and measure types
-			//TODO EXEC TIME requires reconsideration of for/parfor/if predicates 
-			//TODO MEMORY requires reconsideration of parfor -> potential overestimation, but safe
 			String tmp = null;
 			double N = -1;
 			switch ( measure )
@@ -190,34 +201,24 @@ public abstract class CostEstimator
 		return val;
 	}
 
-	protected double getDefaultEstimate(TestMeasure measure)  {
+	protected double getDefaultEstimate(TestMeasure measure) {
 		switch( measure ) {
 			case EXEC_TIME:    return DEFAULT_TIME_ESTIMATE;
 			case MEMORY_USAGE: return DEFAULT_MEM_ESTIMATE_CP;
-		}		
+		}
 		return -1;
 	}
 
 	protected double getMaxEstimate( TestMeasure measure, ArrayList<OptNode> nodes, ExecType et ) {
-		double max = Double.MIN_VALUE; //smallest positive value
-		for( OptNode n : nodes )
-			max = Math.max(max, getEstimate(measure, n, et));
-		return max;
+		return nodes.stream().mapToDouble(n -> getEstimate(measure, n, et))
+			.max().orElse(Double.NEGATIVE_INFINITY);
 	}
 
 	protected double getSumEstimate( TestMeasure measure, ArrayList<OptNode> nodes, ExecType et ) {
-		double sum = 0;
-		for( OptNode n : nodes )
-			sum += getEstimate( measure, n, et );
-		return sum;
+		return nodes.stream().mapToDouble(n -> getEstimate(measure, n, et)).sum();
 	}
 
 	protected double getWeightedEstimate( TestMeasure measure, ArrayList<OptNode> nodes, ExecType et ) {
-		double ret = 0;
-		int len = nodes.size();
-		for( OptNode n : nodes )
-			ret += getEstimate( measure, n, et );
-		ret /= len; //weighting
-		return ret;
+		return nodes.stream().mapToDouble(n -> getEstimate(measure, n, et)).sum() / nodes.size(); //weighting
 	}
 }

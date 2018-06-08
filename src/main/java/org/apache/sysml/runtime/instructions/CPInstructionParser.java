@@ -64,6 +64,7 @@ import org.apache.sysml.runtime.instructions.cp.UaggOuterChainCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.UnaryCPInstruction;
 import org.apache.sysml.runtime.instructions.cp.VariableCPInstruction;
 import org.apache.sysml.runtime.instructions.cpfile.MatrixIndexingCPFileInstruction;
+import org.apache.sysml.runtime.util.UtilFunctions;
 
 public class CPInstructionParser extends InstructionParser 
 {
@@ -178,12 +179,15 @@ public class CPInstructionParser extends InstructionParser
 		String2CPInstructionType.put( "sprop", CPType.Unary);
 		String2CPInstructionType.put( "sigmoid", CPType.Unary);
 		
-		String2CPInstructionType.put( "printf" , CPType.BuiltinNary);
-		String2CPInstructionType.put( "cbind" , CPType.BuiltinNary);
-		String2CPInstructionType.put( "rbind" , CPType.BuiltinNary);
-		String2CPInstructionType.put( "eval" , CPType.BuiltinNary);
-
+		String2CPInstructionType.put( "printf", CPType.BuiltinNary);
+		String2CPInstructionType.put( "cbind",  CPType.BuiltinNary);
+		String2CPInstructionType.put( "rbind",  CPType.BuiltinNary);
+		String2CPInstructionType.put( "eval",   CPType.BuiltinNary);
+		String2CPInstructionType.put( "list",   CPType.BuiltinNary);
+		
 		// Parameterized Builtin Functions
+		String2CPInstructionType.put("paramserv", 		CPType.ParameterizedBuiltin);
+		String2CPInstructionType.put( "nvlist",  CPType.ParameterizedBuiltin);
 		String2CPInstructionType.put( "cdf",            CPType.ParameterizedBuiltin);
 		String2CPInstructionType.put( "invcdf",         CPType.ParameterizedBuiltin);
 		String2CPInstructionType.put( "groupedagg",     CPType.ParameterizedBuiltin);
@@ -243,6 +247,8 @@ public class CPInstructionParser extends InstructionParser
 		String2CPInstructionType.put( "bias_add"      , CPType.Convolution);
 		String2CPInstructionType.put( "bias_multiply"      , CPType.Convolution);
 		String2CPInstructionType.put( "channel_sums"      , CPType.Convolution);
+		String2CPInstructionType.put( "batch_norm2d",           CPType.Convolution);
+		String2CPInstructionType.put( "batch_norm2d_backward",  CPType.Convolution);
 		
 		// Quaternary instruction opcodes
 		String2CPInstructionType.put( "wsloss"  , CPType.Quaternary);
@@ -359,8 +365,8 @@ public class CPInstructionParser extends InstructionParser
 				
 			case External:
 				return FunctionCallCPInstruction.parseInstruction(str);
-			
-			case ParameterizedBuiltin: 
+
+			case ParameterizedBuiltin:
 				return ParameterizedBuiltinCPInstruction.parseInstruction(str);
 			
 			case MultiReturnParameterizedBuiltin:
@@ -385,7 +391,8 @@ public class CPInstructionParser extends InstructionParser
 			case Builtin: 
 				String []parts = InstructionUtils.getInstructionPartsWithValueType(str);
 				if ( parts[0].equals("log") || parts[0].equals("log_nz") ) {
-					if ( parts.length == 3 ) {
+					if ( parts.length == 3 || (parts.length == 4 &&
+						UtilFunctions.isIntegerNumber(parts[3])) ) {
 						// B=log(A), y=log(x)
 						return UnaryCPInstruction.parseInstruction(str);
 					} else if ( parts.length == 4 ) {

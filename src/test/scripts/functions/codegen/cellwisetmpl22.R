@@ -19,43 +19,13 @@
 #
 #-------------------------------------------------------------
 
-# calculate Q from Housholder matrix
-QfromH = function(Matrix[double] H)
-  return(Matrix[double] Q) {
-    m = nrow(H);
-    n = ncol(H);
-    ones = matrix(1, m, 1);
-    eye = diag(ones);
-    Q = eye[,1:n];
+args<-commandArgs(TRUE)
+options(digits=22)
+library("Matrix")
 
-    for (j in n:1) {
-      v = H[j:m,j]
-      b = as.scalar(2/(t(v) %*% v))
-      Q[j:m, j:n] = Q[j:m, j:n] - (b * v) %*% (t(v) %*% Q[j:m, j:n])
-    }
-}
+X = matrix(7, 500, 2);
+t1 = as.matrix(seq(1,nrow(X))) %*% matrix(1,1,2);
+t2 = as.matrix(seq(nrow(X),1)) %*% matrix(1,1,2);
+R = X * t1 + t2;
 
-QR = function(Matrix[double] A, int nb)
-  return(Matrix[double] Q, Matrix[double] R) {
-    n = ncol(A)
-
-    if (n <= nb) {
-      [H, R] = qr(A)
-      Q = QfromH(H)
-      R = R[1:n, 1:n]
-    }
-    else {
-      k = floor(n/2)
-      A1 = A[,1:k]
-      A2 = A[,k+1:n]
-
-      [Q1, R11] = QR(A1, nb)
-      R12 = t(Q1) %*% A2
-      A2 = A2 - Q1 %*% R12
-      [Q2, R22] = QR(A2, nb)
-      R21 = matrix(0, rows = nrow(R22), cols = ncol(R11))
-
-      Q = cbind(Q1, Q2)
-      R = rbind(cbind(R11, R12), cbind(R21, R22))
-    }
-}
+writeMM(as(R,"CsparseMatrix"), paste(args[2], "S", sep=""));

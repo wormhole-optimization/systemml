@@ -19,7 +19,6 @@
 
 package org.apache.sysml.parser.dml;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -38,15 +37,12 @@ import org.apache.sysml.parser.ConditionalPredicate;
 import org.apache.sysml.parser.DMLProgram;
 import org.apache.sysml.parser.DataIdentifier;
 import org.apache.sysml.parser.Expression;
-import org.apache.sysml.parser.Expression.DataType;
-import org.apache.sysml.parser.Expression.ValueType;
 import org.apache.sysml.parser.ExpressionList;
 import org.apache.sysml.parser.ExternalFunctionStatement;
 import org.apache.sysml.parser.ForStatement;
 import org.apache.sysml.parser.FunctionCallIdentifier;
 import org.apache.sysml.parser.FunctionStatement;
 import org.apache.sysml.parser.IfStatement;
-import org.apache.sysml.parser.ImportStatement;
 import org.apache.sysml.parser.IndexedIdentifier;
 import org.apache.sysml.parser.IterablePredicate;
 import org.apache.sysml.parser.LanguageException;
@@ -112,6 +108,7 @@ import org.apache.sysml.parser.dml.DmlParser.TypedArgNoAssignContext;
 import org.apache.sysml.parser.dml.DmlParser.UnaryExpressionContext;
 import org.apache.sysml.parser.dml.DmlParser.ValueTypeContext;
 import org.apache.sysml.parser.dml.DmlParser.WhileStatementContext;
+import org.apache.sysml.runtime.util.UtilFunctions;
 
 
 public class DmlSyntacticValidator extends CommonSyntacticValidator implements DmlListener {
@@ -377,67 +374,39 @@ public class DmlSyntacticValidator extends CommonSyntacticValidator implements D
 
 
 	// -----------------------------------------------------------------
-	// 			"src" statment
+	// 			"source" statement
 	// -----------------------------------------------------------------
 
 	@Override
-	public void exitImportStatement(ImportStatementContext ctx)
-	{
-		//prepare import filepath
-		String filePath = ctx.filePath.getText();
-		String namespace = DMLProgram.DEFAULT_NAMESPACE;
-		if(ctx.namespace != null && ctx.namespace.getText() != null && !ctx.namespace.getText().isEmpty()) {
-			namespace = ctx.namespace.getText();
-		}
-		if((filePath.startsWith("\"") && filePath.endsWith("\"")) ||
-				filePath.startsWith("'") && filePath.endsWith("'")) {
-			filePath = filePath.substring(1, filePath.length()-1);
-		}
-
-		File file = new File(filePath);
-		if (!file.isAbsolute()) {
-			//concatenate working directory to filepath
-			filePath = _workingDir + File.separator + filePath;
-		}
+	public void exitImportStatement(ImportStatementContext ctx) {
+		String filePath = getWorkingFilePath(UtilFunctions.unquote(ctx.filePath.getText()));
+		String namespace = getNamespaceSafe(ctx.namespace);
 
 		validateNamespace(namespace, filePath, ctx);
 		String scriptID = DMLProgram.constructFunctionKey(namespace, filePath);
 
 		DMLProgram prog = null;
-		if (!_scripts.get().containsKey(scriptID))
-		{
-			_scripts.get().put(scriptID, namespace);
+		if (!_f2NS.get().containsKey(scriptID)) {
+			_f2NS.get().put(scriptID, namespace);
 			try {
-				prog = (new DMLParserWrapper()).doParse(filePath, null, getQualifiedNamespace(namespace), argVals);
-			} catch (ParseException e) {
+				prog = (new DMLParserWrapper()).doParse(filePath,
+					_tScripts.get().get(filePath), getQualifiedNamespace(namespace), argVals);
+			}
+			catch (ParseException e) {
 				notifyErrorListeners(e.getMessage(), ctx.start);
 				return;
 			}
-	        // Custom logic whether to proceed ahead or not. Better than the current exception handling mechanism
 			if(prog == null) {
 				notifyErrorListeners("One or more errors found during importing a program from file " + filePath, ctx.start);
 				return;
 			}
-			else {
-				ctx.info.namespaces = new HashMap<>();
-				ctx.info.namespaces.put(getQualifiedNamespace(namespace), prog);
-				ctx.info.stmt = new ImportStatement();
-				((ImportStatement) ctx.info.stmt).setCompletePath(filePath);
-				((ImportStatement) ctx.info.stmt).setFilePath(ctx.filePath.getText());
-				((ImportStatement) ctx.info.stmt).setNamespace(namespace);
-			}
+			setupContextInfo(ctx.info, namespace, filePath, ctx.filePath.getText(), prog);
 		}
-		else
-		{
+		else {
 			// Skip redundant parsing (to prevent potential infinite recursion) and
 			// create empty program for this context to allow processing to continue.
 			prog = new DMLProgram();
-			ctx.info.namespaces = new HashMap<>();
-			ctx.info.namespaces.put(getQualifiedNamespace(namespace), prog);
-			ctx.info.stmt = new ImportStatement();
-			((ImportStatement) ctx.info.stmt).setCompletePath(filePath);
-			((ImportStatement) ctx.info.stmt).setFilePath(ctx.filePath.getText());
-			((ImportStatement) ctx.info.stmt).setNamespace(namespace);
+			setupContextInfo(ctx.info, namespace, filePath, ctx.filePath.getText(), prog);
 		}
 	}
 
@@ -702,49 +671,15 @@ public class DmlSyntacticValidator extends CommonSyntacticValidator implements D
 		ArrayList<DataIdentifier> retVal = new ArrayList<>();
 		for(TypedArgNoAssignContext paramCtx : ctx) {
 			DataIdentifier dataId = new DataIdentifier(paramCtx.paramName.getText());
-			String dataType = null;
-			String valueType = null;
-
-			if(paramCtx.paramType == null || paramCtx.paramType.dataType() == null
-					|| paramCtx.paramType.dataType().getText() == null || paramCtx.paramType.dataType().getText().isEmpty()) {
-				dataType = "scalar";
-			}
-			else {
-				dataType = paramCtx.paramType.dataType().getText();
-			}
-
-
+			String dataType = (paramCtx.paramType == null || paramCtx.paramType.dataType() == null
+				|| paramCtx.paramType.dataType().getText() == null || paramCtx.paramType.dataType().getText().isEmpty()) ?
+				"scalar" : paramCtx.paramType.dataType().getText();
+			String valueType = paramCtx.paramType.valueType().getText();
+			
 			//check and assign data type
 			checkValidDataType(dataType, paramCtx.start);
-			if( dataType.equalsIgnoreCase("matrix") )
-				dataId.setDataType(DataType.MATRIX);
-			else if( dataType.equalsIgnoreCase("frame") )
-				dataId.setDataType(DataType.FRAME);
-			else if( dataType.equalsIgnoreCase("scalar") )
-				dataId.setDataType(DataType.SCALAR);
-
-			valueType = paramCtx.paramType.valueType().getText();
-			if(valueType.equals("int") || valueType.equals("integer")
-				|| valueType.equals("Int") || valueType.equals("Integer")) {
-				dataId.setValueType(ValueType.INT);
-			}
-			else if(valueType.equals("string") || valueType.equals("String")) {
-				dataId.setValueType(ValueType.STRING);
-			}
-			else if(valueType.equals("boolean") || valueType.equals("Boolean")) {
-				dataId.setValueType(ValueType.BOOLEAN);
-			}
-			else if(valueType.equals("double") || valueType.equals("Double")) {
-				dataId.setValueType(ValueType.DOUBLE);
-			}
-			else if(valueType.equals("bool")) {
-				notifyErrorListeners("invalid valuetype " + valueType + " (Quickfix: use \'boolean\' instead)", paramCtx.start);
+			if( !setDataAndValueType(dataId, dataType, valueType, paramCtx.start, false, true) )
 				return null;
-			}
-			else {
-				notifyErrorListeners("invalid valuetype " + valueType, paramCtx.start);
-				return null;
-			}
 			retVal.add(dataId);
 		}
 		return retVal;
@@ -862,12 +797,7 @@ public class DmlSyntacticValidator extends CommonSyntacticValidator implements D
 	@Override
 	public void exitPathStatement(PathStatementContext ctx) {
 		PathStatement stmt = new PathStatement(ctx.pathValue.getText());
-		String filePath = ctx.pathValue.getText();
-		if((filePath.startsWith("\"") && filePath.endsWith("\"")) ||
-				filePath.startsWith("'") && filePath.endsWith("'")) {
-			filePath = filePath.substring(1, filePath.length()-1);
-		}
-
+		String filePath = UtilFunctions.unquote(ctx.pathValue.getText());
 		_workingDir = filePath;
 		ctx.info.stmt = stmt;
 	}

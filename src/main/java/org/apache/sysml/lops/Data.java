@@ -37,11 +37,11 @@ import org.apache.sysml.parser.Expression.ValueType;
  * variables, literals. Can be for both input and output. 
  */
 
-public class Data extends Lop  
+public class Data extends Lop
 {
-	
 	public enum OperationTypes {READ,WRITE}
-	
+	public static final String PREAD_PREFIX = "p"+OperationTypes.READ.name();
+
 	FileFormatTypes formatType = FileFormatTypes.BINARY;
 	OperationTypes operation;
 	boolean literal_var = false;
@@ -295,14 +295,16 @@ public class Data extends Lop
 	 * Method to check if this represents a transient variable.
 	 * @return true if this data lop is a transient variable
 	 */
-	public boolean isTransient()
-	{
+	public boolean isTransient() {
 		return transient_var;
 	}
 	
-	public boolean isPersistentWrite()
-	{
+	public boolean isPersistentWrite() {
 		return operation == OperationTypes.WRITE && !transient_var;
+	}
+	
+	public boolean isPersistentRead() {
+		return operation == OperationTypes.READ && !transient_var;
 	}
 	
 	/**

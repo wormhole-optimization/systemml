@@ -22,6 +22,7 @@ package org.apache.sysml.runtime.matrix.data;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 import org.apache.sysml.parser.Expression.ValueType;
 import org.apache.sysml.runtime.DMLRuntimeException;
@@ -195,12 +196,18 @@ public class OperationsOnMatrixValues
 	}
 	
 	public static void incrementalAggregation(MatrixValue valueAgg, MatrixValue correction, MatrixValue valueAdd, 
-			AggregateOperator op, boolean imbededCorrection)
+			AggregateOperator op, boolean imbededCorrection) {
+		incrementalAggregation(valueAgg, correction, valueAdd, op, imbededCorrection, true);
+	}
+	
+	
+	public static void incrementalAggregation(MatrixValue valueAgg, MatrixValue correction, MatrixValue valueAdd, 
+			AggregateOperator op, boolean imbededCorrection, boolean deep)
 	{
 		if(op.correctionExists)
 		{
 			if(!imbededCorrection || op.correctionLocation==CorrectionLocationType.NONE)
-				valueAgg.incrementalAggregate(op, correction, valueAdd);
+				valueAgg.incrementalAggregate(op, correction, valueAdd, deep);
 			else
 				valueAgg.incrementalAggregate(op, valueAdd);
 		}
@@ -217,7 +224,7 @@ public class OperationsOnMatrixValues
 		valueIn.aggregateUnaryOperations(op, valueOut, brlen, bclen, indexesIn);
 	}
 	
-	public static MatrixBlock performAggregateBinary(MatrixIndexes indexes1, MatrixBlock value1, MatrixIndexes indexes2, MatrixBlock value2, 
+	public static MatrixBlock matMult(MatrixIndexes indexes1, MatrixBlock value1, MatrixIndexes indexes2, MatrixBlock value2, 
 			MatrixIndexes indexesOut, MatrixBlock valueOut, AggregateBinaryOperator op) {
 		//compute output index
 		indexesOut.setIndexes(indexes1.getRowIndex(), indexes2.getColumnIndex());
@@ -228,7 +235,7 @@ public class OperationsOnMatrixValues
 			return value1.aggregateBinaryOperations(indexes1, value1, indexes2, value2, valueOut, op);
 	}
 
-	public static MatrixBlock performAggregateBinaryIgnoreIndexes(MatrixBlock value1, MatrixBlock value2,
+	public static MatrixBlock matMult(MatrixBlock value1, MatrixBlock value2,
 			MatrixBlock valueOut, AggregateBinaryOperator op) {
 		//perform on the value
 		if( value2 instanceof CompressedMatrixBlock )
@@ -238,7 +245,7 @@ public class OperationsOnMatrixValues
 	}
 
 	@SuppressWarnings("rawtypes")
-	public static ArrayList performSlice(IndexRange ixrange, int brlen, int bclen, int iix, int jix, CacheBlock in) {
+	public static List performSlice(IndexRange ixrange, int brlen, int bclen, int iix, int jix, CacheBlock in) {
 		if( in instanceof MatrixBlock )
 			return performSlice(ixrange, brlen, bclen, iix, jix, (MatrixBlock)in);
 		else if( in instanceof FrameBlock )
@@ -246,13 +253,11 @@ public class OperationsOnMatrixValues
 		throw new DMLRuntimeException("Unsupported cache block type: "+in.getClass().getName());
 	}
 	
-	
 	@SuppressWarnings("rawtypes")
-	public static ArrayList performSlice(IndexRange ixrange, int brlen, int bclen, int iix, int jix, MatrixBlock in) {
+	public static List performSlice(IndexRange ixrange, int brlen, int bclen, int iix, int jix, MatrixBlock in) {
 		IndexedMatrixValue imv = new IndexedMatrixValue(new MatrixIndexes(iix, jix), (MatrixBlock)in);
 		ArrayList<IndexedMatrixValue> outlist = new ArrayList<>();
 		performSlice(imv, ixrange, brlen, bclen, outlist);
-	
 		return SparkUtils.fromIndexedMatrixBlockToPair(outlist);
 	}
 

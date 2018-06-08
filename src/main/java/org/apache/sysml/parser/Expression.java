@@ -92,13 +92,15 @@ public abstract class Expression implements ParseInfo
 		EXISTS,
 		CONV2D, CONV2D_BACKWARD_FILTER, CONV2D_BACKWARD_DATA, BIAS_ADD, BIAS_MULTIPLY,
 		MAX_POOL, AVG_POOL, MAX_POOL_BACKWARD, AVG_POOL_BACKWARD,
+		LSTM, BATCH_NORM2D, BATCH_NORM2D_BACKWARD,
 		EXP,
 		FLOOR,
 		IFELSE,
 		INTERQUANTILE,
 		INVERSE,
 		IQM,
-		LENGTH, 
+		LENGTH,
+		LIST,
 		LOG,
 		LU,
 		MAX,
@@ -158,7 +160,9 @@ public abstract class Expression implements ParseInfo
 		// Distribution Functions
 		CDF, INVCDF, PNORM, QNORM, PT, QT, PF, QF, PCHISQ, QCHISQ, PEXP, QEXP,
 		TRANSFORMAPPLY, TRANSFORMDECODE, TRANSFORMENCODE, TRANSFORMCOLMAP, TRANSFORMMETA,
-		TOSTRING,	// The "toString" method for DML; named arguments accepted to format output
+		TOSTRING, // The "toString" method for DML; named arguments accepted to format output
+		LIST, // named argument lists; unnamed lists become builtin function
+		PARAMSERV,
 		INVALID
 	}
 	
@@ -180,7 +184,7 @@ public abstract class Expression implements ParseInfo
 	 * Data types (matrix, scalar, frame, object, unknown).
 	 */
 	public enum DataType {
-		MATRIX, SCALAR, FRAME, OBJECT, UNKNOWN;
+		MATRIX, SCALAR, FRAME, LIST, OBJECT, UNKNOWN;
 		
 		public boolean isMatrix() {
 			return (this == MATRIX);
@@ -190,6 +194,9 @@ public abstract class Expression implements ParseInfo
 		}
 		public boolean isScalar() {
 			return (this == SCALAR);
+		}
+		public boolean isList() {
+			return (this == LIST);
 		}
 	}
 

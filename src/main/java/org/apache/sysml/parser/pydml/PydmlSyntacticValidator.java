@@ -19,7 +19,6 @@
 
 package org.apache.sysml.parser.pydml;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -42,14 +41,11 @@ import org.apache.sysml.parser.DMLProgram;
 import org.apache.sysml.parser.DataIdentifier;
 import org.apache.sysml.parser.DoubleIdentifier;
 import org.apache.sysml.parser.Expression;
-import org.apache.sysml.parser.Expression.DataType;
-import org.apache.sysml.parser.Expression.ValueType;
 import org.apache.sysml.parser.ExternalFunctionStatement;
 import org.apache.sysml.parser.ForStatement;
 import org.apache.sysml.parser.FunctionCallIdentifier;
 import org.apache.sysml.parser.FunctionStatement;
 import org.apache.sysml.parser.IfStatement;
-import org.apache.sysml.parser.ImportStatement;
 import org.apache.sysml.parser.IndexedIdentifier;
 import org.apache.sysml.parser.IntIdentifier;
 import org.apache.sysml.parser.IterablePredicate;
@@ -116,6 +112,7 @@ import org.apache.sysml.parser.pydml.PydmlParser.TypedArgNoAssignContext;
 import org.apache.sysml.parser.pydml.PydmlParser.UnaryExpressionContext;
 import org.apache.sysml.parser.pydml.PydmlParser.ValueDataTypeCheckContext;
 import org.apache.sysml.parser.pydml.PydmlParser.WhileStatementContext;
+import org.apache.sysml.runtime.util.UtilFunctions;
 
 /**
  * TODO: Refactor duplicated parser code dml/pydml (entire package).
@@ -481,60 +478,34 @@ public class PydmlSyntacticValidator extends CommonSyntacticValidator implements
 	@Override
 	public void exitImportStatement(ImportStatementContext ctx)
 	{
-		//prepare import filepath
-		String filePath = ctx.filePath.getText();
-		String namespace = DMLProgram.DEFAULT_NAMESPACE;
-		if(ctx.namespace != null && ctx.namespace.getText() != null && !ctx.namespace.getText().isEmpty()) {
-			namespace = ctx.namespace.getText();
-		}
-		if((filePath.startsWith("\"") && filePath.endsWith("\"")) ||
-				filePath.startsWith("'") && filePath.endsWith("'")) {
-			filePath = filePath.substring(1, filePath.length()-1);
-		}
-
-		File file = new File(filePath);
-		if (!file.isAbsolute()) {
-			//concatenate working directory to filepath
-			filePath = _workingDir + File.separator + filePath;
-		}
+		String filePath = getWorkingFilePath(UtilFunctions.unquote(ctx.filePath.getText()));
+		String namespace = getNamespaceSafe(ctx.namespace);
+		
 		validateNamespace(namespace, filePath, ctx);
 		String scriptID = DMLProgram.constructFunctionKey(namespace, filePath);
 
 		DMLProgram prog = null;
-		if (!_scripts.get().containsKey(scriptID))
-		{
-			_scripts.get().put(scriptID, namespace);
+		if (!_f2NS.get().containsKey(scriptID)) {
+			_f2NS.get().put(scriptID, namespace);
 			try {
-				prog = (new PyDMLParserWrapper()).doParse(filePath, null, getQualifiedNamespace(namespace), argVals);
-			} catch (ParseException e) {
+				prog = (new PyDMLParserWrapper()).doParse(filePath,
+					_tScripts.get().get(filePath), getQualifiedNamespace(namespace), argVals);
+			}
+			catch (ParseException e) {
 				notifyErrorListeners(e.getMessage(), ctx.start);
 				return;
 			}
-	        // Custom logic whether to proceed ahead or not. Better than the current exception handling mechanism
 			if(prog == null) {
 				notifyErrorListeners("One or more errors found during importing a program from file " + filePath, ctx.start);
 				return;
 			}
-			else {
-				ctx.info.namespaces = new HashMap<>();
-				ctx.info.namespaces.put(getQualifiedNamespace(namespace), prog);
-				ctx.info.stmt = new ImportStatement();
-				((ImportStatement) ctx.info.stmt).setCompletePath(filePath);
-				((ImportStatement) ctx.info.stmt).setFilePath(ctx.filePath.getText());
-				((ImportStatement) ctx.info.stmt).setNamespace(namespace);
-			}
+			setupContextInfo(ctx.info, namespace, filePath, ctx.filePath.getText(), prog);
 		}
-		else
-		{
+		else {
 			// Skip redundant parsing (to prevent potential infinite recursion) and
 			// create empty program for this context to allow processing to continue.
 			prog = new DMLProgram();
-			ctx.info.namespaces = new HashMap<>();
-			ctx.info.namespaces.put(getQualifiedNamespace(namespace), prog);
-			ctx.info.stmt = new ImportStatement();
-			((ImportStatement) ctx.info.stmt).setCompletePath(filePath);
-			((ImportStatement) ctx.info.stmt).setFilePath(ctx.filePath.getText());
-			((ImportStatement) ctx.info.stmt).setNamespace(namespace);
+			setupContextInfo(ctx.info, namespace, filePath, ctx.filePath.getText(), prog);
 		}
 	}
 
@@ -1371,43 +1342,15 @@ public class PydmlSyntacticValidator extends CommonSyntacticValidator implements
 		ArrayList<DataIdentifier> retVal = new ArrayList<>();
 		for(TypedArgNoAssignContext paramCtx : ctx) {
 			DataIdentifier dataId = new DataIdentifier(paramCtx.paramName.getText());
-			String dataType = null;
-			String valueType = null;
-
-			if(paramCtx.paramType == null || paramCtx.paramType.dataType() == null
-					|| paramCtx.paramType.dataType().getText() == null || paramCtx.paramType.dataType().getText().isEmpty()) {
-				dataType = "scalar";
-			}
-			else {
-				dataType = paramCtx.paramType.dataType().getText();
-			}
-
+			String dataType = (paramCtx.paramType == null || paramCtx.paramType.dataType() == null
+				|| paramCtx.paramType.dataType().getText() == null || paramCtx.paramType.dataType().getText().isEmpty()) ?
+				"scalar" : paramCtx.paramType.dataType().getText();
+			String valueType = paramCtx.paramType.valueType().getText();
+			
 			//check and assign data type
 			checkValidDataType(dataType, paramCtx.start);
-			if( dataType.equals("matrix") )
-				dataId.setDataType(DataType.MATRIX);
-			else if( dataType.equals("frame") )
-				dataId.setDataType(DataType.FRAME);
-			else if( dataType.equals("scalar") )
-				dataId.setDataType(DataType.SCALAR);
-
-			valueType = paramCtx.paramType.valueType().getText();
-			if(valueType.equals("int")) {
-				dataId.setValueType(ValueType.INT);
-			}
-			else if(valueType.equals("str")) {
-				dataId.setValueType(ValueType.STRING);
-			}
-			else if(valueType.equals("bool")) {
-				dataId.setValueType(ValueType.BOOLEAN);
-			}
-			else if(valueType.equals("float")) {
-				dataId.setValueType(ValueType.DOUBLE);
-			}
-			else {
-				notifyErrorListeners("invalid valuetype " + valueType, paramCtx.start);
+			if( !setDataAndValueType(dataId, dataType, valueType, paramCtx.start, true, false) )
 				return null;
-			}
 			retVal.add(dataId);
 		}
 		return retVal;
@@ -1500,12 +1443,7 @@ public class PydmlSyntacticValidator extends CommonSyntacticValidator implements
 	@Override
 	public void exitPathStatement(PathStatementContext ctx) {
 		PathStatement stmt = new PathStatement(ctx.pathValue.getText());
-		String filePath = ctx.pathValue.getText();
-		if((filePath.startsWith("\"") && filePath.endsWith("\"")) ||
-				filePath.startsWith("'") && filePath.endsWith("'")) {
-			filePath = filePath.substring(1, filePath.length()-1);
-		}
-
+		String filePath = UtilFunctions.unquote(ctx.pathValue.getText());
 		_workingDir = filePath;
 		ctx.info.stmt = stmt;
 	}

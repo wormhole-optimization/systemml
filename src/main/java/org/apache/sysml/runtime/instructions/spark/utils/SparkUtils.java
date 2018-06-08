@@ -20,7 +20,6 @@
 
 package org.apache.sysml.runtime.instructions.spark.utils;
 
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -70,40 +69,28 @@ public class SparkUtils
 		return new Tuple2<>(in.getIndexes(), (MatrixBlock)in.getValue());
 	}
 
-	public static ArrayList<Tuple2<MatrixIndexes,MatrixBlock>> fromIndexedMatrixBlock( ArrayList<IndexedMatrixValue> in ) {
-		ArrayList<Tuple2<MatrixIndexes,MatrixBlock>> ret = new ArrayList<>();
-		for( IndexedMatrixValue imv : in )
-			ret.add(fromIndexedMatrixBlock(imv));
-		return ret;
+	public static List<Tuple2<MatrixIndexes,MatrixBlock>> fromIndexedMatrixBlock( List<IndexedMatrixValue> in ) {
+		return in.stream().map(imv -> fromIndexedMatrixBlock(imv)).collect(Collectors.toList());
 	}
 
 	public static Pair<MatrixIndexes,MatrixBlock> fromIndexedMatrixBlockToPair( IndexedMatrixValue in ){
 		return new Pair<>(in.getIndexes(), (MatrixBlock)in.getValue());
 	}
 
-	public static ArrayList<Pair<MatrixIndexes,MatrixBlock>> fromIndexedMatrixBlockToPair( ArrayList<IndexedMatrixValue> in ) {
-		ArrayList<Pair<MatrixIndexes,MatrixBlock>> ret = new ArrayList<>();
-		for( IndexedMatrixValue imv : in )
-			ret.add(fromIndexedMatrixBlockToPair(imv));
-		return ret;
+	public static List<Pair<MatrixIndexes,MatrixBlock>> fromIndexedMatrixBlockToPair( List<IndexedMatrixValue> in ) {
+		return in.stream().map(imv -> fromIndexedMatrixBlockToPair(imv)).collect(Collectors.toList());
 	}
 
 	public static Tuple2<Long,FrameBlock> fromIndexedFrameBlock( Pair<Long, FrameBlock> in ){
 		return new Tuple2<>(in.getKey(), in.getValue());
 	}
 
-	public static ArrayList<Tuple2<Long,FrameBlock>> fromIndexedFrameBlock( ArrayList<Pair<Long, FrameBlock>> in ) {
-		ArrayList<Tuple2<Long, FrameBlock>> ret = new ArrayList<>();
-		for( Pair<Long, FrameBlock> ifv : in )
-			ret.add(fromIndexedFrameBlock(ifv));
-		return ret;
+	public static List<Tuple2<Long,FrameBlock>> fromIndexedFrameBlock(List<Pair<Long, FrameBlock>> in) {
+		return in.stream().map(ifv -> fromIndexedFrameBlock(ifv)).collect(Collectors.toList());
 	}
 
-	public static ArrayList<Pair<Long,Long>> toIndexedLong( List<Tuple2<Long, Long>> in ) {
-		ArrayList<Pair<Long, Long>> ret = new ArrayList<>();
-		for( Tuple2<Long, Long> e : in )
-			ret.add(new Pair<>(e._1(), e._2()));
-		return ret;
+	public static List<Pair<Long,Long>> toIndexedLong( List<Tuple2<Long, Long>> in ) {
+		return in.stream().map(e -> new Pair<>(e._1(), e._2())).collect(Collectors.toList());
 	}
 
 	public static Pair<Long,FrameBlock> toIndexedFrameBlock( Tuple2<Long,FrameBlock> in ) {
@@ -200,7 +187,7 @@ public class SparkUtils
 		//compute degree of parallelism and block ranges
 		long size = mc.getNumBlocks() * OptimizerUtils.estimateSizeEmptyBlock(Math.min(
 				Math.max(mc.getRows(),1), mc.getRowsPerBlock()), Math.min(Math.max(mc.getCols(),1), mc.getColsPerBlock()));
-		int par = (int) Math.min(Math.max(SparkExecutionContext.getDefaultParallelism(true),
+		int par = (int) Math.min(4*Math.max(SparkExecutionContext.getDefaultParallelism(true),
 				Math.ceil(size/InfrastructureAnalyzer.getHDFSBlockSize())), mc.getNumBlocks());
 		long pNumBlocks = (long)Math.ceil((double)mc.getNumBlocks()/par);
 		
@@ -285,21 +272,19 @@ public class SparkUtils
 		}
 		
 		@Override
-		public Iterator<Tuple2<MatrixIndexes, MatrixBlock>> call(Long arg0) 
-			throws Exception 
-		{
-			ArrayList<Tuple2<MatrixIndexes,MatrixBlock>> list = new ArrayList<>();
+		public Iterator<Tuple2<MatrixIndexes, MatrixBlock>> call(Long arg0) throws Exception {
+			//NOTE: for cases of a very large number of empty blocks per partition
+			//(e.g., >3M for 128MB partitions), it is important for low GC overhead 
+			//not to materialized these objects but return a lazy iterator instead.
 			long ncblks = _mc.getNumColBlocks();
 			long nblocksU = Math.min(arg0+_pNumBlocks, _mc.getNumBlocks());
-			for( long i=arg0; i<nblocksU; i++ ) {
+			return LongStream.range(arg0, nblocksU).mapToObj(i -> {
 				long rix = 1 + i / ncblks;
 				long cix = 1 + i % ncblks;
 				int lrlen = UtilFunctions.computeBlockSize(_mc.getRows(), rix, _mc.getRowsPerBlock());
 				int lclen = UtilFunctions.computeBlockSize(_mc.getCols(), cix, _mc.getColsPerBlock());
-				list.add(new Tuple2<>(new MatrixIndexes(rix,cix), 
-					new MatrixBlock(lrlen, lclen, true)));
-			}
-			return list.iterator();
+				return new Tuple2<>(new MatrixIndexes(rix,cix), new MatrixBlock(lrlen, lclen, true));
+			}).iterator();
 		}
 	}
 }
