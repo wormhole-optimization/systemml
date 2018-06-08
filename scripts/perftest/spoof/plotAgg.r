@@ -11,7 +11,7 @@ pdf(file="Experiment1.pdf",
 
 T = read.table("all_times.tsv", sep="\t", header=TRUE)
 T2 = data.table(alg=T$alg, type=T$type, compile=T$compile, execute=T$execute)
-T2$type <- factor(T2$type, levels=c("none", "none_spoof_best", "default", "default_spoof_script"))
+T2$type <- factor(T2$type, levels=c("none", "none_spoof_best", "none_spoof_no", "none_spoof_script", "default", "default_spoof_no", "default_spoof_script", "default_spoof_best"))
 T2[order(alg, type)]
 # T2[3:4,4]=0
 colors=c("lightblue", "blue", "green", "darkgreen")

@@ -491,7 +491,8 @@ class DagOfGraphBag private constructor(
                 return b.memoGraph[n.id]!!
 
             val (aggs0, mult) = if (n is SNodeAggregate && n.op == Hop.AggOp.SUM) {
-                n.input.parents -= n
+                if (n.parents.isEmpty())
+                    n.input.parents -= n
                 n.aggs to n.input
             } else Schema() to n
             val aggs = aggs0.toABS()
@@ -505,7 +506,8 @@ class DagOfGraphBag private constructor(
                     val newOuts = existingG.outs - newAggs
                     return Graph(newOuts, existingG.edges)
                 }
-                mult.inputs.forEach { it.parents -= mult }
+                if (mult.parents.isEmpty())
+                    mult.inputs.forEach { it.parents -= mult }
                 mult.inputs
             } else listOf(mult)
             val edges = bases.map { toEdge(it, b) }
@@ -536,7 +538,7 @@ class DagOfGraphBag private constructor(
         private fun toBase(node0: SNode, b: Builder): SNode {
             var node = node0
             while (node is SNodeBind || node is SNodeUnbind) {
-                if (node.parents.isEmpty() && node !in b.bases)
+                if (node.parents.isEmpty() && node !in b.bases) // aren't bases non-binds/unbinds?
                     node.inputs[0].parents -= node
                 node = node.inputs[0]
             }

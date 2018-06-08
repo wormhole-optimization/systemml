@@ -462,7 +462,7 @@ public class Explain
 		
 		//create template header
 		sb.append("\n----------------------------------------\n");
-		sb.append("SPLAN: #roots = "+ splan.size() +"\n");
+		sb.append("SPLAN: "+splan.size()+" roots "+ splan.stream().mapToLong(SNode::getId).boxed().collect(Collectors.toList()) +"\n");
 		sb.append("----------------------------------------\n");
 		
 		//explain body dag

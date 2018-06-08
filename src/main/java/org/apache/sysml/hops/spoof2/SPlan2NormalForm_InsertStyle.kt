@@ -26,8 +26,8 @@ class SPlan2NormalForm_InsertStyle(val useDistr: Boolean) : SPlanRewriter {
         /** Whether to invoke the SPlanValidator after every rewrite pass. */
         private const val CHECK = true
         private val LOG = SPlanRewriteRule.LOG
-        private const val CHECK_DURING_RECURSION = true
-        private const val EXPLAIN_DURING_RECURSION = true
+        private const val CHECK_DURING_RECURSION = false
+        private const val EXPLAIN_DURING_RECURSION = false
         private val rewritePullAggAboveMult = org.apache.sysml.hops.spoof2.rewrite.RewritePullAggAboveMult()
 
 
