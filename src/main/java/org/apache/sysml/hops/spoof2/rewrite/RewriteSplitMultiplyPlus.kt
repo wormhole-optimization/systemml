@@ -38,11 +38,18 @@ class RewriteSplitMultiplyPlus : SPlanRewriteRule() {
         private fun adjustInputOrder(mult: SNodeNary) {
             if (mult.parents.size == 1 && mult.parents[0] is SNodeAggregate) {
                 val parent = mult.parents[0] as SNodeAggregate
-                // heuristic: the first inputs to multiply should be the ones with the most things to aggregate.
-                mult.inputs.sortWith(
-                        compareBy<SNode> { parent.aggs.names.intersect(it.schema.names).count() }
-                                .thenComparing<Int> { -(it.schema.names - parent.aggs).size }
-                )
+
+
+                val aggsToDeg = parent.aggs.keys.map { a ->
+                    a to mult.inputs.filter { a in it.schema }.flatMap { it.schema.keys }.toSet().size - 1
+                }
+                val priorityAggs = aggsToDeg.sortedBy { it.second }
+
+                // re-order inputs such that aggregates can be pushed down, using the degree of each aggregated name
+                mult.inputs.sortWith( compareBy<SNode> {
+                    it.schema.keys.map { n -> priorityAggs.find { it.first == n }?.second?.times(-1) ?: Int.MIN_VALUE  }.max() ?: Int.MIN_VALUE
+                } )
+
                 val changed = mult.refreshSchemasUpward()
                 if (changed && LOG.isDebugEnabled)
                     LOG.debug("In RewriteSplitMultiplyPlus, reorder inputs of $mult id=${mult.id} to schema ${mult.schema}.")
