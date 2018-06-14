@@ -3,6 +3,6 @@
 #none_spoof_no
 #none_spoof_script
 default
-#default_spoof_best
-#default_spoof_no
+default_spoof_best
+default_spoof_no
 default_spoof_script

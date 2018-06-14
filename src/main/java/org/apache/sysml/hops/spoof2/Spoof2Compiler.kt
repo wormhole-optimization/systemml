@@ -275,10 +275,10 @@ object Spoof2Compiler {
                 val costNoDistr = costerNoDistr.costRec(srootsNoDistr)
                 val costDistr = costerDistr.costRec(srootsDistr)
 
-                val f = File("costComp.tsv")
-                FileWriter(f, true).use { fw ->
-                    fw.appendln("$costNoDistr\t$costDistr")
-                }
+//                val f = File("costComp.tsv")
+//                FileWriter(f, true).use { fw ->
+//                    fw.appendln("$costNoDistr\t$costDistr")
+//                }
 
                 val (keep, delete) = if (costNoDistr <= costDistr) {
                     SPlanRewriteRule.LOG.trace("Best plan uses the + factorization given by the script: costs $costNoDistr <= $costDistr")

@@ -1,9 +1,10 @@
-  # Rscript plotAgg.r && xreader Experiment1.pdf &
-  require(graphics)
-  require(Matrix)
-  require(lattice)
-  require(data.table)
-  #source("plotAgg.r")
+# Rscript plotAgg.r && xreader Experiment1.pdf &
+require(graphics)
+require(Matrix)
+require(lattice)
+require(data.table)
+library(latticeExtra)
+#source("plotAgg.r")
 
 pdf(file="Experiment1.pdf",
   paper="a4r", family="serif", pointsize=14)
@@ -11,11 +12,25 @@ pdf(file="Experiment1.pdf",
 
 T = read.table("all_times.tsv", sep="\t", header=TRUE)
 T2 = data.table(alg=T$alg, type=T$type, compile=T$compile, execute=T$execute)
-T2$type <- factor(T2$type, levels=c("none", "none_spoof_best", "none_spoof_no", "none_spoof_script", "default", "default_spoof_no", "default_spoof_script", "default_spoof_best"))
+T2$type <- factor(T2$type, levels=c("default", "default_spoof_no", "default_spoof_script", "default_spoof_best")) #"none", "none_spoof_best", "none_spoof_no", "none_spoof_script", "default", "default_spoof_no", "default_spoof_script", "default_spoof_best"))
 T2[order(alg, type)]
+T2e = data.table(alg=T2$alg, type=T2$type, execute=T2$execute)
+T2c = data.table(alg=T2$alg, type=T2$type, execute=T2$compile)
+# T3 = rbind(data.table(alg=T2$alg, type=T2$type, execute=T2$execute),
+#   data.table(alg=T2$alg, type=T2$type, execute=T2$compile * 10))
 # T2[3:4,4]=0
+
 colors=c("lightblue", "blue", "green", "darkgreen")
-barchart(compile + execute ~ alg, groups=type, T2, auto.key=list(space="inside", x=0.01, y=0.93), outer=TRUE, par.settings=list(superpose.polygon=list(col=colors)), main=paste("Spoof Experiment 1M x 10"), sub=paste("Plotted on", Sys.time()), ylim=c(0,max(T2$execute*1.04, T2$compile*1.04)), scales=list(x=list(rot=45)))
+#colorsLeg=rbind(colors,c("orange"))
+linetype=c(1,1,1,1) #2,2,2,2,1,1,1,1)
+legdisp=c("Default SystemML", "Spoof, no + factorization", "Spoof, using script + factorization", "Spoof, using best of the two")
+#compile + execute ~ alg
+#auto.key=list(space="inside", x=0.01, y=0.93)
+
+p1 <- barchart(execute ~ alg, groups=type, T2e, key=list(rep=FALSE, corner=c(0,0), x=0.44, y=0.88, text=list(legdisp), rectangles=list(col=colors)), outer=TRUE, par.settings=list(superpose.polygon=list(col=colors, lty=linetype)), main=paste("Performance of Optimized Plans"), sub=paste("Plotted on", Sys.time(), "; 10M x 10 rows for all except als-cg and autoencoder at 5k x 10k"), ylim=c(0,max(T2$execute*1.02, T2$compile*1.02)), scales=list(x=list(rot=0)), ylab="Execution Time (s) [Compile time, including dynamic recompile, shown at bottom in orange]")
+p2 <- barchart(execute ~ alg, groups=type, T2c, outer=TRUE, par.settings=list(superpose.polygon=list(col="orange", lty=linetype)))
+p1 + p2
+
 #, col=rainbow(length(unique(T2$type)))
 #scales=list(y=list(log=10))
 #main="Runtime with & without Spoof"

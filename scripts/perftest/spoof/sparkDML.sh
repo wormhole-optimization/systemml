@@ -50,9 +50,9 @@ executor_cores="--executor-cores 24"
 conf="--conf spark.driver.maxResultSize=0"
 
 # Dylan override
-driver_memory="--driver-memory 7G"
+driver_memory="--driver-memory 6G"
 num_executors="--num-executors 2"
-executor_memory="--executor-memory 4G"
+executor_memory="--executor-memory 3G"
 executor_cores="--executor-cores 2"
 
 # error help print

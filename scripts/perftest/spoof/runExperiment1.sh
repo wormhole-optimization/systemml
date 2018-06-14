@@ -8,7 +8,7 @@ script_start="$(date '+%Y%m%d.%H%M%S')"
 
 sparsity=1.0
 addOpts="--stats --explain2 hops" # --explain2 hops"
-genData=0
+genData=1
 reps=1
 saveTimes=1
 
@@ -30,14 +30,14 @@ if [ "${#confs[@]}" == "0" ]; then
 fi
 
 
-num_rowsArr=( 1000000 )
+num_rowsArr=( 10000000 )
 num_rowsArr_reduced=( 5000 )
 # num_rowsArr_expanded=( 500000000 )
 for alg in "${algs[@]}"; do
 case "${alg}" in
     "als-cg"|"autoencoder")
         actual_rowsArr=${num_rowsArr_reduced}
-        num_cols=10000 # als-cg: rank set to 10
+        num_cols=10000 # als-cg: rank set to 10 or 20
         ;;
     # "linregcg")
     #     actual_rowsArr=${num_rowsArr_expanded}
@@ -77,11 +77,11 @@ for num_rows in "${actual_rowsArr[@]}"; do
             echo "Experiment Script Execution Time: $(($tend - $tstart - 3))" >> ${logfile}
             echo "Number of rows: ${num_rows}" >> ${logfile}
 
-            if [[ "${addOpts}" == *"--stats"* ]] && [[ "${conf}" == *"_spoof" ]]; then 
-                mkdir -p stats
-                cp stats.tsv stats/${alg}-${conf}-stats.tsv
-                cp stats-inputs.tsv stats/${alg}-${conf}-stats-inputs.tsv
-            fi
+            # if [[ "${addOpts}" == *"--stats"* ]] && [[ "${conf}" == *"_spoof_"* ]]; then 
+            #     mkdir -p stats
+            #     cp stats.tsv stats/${alg}-${conf}-stats.tsv
+            #     cp stats-inputs.tsv stats/${alg}-${conf}-stats-inputs.tsv
+            # fi
         done
     done
 done

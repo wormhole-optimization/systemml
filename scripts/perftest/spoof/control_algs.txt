@@ -1,6 +1,6 @@
-#kmeans
+kmeans
 #linregcg
 l2svm
 mlogreg
-#als-cg
-#autoencoder
+als-cg
+autoencoder

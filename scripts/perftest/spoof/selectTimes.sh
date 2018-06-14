@@ -53,7 +53,9 @@ for conf in "${confs[@]}"; do
     [[ "${f}" =~ ^logs/${alg}_${conf}\.log\.([0-9]{8}\.[0-9]{6})$ ]] && t=${BASH_REMATCH[1]} || continue
     if $(leq "${script_start}" "$t") && $(leq "$t" "${script_end}"); then
       echo $f
-      ctime=$(get_log_time "Total compilation time:" "${f}")
+      ctime1=$(get_log_time "Total compilation time:" "${f}")
+      ctime2=$(get_log_time "HOP DAGs recompile time:" "${f}")
+      ctime=$(echo $ctime1 + $ctime2 | bc)
       etime=$(get_log_time "Total execution time:" "${f}")
       num_rows=$(get_log_time "Number of rows: " "${f}")
       if [ -z "$ctime" ] && [ -z "$etime" ]; then
