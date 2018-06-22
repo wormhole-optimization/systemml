@@ -1,4 +1,4 @@
-#-------------------------------------------------------------
+    #-------------------------------------------------------------
 #
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -25,5 +25,9 @@ while(FALSE){} #prevent cse
 
 X2 = rand(rows=$1, cols=$2, pdf=$3, seed=$4) * 7;
 
-R = as.matrix(sum(rowSums(X1)==rowSums(X2)));
+# When Spoof is enabled, the rowSums is pushed into the * for X2 but not for X1, causing a very slight difference in X1 and X2.
+# The difference is no greater than epsilon.
+eps = 1e-10
+
+R = as.matrix(sum( abs(rowSums(X1) - rowSums(X2)) < eps ));
 write(R, $5);

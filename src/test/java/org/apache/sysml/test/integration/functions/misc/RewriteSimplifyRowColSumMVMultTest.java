@@ -21,6 +21,7 @@ package org.apache.sysml.test.integration.functions.misc;
 
 import java.util.HashMap;
 
+import org.apache.sysml.conf.ConfigurationManager;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -118,7 +119,7 @@ public class RewriteSimplifyRowColSumMVMultTest extends AutomatedTestBase
 			String gpuBa = "gpu_ba+*";
 			String ba = "ba+*";
 			boolean isMatmultPresent = Statistics.getCPHeavyHitterOpCodes().contains(ba) ||  Statistics.getCPHeavyHitterOpCodes().contains(gpuBa);
-			Assert.assertTrue( isMatmultPresent == rewrites );
+			Assert.assertTrue( isMatmultPresent == rewrites || !rewrites && ConfigurationManager.isSpoofEnabled());
 		}
 		finally
 		{
