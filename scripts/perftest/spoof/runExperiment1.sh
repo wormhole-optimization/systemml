@@ -6,7 +6,7 @@ set -o nounset
 runner="./sparkDML.sh"
 script_start="$(date '+%Y%m%d.%H%M%S')"
 
-sparsity=1.0
+sparsity=0.01
 addOpts="--stats --explain2 hops" # --explain2 hops"
 genData=1
 reps=1
@@ -52,7 +52,8 @@ esac
 for num_rows in "${actual_rowsArr[@]}"; do
     #if ! hdfs dfs -test -f "${fA}" || ! hdfs dfs -test -f "${fA}.mtd"; then
     if [ "${genData}" == 1 ]; then
-        cmd=$(num_cols=${num_cols} num_rows=${num_rows} sparsity=${sparsity} als_nnz=$(($num_rows * $num_cols / 100)) \
+        als_nnz=$(echo $num_rows "*" $num_cols "*" $sparsity | bc) # round down using bash string suffix deletion
+        cmd=$(num_cols=${num_cols} num_rows=${num_rows} sparsity=${sparsity} als_nnz=${als_nnz%.*} \
                 envsubst < queries/datagen_${alg}.txt)
         cmd="--config SystemML-config-default.xml ${cmd}"
         echo "${cmd}" | xargs "${runner}"

@@ -36,7 +36,7 @@ V = rand(rows = n, cols = r, pdf = "normal", seed = 456);
 I = floor(rand(rows = nnz, cols = 1, min = 1, max = m + 0.999999999));
 J = floor(rand(rows = nnz, cols = 1, min = 1, max = n + 0.999999999));
 X = rand(rows = nnz, cols = 1, pdf = "normal") * sqrt(sigma);
-N = table(I, J, X);
+N = table(I, J, X, m, n);
 X = (N != 0) * (U %*% t(V)) + N;
 write(X, Xfile, format = fmt);
 if( Ufile != " " ) {
