@@ -449,7 +449,7 @@ class SPlan2NormalForm_InsertStyle(val useDistr: Boolean) : SPlanRewriter {
             // check if an Σ pushed below a + now has a constant aggregation. If so, eliminate it by creating a constant *.
 
 
-            plus.inputs.forEach { insertAgg(it as SNodeAggregate) }
+            plus.inputs.toList().forEach { insertAgg(it as SNodeAggregate) }
             plus.refreshSchema()
             return true to plus
         } else if (aggInput is SNodeAggregate && aggInput.op == Hop.AggOp.SUM) {

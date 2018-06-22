@@ -147,7 +147,7 @@ object Hop2SPlan {
                                 else {
                                     val bs1 = i1.schema.genAllBindings()
                                     i1 = SNodeBind(i1, bs1)
-                                    boundNames += bs
+                                    boundNames += incrementNonconflict(bs1, boundNames)
                                 }
                             }
                         }
@@ -291,6 +291,17 @@ object Hop2SPlan {
         if( PRINT_SNODE_CONSTRUCTION && LOG.isInfoEnabled )
             LOG.info("compile (${current.hopID}) $current dim1=${current.dim1} dim2=${current.dim2} as (${node.id}) $node ${node.schema} ${node.inputs}")
         return node
+    }
+
+    private fun incrementNonconflict(change: Map<AU, AB>, fixed: Map<AU, AB>): Map<AU, AB> {
+        val taken = fixed.keys.toMutableSet()
+        return change.entries.sortedBy { it.key }.map { (_,v) ->
+            var nk = AU.U0
+            while (nk in taken)
+                nk = AU(nk.dim+1)
+            taken += nk
+            nk to v
+        }.toMap()
     }
 
 }
