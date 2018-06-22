@@ -460,6 +460,9 @@ object SPlan2Hop {
                         HopRewriteUtils.replaceChildReference(current.hop, current.hop.input[0], inputs[0], 0)
                     }
                     current.hop.parent.removeIf { it !is DataOp || it.input.indexOf(current.hop) == 0 }
+                    current.hop.input.forEach { inp ->
+                        repeat (current.hop.input.filter { it == inp }.count() - inp.parent.filter { it == current.hop }.count()) { inp.parent += current.hop }
+                    }
                     current.hop.resetVisitStatus() // visit status may be set from SNode construction
                     current.hop.refreshSizeInformation()
                     current.hop to mapOf()
