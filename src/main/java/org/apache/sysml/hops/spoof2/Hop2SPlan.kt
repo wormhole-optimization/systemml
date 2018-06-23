@@ -38,8 +38,8 @@ object Hop2SPlan {
         // perform one-time Hop Rewrites
         SPlanTopDownRewriter.rewriteDown(sroots, _rulesFirstOnce)
 
-//        if( SPlanRewriteRule.LOG.isTraceEnabled )
-//            SPlanRewriteRule.LOG.trace("Before bind elim: "+ Explain.explainSPlan(sroots))
+        if( SPlanRewriteRule.LOG.isTraceEnabled )
+            SPlanRewriteRule.LOG.trace("Before bind elim: "+ Explain.explainSPlan(sroots))
 
         // one-time bind elim
         var count0 = 0
@@ -69,7 +69,13 @@ object Hop2SPlan {
             return snodeMemo[current]!!
 
         //recursively process child nodes
-        val inputs = current.input.mapTo(ArrayList()) { rConstructSumProductPlan(it, snodeMemo) }
+        val inputs =
+                when {
+                    current is DataOp && current.isWrite -> arrayListOf(rConstructSumProductPlan(current.input[0], snodeMemo))
+                    current is DataOp -> arrayListOf()
+                    else -> current.input.mapTo(ArrayList()) { rConstructSumProductPlan(it, snodeMemo) }
+                }
+        current.input.take(inputs.size).forEach { it.parent -= current }
 
         //construct node for current hop
         val node: SNode = when( current ) {
@@ -287,11 +293,36 @@ object Hop2SPlan {
         }
 
         current.setVisited()
-        snodeMemo.put(current, node)
+        snodeMemo[current] = node
         if( PRINT_SNODE_CONSTRUCTION && LOG.isInfoEnabled )
             LOG.info("compile (${current.hopID}) $current dim1=${current.dim1} dim2=${current.dim2} as (${node.id}) $node ${node.schema} ${node.inputs}")
         return node
     }
+
+    private fun stripDead(node: SNode, memoDelete: MutableMap<Hop, SNode>) {
+        if( node.parents.isEmpty() && node.inputs.isNotEmpty() )
+            rStripDead(mutableSetOf(node), memoDelete)
+    }
+
+    private tailrec fun rStripDead(toRemove: MutableSet<SNode>, memoDelete: MutableMap<Hop, SNode>) {
+        if( toRemove.isEmpty() )
+            return
+        val node = toRemove.first()
+        toRemove -= node
+
+        val iter = memoDelete.iterator()
+        while (iter.hasNext()) {
+            if (iter.next().value == node)
+                iter.remove()
+        }
+
+        toRemove += node.inputs.toSet().filter {
+            it.parents.removeIf { it == node }
+            it.parents.isEmpty() && it.inputs.isNotEmpty()
+        }
+        return rStripDead(toRemove, memoDelete)
+    }
+
 
     private fun incrementNonconflict(change: Map<AU, AB>, fixed: Map<AU, AB>): Map<AU, AB> {
         val taken = fixed.keys.toMutableSet()

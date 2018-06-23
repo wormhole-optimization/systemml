@@ -39,7 +39,7 @@ object SPlan2Hop {
     )
 
     /** Whether to invoke the SPlanValidator after every rewrite pass. */
-    private const val CHECK = true
+    private const val CHECK = false
 
     private var ThrownError = false
 
@@ -459,7 +459,7 @@ object SPlan2Hop {
                     if (inputs.isNotEmpty()) {
                         HopRewriteUtils.replaceChildReference(current.hop, current.hop.input[0], inputs[0], 0)
                     }
-                    current.hop.parent.removeIf { it !is DataOp || it.input.indexOf(current.hop) == 0 }
+//                    current.hop.parent.removeIf { it !is DataOp || it.input.indexOf(current.hop) == 0 }
                     current.hop.input.forEach { inp ->
                         repeat (current.hop.input.filter { it == inp }.count() - inp.parent.filter { it == current.hop }.count()) { inp.parent += current.hop }
                     }
@@ -480,11 +480,15 @@ object SPlan2Hop {
                     if (HopRewriteUtils.isUnary(current.hop, Hop.OpOp1.CAST_AS_SCALAR)
                             && inputs[0].dataType.isScalar) {
                         // skip the cast
-                        inputs[0] to mapOf()
+                        current.hop.parent.forEach { it.input[it.input.indexOf(current.hop)] = inputs[0]; inputs[0].parent += it }
+                        current.hop.parent.clear()
+                        inputs[0] to mapOf<AU,AB>()
                     } else if (HopRewriteUtils.isUnary(current.hop, Hop.OpOp1.CAST_AS_MATRIX)
                             && inputs[0].dataType.isMatrix) {
                         // skip the cast
-                        inputs[0] to mapOf()
+                        current.hop.parent.forEach { it.input[it.input.indexOf(current.hop)] = inputs[0]; inputs[0].parent += it }
+                        current.hop.parent.clear()
+                        inputs[0] to mapOf<AU,AB>()
                     } else {
                         // change input orientation if necessary
                         for (i in inputs.indices) {
@@ -514,8 +518,8 @@ object SPlan2Hop {
                             for (c in inputs)
                                 current.hop.addInput(c)
                         }
-                        current.hop.parent.removeIf { it !is DataOp || it.input.indexOf(current.hop) == 0 }
-                        current.hop to mapOf()
+//                        current.hop.parent.removeIf { it !is DataOp || it.input.indexOf(current.hop) == 0 }
+                        current.hop to mapOf<AU,AB>()
                     }
                 }
                 is SNodeAggregate -> reconstructAggregate(current, hopMemo)

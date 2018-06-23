@@ -31,7 +31,7 @@ import java.util.HashMap
  */
 object SPlanCseEliminator {
     /** Whether to invoke the SPlanValidator after every rewrite pass. */
-    private const val CHECK = true
+    private const val CHECK = false
     private const val LOG_ALL_CSE_ELIM = false
     private val LOG = LogFactory.getLog(SPlanCseEliminator::class.java)!!
 
