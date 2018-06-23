@@ -22,9 +22,13 @@
 args<-commandArgs(TRUE)
 options(digits=22)
 library(Matrix)
-X = matrix(  c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15), nrow=3, ncol=5, byrow = TRUE)
-U = matrix(  c(9,8,7,6,5,4,3,2,1), nrow=3, ncol=3, byrow = TRUE)
-V = matrix(  c(9,8,7,6,5,4,3,2,1,2,3,4,5,6,7), nrow=5, ncol=3, byrow = TRUE)
+r=500
+c=500
+t=10
+#X = diag(r) * 7
+X = matrix(7, nrow=r, ncol=c, byrow = TRUE)
+U = matrix(2, nrow=r, ncol=t, byrow = TRUE)
+V = matrix(3, nrow=c, ncol=t, byrow = TRUE)
 
 R = sum((X - U %*% t(V)) ^ 2)
 

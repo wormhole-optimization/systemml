@@ -74,7 +74,7 @@ class Spoof2Test(
         //	TEST_NAME+29;  //((X * X^2.2) %*% Y)
         //	TEST_NAME+30;  //((X * Z) %*% Y)
         //	TEST_NAME+31;  //(A%*%B)%*%(A%*%B)
-        //	TEST_NAME+32;  *//sum((X - U %*% t(V)) ^ 2)
+        //	TEST_NAME+32;  *//sum((X - U %*% t(V)) ^ 2)    ---- change t dimensions to change the found plan
         //	TEST_NAME+33;  //(A%*%B)*(A%*%B)
         //	TEST_NAME+34;  //rowSums(A^2)*rowSums(A)
         //	TEST_NAME+35;  //A*rowSums(A^2)

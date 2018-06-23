@@ -132,7 +132,7 @@ public class DMLConfig
 		_defaultVals.put(CP_PARALLEL_IO,         "true" );
 		_defaultVals.put(COMPRESSED_LINALG,      Compression.CompressConfig.AUTO.name() );
 		_defaultVals.put(SPOOF,                  "true" );  // hehe
-		_defaultVals.put(SPOOF_USE_SCRIPT_FACT,  "both" );
+		_defaultVals.put(SPOOF_USE_SCRIPT_FACT,  "best" );
 		_defaultVals.put(CODEGEN,                "false" );
 		_defaultVals.put(CODEGEN_COMPILER,       CompilerType.AUTO.name() );
 		_defaultVals.put(CODEGEN_OPTIMIZER,      PlanSelector.FUSE_COST_BASED_V2.name() );

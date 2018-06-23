@@ -19,10 +19,18 @@
 #
 #-------------------------------------------------------------
 
-X= matrix( "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15", rows=3, cols=5)
-U= matrix( "9 8 7 6 5 4 3 2 1", rows=3, cols=3)
-V= matrix( "9 8 7 6 5 4 3 2 1 2 3 4 5 6 7", rows=5, cols=3)
+r=500
+c=500
+t=10   # change to 500 to see a different plan
+m=min(r,c)
+
+X= matrix(7, rows=r, cols=c)
+#X= table(seq(1,r),seq(1,r)) * 7
+
+U= matrix(2, rows=r, cols=t)
+V= matrix(3, rows=c, cols=t)
 while(FALSE) {}
+
 R = as.matrix(sum((X - U %*% t(V)) ^ 2))
 
 write(R,$1)
