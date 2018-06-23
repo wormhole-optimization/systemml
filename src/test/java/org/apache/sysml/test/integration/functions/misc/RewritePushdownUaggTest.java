@@ -21,6 +21,7 @@ package org.apache.sysml.test.integration.functions.misc;
 
 import java.util.HashMap;
 
+import org.apache.sysml.conf.ConfigurationManager;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -112,7 +113,7 @@ public class RewritePushdownUaggTest extends AutomatedTestBase
 			
 			String HOME = SCRIPT_DIR + TEST_DIR;
 			fullDMLScriptName = HOME + testname + ".dml";
-			programArgs = new String[]{ "-stats","-args", input("X"), output("R") };
+			programArgs = new String[]{ "-stats","-explain", "hops","-args", input("X"), output("R") };
 			
 			fullRScriptName = HOME + testname + ".R";
 			rCmd = getRCmd(inputDir(), expectedDir());			
@@ -133,13 +134,13 @@ public class RewritePushdownUaggTest extends AutomatedTestBase
 			//check matrix mult existence
 			String check = null;
 			if( testname.equals(TEST_NAME1) ) //colsums
-				check = rewrites ? "uark+" : "uack+";
+				check = rewrites || ConfigurationManager.isSpoofEnabled() ? "uark+" : "uack+";
 			else if( testname.equals(TEST_NAME2) ) //rowsums
-				check = rewrites ? "uack+" : "uark+";
+				check = rewrites || ConfigurationManager.isSpoofEnabled() ? "uack+" : "uark+";
 			else if( testname.equals(TEST_NAME3) ) //colmins
-				check = rewrites ? "uarmin" : "uacmin";
+				check = rewrites || ConfigurationManager.isSpoofEnabled() ? "uarmin" : "uacmin";
 			else if( testname.equals(TEST_NAME4) ) //rowmins
-				check = rewrites ? "uacmin" : "uarmin";
+				check = rewrites || ConfigurationManager.isSpoofEnabled() ? "uacmin" : "uarmin";
 
 			String gpuCheck = "gpu_" + check;
 			boolean containsOpcode = Statistics.getCPHeavyHitterOpCodes().contains(check) || Statistics.getCPHeavyHitterOpCodes().contains(gpuCheck);

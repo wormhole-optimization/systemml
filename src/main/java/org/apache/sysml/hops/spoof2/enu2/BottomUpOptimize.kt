@@ -14,7 +14,7 @@ import java.util.*
 class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
     val nnzInfer: NnzInfer = dogbs.nnzInfer
     val costQueue: PriorityQueue<Construct> = PriorityQueue(compareBy { -it.recCost })
-    val stats = this.Statistics()
+    val stats: Statistics = if (DO_STATS) this.StatisticsOn() else this.StatisticsOff()
     val tgs = TargetGraphs(dogbs, this)
     val frontier = FRONTIER_OPENING.make(tgs, FRONTIER_ORDER_STRATEGY.make())
 
@@ -102,7 +102,7 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
         private val FRONTIER_ORDER_STRATEGY = FrontierOrderStrategy.SMART
         private val FRONTIER_OPENING = DoOpeningBook.YES
 
-        private const val DO_STATS = true
+        private const val DO_STATS = false                  // Warning: writing to files is not thread-safe (ParFor)
         private const val STAT_FOLDER = "buo_stats"
         private const val STAT_FILE_PREFIX = "buo_stats_"
         private const val STAT_FILE_SUFFIX = ".tsv"
@@ -113,7 +113,26 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
         private var globalStatsCounter = 0L
     }
 
-    inner class Statistics : AutoCloseable {
+    abstract inner class Statistics : AutoCloseable {
+        abstract fun logBuoIteration(iter: Long)
+        abstract fun logPrunedConstruct(type: Construct.Status)
+        abstract var longestIter: Long
+        abstract fun setStart(startTime: Long)
+        abstract fun logTimeout()
+        abstract fun logCreatedConstruct()
+    }
+
+    inner class StatisticsOff : Statistics() {
+        override fun close() {}
+        override fun logBuoIteration(iter: Long) {}
+        override fun logPrunedConstruct(type: Construct.Status) {}
+        override var longestIter: Long = -1
+        override fun setStart(startTime: Long) {}
+        override fun logTimeout() {}
+        override fun logCreatedConstruct() {}
+    }
+
+    inner class StatisticsOn : Statistics() {
         init {
             val folder = File(STAT_FOLDER)
             if (!folder.exists())
@@ -134,10 +153,10 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
         var cntGlobalPruned = 0L
         var cntLocalPruned = 0L
         var cntRecomputePruned = 0L
-        var longestIter = 0L
+        override var longestIter = 0L
         var timeout = false
 
-        fun logBuoIteration(iter: Long) {
+        override fun logBuoIteration(iter: Long) {
             longestIter = iter
             val elapsed = System.currentTimeMillis() - startTime
             val frontierSize = frontier.size
@@ -174,7 +193,7 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
             }
         }
 
-        fun logPrunedConstruct(type: Construct.Status) {
+        override fun logPrunedConstruct(type: Construct.Status) {
             when (type) {
                 Construct.Status.PRUNED_GLOBAL -> cntGlobalPruned++
                 Construct.Status.PRUNED_LOCAL -> cntLocalPruned++
@@ -183,17 +202,17 @@ class BottomUpOptimize(dogbs: DagOfGraphBagSlice) {
             }
         }
 
-        fun logCreatedConstruct() {
+        override fun logCreatedConstruct() {
             cntCreated++
         }
 
-        fun setStart(startTime: Long) {
+        override fun setStart(startTime: Long) {
             this.startTime = startTime
         }
 
         fun Long.toStringNoZero(): String = if (this == 0L) "" else this.toString()
 
-        fun logTimeout() { timeout = true }
+        override fun logTimeout() { timeout = true }
     }
 
 

@@ -23,6 +23,7 @@ object Spoof2Compiler {
     internal val LOG = LogFactory.getLog(Spoof2Compiler::class.java.name)
 
     //internal configuration flags
+    private const val CHECK = false
     private const val LDEBUG = DMLConfig.SPOOF_DEBUG
     init {
         if (LDEBUG) Logger.getLogger("org.apache.sysml.hops.spoof2").level = Level.TRACE
@@ -219,7 +220,8 @@ object Spoof2Compiler {
         // remember top-level orientations
         val rootClasses = roots.map(Hop::classify)
 
-        HopDagValidator.validateHopDag(roots)
+        if (CHECK)
+            HopDagValidator.validateHopDag(roots)
 
         //construct sum-product plan
         var sroots = Hop2SPlan.hop2SPlan(roots)
@@ -417,7 +419,8 @@ object Spoof2Compiler {
 
         if (LOG.isTraceEnabled)
             LOG.trace("Spoof2Compiler created modified HOP DAG: \n" + Explain.explainHops(roots2))
-        HopDagValidator.validateHopDag(roots2)
+        if (CHECK)
+            HopDagValidator.validateHopDag(roots2)
 
         //rewrite after applied sum-product optimizer
         ProgramRewriter(RewriteCommonSubexpressionElimination()).rewriteHopDAG(roots, ProgramRewriteStatus())
@@ -429,7 +432,8 @@ object Spoof2Compiler {
 //        if( doDynamicProgramRewriter )
 //            RewriteAlgebraicSimplificationDynamic().rewriteHopDAGs(roots2, ProgramRewriteStatus())
 
-        HopDagValidator.validateHopDag(roots2)
+        if (CHECK)
+            HopDagValidator.validateHopDag(roots2)
         if (LOG.isTraceEnabled)
             LOG.trace("Spoof2Compiler rewritten modified HOP DAG: \n" + Explain.explainHops(roots2))
 
