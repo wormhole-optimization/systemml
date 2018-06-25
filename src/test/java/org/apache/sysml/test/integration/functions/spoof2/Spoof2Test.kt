@@ -144,8 +144,9 @@ class Spoof2Test(
         //	TEST_NAME+98;  //NN snippet
         //	TEST_NAME+99;  //t(A)%*%A%*%B%*%C%*%D, B%*%C%*%D%*%E%*%A
         //	TEST_NAME+100; //((S %*% t(V)) * W) %*% V
+        //	TEST_NAME+101; //(X != 0) * X
         private const val NUM_TESTS = 73
-        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..100)
+        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..101)
         private val _DO_DOT: List<Pair<Int, DC>> = listOf(
 //                85 to DC(arrayListOf(29, 30), performSpoofRewrites = false),
 //                85 to DC(arrayListOf(29, 30))
@@ -247,8 +248,13 @@ class Spoof2Test(
 
             //ensure full aggregates for certain patterns
             val testnum = testname.substring(TEST_NAME.length, testname.length).toInt()
-            if ("-stats" in programArgs && testnum in listOf(82, 84, 95))
-                Assert.assertTrue(heavyHittersContainsSubString("-"))
+            if ("-stats" in programArgs) {
+                if (testnum in listOf(82, 84, 95))
+                    Assert.assertTrue(heavyHittersContainsSubString("-"))
+                if (testnum == 101)
+                    Assert.assertTrue(!heavyHittersContainsSubString("!=")) // see RewriteAlgebraicSimplificationStatic#removeSelfMultiplyNoteq
+            }
+
 
         } finally {
             AutomatedTestBase.rtplatform = platformOld
