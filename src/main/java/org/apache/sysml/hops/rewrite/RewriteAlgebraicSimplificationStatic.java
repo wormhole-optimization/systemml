@@ -19,10 +19,7 @@
 
 package org.apache.sysml.hops.rewrite;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
+import java.util.*;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -181,6 +178,7 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 			}
 			hi = simplifyOuterSeqExpand(hop, hi, i);             //e.g., outer(v, seq(1,m), "==") -> rexpand(v, max=m, dir=row, ignore=true, cast=false)
 			//hi = removeUnecessaryPPred(hop, hi, i);            //e.g., ppred(X,X,"==")->matrix(1,rows=nrow(X),cols=ncol(X))
+			hi = removeSelfMultiplyNoteq(hop, hi, i);            // (X != 0) * X  -> X
 
 			//process childs recursively after rewrites (to investigate pattern newly created by rewrites)
 			if( !descendFirst )
@@ -1846,4 +1844,82 @@ public class RewriteAlgebraicSimplificationStatic extends HopRewriteRule
 		
 		return hi;
 	}
+
+	/**
+	 * If this hop is a '!=' op and one of the inputs is a literal 0,
+	 * then returns the index of the input that is a literal 0 (i.e., either 0 or 1). Otherwise returns -1.
+	 *
+	 * @param hop The hop to test.
+	 * @return -1, 0, or 1.
+	 */
+	private static int indexOfNoteqZero(Hop hop) {
+		if (hop instanceof BinaryOp && ((BinaryOp) hop).getOp() == OpOp2.NOTEQUAL)
+		{
+			if (HopRewriteUtils.isLiteralOfValue(hop.getInput().get(0), 0))
+				return 0;
+			else if (HopRewriteUtils.isLiteralOfValue(hop.getInput().get(1), 0))
+				return 1;
+		}
+		return -1;
+	}
+
+	private static int other01(int i) {
+		switch (i) {
+			case 0: return 1;
+			case 1: return 0;
+			default: throw new AssertionError();
+		}
+	}
+
+	/**
+	 * Pattern: (X != 0) * X  -> X.
+	 *
+	 * @param parent parent high-level operator, corresponding to the parent of '*'.
+	 * @param hi high-level operator, corresponding to the '*'.
+	 * @param pos position, index of hi in the inputs of parent.
+	 * @return replacement for high-level operator hi, which is X if this rule applies.
+	 */
+	private static Hop removeSelfMultiplyNoteq(final Hop parent, final Hop hi, final int pos)
+	{
+		if( hi instanceof BinaryOp && ((BinaryOp) hi).getOp() == OpOp2.MULT )
+		{
+			final BinaryOp mult = (BinaryOp)hi;
+			// check left and right child for presence of the '!=' op, mc
+			for (int mci = 0; mci <= 1; mci++)
+			{
+				final Hop mc = mult.getInput().get(mci);
+				final Hop mcOther = mult.getInput().get(other01(mci));
+				final int mcIdxZero = indexOfNoteqZero(mc);
+
+				if (mcIdxZero != -1)
+				{
+					final Hop zero = mc.getInput().get(mcIdxZero);
+					final Hop X = mc.getInput().get(other01(mcIdxZero));
+					if (X == mcOther)
+					{
+						// connect parents of * to X; eliminate *
+						X.getParent().remove(mult);
+						for (Hop p : mult.getParent())
+						{
+							p.getInput().set(p.getInput().indexOf(mult), X);
+							X.getParent().add(p);
+						}
+						mult.getParent().clear();
+						mc.getParent().remove(mult);
+						if (mc.getParent().isEmpty())
+						{
+							X.getParent().remove(mc);
+							zero.getParent().remove(mc);
+						}
+						if (LOG.isDebugEnabled())
+							LOG.debug("Applied removeSelfMultiplyNoteq (line "+hi.getBeginLine()+")");
+						return X;
+					}
+				}
+			}
+		}
+		return hi;
+	}
+
+
 }
