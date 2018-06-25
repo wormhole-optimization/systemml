@@ -190,6 +190,9 @@ object ParseExplain {
                         when (op) {
                             "cast_as_scalar" -> Hop.OpOp1.CAST_AS_SCALAR
                             "cast_as_matrix" -> Hop.OpOp1.CAST_AS_MATRIX
+                            "cast_as_int" -> Hop.OpOp1.CAST_AS_INT
+                            "cast_as_double" -> Hop.OpOp1.CAST_AS_DOUBLE
+                            "cast_as_boolean" -> Hop.OpOp1.CAST_AS_BOOLEAN
                             else -> (Hop.HopsOpOp12String.entries.find { (_, v) -> v == op }
                                     ?: throw RuntimeException("Not in OpOp1: $firstWord")).key
                         }

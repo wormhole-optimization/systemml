@@ -50,7 +50,7 @@ case "${alg}" in
 esac
 
 for num_rows in "${actual_rowsArr[@]}"; do
-    #if ! hdfs dfs -test -f "${fA}" || ! hdfs dfs -test -f "${fA}.mtd"; then
+    #if ! hdfs dfs -test -f "${fA}" || ! hdfs dfs -test -f "${fA}.mtd"; then      #localhost:50070/dfshealth.html
     if [ "${genData}" == 1 ]; then
         als_nnz=$(echo $num_rows "*" $num_cols "*" $sparsity | bc) # round down using bash string suffix deletion
         cmd=$(num_cols=${num_cols} num_rows=${num_rows} sparsity=${sparsity} als_nnz=${als_nnz%.*} \

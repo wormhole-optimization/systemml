@@ -280,7 +280,7 @@ public class OptimizerUtils
 
 		//handle optimization level
 		int optlevel = dmlconf.getIntValue(DMLConfig.OPTIMIZATION_LEVEL);
-		if( optlevel < 0 || optlevel > 7 )
+		if( optlevel < 0 || optlevel > 8 )
 			throw new DMLRuntimeException("Error: invalid optimization level '"+optlevel+"' (valid values: 0-5).");
 	
 		// This overrides any optimization level that is present in the configuration file.
@@ -358,6 +358,11 @@ public class OptimizerUtils
 				cconf.set(ConfigType.OPT_LEVEL, OptimizationLevel.O2_LOCAL_MEMORY_DEFAULT.ordinal());
 				ALLOW_OPERATOR_FUSION = false;
 				ALLOW_AUTO_VECTORIZATION = false;
+				ALLOW_SUM_PRODUCT_REWRITES = false;
+				break;
+			case 8:
+				cconf.set(ConfigType.OPT_LEVEL, OptimizationLevel.O2_LOCAL_MEMORY_DEFAULT.ordinal());
+				ALLOW_OPERATOR_FUSION = false;
 				ALLOW_SUM_PRODUCT_REWRITES = false;
 				break;
 		}
