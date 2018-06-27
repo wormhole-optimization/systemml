@@ -4,7 +4,7 @@ set -o pipefail
 set -o nounset
 # set -o xtrace
 
-dir="testdml2dot"
+dir="."
 
 for dotfile in "${dir}"/*.dot; do
     pdffile="${dotfile%.dot}.pdf"

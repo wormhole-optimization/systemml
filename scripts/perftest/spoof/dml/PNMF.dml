@@ -19,19 +19,24 @@
 #
 #-------------------------------------------------------------
 
-args<-commandArgs(TRUE)
-options(digits=22)
-library(Matrix)
-r=500
-c=500
-t=10
+fmt = $fmt;
+X = read($X, format = fmt);
+W = read($W, format = fmt);
+H = read($H, format = fmt);
 
-X = diag(r) * 7
-#X = matrix(7, nrow=r, ncol=c, byrow = TRUE)
 
-U = matrix(2, nrow=r, ncol=t, byrow = TRUE)
-V = matrix(3, nrow=c, ncol=t, byrow = TRUE)
+eps = $epsilon; 
+max_iter = $maxi;
+iter = 1;
 
-R = sum((X - U %*% t(V)) ^ 2)
+while( iter < max_iter ) {
+   H = (H*(t(W)%*%(X/(W%*%H+eps)))) / t(colSums(W));
+   W = (W*((X/(W%*%H+eps))%*%t(H))) / t(rowSums(H));
+   obj = sum(W%*%H) - sum(X*log(W%*%H+eps));
+   print("iter=" + iter + " obj=" + obj);
+   iter = iter + 1;
+}
 
-writeMM(as(R, "CsparseMatrix"), paste(args[2], "S", sep=""));
+write(W, $Wout, format = fmt);
+write(H, $Hout, format = fmt);
+

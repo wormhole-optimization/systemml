@@ -362,8 +362,8 @@ public class OptimizerUtils
 				break;
 			case 8:
 				cconf.set(ConfigType.OPT_LEVEL, OptimizationLevel.O2_LOCAL_MEMORY_DEFAULT.ordinal());
-				ALLOW_OPERATOR_FUSION = false;
-				ALLOW_SUM_PRODUCT_REWRITES = false;
+//				ALLOW_OPERATOR_FUSION = false;
+//				ALLOW_SUM_PRODUCT_REWRITES = false;
 				break;
 		}
 		

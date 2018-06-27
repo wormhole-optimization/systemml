@@ -19,19 +19,20 @@
 #
 #-------------------------------------------------------------
 
-args<-commandArgs(TRUE)
-options(digits=22)
-library(Matrix)
-r=500
-c=500
-t=10
+Xfile = $X; # input matrix X of size m x n
+Wfile = $W; # original row factor of size m x r
+Hfile = $H; # original col factor of size r x n
+m = $rows; # no. of rows of X
+n = $cols; # no. of cols of X
+r = $rank; # rank of factorization
+fmt = ifdef ($fmt, "binary"); # output format
+sp = $sparsity # sparsity of X
 
-X = diag(r) * 7
-#X = matrix(7, nrow=r, ncol=c, byrow = TRUE)
+W = rand(rows = m, cols = r, pdf = "uniform", min = 0, max = 1, seed = 123);
+H = rand(rows = r, cols = n, pdf = "uniform", min = 0, max = 1, seed = 456);
+X = rand(rows = m, cols = n, pdf = "uniform", min = 0, max = 1, seed = 456, sparsity = sp);
 
-U = matrix(2, nrow=r, ncol=t, byrow = TRUE)
-V = matrix(3, nrow=c, ncol=t, byrow = TRUE)
+write(X, Xfile, format = fmt);
+write(W, Wfile, format = fmt);
+write(H, Hfile, format = fmt);
 
-R = sum((X - U %*% t(V)) ^ 2)
-
-writeMM(as(R, "CsparseMatrix"), paste(args[2], "S", sep=""));

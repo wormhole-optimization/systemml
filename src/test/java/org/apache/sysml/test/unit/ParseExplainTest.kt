@@ -1,5 +1,6 @@
 package org.apache.sysml.test.unit
 
+import org.apache.sysml.hops.Hop
 import org.apache.sysml.hops.OptimizerUtils
 import org.apache.sysml.utils.Explain
 import org.apache.sysml.utils.ParseExplain
@@ -38,19 +39,28 @@ class ParseExplainTest {
      */
     @Test
     fun testLiveInput() {
-        val f = File("explain.txt")
-        if( !f.exists() ) {
-            Assume.assumeTrue("Please place the Explain output you wish to recover into ${f.absolutePath}", false)
+        val pres = listOf("explain-als-cg-mod-best")
+
+        for (pre in pres) {
+            val f = File("$pre.txt")
+            if (!f.exists()) {
+                Assume.assumeTrue("Please place the Explain output you wish to recover into ${f.absolutePath}", false)
+            }
+            val lines = f.readLines()
+            val hops: List<Hop>
+            try {
+                hops = ParseExplain.explainToHopDag(lines)
+            } catch (e: Exception) {
+                throw RuntimeException("Trouble parsing file $pre.txt", e)
+            }
+            println(Explain.explainHops(hops))
+
+            val dot = Explain.hop2dot(hops)
+            println(dot)
+
+            val fout = File("$pre.dot")
+            fout.writeText(dot.toString())
+            //dot -Tpdf explain.dot -o explain.pdf && xreader explain.pdf &
         }
-        val lines = f.readLines()
-        val hops = ParseExplain.explainToHopDag(lines)
-        println(Explain.explainHops(hops))
-
-        val dot = Explain.hop2dot(hops)
-        println(dot)
-
-        val fout = File("explain.dot")
-        fout.writeText(dot.toString())
-        //dot -Tpdf explain.dot -o explain.pdf && xreader explain.pdf &
     }
 }

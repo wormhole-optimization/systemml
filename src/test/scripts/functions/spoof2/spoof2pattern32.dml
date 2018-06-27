@@ -24,8 +24,8 @@ c=500
 t=10   # change to 500 to see a different plan
 m=min(r,c)
 
-X= matrix(7, rows=r, cols=c)
-#X= table(seq(1,r),seq(1,r)) * 7
+#X= matrix(7, rows=r, cols=c)
+X= table(seq(1,r),seq(1,r)) * 7
 
 U= matrix(2, rows=r, cols=t)
 V= matrix(3, rows=c, cols=t)

@@ -4,3 +4,5 @@ l2svm
 mlogreg
 als-cg
 autoencoder
+als-cg-mod
+pnmf

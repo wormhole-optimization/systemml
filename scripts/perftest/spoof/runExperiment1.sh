@@ -7,10 +7,10 @@ runner="./sparkDML.sh"
 script_start="$(date '+%Y%m%d.%H%M%S')"
 
 sparsity=0.01
-addOpts="--stats --explain2 hops" # --explain2 hops"
-genData=1
+addOpts="--stats --explain2 recompile_hops" # --explain2 recompile_hops"
+genData=0
 reps=1
-saveTimes=1
+saveTimes=0
 
 algs=() # linregcg kmeans l2svm mlogreg ) #linregcg kmeans mlogreg l2svm ) #glm-binomial-probit )
 confs=() # none none_spoof default_spoof default )
@@ -35,7 +35,7 @@ num_rowsArr_reduced=( 5000 )
 # num_rowsArr_expanded=( 500000000 )
 for alg in "${algs[@]}"; do
 case "${alg}" in
-    "als-cg"|"autoencoder")
+    "als-cg"|"autoencoder"|"als-cg-mod"|"pnmf")
         actual_rowsArr=${num_rowsArr_reduced}
         num_cols=10000 # als-cg: rank set to 10 or 20
         ;;

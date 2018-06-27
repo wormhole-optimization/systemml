@@ -43,7 +43,7 @@ object ParseExplain {
      * 14. memory estimate
      */
     // todo - relax to not necessarily need data type and value type
-    private val regexLine = Regex("^-*\\((\\d+)\\) (.+?) (\\((?:(?:\\d+|\\[.+]),)*(?:\\d+|\\[.+])\\) )?\\[(-?\\d+),(-?\\d+),(-?\\d+),(-?\\d+),(-?\\d+)](\\w)(\\w) \\[(-|\\d+|MAX),(-|\\d+|MAX),(-|\\d+|MAX) -> (-|\\d+|MAX)MB].*$")
+    private val regexLine = Regex("^-*\\((\\d+)\\) (.+?) (\\((?:(?:\\d+|\\[.+]),)*(?:\\d+|\\[.+])\\) )?\\[(-?\\d+),(-?\\d+),(-?\\d+),(-?\\d+),(-?\\d+)](\\w)(\\w) \\[(-|\\d+|MAX),(-|\\d+|MAX),(-|\\d+|MAX) -> (-|\\d+MB|MAX)].*$")
 
     private fun parseLine(explainLine: String,
                           memo: HashMap<Long, Hop>, literals: HashMap<String, Long>, roots: HashSet<Long>
@@ -104,7 +104,8 @@ object ParseExplain {
         return when( str ) {
             "MAX" -> OptimizerUtils.DEFAULT_SIZE
             "-" -> -1.0
-            else -> str.toDouble()*1024*1024
+            else -> (if (str.endsWith("MB")) str.substring(0, str.length-2) else str)
+                    .toDouble()*1024*1024
         }
     }
 
@@ -260,6 +261,10 @@ object ParseExplain {
                         "sparsity" to memo[getLiteralOp("1.0", literals, memo)]
                         )) // todo reconstruct DataGen
             }
+            firstWord.startsWith("spoof(") && firstWord.last() == ')' -> { // SPOOF CODEGEN OP
+//                val op = firstWord.substring(3, firstWord.length - 1)
+                NaryOp(inp[0].name, dataType, valueType, Hop.OpOpN.PRINTF, *inp.plus(LiteralOp(firstWord)).toTypedArray())
+            }
             else -> {
                 when (firstWord) {
                     "TRead" -> DataOp(remainder, dataType, valueType, Hop.DataOpTypes.TRANSIENTREAD,
@@ -272,6 +277,8 @@ object ParseExplain {
                     "m(printf)" -> NaryOp(inp[0].name, dataType, valueType, Hop.OpOpN.PRINTF, *inp.toTypedArray())
                     "m(cbind)" -> NaryOp(inp[0].name, dataType, valueType, Hop.OpOpN.CBIND, *inp.toTypedArray())
                     "m(rbind)" -> NaryOp(inp[0].name, dataType, valueType, Hop.OpOpN.RBIND, *inp.toTypedArray())
+//                    "q(wsloss)" -> QuaternaryOp(inp[0].name, Expression.DataType.SCALAR, Expression.ValueType.DOUBLE,
+//                            Hop.OpOp4.WSLOSS, inp[0], inp[1], inp[2], inp[3], true)
                     else -> throw RuntimeException("Cannot recognize Hop in: $opString")
                 }
             }

@@ -25,11 +25,11 @@ T2c = data.table(alg=T2$alg, type=T2$type, execute=T2$compile)
 colors=c("lightblue", "blue", "green", "darkgreen")
 #colorsLeg=rbind(colors,c("orange"))
 linetype=c(1,1,1,1) #2,2,2,2,1,1,1,1)
-legdisp=c("Default SystemML", "Spoof, no + factorization", "Spoof, using script + factorization", "Spoof, using best of the two")
+legdisp=c("Default SystemML (no fused ops)", "Spoof, no + factorization", "Spoof, using script + factorization", "Spoof, using best of the two")
 #compile + execute ~ alg
 #auto.key=list(space="inside", x=0.01, y=0.93)
 
-p1 <- barchart(execute ~ alg, groups=type, T2e, key=list(rep=FALSE, corner=c(0,0), x=0.44, y=0.88, text=list(legdisp), rectangles=list(col=colors)), outer=TRUE, par.settings=list(superpose.polygon=list(col=colors, lty=linetype)), main=paste("Performance of Optimized Plans"), sub=paste("Plotted on", Sys.time(), "; 10M x 10 rows for all except als-cg and autoencoder at 5k x 10k"), ylim=c(0,max(T2$execute*1.02, T2$compile*1.02)), scales=list(x=list(rot=0)), ylab="Execution Time (s) [Compile time, including dynamic recompile, shown at bottom in orange]")
+p1 <- barchart(execute ~ alg, groups=type, T2e, key=list(rep=FALSE, corner=c(0,0), x=0.44, y=0.88, text=list(legdisp), rectangles=list(col=colors)), outer=TRUE, par.settings=list(superpose.polygon=list(col=colors, lty=linetype)), main=paste("Performance of Optimized Plans"), sub=paste("Plotted", Sys.time(), " Size 10M x 10 except als-cg, autoencoder at 5k x 10k; sparsity 0.01"), ylim=c(0,max(T2$execute*1.02, T2$compile*1.02)), scales=list(x=list(rot=0)), ylab="Execution Time (s) [Compile time, including dynamic recompile, shown at bottom in orange]")
 p2 <- barchart(execute ~ alg, groups=type, T2c, outer=TRUE, par.settings=list(superpose.polygon=list(col="orange", lty=linetype)))
 p1 + p2
 
