@@ -56,7 +56,7 @@ for conf in "${confs[@]}"; do
       ctime1=$(get_log_time "Total compilation time:" "${f}")
       ctime2=$(get_log_time "HOP DAGs recompile time:" "${f}")
       ctime=$(echo $ctime1 + $ctime2 | bc)
-      etime=$(get_log_time "Total execution time:" "${f}")
+      etime=$(get_log_time "Total elapsed time:" "${f}")   # sum of compile and execute
       num_rows=$(get_log_time "Number of rows: " "${f}")
       if [ -z "$ctime" ] && [ -z "$etime" ]; then
         ctime=0

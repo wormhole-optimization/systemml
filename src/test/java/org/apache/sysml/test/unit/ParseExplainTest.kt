@@ -24,43 +24,16 @@ class ParseExplainTest {
         val hops = ParseExplain.explainToHopDag(explain)
         println(Explain.explainHops(hops))
 
-//        val statement = OutputStatement()
-//        val sb = StatementBlock()
-//        sb.addStatement()
-//        val dml = DMLProgram()
-//        dml.statementBlocks.add(sb)
-
         val dot = Explain.hop2dot(hops)
         println(dot)
     }
 
-    /**
-     * Read in Explain input for one Hop Dag from `explain.txt` into a DOT file, saved at `dot.dot`.
-     */
-    @Test
-    fun testLiveInput() {
-        val pres = listOf("explain-als-cg-mod-best")
-
-        for (pre in pres) {
-            val f = File("$pre.txt")
-            if (!f.exists()) {
-                Assume.assumeTrue("Please place the Explain output you wish to recover into ${f.absolutePath}", false)
-            }
-            val lines = f.readLines()
-            val hops: List<Hop>
-            try {
-                hops = ParseExplain.explainToHopDag(lines)
-            } catch (e: Exception) {
-                throw RuntimeException("Trouble parsing file $pre.txt", e)
-            }
-            println(Explain.explainHops(hops))
-
-            val dot = Explain.hop2dot(hops)
-            println(dot)
-
-            val fout = File("$pre.dot")
-            fout.writeText(dot.toString())
-            //dot -Tpdf explain.dot -o explain.pdf && xreader explain.pdf &
-        }
-    }
+//    /**
+//     * Read in Explain input for one Hop Dag from `explain.txt` into a DOT file, saved at `dot.dot`.
+//     */
+//    @Test
+//    fun testLiveInput() {
+//        val pres = listOf("explain-als-cg-mod-best.txt")
+//        ParseExplain.main(pres.toTypedArray())
+//    }
 }

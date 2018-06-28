@@ -4,9 +4,10 @@ import org.apache.sysml.hops.*
 import org.apache.sysml.hops.Hop.HopsAgg2String
 import org.apache.sysml.parser.DataIdentifier
 import org.apache.sysml.parser.Expression
+import java.io.File
+import java.io.IOException
 
 object ParseExplain {
-
 
     fun explainToHopDag(explainLines: List<String>): ArrayList<Hop> {
         val memo = HashMap<Long, Hop>()
@@ -277,8 +278,16 @@ object ParseExplain {
                     "m(printf)" -> NaryOp(inp[0].name, dataType, valueType, Hop.OpOpN.PRINTF, *inp.toTypedArray())
                     "m(cbind)" -> NaryOp(inp[0].name, dataType, valueType, Hop.OpOpN.CBIND, *inp.toTypedArray())
                     "m(rbind)" -> NaryOp(inp[0].name, dataType, valueType, Hop.OpOpN.RBIND, *inp.toTypedArray())
-//                    "q(wsloss)" -> QuaternaryOp(inp[0].name, Expression.DataType.SCALAR, Expression.ValueType.DOUBLE,
-//                            Hop.OpOp4.WSLOSS, inp[0], inp[1], inp[2], inp[3], true)
+                    "q(wsloss)" -> QuaternaryOp(inp[0].name, dataType, valueType,
+                            Hop.OpOp4.WSLOSS, inp[0], inp[1], inp[2], inp[3], true)
+                    "q(wdivmm)" -> QuaternaryOp(inp[0].name, dataType, valueType,
+                            Hop.OpOp4.WDIVMM, inp[0], inp[1], inp[2], inp[3], true)
+                    "q(wcemm)" -> QuaternaryOp(inp[0].name, dataType, valueType,
+                            Hop.OpOp4.WCEMM, inp[0], inp[1], inp[2], inp[3], true)
+                    "q(wumm)" -> QuaternaryOp(inp[0].name, dataType, valueType,
+                            Hop.OpOp4.WUMM, inp[0], inp[1], inp[2], inp[3], true)
+                    "q(wsigmoid)" -> QuaternaryOp(inp[0].name, dataType, valueType,
+                            Hop.OpOp4.WSIGMOID, inp[0], inp[1], inp[2], inp[3], true)
                     else -> throw RuntimeException("Cannot recognize Hop in: $opString")
                 }
             }
@@ -300,5 +309,56 @@ object ParseExplain {
         return if( idx == -1 ) str to ""
         else str.substring(0, idx) to str.substring(idx+1, str.length)
     }
+
+
+    /**
+     * Each argument is treated as the path to a file that contains the output of a HopDag Explain.
+     * For each file, this method parses the explain dump and writes out a DOT graphical representation to a new file
+     * with ".dot" appended to the file name (unless it ends in ".txt", in which case the ".txt" is replaced with ".dot").
+     */
+    @JvmStatic
+    fun main(args: Array<String>) {
+        for (fpath in args) {
+            val dotpath = (if (fpath.endsWith(".txt")) fpath.substring(0, fpath.length-4) else fpath)
+                    .plus(".dot")
+
+            val f = File(fpath)
+            println(f)
+            if (!f.exists()) {
+                System.err.println("File does not exist: $f")
+                continue
+            }
+
+            val lines: List<String>
+            try {
+                lines = f.readLines()
+            } catch (e: IOException) {
+                System.err.println("Trouble reading file $f\n\tdue to $e")
+                continue
+            }
+            val hops: List<Hop>
+            try {
+                hops = ParseExplain.explainToHopDag(lines)
+            } catch (e: Exception) {
+                System.err.println("Trouble parsing file $f\n\tdue to $e")
+                continue
+            }
+//            println(Explain.explainHops(hops))
+
+            val dot = Explain.hop2dot(hops)
+//            println(dot)
+//            println()
+
+            val fout = File(dotpath)
+            try {
+                fout.writeText(dot.toString())
+            } catch (e: IOException) {
+                System.err.println("Trouble writing dot to file $fout\n\t due to $e")
+                continue
+            }
+            //dot -Tpdf explain.dot -o explain.pdf && xreader explain.pdf &
+        }
+    }
+
 
 }

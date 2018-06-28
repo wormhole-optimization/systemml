@@ -25,7 +25,7 @@ T2c = data.table(alg=T2$alg, type=T2$type, execute=T2$compile)
 colors=c("lightblue", "blue", "green", "darkgreen")
 #colorsLeg=rbind(colors,c("orange"))
 linetype=c(1,1,1,1) #2,2,2,2,1,1,1,1)
-legdisp=c("Default SystemML (no fused ops)", "Spoof, no + factorization", "Spoof, using script + factorization", "Spoof, using best of the two")
+legdisp=c("Default SystemML", "Spoof, no + factorization", "Spoof, using script + factorization", "Spoof, using best of the two")
 #compile + execute ~ alg
 #auto.key=list(space="inside", x=0.01, y=0.93)
 

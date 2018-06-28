@@ -37,7 +37,7 @@ for alg in "${algs[@]}"; do
 case "${alg}" in
     "als-cg"|"autoencoder"|"als-cg-mod"|"pnmf")
         actual_rowsArr=${num_rowsArr_reduced}
-        num_cols=10000 # als-cg: rank set to 10 or 20
+        num_cols=20000 # als-cg: rank set to 10 or 20
         ;;
     # "linregcg")
     #     actual_rowsArr=${num_rowsArr_expanded}
