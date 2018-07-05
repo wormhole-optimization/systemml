@@ -286,10 +286,12 @@ object Hop2SPlan {
                 else
                     SNodeExt(current, inputs)
             }
-            else -> {
-                SNodeExt(current, inputs)
-//                throw RuntimeException("Error constructing SNode for HOP: ${current.hopID} ${current.opString}.")
+            is TernaryOp -> when (current.op) {
+                Hop.OpOp3.PLUS_MULT -> ternaryMultToSNode(current, Hop.OpOp2.PLUS, snodeMemo)
+                Hop.OpOp3.MINUS_MULT -> ternaryMultToSNode(current, Hop.OpOp2.MINUS, snodeMemo)
+                else -> SNodeExt(current, inputs)
             }
+            else -> SNodeExt(current, inputs)
         }
 
         current.setVisited()
@@ -297,6 +299,25 @@ object Hop2SPlan {
         if( PRINT_SNODE_CONSTRUCTION && LOG.isInfoEnabled )
             LOG.info("compile (${current.hopID}) $current dim1=${current.dim1} dim2=${current.dim2} as (${node.id}) $node ${node.schema} ${node.inputs}")
         return node
+    }
+
+    private fun ternaryMultToSNode(current: TernaryOp, opTop: Hop.OpOp2, snodeMemo: MutableMap<Hop, SNode>): SNode {
+        // dummy nodes, to reuse the SNode construction code for BinaryOps (specifically, the bind-unbind schema code that covers matrx/vector/scalar cases)
+        val mult = HopRewriteUtils.createBinary(current.input[1], current.input[2], Hop.OpOp2.MULT)
+        val plus = HopRewriteUtils.createBinary(current.input[0], mult, opTop)
+
+        val pm = rConstructSumProductPlan(plus, snodeMemo)
+
+        current.input[0].parent -= plus
+        current.input[1].parent -= mult
+        current.input[2].parent -= mult
+        snodeMemo -= mult
+        snodeMemo -= plus
+
+        return pm
+//                        SNodeNary(SNodeNary.NaryOp.PLUS, inputs[0],
+//                                SNodeNary(SNodeNary.NaryOp.MULT, inputs[1], inputs[2])
+//                        )
     }
 
     private fun stripDead(node: SNode, memoDelete: MutableMap<Hop, SNode>) {

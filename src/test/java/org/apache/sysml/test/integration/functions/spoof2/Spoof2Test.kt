@@ -99,7 +99,7 @@ class Spoof2Test(
         //	TEST_NAME+54;  //A*B + A*C + A
         //	TEST_NAME+55;  //A*B + A + C*D + C
         //	TEST_NAME+56;  //A%*%B + A
-        //	TEST_NAME+57;  //A%*%A%*%A%*%A
+        //	TEST_NAME+57;  //A%*%A%*%A%*%A %*% A%*%A%*%A%*%A %*% A%*%A%*%A%*%A %*% A%*%A%*%A%*%A
         //	TEST_NAME+58;  //(-X)%*%y
         //	TEST_NAME+59;  //sum(0.001 * X)
         //	TEST_NAME+60;  //rowSums(A %*% t(B))
@@ -145,8 +145,9 @@ class Spoof2Test(
         //	TEST_NAME+99;  //t(A)%*%A%*%B%*%C%*%D, B%*%C%*%D%*%E%*%A
         //	TEST_NAME+100; //((S %*% t(V)) * W) %*% V
         //	TEST_NAME+101; //(X != 0) * X
+        //	TEST_NAME+102; //2*A*A*B + 3*A^2*B - 5*B      // tests conversion of t(+*)
         private const val NUM_TESTS = 73
-        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..101)
+        private val ACTIVE_TESTS = (1..NUM_TESTS).toList() + (75..79) + (81..102)
         private val _DO_DOT: List<Pair<Int, DC>> = listOf(
 //                85 to DC(arrayListOf(29, 30), performSpoofRewrites = false),
 //                85 to DC(arrayListOf(29, 30))
@@ -230,7 +231,7 @@ class Spoof2Test(
             programArgs = arrayOf("-stats", //"-explain", "recompile_hops",
                     "-args", output("S"))
 
-            fullRScriptName = HOME + testname + ".R"
+            fullRScriptName = "$HOME$testname.R"
             rCmd = getRCmd(inputDir(), expectedDir())
 
             runTest(true, false, null, -1)

@@ -19,7 +19,13 @@
 #
 #-------------------------------------------------------------
 
-A= matrix(1, rows=3, cols=3)
-while(FALSE) {}
-X = A%*%A%*%A%*%A %*% A%*%A%*%A%*%A %*% A%*%A%*%A%*%A %*% A%*%A%*%A%*%A
-write(X,$1)
+args<-commandArgs(TRUE)
+options(digits=22)
+library(Matrix)
+
+A = matrix(c(1,2,3,4,5,6), nrow=2, ncol=3, byrow=TRUE)
+B = matrix(2, nrow=2, ncol=3, byrow=TRUE)
+
+R = 2*A*A*B + 3*A^2*B - 5*B
+
+writeMM(as(R, "CsparseMatrix"), paste(args[2], "S", sep=""));

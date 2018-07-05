@@ -23,5 +23,5 @@ args<-commandArgs(TRUE)
 options(digits=22)
 library(Matrix)
 A = matrix(1, nrow=3, ncol=3, byrow = TRUE)
-X = A%*%A%*%A%*%A
+X = A%*%A%*%A%*%A %*% A%*%A%*%A%*%A %*% A%*%A%*%A%*%A %*% A%*%A%*%A%*%A
 writeMM(as(X, "CsparseMatrix"), paste(args[2], "S", sep=""));

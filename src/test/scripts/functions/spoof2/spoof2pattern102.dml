@@ -19,7 +19,10 @@
 #
 #-------------------------------------------------------------
 
-A= matrix(1, rows=3, cols=3)
+A = matrix("1 2 3 4 5 6", rows=2, cols=3)
+B = matrix(2, rows=2, cols=3)
 while(FALSE) {}
-X = A%*%A%*%A%*%A %*% A%*%A%*%A%*%A %*% A%*%A%*%A%*%A %*% A%*%A%*%A%*%A
-write(X,$1)
+
+R = 2*A*A*B + 3*A^2*B - 5*B
+
+write(R,$1)
