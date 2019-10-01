@@ -19,7 +19,15 @@
 
 package org.apache.sysml.hops.rewrite;
 
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import org.apache.log4j.Level;
@@ -39,6 +47,7 @@ import org.apache.sysml.parser.ParForStatementBlock;
 import org.apache.sysml.parser.StatementBlock;
 import org.apache.sysml.parser.WhileStatement;
 import org.apache.sysml.parser.WhileStatementBlock;
+import org.apache.sysml.utils.Explain;
 
 /**
  * This program rewriter applies a variety of rule-based rewrites
@@ -265,22 +274,40 @@ public class ProgramRewriter
 			current.setHops( rewriteHopDAG(current.getHops(), state) );
 		}
 	}
+
+	private static void appendToDebugFile(String... s){
+        try {
+            List<String> lines = Arrays.asList(s); // Collections.singletonList(s);
+
+            Path file = Paths.get("/Users/remywang/wormhole/hops/hops.log");
+            Files.write(file, lines, StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+        }
+        catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 	
 	public ArrayList<Hop> rewriteHopDAG(ArrayList<Hop> roots, ProgramRewriteStatus state) {
-		for( HopRewriteRule r : _dagRuleSet ) {
+	    appendToDebugFile("BEFORE", Explain.explainHops(roots));
+        for( HopRewriteRule r : _dagRuleSet ) {
 			Hop.resetVisitStatus( roots ); //reset for each rule
 			roots = r.rewriteHopDAGs(roots, state);
 			if( CHECK )
 				HopDagValidator.validateHopDag(roots, r);
 		}
+        appendToDebugFile("AFTER", Explain.explainHops(roots));
 		return roots;
 	}
 	
 	public Hop rewriteHopDAG(Hop root, ProgramRewriteStatus state) {
 		if( root == null )
 			return null;
-		
-		for( HopRewriteRule r : _dagRuleSet ) {
+        //String hop = root.getText();
+
+
+
+
+        for( HopRewriteRule r : _dagRuleSet ) {
 			root.resetVisitStatus(); //reset for each rule
 			root = r.rewriteHopDAG(root, state);
 			if( CHECK )
