@@ -279,7 +279,7 @@ public class ProgramRewriter
         try {
             List<String> lines = Arrays.asList(s); // Collections.singletonList(s);
 
-            Path file = Paths.get("/Users/remywang/wormhole/hops/hops.log");
+            Path file = Paths.get("../../hops/hops.log");
             Files.write(file, lines, StandardCharsets.UTF_8, StandardOpenOption.APPEND);
         }
         catch (IOException e) {
