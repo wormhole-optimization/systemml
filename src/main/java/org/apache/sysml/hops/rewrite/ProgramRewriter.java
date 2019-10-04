@@ -25,6 +25,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.FileAlreadyExistsException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -278,9 +279,12 @@ public class ProgramRewriter
 	private static void appendToDebugFile(String... s){
         try {
             List<String> lines = Arrays.asList(s); // Collections.singletonList(s);
-
-            Path file = Paths.get("/Users/remywang/wormhole/hops/hops.log");
-            Files.write(file, lines, StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+			Path path = Paths.get("/home/jleang/Wormhole/trunk/logs/hops/hops.log");
+			try {
+				Files.createFile(path);
+			} catch (FileAlreadyExistsException ex) {
+			}
+            Files.write(path, lines, StandardCharsets.UTF_8, StandardOpenOption.APPEND);
         }
         catch (IOException e) {
             e.printStackTrace();
