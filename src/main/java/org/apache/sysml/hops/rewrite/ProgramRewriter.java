@@ -279,7 +279,7 @@ public class ProgramRewriter
 	private static void appendToDebugFile(String... s){
         try {
             List<String> lines = Arrays.asList(s); // Collections.singletonList(s);
-			Path path = Paths.get("/home/jleang/Wormhole/trunk/logs/hops/hops.log");
+			Path path = Paths.get("../../hops/hops.log");
 			try {
 				Files.createFile(path);
 			} catch (FileAlreadyExistsException ex) {
