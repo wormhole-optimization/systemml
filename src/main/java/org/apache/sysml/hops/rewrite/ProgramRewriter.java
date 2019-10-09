@@ -19,6 +19,9 @@
 
 package org.apache.sysml.hops.rewrite;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -266,15 +269,15 @@ public class ProgramRewriter
 			current.setHops( rewriteHopDAG(current.getHops(), state) );
 		}
 	}
-	
-	public Set<String> dags;
 
 	public ArrayList<Hop> rewriteHopDAG(ArrayList<Hop> roots, ProgramRewriteStatus state) {
-		
-		if (dags == null) {
-			dags = new HashSet<>();
+		try {
+			BufferedWriter writer = new BufferedWriter(new FileWriter("/home/jleang/Wormhole/trunk/logs/hops/hops.rusthops", true));
+			writer.append(Explain.hop2rust(roots) + "\n");
+			writer.close();
+		} catch (IOException ex) {
+			System.err.println(ex.getStackTrace());
 		}
-		dags.add(Explain.hop2rust(roots));
 		
 		for( HopRewriteRule r : _dagRuleSet ) {
 			Hop.resetVisitStatus( roots ); //reset for each rule

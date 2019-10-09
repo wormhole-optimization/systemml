@@ -900,8 +900,7 @@ public class Explain
 				childs.append(input.getHopID());
 				childAdded = true;
 			}
-			if (childAdded)
-				sb.append(childs.toString() + ";");
+			sb.append(childs.toString() + ";");
 
 			// Matrix characteristics
 			sb.append("" + hop.getDim1() + "," 
