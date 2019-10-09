@@ -315,13 +315,19 @@ object ParseExplain {
      * Each argument is treated as the path to a file that contains the output of a HopDag Explain.
      * For each file, this method parses the explain dump and writes out a DOT graphical representation to a new file
      * with ".dot" appended to the file name (unless it ends in ".txt", in which case the ".txt" is replaced with ".dot").
+     * 
+     * For each file, this method also writes out an easier to parse explain that is used for Wormhole rewite/injection
      */
     @JvmStatic
     fun main(args: Array<String>) {
         for (fpath in args) {
+            // Resolve file names
             val dotpath = (if (fpath.endsWith(".txt")) fpath.substring(0, fpath.length-4) else fpath)
                     .plus(".dot")
+            val rustpath = (if (fpath.endsWith(".txt")) fpath.substring(0, fpath.length-4) else fpath)
+                    .plus(".rusthop")
 
+            // Resolve input
             val f = File(fpath)
             println(f)
             if (!f.exists()) {
@@ -329,6 +335,7 @@ object ParseExplain {
                 continue
             }
 
+            // Parse input and gather hops
             val lines: List<String>
             try {
                 lines = f.readLines()
@@ -343,12 +350,9 @@ object ParseExplain {
                 System.err.println("Trouble parsing file $f\n\tdue to $e")
                 continue
             }
-//            println(Explain.explainHops(hops))
 
+            // ouptut hops in dot format
             val dot = Explain.hop2dot(hops)
-//            println(dot)
-//            println()
-
             val fout = File(dotpath)
             try {
                 fout.writeText(dot.toString())
@@ -357,6 +361,17 @@ object ParseExplain {
                 continue
             }
             //dot -Tpdf explain.dot -o explain.pdf && xreader explain.pdf &
+
+            // output hops in rust hops format
+            val rust = Explain.hop2rust(hops)
+            println("bonjour")
+            val foutrust = File(rustpath)
+            try {
+                foutrust.writeText(rust.toString())
+            } catch (e: IOException) {
+                System.err.println("Trouble writing rust hops to file $fout\n\t due to $e")
+                continue
+            }
         }
     }
 

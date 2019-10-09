@@ -21,6 +21,8 @@ package org.apache.sysml.hops.rewrite;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
 
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
@@ -40,6 +42,7 @@ import org.apache.sysml.parser.ParForStatementBlock;
 import org.apache.sysml.parser.StatementBlock;
 import org.apache.sysml.parser.WhileStatement;
 import org.apache.sysml.parser.WhileStatementBlock;
+import org.apache.sysml.utils.Explain;
 
 /**
  * This program rewriter applies a variety of rule-based rewrites
@@ -264,7 +267,15 @@ public class ProgramRewriter
 		}
 	}
 	
+	public Set<String> dags;
+
 	public ArrayList<Hop> rewriteHopDAG(ArrayList<Hop> roots, ProgramRewriteStatus state) {
+		
+		if (dags == null) {
+			dags = new HashSet<>();
+		}
+		dags.add(Explain.hop2rust(roots));
+		
 		for( HopRewriteRule r : _dagRuleSet ) {
 			Hop.resetVisitStatus( roots ); //reset for each rule
 			roots = r.rewriteHopDAGs(roots, state);

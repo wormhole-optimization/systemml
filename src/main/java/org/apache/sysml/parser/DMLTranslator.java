@@ -19,6 +19,8 @@
 
 package org.apache.sysml.parser;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -276,6 +278,19 @@ public class DMLTranslator
 		//apply hop rewrites (dynamic rewrites, after IPA)
 		ProgramRewriter rewriter2 = new ProgramRewriter(false, true);
 		rewriter2.rewriteProgramHopDAGs(dmlp);
+		
+		try {
+			StringBuilder sb = new StringBuilder();
+			for (String dag : rewriter2.dags) {
+				sb.append(dag + "\n");
+			}
+			BufferedWriter writer = new BufferedWriter(new FileWriter("/home/jleang/Wormhole/trunk/logs/hops/hops.rusthops", true));
+			writer.append(sb.toString());
+			writer.close();
+		} catch (IOException ex) {
+			System.err.println(ex.getStackTrace());
+		}
+
 		resetHopsDAGVisitStatus(dmlp);
 		
 		//compute memory estimates for all the hops. These estimates are used

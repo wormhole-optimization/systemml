@@ -41,7 +41,7 @@ fi
 # Default Values
 
 config=${SYSTEMML_HOME}/SystemML-config.xml
-master="--master yarn"
+master="--master local"
 deploy_mode="--deploy-mode client"
 driver_memory="--driver-memory 20G"
 num_executors="--num-executors 5"
@@ -49,8 +49,8 @@ executor_memory="--executor-memory 60G"
 executor_cores="--executor-cores 24"
 conf="--conf spark.driver.maxResultSize=0"
 
-# Dylan override
-driver_memory="--driver-memory 6G"
+# override
+driver_memory="--driver-memory 2G"
 num_executors="--num-executors 2"
 executor_memory="--executor-memory 3G"
 executor_cores="--executor-cores 2"

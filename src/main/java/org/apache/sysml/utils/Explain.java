@@ -842,25 +842,108 @@ public class Explain
 
 	private static StringBuilder getHopDAG(Hop hop, StringBuilder nodes, ArrayList<Integer> lines, boolean withSubgraph) {
 		StringBuilder sb = new StringBuilder();
+
+		// Hop already explored, return out
 		if (hop.isVisited() || (!SHOW_LITERAL_HOPS && hop instanceof LiteralOp))
 			return sb;
 
+		// Create edges from this node to children nodes
 		for (Hop input : hop.getInput()) {
 			if ((SHOW_LITERAL_HOPS || !(input instanceof LiteralOp)) && isInRange(hop, lines)) {
 				String edgeLabel = showMem(input.getOutputMemEstimate(), true);
 				sb.append("h" + input.getHopID() + " -> h" + hop.getHopID() + " [label=\"" + edgeLabel + "\"];\n");
 			}
 		}
+
+		// Recursively print children
 		for (Hop input : hop.getInput())
 			sb.append(getHopDAG(input, nodes, lines, withSubgraph));
 
+		// Add to discovered nodes
 		if (isInRange(hop, lines)) {
 			nodes.append("h" + hop.getHopID() + "[label=\"" + getNodeLabel(hop) + "\", " + "shape=\""
 					+ getNodeShape(hop) + "\", color=\"" + getNodeColor(hop) + "\", tooltip=\"" + getNodeToolTip(hop)
 					+ "\"];\n");
 		}
-		hop.setVisited();
 
+		hop.setVisited();
+		return sb;
+	}
+
+	private static StringBuilder getHopDAGRust(Hop hop, ArrayList<Integer> lines) {
+		StringBuilder sb = new StringBuilder();
+
+		// Hop already explored, return out
+		if (hop.isVisited() || (!SHOW_LITERAL_HOPS && hop instanceof LiteralOp))
+			return sb;
+
+		// Enforce serializing children first
+		for (Hop input : hop.getInput())
+			sb.append(getHopDAGRust(input, lines));
+
+		// Serialize this node
+		if (isInRange(hop, lines)) {
+			// Line bounds
+			sb.append("" + hop.getBeginLine() + "," + hop.getEndLine() + ";");
+
+			// HOP ID
+			sb.append("" + hop.getHopID() + ";");
+
+			// Operator String
+			sb.append(hop.getOpString() + ";");
+
+			// Child(ren) HOP ID(s)
+			StringBuilder childs = new StringBuilder();
+			boolean childAdded = false;
+			for (Hop input : hop.getInput()) {
+				childs.append(childAdded?",":"");
+				childs.append(input.getHopID());
+				childAdded = true;
+			}
+			if (childAdded)
+				sb.append(childs.toString() + ";");
+
+			// Matrix characteristics
+			sb.append("" + hop.getDim1() + "," 
+			                  + hop.getDim2() + "," 
+			                  + hop.getRowsInBlock() + "," 
+			                  + hop.getColsInBlock() + "," 
+			                  + hop.getNnz());
+			if (hop.getUpdateType().isInPlace())
+				sb.append("," + hop.getUpdateType().toString().toLowerCase());
+			sb.append(";");
+
+			// if( SHOW_DATA_TYPE )
+			// 	sb.append(hop.getDataType().name().charAt(0) + ";");
+
+			// if( SHOW_VALUE_TYPE )
+			// sb.append(hop.getValueType().name().charAt(0));
+
+			// //memory estimates
+			// if( SHOW_MEM_ESTIMATES )
+			// sb.append(" [" + showMem(hop.getInputMemEstimate(), false) + ","
+			// 			+ showMem(hop.getIntermediateMemEstimate(), false) + ","
+			// 			+ showMem(hop.getOutputMemEstimate(), false) + " -> "
+			// 			+ showMem(hop.getMemEstimate(), true) + "]");
+
+			// //data flow properties
+			// if( SHOW_DATA_FLOW_PROPERTIES ) {
+			// if( hop.requiresReblock() && hop.requiresCheckpoint() )
+			// sb.append(" [rblk,chkpt]");
+			// else if( hop.requiresReblock() )
+			// sb.append(" [rblk]");
+			// else if( hop.requiresCheckpoint() )
+			// sb.append(" [chkpt]");
+			// }
+
+			// //exec type
+			// if (hop.getExecType() != null)
+			// sb.append(", " + hop.getExecType());
+
+			sb.append('\n');
+		}
+
+		hop.setVisited();
 		return sb;
 	}
 
@@ -1147,7 +1230,7 @@ public class Explain
 			for( ProgramBlock pbc : ipb.getChildBlocksIfBody() ) 
 				sb.append( explainProgramBlock( pbc, level+1) );
 			if( !ipb.getChildBlocksElseBody().isEmpty() )
-			{	
+			{
 				sb.append(offset);
 				sb.append("ELSE\n");
 				for( ProgramBlock pbc : ipb.getChildBlocksElseBody() ) 
@@ -1382,9 +1465,20 @@ public class Explain
         sb.append("digraph {\n");
         for (Hop hop : hops)
 			sb.append(getHopDAG(hop, nodes, new ArrayList<>(), false));
+		for (Hop hop : hops)
+			hop.resetVisitStatus();
         sb.append(nodes);
         sb.append("rankdir = \"BT\"\n");
         sb.append("}\n");
+        return sb.toString();
+	}
+	
+	public static String hop2rust(ArrayList<Hop> hops) {
+		StringBuilder sb = new StringBuilder();
+        for (Hop hop : hops)
+			sb.append(getHopDAGRust(hop, new ArrayList<>()).toString());
+		for (Hop hop : hops)
+			hop.resetVisitStatus();
         return sb.toString();
     }
 
