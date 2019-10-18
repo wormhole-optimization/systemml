@@ -1317,7 +1317,7 @@ public abstract class AutomatedTestBase
 			script.setName(new Date().toString());
 		}
 
-		scriptExecutor.compile(script, performHOPRewrites, performSpoofRewrites);
+		scriptExecutor.compile(script, performHOPRewrites, performSpoofRewrites, false);
 		Explain.reset();
 		try {
 			return Explain.getHopDAG(scriptExecutor.getDmlProgram(), lines, withSubgraph);

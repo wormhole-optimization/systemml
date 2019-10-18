@@ -221,7 +221,7 @@ object ParseExplain {
                 else
                     TernaryOp(inp[0].name, dataType, valueType, top, inp[0], inp[1], inp[2], inp[3], inp[4])
             }
-            firstWord.startsWith("ba(") && firstWord.last() == ')' -> {
+            firstWord.startsWith("ba(") && firstWord.last() == ')' -> { // ba(+*)
                 val op = firstWord.substring(3, firstWord.length - 1)
                 val (aggOp, op2) = run {
                     val (aggOp, aggOpStr) = HopsAgg2String.entries.maxBy { (_, v) ->
@@ -362,16 +362,16 @@ object ParseExplain {
             }
             //dot -Tpdf explain.dot -o explain.pdf && xreader explain.pdf &
 
-            // output hops in rust hops format
-            val rust = Explain.hop2rust(hops)
-            println("bonjour")
-            val foutrust = File(rustpath)
-            try {
-                foutrust.writeText(rust.toString())
-            } catch (e: IOException) {
-                System.err.println("Trouble writing rust hops to file $fout\n\t due to $e")
-                continue
-            }
+            // // output hops in rust hops format
+            // val rust = Explain.hop2rust(hops)
+            // println("bonjour")
+            // val foutrust = File(rustpath)
+            // try {
+            //     foutrust.writeText(rust.toString())
+            // } catch (e: IOException) {
+            //     System.err.println("Trouble writing rust hops to file $fout\n\t due to $e")
+            //     continue
+            // }
         }
     }
 

@@ -12,7 +12,7 @@
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
+ * KIND, either express or implied/home/jleang/Wormhole/trunk/systemml/src/main/java/org/apache/sysml/hops/recompile/Recompiler.java.  See the License for the
  * specific language governing permissions and limitations
  * under the License.
  */
@@ -32,12 +32,10 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.sysml.hops.codegen.SpoofCompiler;
-import org.apache.wink.json4j.JSONObject;
 import org.apache.sysml.api.DMLScript;
 import org.apache.sysml.api.jmlc.JMLCUtils;
-import org.apache.sysml.conf.ConfigurationManager;
 import org.apache.sysml.conf.CompilerConfig.ConfigType;
+import org.apache.sysml.conf.ConfigurationManager;
 import org.apache.sysml.hops.DataGenOp;
 import org.apache.sysml.hops.DataOp;
 import org.apache.sysml.hops.FunctionOp;
@@ -54,6 +52,7 @@ import org.apache.sysml.hops.LiteralOp;
 import org.apache.sysml.hops.MemoTable;
 import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.hops.UnaryOp;
+import org.apache.sysml.hops.codegen.SpoofCompiler;
 import org.apache.sysml.hops.rewrite.HopRewriteUtils;
 import org.apache.sysml.hops.rewrite.ProgramRewriter;
 import org.apache.sysml.hops.spoof2.Spoof2Compiler;
@@ -107,6 +106,7 @@ import org.apache.sysml.runtime.util.UtilFunctions;
 import org.apache.sysml.utils.Explain;
 import org.apache.sysml.utils.Explain.ExplainType;
 import org.apache.sysml.utils.JSONHelper;
+import org.apache.wink.json4j.JSONObject;
 
 /**
  * Dynamic recompilation of hop dags to runtime instructions, which includes the 
@@ -360,6 +360,12 @@ public class Recompiler
 		if (ConfigurationManager.isSpoofEnabled()) {
 			Hop.resetVisitStatus(hops);
 			Spoof2Compiler.generateCodeFromHopDAGs(hops, true, !inplace);
+			Hop.resetVisitStatus(hops);
+		}
+
+		if (ConfigurationManager.isWormholeEnabled()) {
+			Hop.resetVisitStatus(hops);
+			hops = Wormhole.optimize(hops);
 			Hop.resetVisitStatus(hops);
 		}
 		
