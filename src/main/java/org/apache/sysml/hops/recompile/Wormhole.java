@@ -17,6 +17,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.apache.sysml.conf.ConfigurationManager;
+import org.apache.sysml.hops.AggBinaryOp;
+import org.apache.sysml.hops.AggUnaryOp;
+import org.apache.sysml.hops.BinaryOp;
+import org.apache.sysml.hops.DataGenOp;
+import org.apache.sysml.hops.FunctionOp;
 import org.apache.sysml.hops.Hop;
 import org.apache.sysml.hops.Hop.AggOp;
 import org.apache.sysml.hops.Hop.DataGenMethod;
@@ -27,8 +32,15 @@ import org.apache.sysml.hops.Hop.OpOp3;
 import org.apache.sysml.hops.Hop.OpOp4;
 import org.apache.sysml.hops.Hop.OpOpN;
 import org.apache.sysml.hops.Hop.ReOrgOp;
-import org.apache.sysml.hops.*;
+import org.apache.sysml.hops.IndexingOp;
+import org.apache.sysml.hops.LeftIndexingOp;
+import org.apache.sysml.hops.LiteralOp;
+import org.apache.sysml.hops.NaryOp;
 import org.apache.sysml.hops.OptimizerUtils;
+import org.apache.sysml.hops.QuaternaryOp;
+import org.apache.sysml.hops.ReorgOp;
+import org.apache.sysml.hops.TernaryOp;
+import org.apache.sysml.hops.UnaryOp;
 import org.apache.sysml.parser.DataIdentifier;
 import org.apache.sysml.parser.Expression;
 import org.apache.sysml.parser.Expression.ValueType;
@@ -446,8 +458,7 @@ public class Wormhole {
             BufferedWriter writer = new BufferedWriter(new FileWriter(HOPS, true));
             StringBuilder sb = new StringBuilder();
             for (Hop hop : roots) {
-                sb.append(serializeHop(hop, new ArrayList<>()).toString());
-                megaCache.put(hop.getHopID(), hop);
+                sb.append(serializeHop(hop, new ArrayList<>(), megaCache).toString());
             }
             for (Hop hop : roots) {
                 hop.resetVisitStatus();
@@ -468,7 +479,7 @@ public class Wormhole {
      * @return The string representation of the HOP and its HOP children in
      *         child-first topological order
      */
-    private static String serializeHop(Hop hop, ArrayList<Integer> lines) {
+    private static String serializeHop(Hop hop, ArrayList<Integer> lines, Map<Long, Hop> megaCache) {
         StringBuilder sb = new StringBuilder();
 
         // Hop already explored, return out
@@ -476,9 +487,11 @@ public class Wormhole {
             return sb.toString();
         }
 
+        megaCache.put(hop.getHopID(), hop);
+
         // Enforce serializing children first
         for (Hop input : hop.getInput()) {
-            sb.append(serializeHop(input, lines));
+            sb.append(serializeHop(input, lines, megaCache));
         }
 
         // Serialize this node
