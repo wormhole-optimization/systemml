@@ -465,6 +465,7 @@ public class Wormhole {
             }
             writer.append(sb.toString() + "\n");
             writer.close();
+            megaCache.entrySet().stream().forEach(e -> System.out.println("" + e.getKey() + "\t" + e.getValue().getOpString()));
         } catch (IOException ex) {
             System.err.println(ex.getStackTrace());
         }
