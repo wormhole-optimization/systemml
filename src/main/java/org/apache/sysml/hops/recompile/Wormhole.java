@@ -17,11 +17,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.apache.sysml.conf.ConfigurationManager;
-import org.apache.sysml.hops.AggBinaryOp;
-import org.apache.sysml.hops.AggUnaryOp;
-import org.apache.sysml.hops.BinaryOp;
-import org.apache.sysml.hops.DataGenOp;
-import org.apache.sysml.hops.FunctionOp;
 import org.apache.sysml.hops.Hop;
 import org.apache.sysml.hops.Hop.AggOp;
 import org.apache.sysml.hops.Hop.DataGenMethod;
@@ -32,15 +27,8 @@ import org.apache.sysml.hops.Hop.OpOp3;
 import org.apache.sysml.hops.Hop.OpOp4;
 import org.apache.sysml.hops.Hop.OpOpN;
 import org.apache.sysml.hops.Hop.ReOrgOp;
-import org.apache.sysml.hops.IndexingOp;
-import org.apache.sysml.hops.LeftIndexingOp;
-import org.apache.sysml.hops.LiteralOp;
-import org.apache.sysml.hops.NaryOp;
+import org.apache.sysml.hops.*;
 import org.apache.sysml.hops.OptimizerUtils;
-import org.apache.sysml.hops.QuaternaryOp;
-import org.apache.sysml.hops.ReorgOp;
-import org.apache.sysml.hops.TernaryOp;
-import org.apache.sysml.hops.UnaryOp;
 import org.apache.sysml.parser.DataIdentifier;
 import org.apache.sysml.parser.Expression;
 import org.apache.sysml.parser.Expression.ValueType;
@@ -218,9 +206,10 @@ public class Wormhole {
             return new ReorgOp(inp.get(0).getName(), dt, vt, resolveReOrgOp(opName), inp.get(0));
         } else if (opName.startsWith("dg(") && opName.endsWith(")")) {
             // DataGenOp
-            // TODO inputParameters
-            return new DataGenOp(resolveDataGenMethod(opName), new DataIdentifier("dg"),
-                    new HashMap<String, Hop>() /* inputParameters */);
+            HashMap<String, Hop> inputParameters = new HashMap<String, Hop>();
+            inputParameters.put("rows", new LiteralOp(matrixCharacteristics.get(0)));
+            inputParameters.put("cols", new LiteralOp(matrixCharacteristics.get(1)));
+            return new DataGenOp(resolveDataGenMethod(opName), new DataIdentifier("dg"), inputParameters);
         } else if (opName.startsWith("LiteralOp ")) {
             // LiteralOp
             return getLiteralOp(vt, opName);
@@ -238,11 +227,11 @@ public class Wormhole {
             // FunctionOp
             // TODO
             throw new IllegalArgumentException("[ERROR] No support for FunctionOp (extfunct)");
-        } else if (opName.startsWith("ua(")) {
+        } else if (opName.startsWith("ua(") && opName.endsWith(")")) {
             // UnaryAggregateOp
             Tuple2<AggOp, Direction> agg = resolveAgg(opName);
             return new AggUnaryOp(inp.get(0).getName(), dt, vt, agg._1(), agg._2(), inp.get(0));
-        } else if (opName.startsWith("ba(")) {
+        } else if (opName.startsWith("ba(") && opName.endsWith(")")) {
             // BinaryAggregateOp
             Tuple2<AggOp, OpOp2> agg = resolveAgg2(opName);
             return new AggBinaryOp(inp.get(0).getName(), dt, vt, agg._2(), agg._1(), inp.get(0), inp.get(1));
