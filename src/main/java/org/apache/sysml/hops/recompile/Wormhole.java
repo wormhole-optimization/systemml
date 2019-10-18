@@ -34,6 +34,7 @@ import org.apache.sysml.hops.Hop.OpOpN;
 import org.apache.sysml.hops.Hop.ReOrgOp;
 import org.apache.sysml.hops.IndexingOp;
 import org.apache.sysml.hops.LeftIndexingOp;
+import org.apache.sysml.hops.LiteralOp;
 import org.apache.sysml.hops.NaryOp;
 import org.apache.sysml.hops.OptimizerUtils;
 import org.apache.sysml.hops.QuaternaryOp;
@@ -222,8 +223,7 @@ public class Wormhole {
                     new HashMap<String, Hop>() /* inputParameters */);
         } else if (opName.startsWith("LiteralOp ")) {
             // LiteralOp
-            // TOOD
-            throw new IllegalArgumentException("[ERROR] No support for LiteralOp");
+            h = getLiteralOp(vt, opName);
         } else if (opName.equals(LeftIndexingOp.OPSTRING)) {
             // LeftIndexingOp
             // TODO
@@ -264,6 +264,22 @@ public class Wormhole {
             throw new IllegalArgumentException("[ERROR] No support for TWrite");
         }
         throw new IllegalArgumentException("[ERROR] Cannot Recognize HOP in string: " + opName);
+    }
+
+    private static Hop getLiteralOp(ValueType vt, String opName) {
+        String valueString = opName.substring("LiteralOp ".length());
+        switch (vt) {
+            case INT:
+                return new LiteralOp(Long.valueOf(valueString));
+            case DOUBLE:
+                return new LiteralOp(Double.valueOf(valueString));
+            case STRING:
+                return new LiteralOp(valueString);
+            case BOOLEAN:
+                return new LiteralOp(Boolean.valueOf(valueString));
+            default:
+                throw new IllegalArgumentException("[ERROR] LiteralOp ValueType not recognized: " + valueString);
+        }
     }
 
     private static Tuple2<AggOp, OpOp2> resolveAgg2(String opName) {
