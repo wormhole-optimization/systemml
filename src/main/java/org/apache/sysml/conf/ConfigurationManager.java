@@ -206,6 +206,10 @@ public class ConfigurationManager
 	public static String isSpoofUseScriptFact() {
 		return getDMLConfig().getTextValue(DMLConfig.SPOOF_USE_SCRIPT_FACT);
 	}
+
+	public static boolean isWormholeEnabled() {
+		return getDMLConfig().getBooleanValue(DMLConfig.WORMHOLE);
+	}
 	
 	///////////////////////////////////////
 	// Thread-local classes

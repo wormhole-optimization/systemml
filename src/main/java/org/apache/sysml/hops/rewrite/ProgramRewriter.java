@@ -271,14 +271,6 @@ public class ProgramRewriter
 	}
 
 	public ArrayList<Hop> rewriteHopDAG(ArrayList<Hop> roots, ProgramRewriteStatus state) {
-		try {
-			BufferedWriter writer = new BufferedWriter(new FileWriter("/home/jleang/Wormhole/trunk/logs/hops/hops.rusthops", true));
-			writer.append(Explain.hop2rust(roots) + "\n");
-			writer.close();
-		} catch (IOException ex) {
-			System.err.println(ex.getStackTrace());
-		}
-		
 		for( HopRewriteRule r : _dagRuleSet ) {
 			Hop.resetVisitStatus( roots ); //reset for each rule
 			roots = r.rewriteHopDAGs(roots, state);

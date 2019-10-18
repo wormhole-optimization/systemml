@@ -160,11 +160,23 @@ public class ScriptExecutor {
 		}
 	}
 
+	// Spoof1?
 	protected void rewriteSpoof() {
 		try {
 			dmlTranslator.rewriteSpoofHopsDAG(dmlProgram);
 		} catch (LanguageException | HopsException | DMLRuntimeException e) {
 			throw new MLContextException("Exception occurred while rewriting HOPS (high-level operators) with SPOOF", e);
+		}
+	}
+
+	// Not sure where this should go
+	protected void rewriteWormhole() {
+		try {
+			//dmlTranslator.rewriteWormholeHopsDAG(dmlProgram);
+			System.out.println("Aloha");
+			System.err.println("Aloha");
+		} catch (LanguageException | HopsException | DMLRuntimeException e) {
+			throw new MLContextException("Exception occurred while rewriting HOPS (high-level operators) with Wormhole", e);
 		}
 	}
 
@@ -279,7 +291,7 @@ public class ScriptExecutor {
 	}
 	
 	public void compile(Script script) {
-		compile(script, true, false);
+		compile(script, true, false, false);
 	}
 	
 	/**
@@ -310,7 +322,7 @@ public class ScriptExecutor {
 	 * @param performHOPRewrites
 	 *            should perform static rewrites, perform intra-/inter-procedural analysis to propagate size information into functions and apply dynamic rewrites
 	 */
-	public void compile(Script script, boolean performHOPRewrites, boolean performSpoofRewrites) {
+	public void compile(Script script, boolean performHOPRewrites, boolean performSpoofRewrites, boolean performWoptRewrites) {
 
 		// main steps in script execution
 		setup(script);
@@ -323,8 +335,11 @@ public class ScriptExecutor {
 		constructHops();
 		if(performHOPRewrites)
 			rewriteHops();
-		if(performSpoofRewrites)
+		if(performSpoofRewrites) {
 			rewriteSpoof();
+		} else if (performWoptRewrites) {
+			rewriteWormhole();
+		}
 		rewritePersistentReadsAndWrites();
 		constructLops();
 		generateRuntimeProgram();
