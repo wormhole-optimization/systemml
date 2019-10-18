@@ -181,49 +181,49 @@ public class Wormhole {
         List<Hop> inp = hops.entrySet().stream().filter(e -> childrenID.contains(e.getKey())).map(e -> e.getValue())
                 .collect(Collectors.toList());
 
-        Hop h = null;
-
         // Cache lookup first
+        Hop h = null;
         if ((h = megaCache.get(hopID)) != null) {
             h.getInput().clear();
             for (long childID : childrenID) {
                 h.addInput(hops.get(childID));
             }
+            return h;
         }
 
         // New operator found, lets build it!
         if (opName.startsWith("u(") && opName.endsWith(")")) {
             // UnaryOp
-            h = new UnaryOp(inp.get(0).getName(), dt, vt, resolveOpOp1(opName), inp.get(0));
+            return new UnaryOp(inp.get(0).getName(), dt, vt, resolveOpOp1(opName), inp.get(0));
         } else if (opName.startsWith("b(") && opName.endsWith(")")) {
             // BinaryOp
-            h = new BinaryOp(inp.get(0).getName(), dt, vt, resolveOpOp2(opName), inp.get(0), inp.get(1));
+            return new BinaryOp(inp.get(0).getName(), dt, vt, resolveOpOp2(opName), inp.get(0), inp.get(1));
         } else if (opName.startsWith("t(") && opName.endsWith(")")) {
             // TernaryOp
             if (inp.size() == 3) {
-                h = new TernaryOp(inp.get(0).getName(), dt, vt, resolveOpOp3(opName), inp.get(0), inp.get(1), inp.get(2));
+                return new TernaryOp(inp.get(0).getName(), dt, vt, resolveOpOp3(opName), inp.get(0), inp.get(1), inp.get(2));
             } else {
-                h = new TernaryOp(inp.get(0).getName(), dt, vt, resolveOpOp3(opName), inp.get(0), inp.get(1), inp.get(2), inp.get(3),
+                return new TernaryOp(inp.get(0).getName(), dt, vt, resolveOpOp3(opName), inp.get(0), inp.get(1), inp.get(2), inp.get(3),
                         inp.get(4));
             }
         } else if (opName.startsWith("q(") && opName.endsWith(")")) {
             // QuaternaryOp
-            h = new QuaternaryOp(inp.get(0).getName(), dt, vt, resolveOpOp4(opName), inp.get(0), inp.get(1), inp.get(2), inp.get(3),
+            return new QuaternaryOp(inp.get(0).getName(), dt, vt, resolveOpOp4(opName), inp.get(0), inp.get(1), inp.get(2), inp.get(3),
                     true /* post */);
         } else if (opName.startsWith("m(") && opName.endsWith(")")) {
             // NaryOp
-            h = new NaryOp(inp.get(0).getName(), dt, vt, resolveOpOpN(opName), inp.toArray(new Hop[inp.size()]));
+            return new NaryOp(inp.get(0).getName(), dt, vt, resolveOpOpN(opName), inp.toArray(new Hop[inp.size()]));
         } else if (opName.startsWith("r(") && opName.endsWith(")")) {
             // ReorgOp
-            h = new ReorgOp(inp.get(0).getName(), dt, vt, resolveReOrgOp(opName), inp.get(0));
+            return new ReorgOp(inp.get(0).getName(), dt, vt, resolveReOrgOp(opName), inp.get(0));
         } else if (opName.startsWith("dg(") && opName.endsWith(")")) {
             // DataGenOp
             // TODO inputParameters
-            h = new DataGenOp(resolveDataGenMethod(opName), new DataIdentifier("dg"),
+            return new DataGenOp(resolveDataGenMethod(opName), new DataIdentifier("dg"),
                     new HashMap<String, Hop>() /* inputParameters */);
         } else if (opName.startsWith("LiteralOp ")) {
             // LiteralOp
-            h = getLiteralOp(vt, opName);
+            return getLiteralOp(vt, opName);
         } else if (opName.equals(LeftIndexingOp.OPSTRING)) {
             // LeftIndexingOp
             // TODO
@@ -232,7 +232,7 @@ public class Wormhole {
             // IndexingOp
             // TODO passedRowsLEU
             // TODO passedColsLEU
-            h = new IndexingOp(inp.get(0).getName(), dt, vt, inp.get(0), inp.get(1), inp.get(2), inp.get(3), inp.get(4),
+            return new IndexingOp(inp.get(0).getName(), dt, vt, inp.get(0), inp.get(1), inp.get(2), inp.get(3), inp.get(4),
                     true /* passedRowsLEU */, true /* passedColsLEU */);
         } else if (opName.equals(FunctionOp.OPSTRING)) {
             // FunctionOp
@@ -241,11 +241,11 @@ public class Wormhole {
         } else if (opName.startsWith("ua(")) {
             // UnaryAggregateOp
             Tuple2<AggOp, Direction> agg = resolveAgg(opName);
-            h = new AggUnaryOp(inp.get(0).getName(), dt, vt, agg._1(), agg._2(), inp.get(0));
+            return new AggUnaryOp(inp.get(0).getName(), dt, vt, agg._1(), agg._2(), inp.get(0));
         } else if (opName.startsWith("ba(")) {
             // BinaryAggregateOp
             Tuple2<AggOp, OpOp2> agg = resolveAgg2(opName);
-            h = new AggBinaryOp(inp.get(0).getName(), dt, vt, agg._2(), agg._1(), inp.get(0), inp.get(1));
+            return new AggBinaryOp(inp.get(0).getName(), dt, vt, agg._2(), agg._1(), inp.get(0), inp.get(1));
         } else if (opName.startsWith("PRead")) {
             // DataOp
             // TODO
