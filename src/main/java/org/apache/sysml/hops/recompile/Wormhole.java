@@ -9,8 +9,10 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -101,7 +103,9 @@ public class Wormhole {
             String line;
             while ((line = reader.readLine()) != null) {
                 if ((line.equals("") || line.equals("\n")) && dagString.size() != 0) {
-                    roots.add(deserializeDag(dagString, megaCache));
+                    for (Hop root : deserializeDag(dagString, megaCache)) {
+                        roots.add(root);
+                    }
                     dagString.clear();
                 } else {
                     dagString.add(line);
@@ -123,15 +127,20 @@ public class Wormhole {
      * @param dagString A list of serialized HOPs that make up a HOP DAG
      * @return A HOP DAG root
      */
-    private static Hop deserializeDag(List<String> dagString, Map<Long, Hop> megaCache) {
+    private static Set<Hop> deserializeDag(List<String> dagString, Map<Long, Hop> megaCache) {
         // Deserialize and cache each hop in the dag
+        Set<Hop> roots = new HashSet<Hop>();
         Map<Long, Hop> hops = new HashMap<Long, Hop>();
-        for (int i = 0; i < dagString.size() - 2; i++) {
+        for (int i = 0; i < dagString.size() - 1; i++) {
             Hop hop = deserializeHop(dagString.get(i), hops, megaCache);
             hops.put(hop.getHopID(), hop);
+            roots.add(hop);
+            for (Hop child : hop.getInput()) {
+                roots.remove(child);
+            }
         }
-        // Return the deserialized root
-        return deserializeHop(dagString.get(dagString.size() - 1), hops, megaCache);
+        // Return the deserialized roots
+        return roots;
     }
 
     /**
@@ -182,31 +191,30 @@ public class Wormhole {
         }
 
         // New operator found, lets build it!
-        String name = inp.get(0).getName();
         if (opName.startsWith("u(") && opName.endsWith(")")) {
             // UnaryOp
-            h = new UnaryOp(name, dt, vt, resolveOpOp1(opName), inp.get(0));
+            h = new UnaryOp(inp.get(0).getName(), dt, vt, resolveOpOp1(opName), inp.get(0));
         } else if (opName.startsWith("b(") && opName.endsWith(")")) {
             // BinaryOp
-            h = new BinaryOp(name, dt, vt, resolveOpOp2(opName), inp.get(0), inp.get(1));
+            h = new BinaryOp(inp.get(0).getName(), dt, vt, resolveOpOp2(opName), inp.get(0), inp.get(1));
         } else if (opName.startsWith("t(") && opName.endsWith(")")) {
             // TernaryOp
             if (inp.size() == 3) {
-                h = new TernaryOp(name, dt, vt, resolveOpOp3(opName), inp.get(0), inp.get(1), inp.get(2));
+                h = new TernaryOp(inp.get(0).getName(), dt, vt, resolveOpOp3(opName), inp.get(0), inp.get(1), inp.get(2));
             } else {
-                h = new TernaryOp(name, dt, vt, resolveOpOp3(opName), inp.get(0), inp.get(1), inp.get(2), inp.get(3),
+                h = new TernaryOp(inp.get(0).getName(), dt, vt, resolveOpOp3(opName), inp.get(0), inp.get(1), inp.get(2), inp.get(3),
                         inp.get(4));
             }
         } else if (opName.startsWith("q(") && opName.endsWith(")")) {
             // QuaternaryOp
-            h = new QuaternaryOp(name, dt, vt, resolveOpOp4(opName), inp.get(0), inp.get(1), inp.get(2), inp.get(3),
+            h = new QuaternaryOp(inp.get(0).getName(), dt, vt, resolveOpOp4(opName), inp.get(0), inp.get(1), inp.get(2), inp.get(3),
                     true /* post */);
         } else if (opName.startsWith("m(") && opName.endsWith(")")) {
             // NaryOp
-            h = new NaryOp(name, dt, vt, resolveOpOpN(opName), inp.toArray(new Hop[inp.size()]));
+            h = new NaryOp(inp.get(0).getName(), dt, vt, resolveOpOpN(opName), inp.toArray(new Hop[inp.size()]));
         } else if (opName.startsWith("r(") && opName.endsWith(")")) {
             // ReorgOp
-            h = new ReorgOp(name, dt, vt, resolveReOrgOp(opName), inp.get(0));
+            h = new ReorgOp(inp.get(0).getName(), dt, vt, resolveReOrgOp(opName), inp.get(0));
         } else if (opName.startsWith("dg(") && opName.endsWith(")")) {
             // DataGenOp
             // TODO inputParameters
@@ -224,7 +232,7 @@ public class Wormhole {
             // IndexingOp
             // TODO passedRowsLEU
             // TODO passedColsLEU
-            h = new IndexingOp(name, dt, vt, inp.get(0), inp.get(1), inp.get(2), inp.get(3), inp.get(4),
+            h = new IndexingOp(inp.get(0).getName(), dt, vt, inp.get(0), inp.get(1), inp.get(2), inp.get(3), inp.get(4),
                     true /* passedRowsLEU */, true /* passedColsLEU */);
         } else if (opName.equals(FunctionOp.OPSTRING)) {
             // FunctionOp
@@ -233,11 +241,11 @@ public class Wormhole {
         } else if (opName.startsWith("ua(")) {
             // UnaryAggregateOp
             Tuple2<AggOp, Direction> agg = resolveAgg(opName);
-            h = new AggUnaryOp(name, dt, vt, agg._1(), agg._2(), inp.get(0));
+            h = new AggUnaryOp(inp.get(0).getName(), dt, vt, agg._1(), agg._2(), inp.get(0));
         } else if (opName.startsWith("ba(")) {
             // BinaryAggregateOp
             Tuple2<AggOp, OpOp2> agg = resolveAgg2(opName);
-            h = new AggBinaryOp(name, dt, vt, agg._2(), agg._1(), inp.get(0), inp.get(1));
+            h = new AggBinaryOp(inp.get(0).getName(), dt, vt, agg._2(), agg._1(), inp.get(0), inp.get(1));
         } else if (opName.startsWith("PRead")) {
             // DataOp
             // TODO
