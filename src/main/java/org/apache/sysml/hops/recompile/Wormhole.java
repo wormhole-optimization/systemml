@@ -136,6 +136,7 @@ public class Wormhole {
         for (int i = 0; i < dagString.size() - 1; i++) {
             Hop hop = deserializeHop(dagString.get(i), hops, megaCache);
             hops.put(hop.getHopID(), hop);
+            System.out.println("cached:" + hop.getHopID());
             roots.add(hop);
             for (Hop child : hop.getInput()) {
                 roots.remove(child);
