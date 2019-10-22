@@ -158,7 +158,7 @@ public class Wormhole {
         System.out.println("DESERIALIZE\n********************");
         System.out.println(hopString);
 
-        String[] attributes = hopString.split(";");
+        String[] attributes = hopString.split(";", -1);
 
         String lines = attributes[0];
         System.out.println(lines);
