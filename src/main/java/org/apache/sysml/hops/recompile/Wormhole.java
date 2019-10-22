@@ -291,7 +291,7 @@ public class Wormhole {
             Long inputID = Long.valueOf(pair[1]);
             Hop input = hops.get(inputID);
             if (input == null) {
-                throw new IllegalArgumentException("[ERROR] could not find HOP with ID: " + inputID);
+                throw new IllegalArgumentException("[ERROR] could not find HOP with ID: " + inputID + "\nHOPS parsed to this point:\n" + hops.toString());
             }
             out.put(pair[0], input);
         }
