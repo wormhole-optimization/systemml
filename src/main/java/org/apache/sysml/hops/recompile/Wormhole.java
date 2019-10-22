@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -237,7 +238,7 @@ public class Wormhole {
         } else if (opName.startsWith("dg(") && opName.endsWith(")")) {
             // DataGenOp
             return new DataGenOp(resolveDataGenMethod(opName), new DataIdentifier("dg"),
-                    resolveDGInputParam(attributes[10], hops));
+                    resolveDGInputParam(attributes[10], inp));
         } else if (opName.startsWith("LiteralOp ")) {
             // LiteralOp
             return getLiteralOp(vt, opName);
@@ -283,17 +284,17 @@ public class Wormhole {
         throw new IllegalArgumentException("[ERROR] Cannot Recognize HOP in string: " + opName);
     }
 
-    private static HashMap<String, Hop> resolveDGInputParam(String string, Map<Long, Hop> hops) {
+    private static HashMap<String, Hop> resolveDGInputParam(String string, List<Hop> inp) {
         HashMap<String, Hop> out = new HashMap<String, Hop>();
         String[] entries = string.split(",");
         for (String e : entries) {
             String[] pair = e.split(":");
             Long inputID = Long.valueOf(pair[1]);
-            Hop input = hops.get(inputID);
-            if (input == null) {
+            Optional<Hop> input = inp.stream().filter(h -> h.getHopID() == inputID).findFirst();
+            if (!input.isPresent()) {
                 throw new IllegalArgumentException("[ERROR] could not find HOP with ID: " + inputID + "\nHOPS parsed to this point:\n" + hops.toString());
             }
-            out.put(pair[0], input);
+            out.put(pair[0], input.get());
         }
         return out;
     }
