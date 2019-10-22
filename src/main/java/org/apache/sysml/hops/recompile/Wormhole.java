@@ -74,7 +74,7 @@ public class Wormhole {
         // infinity and beyond!
         try {
             if (ConfigurationManager.isWormholeEnabled()) {
-                Process p = Runtime.getRuntime().exec("echo NO OPTIMIZATION");
+                Process p = Runtime.getRuntime().exec("touch /tmp/TESTING_LMAO");
                 if (DEBUG) {
                     BufferedReader stdInput = new BufferedReader(new InputStreamReader(p.getInputStream()));
                     BufferedReader stdError = new BufferedReader(new InputStreamReader(p.getErrorStream()));
