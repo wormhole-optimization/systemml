@@ -142,10 +142,9 @@ public class Wormhole {
     private static Set<Hop> deserializeDag(List<String> dagString, Map<Long, Hop> hops, Map<Long, Hop> megaCache) {
         // Deserialize and cache each hop in the dag
         Set<Hop> roots = new HashSet<Hop>();
-        for (int i = 0; i < dagString.size() - 1; i++) {
+        for (int i = 0; i < dagString.size(); i++) {
             Hop hop = deserializeHop(dagString.get(i), hops, megaCache);
             hops.put(hop.getHopID(), hop);
-            System.out.println("cached:" + hop.getHopID());
             roots.add(hop);
             for (Hop child : hop.getInput()) {
                 roots.remove(child);
