@@ -292,7 +292,7 @@ public class Wormhole {
             Long inputID = Long.valueOf(pair[1]);
             Optional<Hop> input = inp.stream().filter(h -> h.getHopID() == inputID).findFirst();
             if (!input.isPresent()) {
-                throw new IllegalArgumentException("[ERROR] could not find HOP with ID: " + inputID + "\nHOPS parsed to this point:\n" + hops.toString());
+                throw new IllegalArgumentException("[ERROR] could not find HOP with ID: " + inputID);
             }
             out.put(pair[0], input.get());
         }
