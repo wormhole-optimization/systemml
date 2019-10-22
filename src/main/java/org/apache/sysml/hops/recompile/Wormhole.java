@@ -154,32 +154,44 @@ public class Wormhole {
      * @return A newly constructed HOP
      */
     private static Hop deserializeHop(String hopString, Map<Long, Hop> hops, Map<Long, Hop> megaCache) {
-        String[] attributes = hopString.split(";");
-        String lines = attributes[0];
-        long hopID = Long.valueOf(attributes[1]);
-        String opName = attributes[2];
-        List<Long> childrenID = Arrays.asList(attributes[3].split(",")).stream().filter(s -> !s.equals("")).map(s -> Long.valueOf(s))
-                .collect(Collectors.toList());
-        List<Long> matrixCharacteristics = Arrays.asList(attributes[4].split(",")).stream().filter(s -> !s.equals("")).map(s -> Long.valueOf(s))
-                .collect(Collectors.toList());
-        Expression.DataType dt = resolveDT(attributes[5]);
-        Expression.ValueType vt = resolveVT(attributes[6]);
-        String memoryEstimates = attributes[7];
-        String dataFlowProp = attributes[8];
-        String execType = attributes[9];
 
         System.out.println("DESERIALIZE\n********************");
+
+        String[] attributes = hopString.split(";");
         System.out.println(attributes);
+
+        String lines = attributes[0];
         System.out.println(lines);
+
+        long hopID = Long.valueOf(attributes[1]);
         System.out.println(hopID);
+
+        String opName = attributes[2];
         System.out.println(opName);
+
+        List<Long> childrenID = Arrays.asList(attributes[3].split(",")).stream().filter(s -> !s.equals(""))
+                .map(s -> Long.valueOf(s)).collect(Collectors.toList());
         System.out.println(childrenID);
+
+        List<Long> matrixCharacteristics = Arrays.asList(attributes[4].split(",")).stream().filter(s -> !s.equals(""))
+                .map(s -> Long.valueOf(s)).collect(Collectors.toList());
         System.out.println(matrixCharacteristics);
+
+        Expression.DataType dt = resolveDT(attributes[5]);
         System.out.println(dt.name());
+
+        Expression.ValueType vt = resolveVT(attributes[6]);
         System.out.println(vt.name());
+
+        String memoryEstimates = attributes[7];
         System.out.println(memoryEstimates);
+
+        String dataFlowProp = attributes[8];
         System.out.println(dataFlowProp);
+
+        String execType = attributes[9];
         System.out.println(execType);
+
         System.out.println("********************");
 
         // Resolve children as inp
@@ -206,15 +218,16 @@ public class Wormhole {
         } else if (opName.startsWith("t(") && opName.endsWith(")")) {
             // TernaryOp
             if (inp.size() == 3) {
-                return new TernaryOp(inp.get(0).getName(), dt, vt, resolveOpOp3(opName), inp.get(0), inp.get(1), inp.get(2));
+                return new TernaryOp(inp.get(0).getName(), dt, vt, resolveOpOp3(opName), inp.get(0), inp.get(1),
+                        inp.get(2));
             } else {
-                return new TernaryOp(inp.get(0).getName(), dt, vt, resolveOpOp3(opName), inp.get(0), inp.get(1), inp.get(2), inp.get(3),
-                        inp.get(4));
+                return new TernaryOp(inp.get(0).getName(), dt, vt, resolveOpOp3(opName), inp.get(0), inp.get(1),
+                        inp.get(2), inp.get(3), inp.get(4));
             }
         } else if (opName.startsWith("q(") && opName.endsWith(")")) {
             // QuaternaryOp
-            return new QuaternaryOp(inp.get(0).getName(), dt, vt, resolveOpOp4(opName), inp.get(0), inp.get(1), inp.get(2), inp.get(3),
-                    true /* post */);
+            return new QuaternaryOp(inp.get(0).getName(), dt, vt, resolveOpOp4(opName), inp.get(0), inp.get(1),
+                    inp.get(2), inp.get(3), true /* post */);
         } else if (opName.startsWith("m(") && opName.endsWith(")")) {
             // NaryOp
             return new NaryOp(inp.get(0).getName(), dt, vt, resolveOpOpN(opName), inp.toArray(new Hop[inp.size()]));
@@ -223,7 +236,8 @@ public class Wormhole {
             return new ReorgOp(inp.get(0).getName(), dt, vt, resolveReOrgOp(opName), inp.get(0));
         } else if (opName.startsWith("dg(") && opName.endsWith(")")) {
             // DataGenOp
-            return new DataGenOp(resolveDataGenMethod(opName), new DataIdentifier("dg"), resolveDGInputParam(attributes[10], hops));
+            return new DataGenOp(resolveDataGenMethod(opName), new DataIdentifier("dg"),
+                    resolveDGInputParam(attributes[10], hops));
         } else if (opName.startsWith("LiteralOp ")) {
             // LiteralOp
             return getLiteralOp(vt, opName);
@@ -235,8 +249,8 @@ public class Wormhole {
             // IndexingOp
             // TODO passedRowsLEU
             // TODO passedColsLEU
-            return new IndexingOp(inp.get(0).getName(), dt, vt, inp.get(0), inp.get(1), inp.get(2), inp.get(3), inp.get(4),
-                    true /* passedRowsLEU */, true /* passedColsLEU */);
+            return new IndexingOp(inp.get(0).getName(), dt, vt, inp.get(0), inp.get(1), inp.get(2), inp.get(3),
+                    inp.get(4), true /* passedRowsLEU */, true /* passedColsLEU */);
         } else if (opName.equals(FunctionOp.OPSTRING)) {
             // FunctionOp
             // TODO
@@ -282,16 +296,16 @@ public class Wormhole {
     private static Hop getLiteralOp(ValueType vt, String opName) {
         String valueString = opName.substring("LiteralOp ".length());
         switch (vt) {
-            case INT:
-                return new LiteralOp(Long.valueOf(valueString));
-            case DOUBLE:
-                return new LiteralOp(Double.valueOf(valueString));
-            case STRING:
-                return new LiteralOp(valueString);
-            case BOOLEAN:
-                return new LiteralOp(Boolean.valueOf(valueString));
-            default:
-                throw new IllegalArgumentException("[ERROR] LiteralOp ValueType not recognized: " + valueString);
+        case INT:
+            return new LiteralOp(Long.valueOf(valueString));
+        case DOUBLE:
+            return new LiteralOp(Double.valueOf(valueString));
+        case STRING:
+            return new LiteralOp(valueString);
+        case BOOLEAN:
+            return new LiteralOp(Boolean.valueOf(valueString));
+        default:
+            throw new IllegalArgumentException("[ERROR] LiteralOp ValueType not recognized: " + valueString);
         }
     }
 
@@ -477,7 +491,8 @@ public class Wormhole {
             }
             writer.append(sb.toString() + "\n");
             writer.close();
-            megaCache.entrySet().stream().forEach(e -> System.out.println("" + e.getKey() + "\t" + e.getValue().getOpString()));
+            megaCache.entrySet().stream()
+                    .forEach(e -> System.out.println("" + e.getKey() + "\t" + e.getValue().getOpString()));
         } catch (IOException ex) {
             System.err.println(ex.getStackTrace());
         }
