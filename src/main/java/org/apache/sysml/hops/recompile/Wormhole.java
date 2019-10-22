@@ -101,10 +101,11 @@ public class Wormhole {
             BufferedReader reader = new BufferedReader(new FileReader(HOPS));
             ArrayList<Hop> roots = new ArrayList<>();
             List<String> dagString = new ArrayList<>();
+            Map<Long, Hop> hops = new HashMap<Long, Hop>();
             String line;
             while ((line = reader.readLine()) != null) {
                 if ((line.equals("") || line.equals("\n")) && dagString.size() != 0) {
-                    for (Hop root : deserializeDag(dagString, megaCache)) {
+                    for (Hop root : deserializeDag(dagString, hops, megaCache)) {
                         roots.add(root);
                     }
                     dagString.clear();
@@ -128,10 +129,9 @@ public class Wormhole {
      * @param dagString A list of serialized HOPs that make up a HOP DAG
      * @return A HOP DAG root
      */
-    private static Set<Hop> deserializeDag(List<String> dagString, Map<Long, Hop> megaCache) {
+    private static Set<Hop> deserializeDag(List<String> dagString, Map<Long, Hop> hops, Map<Long, Hop> megaCache) {
         // Deserialize and cache each hop in the dag
         Set<Hop> roots = new HashSet<Hop>();
-        Map<Long, Hop> hops = new HashMap<Long, Hop>();
         for (int i = 0; i < dagString.size() - 1; i++) {
             Hop hop = deserializeHop(dagString.get(i), hops, megaCache);
             hops.put(hop.getHopID(), hop);
