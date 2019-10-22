@@ -156,9 +156,9 @@ public class Wormhole {
     private static Hop deserializeHop(String hopString, Map<Long, Hop> hops, Map<Long, Hop> megaCache) {
 
         System.out.println("DESERIALIZE\n********************");
+        System.out.println(hopString);
 
         String[] attributes = hopString.split(";");
-        System.out.println(attributes);
 
         String lines = attributes[0];
         System.out.println(lines);
