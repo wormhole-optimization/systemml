@@ -96,7 +96,7 @@ public class Wormhole {
 
         ArrayList<Hop> optimized = deserialize(megaCache, file);
 
-        serialize(roots, megaCache, file + "_serdeser");
+        serialize(optimized, megaCache, file + "_serdeser");
 
         return optimized;
     }
