@@ -218,10 +218,7 @@ public class Wormhole {
             return new ReorgOp(inp.get(0).getName(), dt, vt, resolveReOrgOp(opName), inp.get(0));
         } else if (opName.startsWith("dg(") && opName.endsWith(")")) {
             // DataGenOp
-            HashMap<String, Hop> inputParameters = new HashMap<String, Hop>();
-            inputParameters.put("rows", new LiteralOp(matrixCharacteristics.get(0)));
-            inputParameters.put("cols", new LiteralOp(matrixCharacteristics.get(1)));
-            return new DataGenOp(resolveDataGenMethod(opName), new DataIdentifier("dg"), inputParameters);
+            return new DataGenOp(resolveDataGenMethod(opName), new DataIdentifier("dg"), resolveDGInputParam(attributes[7], hops));
         } else if (opName.startsWith("LiteralOp ")) {
             // LiteralOp
             return getLiteralOp(vt, opName);
@@ -265,6 +262,16 @@ public class Wormhole {
             throw new IllegalArgumentException("[ERROR] No support for TWrite");
         }
         throw new IllegalArgumentException("[ERROR] Cannot Recognize HOP in string: " + opName);
+    }
+
+    private static HashMap<String, Hop> resolveDGInputParam(String string, Map<Long, Hop> hops) {
+        HashMap<String, Hop> out = new HashMap<String, Hop>();
+        String[] entries = string.split(",");
+        for (String e : entries) {
+            String[] pair = e.split(":");
+            out.put(pair[0], hops.get(Long.valueOf(pair[1])));
+        }
+        return out;
     }
 
     private static Hop getLiteralOp(ValueType vt, String opName) {
@@ -542,12 +549,21 @@ public class Wormhole {
                 sb.append("chkpt;");
 
             // exec type
-            if (hop.getExecType() != null)
+            if (hop.getExecType() != null) {
                 sb.append(hop.getExecType() + ";");
+            }
 
             if (hop instanceof DataGenOp) {
+                boolean foundParams = false;
                 DataGenOp dgOp = (DataGenOp) hop;
-                dgOp.getParamIndexMap().entrySet().stream().forEach(e -> sb.append("(" + e.getKey() + "," + e.getValue() + ")"));
+                ArrayList<Hop> inputs = dgOp.getInput();
+                for (Map.Entry<String, Integer> e : dgOp.getParamIndexMap().entrySet()) {
+                    sb.append("" + e.getKey() + ":" + inputs.get(e.getValue()).getHopID() + ",");
+                    foundParams = true;
+                }
+                if (foundParams) {
+                    sb.delete(sb.length() - 1, sb.length());
+                }
             }
 
             sb.append('\n');
