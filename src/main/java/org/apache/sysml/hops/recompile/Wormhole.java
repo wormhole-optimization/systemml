@@ -62,12 +62,13 @@ public class Wormhole {
      */
     public static ArrayList<Hop> optimize(List<Hop> roots) {
         int hc = roots.hashCode();
+        String file = HOPS + "_" + hc;
 
         // Hop cache
         Map<Long, Hop> megaCache = new HashMap<Long, Hop>();
 
         // Serialize the HOPS
-        serialize(roots, megaCache, hc);
+        serialize(roots, megaCache, file);
 
         // Send the file into the void, the event horizon, the final frontier, to
         // infinity and beyond!
@@ -93,7 +94,11 @@ public class Wormhole {
             System.err.println("Error executing warp");
         }
 
-        return deserialize(megaCache, hc);
+        ArrayList<Hop> optimized = deserialize(megaCache, file);
+
+        serialize(roots, megaCache, file + "_serdeser");
+
+        return optimized;
     }
 
     /**
@@ -101,9 +106,9 @@ public class Wormhole {
      * 
      * @return A list of HOP DAG roots
      */
-    private static ArrayList<Hop> deserialize(Map<Long, Hop> megaCache, int hc) {
+    private static ArrayList<Hop> deserialize(Map<Long, Hop> megaCache, String file) {
         try {
-            BufferedReader reader = new BufferedReader(new FileReader(HOPS + "_" + hc));
+            BufferedReader reader = new BufferedReader(new FileReader(file));
             ArrayList<Hop> roots = new ArrayList<>();
             List<String> dagString = new ArrayList<>();
             Map<Long, Hop> hops = new HashMap<Long, Hop>();
@@ -490,11 +495,11 @@ public class Wormhole {
      * 
      * @param roots A list of HOP DAG roots
      */
-    private static void serialize(List<Hop> roots, Map<Long, Hop> megaCache, int hc) {
+    private static void serialize(List<Hop> roots, Map<Long, Hop> megaCache, String file) {
         try {
-            Files.deleteIfExists(new File(HOPS + "_" + hc).toPath());
+            Files.deleteIfExists(new File(file).toPath());
 
-            BufferedWriter writer = new BufferedWriter(new FileWriter(HOPS + "_" + hc, true));
+            BufferedWriter writer = new BufferedWriter(new FileWriter(file, true));
             StringBuilder sb = new StringBuilder();
             for (Hop hop : roots) {
                 sb.append(serializeHop(hop, new ArrayList<>(), megaCache).toString());
