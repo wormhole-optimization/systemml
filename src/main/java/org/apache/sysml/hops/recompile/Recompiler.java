@@ -363,7 +363,6 @@ public class Recompiler
 			Hop.resetVisitStatus(hops);
 		}
 
-		new Exception().printStackTrace();
 		if (ConfigurationManager.isWormholeEnabled()) {
 			Hop.resetVisitStatus(hops);
 			hops = Wormhole.optimize(hops);
