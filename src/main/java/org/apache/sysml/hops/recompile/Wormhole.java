@@ -6,23 +6,13 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.apache.sysml.conf.ConfigurationManager;
-import org.apache.sysml.hops.AggBinaryOp;
-import org.apache.sysml.hops.AggUnaryOp;
-import org.apache.sysml.hops.BinaryOp;
 import org.apache.sysml.hops.DataGenOp;
-import org.apache.sysml.hops.FunctionOp;
-import org.apache.sysml.hops.Hop;
+import org.apache.sysml.hops.*;
 import org.apache.sysml.hops.Hop.AggOp;
 import org.apache.sysml.hops.Hop.DataGenMethod;
 import org.apache.sysml.hops.Hop.Direction;
@@ -32,15 +22,8 @@ import org.apache.sysml.hops.Hop.OpOp3;
 import org.apache.sysml.hops.Hop.OpOp4;
 import org.apache.sysml.hops.Hop.OpOpN;
 import org.apache.sysml.hops.Hop.ReOrgOp;
-import org.apache.sysml.hops.IndexingOp;
-import org.apache.sysml.hops.LeftIndexingOp;
 import org.apache.sysml.hops.LiteralOp;
-import org.apache.sysml.hops.NaryOp;
 import org.apache.sysml.hops.OptimizerUtils;
-import org.apache.sysml.hops.QuaternaryOp;
-import org.apache.sysml.hops.ReorgOp;
-import org.apache.sysml.hops.TernaryOp;
-import org.apache.sysml.hops.UnaryOp;
 import org.apache.sysml.parser.DataIdentifier;
 import org.apache.sysml.parser.Expression;
 import org.apache.sysml.parser.Expression.ValueType;
@@ -164,7 +147,9 @@ public class Wormhole {
                 .collect(Collectors.toList());
         Expression.DataType dt = resolveDT(attributes[5]);
         Expression.ValueType vt = resolveVT(attributes[6]);
-        // TODO More data
+        String memoryEstimates = attributes[7];
+        String dataFlowProp = attributes[8];
+        String execType = attributes[9];
 
         System.out.println("DESERIALIZE\n********************");
         System.out.println(attributes);
@@ -175,6 +160,9 @@ public class Wormhole {
         System.out.println(matrixCharacteristics);
         System.out.println(dt.name());
         System.out.println(vt.name());
+        System.out.println(memoryEstimates);
+        System.out.println(dataFlowProp);
+        System.out.println(execType);
         System.out.println("********************");
 
         // Resolve children as inp
@@ -218,7 +206,7 @@ public class Wormhole {
             return new ReorgOp(inp.get(0).getName(), dt, vt, resolveReOrgOp(opName), inp.get(0));
         } else if (opName.startsWith("dg(") && opName.endsWith(")")) {
             // DataGenOp
-            return new DataGenOp(resolveDataGenMethod(opName), new DataIdentifier("dg"), resolveDGInputParam(attributes[7], hops));
+            return new DataGenOp(resolveDataGenMethod(opName), new DataIdentifier("dg"), resolveDGInputParam(attributes[10], hops));
         } else if (opName.startsWith("LiteralOp ")) {
             // LiteralOp
             return getLiteralOp(vt, opName);
