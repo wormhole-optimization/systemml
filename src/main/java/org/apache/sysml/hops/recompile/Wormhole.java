@@ -545,6 +545,11 @@ public class Wormhole {
             if (hop.getExecType() != null)
                 sb.append(hop.getExecType() + ";");
 
+            if (hop instanceof DataGenOp) {
+                DataGenOp dgOp = (DataGenOp) hop;
+                dgOp.getParamIndexMap().entrySet().stream().forEach(e -> sb.append("(" + e.getKey() + "," + e.getValue() + ")"));
+            }
+
             sb.append('\n');
         }
 

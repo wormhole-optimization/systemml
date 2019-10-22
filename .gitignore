@@ -74,3 +74,6 @@ src/main/python/systemml/systemml-java
 **/metastore_db
 derby.log
 buo_stats
+
+# Script artifacts
+scripts/perftest/spoof/spoof/
