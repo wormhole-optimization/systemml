@@ -6,13 +6,23 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.apache.sysml.conf.ConfigurationManager;
+import org.apache.sysml.hops.AggBinaryOp;
+import org.apache.sysml.hops.AggUnaryOp;
+import org.apache.sysml.hops.BinaryOp;
 import org.apache.sysml.hops.DataGenOp;
-import org.apache.sysml.hops.*;
+import org.apache.sysml.hops.FunctionOp;
+import org.apache.sysml.hops.Hop;
 import org.apache.sysml.hops.Hop.AggOp;
 import org.apache.sysml.hops.Hop.DataGenMethod;
 import org.apache.sysml.hops.Hop.Direction;
@@ -22,8 +32,15 @@ import org.apache.sysml.hops.Hop.OpOp3;
 import org.apache.sysml.hops.Hop.OpOp4;
 import org.apache.sysml.hops.Hop.OpOpN;
 import org.apache.sysml.hops.Hop.ReOrgOp;
+import org.apache.sysml.hops.IndexingOp;
+import org.apache.sysml.hops.LeftIndexingOp;
 import org.apache.sysml.hops.LiteralOp;
+import org.apache.sysml.hops.NaryOp;
 import org.apache.sysml.hops.OptimizerUtils;
+import org.apache.sysml.hops.QuaternaryOp;
+import org.apache.sysml.hops.ReorgOp;
+import org.apache.sysml.hops.TernaryOp;
+import org.apache.sysml.hops.UnaryOp;
 import org.apache.sysml.parser.DataIdentifier;
 import org.apache.sysml.parser.Expression;
 import org.apache.sysml.parser.Expression.ValueType;
@@ -530,16 +547,18 @@ public class Wormhole {
 
             // data flow properties
             if (hop.requiresReblock() && hop.requiresCheckpoint())
-                sb.append("rblk,chkpt;");
+                sb.append("rblk,chkpt");
             else if (hop.requiresReblock())
-                sb.append("rblk;");
+                sb.append("rblk");
             else if (hop.requiresCheckpoint())
-                sb.append("chkpt;");
+                sb.append("chkpt");
+            sb.append(";");
 
             // exec type
             if (hop.getExecType() != null) {
-                sb.append(hop.getExecType() + ";");
+                sb.append(hop.getExecType());
             }
+            sb.append(";");
 
             if (hop instanceof DataGenOp) {
                 boolean foundParams = false;
@@ -552,6 +571,7 @@ public class Wormhole {
                 if (foundParams) {
                     sb.delete(sb.length() - 1, sb.length());
                 }
+                sb.append(";");
             }
 
             sb.append('\n');
