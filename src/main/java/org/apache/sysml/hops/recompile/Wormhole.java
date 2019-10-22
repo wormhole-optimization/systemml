@@ -288,7 +288,12 @@ public class Wormhole {
         String[] entries = string.split(",");
         for (String e : entries) {
             String[] pair = e.split(":");
-            out.put(pair[0], hops.get(Long.valueOf(pair[1])));
+            Long inputID = Long.valueOf(pair[1]);
+            Hop input = hops.get(inputID);
+            if (input == null) {
+                throw new IllegalArgumentException("[ERROR] could not find HOP with ID: " + inputID);
+            }
+            out.put(pair[0], input);
         }
         return out;
     }
