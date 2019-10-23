@@ -20,12 +20,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.apache.sysml.conf.ConfigurationManager;
-import org.apache.sysml.hops.AggBinaryOp;
-import org.apache.sysml.hops.AggUnaryOp;
-import org.apache.sysml.hops.BinaryOp;
-import org.apache.sysml.hops.DataGenOp;
-import org.apache.sysml.hops.FunctionOp;
-import org.apache.sysml.hops.Hop;
+import org.apache.sysml.hops.*;
 import org.apache.sysml.hops.Hop.AggOp;
 import org.apache.sysml.hops.Hop.DataGenMethod;
 import org.apache.sysml.hops.Hop.Direction;
@@ -51,100 +46,132 @@ import org.apache.sysml.parser.Expression.ValueType;
 import scala.Tuple2;
 
 public class Wormhole {
-    private static final boolean DEBUG = false;
-    private static final String HOPS = "/tmp/hops";
+    private static final boolean LOG_WARP_STD = true;
+    private static final boolean LOG_WARP_ERR = true;
+    private static final boolean LOG_DES = false;
+    private static final boolean USE_MEGACACHE = true;
+    private static final String HOPS_FOLDER = "/tmp";
 
     /**
-     * Optimize the HOP DAGS via the wormhole optimizer
+     * Optimize the HOP DAG via the wormhole optimizer
      * 
-     * @param roots The roots of the HOP DAGs
-     * @return Optimized rooted HOP DAGs
+     * @param roots The roots of the HOP DAG
+     * @return Optimized rooted HOP DAG
      */
     public static ArrayList<Hop> optimize(List<Hop> roots) {
         int hc = roots.hashCode();
-        String file = HOPS + "_" + hc;
+        String file = HOPS_FOLDER + "/hops_" + hc;
 
-        // Hop cache
+        // HOP cache that is maintained over the entire serde process
         Map<Long, Hop> megaCache = new HashMap<Long, Hop>();
 
-        // Serialize the HOPS
+        // Serialize the HOPs
         serialize(roots, megaCache, file);
 
-        // Send the file into the void, the event horizon, the final frontier, to
-        // infinity and beyond!
         try {
             if (ConfigurationManager.isWormholeEnabled()) {
-                Process p = Runtime.getRuntime().exec("touch /tmp/TESTING_LMAO");
-                if (DEBUG) {
+                // Execute warp.
+                // Send the file into the void, the event horizon, the final frontier,
+                // to infinity and beyond!
+                // TODO execute system call to warp
+                Process p = Runtime.getRuntime().exec("cp " + file + " " + file + "_opt");
+
+                if (LOG_WARP_STD) {
+                    // Log warp std out
                     BufferedReader stdInput = new BufferedReader(new InputStreamReader(p.getInputStream()));
-                    BufferedReader stdError = new BufferedReader(new InputStreamReader(p.getErrorStream()));
-                    String str;
-                    while ((str = stdInput.readLine()) != null) {
-                        System.out.println(str);
-                        // TODO log
+                    String stdLog = file + "_log_std";
+                    Files.deleteIfExists(new File(stdLog).toPath());
+                    BufferedWriter writerStd = new BufferedWriter(new FileWriter(stdLog, true));
+                    String strStd;
+                    while ((strStd = stdInput.readLine()) != null) {
+                        writerStd.append(strStd + "\n");
                     }
-                    while ((str = stdError.readLine()) != null) {
-                        System.err.println(str);
-                        // TODO log
-                    }
+                    writerStd.close();
                 }
+
+                if (LOG_WARP_ERR) {
+                    // Log warp err out
+                    BufferedReader errInput = new BufferedReader(new InputStreamReader(p.getErrorStream()));
+                    String errLog = file + "_log_err";
+                    Files.deleteIfExists(new File(errLog).toPath());
+                    BufferedWriter writerErr = new BufferedWriter(new FileWriter(errLog, true));
+                    String strErr;
+                    while ((strErr = errInput.readLine()) != null) {
+                        writerErr.append(strErr + "\n");
+                    }
+                    writerErr.close();
+                }
+
+                // Wait for a certain amount of time for warp to finish before timing out
                 p.waitFor(5, TimeUnit.MINUTES);
+            } else {
+                // Wormhole optimization is not enabled
+                // Optimized plan is copied from the original
+                Runtime.getRuntime().exec("cp " + file + " " + file + "_opt");
             }
         } catch (IOException | InterruptedException e) {
-            System.err.println("Error executing warp");
+            throw new RuntimeException("[ERROR] Exception thrown while executing warp", e);
         }
 
-        ArrayList<Hop> optimized = deserialize(megaCache, file);
-
-        serialize(optimized, megaCache, file + "_serdeser");
+        // Recover the optimized plan
+        ArrayList<Hop> optimized = deserialize(megaCache, file + "_opt");
+        
+        // Serialize the recovered/optimized plan 
+        // serialize(optimized, megaCache, file + "_serdeser");
 
         return optimized;
     }
 
     /**
-     * Deserialize hops from a file.
+     * Deserialize HOPs from a file.
      * 
+     * @param megaCache Serde HOP cache
+     * @param file The file path to read the HOP DAG information from
      * @return A list of HOP DAG roots
      */
     private static ArrayList<Hop> deserialize(Map<Long, Hop> megaCache, String file) {
-        try {
-            BufferedReader reader = new BufferedReader(new FileReader(file));
-            ArrayList<Hop> roots = new ArrayList<>();
-            List<String> dagString = new ArrayList<>();
-            Map<Long, Hop> hops = new HashMap<Long, Hop>();
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            // Register the serialized HOPs
+            List<String> dagStrings = new ArrayList<>();
             String line;
             while ((line = reader.readLine()) != null) {
-                if ((line.equals("") || line.equals("\n")) && dagString.size() != 0) {
-                    for (Hop root : deserializeDag(dagString, hops, megaCache)) {
-                        roots.add(root);
-                    }
-                    dagString.clear();
-                } else {
-                    dagString.add(line);
+                if (!line.equals("") && !line.equals("\n")) {
+                    dagStrings.add(line);
                 }
             }
-            reader.close();
+
+            // Deserialize the HOP DAG and list the roots found
+            ArrayList<Hop> roots = new ArrayList<>();
+            for (Hop root : deserializeDag(dagStrings, megaCache)) {
+                roots.add(root);
+            }
             return roots;
         } catch (IOException e) {
-            System.err.println(e.getStackTrace());
+            throw new RuntimeException("[ERROR] Exception thrown while parsing HOP file: " + file, e);
         }
-
-        return null;
     }
 
     /**
      * Deserialize a list of strings representing a dag. Assume child-first
-     * topological order
+     * topological order.
      * 
      * @param dagString A list of serialized HOPs that make up a HOP DAG
-     * @return A HOP DAG root
+     * @param megaCache Serde HOP cache
+     * @return HOP DAG roots
      */
-    private static Set<Hop> deserializeDag(List<String> dagString, Map<Long, Hop> hops, Map<Long, Hop> megaCache) {
-        // Deserialize and cache each hop in the dag
+    private static Set<Hop> deserializeDag(List<String> dagString, Map<Long, Hop> megaCache) {
+        // Roots for the HOP DAG deserialized so far
         Set<Hop> roots = new HashSet<Hop>();
+
+        // Deserialization cache for HOPs deserialized so far
+        Map<Long, Hop> hops = new HashMap<Long, Hop>();
+
+        // Deserialize and cache each hop in the dag
         for (int i = 0; i < dagString.size(); i++) {
             Hop hop = deserializeHop(dagString.get(i), hops, megaCache);
             hops.put(hop.getHopID(), hop);
+
+            // Maintain known roots for DAG seen so far
             roots.add(hop);
             for (Hop child : hop.getInput()) {
                 roots.remove(child);
@@ -155,78 +182,55 @@ public class Wormhole {
     }
 
     /**
-     * Return a deserialized HOP given the serialized HOP string and a cache of
-     * potential HOP children
+     * Deserialize a HOP string.
      * 
-     * @param hopString The string encoding the HOP to be deserialized
+     * @param hopString The string encoding the HOP to be deserialized.
      * @param hops      A cache of previously deserialized HOP that could be
-     *                  children of the HOP being deserialized
-     * @return A newly constructed HOP
+     *                  children of the HOP being deserialized.
+     * @param megaCache Serde HOP cache
+     * @return A HOP object
      */
     private static Hop deserializeHop(String hopString, Map<Long, Hop> hops, Map<Long, Hop> megaCache) {
-
-        System.out.println("DESERIALIZE\n********************");
-        System.out.println(hopString);
-
         String[] attributes = hopString.split(";", -1);
-
         String lines = attributes[0];
-        System.out.println(lines);
-
         long hopID = Long.valueOf(attributes[1]);
-        System.out.println(hopID);
-
         String opName = attributes[2];
-        System.out.println(opName);
-
         List<Long> childrenID = Arrays.asList(attributes[3].split(",")).stream().filter(s -> !s.equals(""))
                 .map(s -> Long.valueOf(s)).collect(Collectors.toList());
-        System.out.println(childrenID);
-
         List<Long> matrixCharacteristics = Arrays.asList(attributes[4].split(",")).stream().filter(s -> !s.equals(""))
                 .map(s -> Long.valueOf(s)).collect(Collectors.toList());
-        System.out.println(matrixCharacteristics);
-
         Expression.DataType dt = resolveDT(attributes[5]);
-        System.out.println(dt.name());
-
         Expression.ValueType vt = resolveVT(attributes[6]);
-        System.out.println(vt.name());
-
         String memoryEstimates = attributes[7];
-        System.out.println(memoryEstimates);
-
         String dataFlowProp = attributes[8];
-        System.out.println(dataFlowProp);
-
         String execType = attributes[9];
-        System.out.println(execType);
-
-        System.out.println("********************");
+        if (LOG_DES) {
+            System.out.println("DESERIALIZE: " + hopString + "\n");
+        }
 
         // Resolve children as inp
         List<Hop> inp = hops.entrySet().stream().filter(e -> childrenID.contains(e.getKey())).map(e -> e.getValue())
                 .collect(Collectors.toList());
 
-        // Cache lookup first
-        Hop h = null;
-        if ((h = megaCache.get(hopID)) != null) {
-            h.getInput().clear();
-            for (long childID : childrenID) {
-                h.addInput(hops.get(childID));
+        // Serde cache lookup first
+        if (USE_MEGACACHE) {
+            Hop h = null;
+            if ((h = megaCache.get(hopID)) != null) {
+                // Cache hit, reinitialize the inputs
+                h.getInput().clear();
+                for (long childID : childrenID) {
+                    h.addInput(hops.get(childID));
+                }
+                return h;
             }
-            return h;
         }
 
         // New operator found, lets build it!
         if (opName.startsWith("u(") && opName.endsWith(")")) {
-            // UnaryOp
             return new UnaryOp(inp.get(0).getName(), dt, vt, resolveOpOp1(opName), inp.get(0));
         } else if (opName.startsWith("b(") && opName.endsWith(")")) {
-            // BinaryOp
             return new BinaryOp(inp.get(0).getName(), dt, vt, resolveOpOp2(opName), inp.get(0), inp.get(1));
         } else if (opName.startsWith("t(") && opName.endsWith(")")) {
-            // TernaryOp
             if (inp.size() == 3) {
                 return new TernaryOp(inp.get(0).getName(), dt, vt, resolveOpOp3(opName), inp.get(0), inp.get(1),
                         inp.get(2));
@@ -235,42 +239,32 @@ public class Wormhole {
                         inp.get(2), inp.get(3), inp.get(4));
             }
         } else if (opName.startsWith("q(") && opName.endsWith(")")) {
-            // QuaternaryOp
             return new QuaternaryOp(inp.get(0).getName(), dt, vt, resolveOpOp4(opName), inp.get(0), inp.get(1),
                     inp.get(2), inp.get(3), true /* post */);
         } else if (opName.startsWith("m(") && opName.endsWith(")")) {
-            // NaryOp
             return new NaryOp(inp.get(0).getName(), dt, vt, resolveOpOpN(opName), inp.toArray(new Hop[inp.size()]));
         } else if (opName.startsWith("r(") && opName.endsWith(")")) {
-            // ReorgOp
             return new ReorgOp(inp.get(0).getName(), dt, vt, resolveReOrgOp(opName), inp.get(0));
         } else if (opName.startsWith("dg(") && opName.endsWith(")")) {
-            // DataGenOp
             return new DataGenOp(resolveDataGenMethod(opName), new DataIdentifier("dg"),
                     resolveDGInputParam(attributes[10], inp));
         } else if (opName.startsWith("LiteralOp ")) {
-            // LiteralOp
             return getLiteralOp(vt, opName);
         } else if (opName.equals(LeftIndexingOp.OPSTRING)) {
-            // LeftIndexingOp
             // TODO
             throw new IllegalArgumentException("[ERROR] No support for LeftIndexingOp (lix)");
         } else if (opName.equals(IndexingOp.OPSTRING)) {
-            // IndexingOp
             // TODO passedRowsLEU
             // TODO passedColsLEU
             return new IndexingOp(inp.get(0).getName(), dt, vt, inp.get(0), inp.get(1), inp.get(2), inp.get(3),
                     inp.get(4), true /* passedRowsLEU */, true /* passedColsLEU */);
         } else if (opName.equals(FunctionOp.OPSTRING)) {
-            // FunctionOp
             // TODO
             throw new IllegalArgumentException("[ERROR] No support for FunctionOp (extfunct)");
         } else if (opName.startsWith("ua(") && opName.endsWith(")")) {
-            // UnaryAggregateOp
             Tuple2<AggOp, Direction> agg = resolveAgg(opName);
             return new AggUnaryOp(inp.get(0).getName(), dt, vt, agg._1(), agg._2(), inp.get(0));
         } else if (opName.startsWith("ba(") && opName.endsWith(")")) {
-            // BinaryAggregateOp
             Tuple2<AggOp, OpOp2> agg = resolveAgg2(opName);
             return new AggBinaryOp(inp.get(0).getName(), dt, vt, agg._2(), agg._1(), inp.get(0), inp.get(1));
         } else if (opName.startsWith("PRead")) {
@@ -291,6 +285,132 @@ public class Wormhole {
             throw new IllegalArgumentException("[ERROR] No support for TWrite");
         }
         throw new IllegalArgumentException("[ERROR] Cannot Recognize HOP in string: " + opName);
+    }
+
+    /**
+     * Serialize a list of hops into child-first topological order.
+     * 
+     * @param roots     A list of HOP DAG roots 
+     * @param megaCache Serde HOP cache 
+     * @param file      The file path to write the HOP DAG information from
+     */
+    private static void serialize(List<Hop> roots, Map<Long, Hop> megaCache, String file) {
+        try {
+            Files.deleteIfExists(new File(file).toPath());
+
+            BufferedWriter writer = new BufferedWriter(new FileWriter(file, true));
+            StringBuilder sb = new StringBuilder();
+            for (Hop hop : roots) {
+                sb.append(serializeHop(hop, new ArrayList<>(), megaCache).toString());
+            }
+            for (Hop hop : roots) {
+                hop.resetVisitStatus();
+            }
+            writer.append(sb.toString() + "\n");
+            writer.close();
+        } catch (IOException ex) {
+            System.err.println(ex.getStackTrace());
+        }
+    }
+
+    /**
+     * Serialize a HOP if it is in lines. Serializing a hop will serialize its
+     * children first.
+     * 
+     * @param hop   The HOP to serialize
+     * @param lines The valid lines to serialize
+     * @return The string representation of the HOP and its HOP children in
+     *         child-first topological order
+     */
+    private static String serializeHop(Hop hop, ArrayList<Integer> lines, Map<Long, Hop> megaCache) {
+        StringBuilder sb = new StringBuilder();
+
+        // Hop already explored, return out
+        if (hop.isVisited()) {
+            return sb.toString();
+        }
+
+        if (USE_MEGACACHE) {
+            megaCache.put(hop.getHopID(), hop);
+        }
+
+        // Enforce serializing children first
+        for (Hop input : hop.getInput()) {
+            sb.append(serializeHop(input, lines, megaCache));
+        }
+
+        // Serialize this node
+        if (isInRange(hop, lines)) {
+            // Line bounds
+            sb.append("" + hop.getBeginLine() + "," + hop.getEndLine() + ";");
+
+            // HOP ID
+            sb.append("" + hop.getHopID() + ";");
+
+            // Operator String
+            sb.append(hop.getOpString() + ";");
+
+            // Child(ren) HOP ID(s)
+            StringBuilder childs = new StringBuilder();
+            boolean childAdded = false;
+            for (Hop input : hop.getInput()) {
+                childs.append(childAdded ? "," : "");
+                childs.append(input.getHopID());
+                childAdded = true;
+            }
+            sb.append(childs.toString() + ";");
+
+            // Matrix characteristics
+            sb.append("" + hop.getDim1() + "," + hop.getDim2() + "," + hop.getRowsInBlock() + "," + hop.getColsInBlock()
+                    + "," + hop.getNnz());
+            if (hop.getUpdateType().isInPlace())
+                sb.append("," + hop.getUpdateType().toString().toLowerCase());
+            sb.append(";");
+
+            sb.append(hop.getDataType().name().charAt(0) + ";");
+
+            sb.append(hop.getValueType().name().charAt(0) + ";");
+
+            // memory estimates
+            sb.append(showMem(hop.getInputMemEstimate(), false) + ",")
+                    .append(showMem(hop.getIntermediateMemEstimate(), false) + ",")
+                    .append(showMem(hop.getOutputMemEstimate(), false) + ",")
+                    .append(showMem(hop.getMemEstimate(), false) + ";");
+
+            // data flow properties
+            if (hop.requiresReblock() && hop.requiresCheckpoint())
+                sb.append("rblk,chkpt");
+            else if (hop.requiresReblock())
+                sb.append("rblk");
+            else if (hop.requiresCheckpoint())
+                sb.append("chkpt");
+            sb.append(";");
+
+            // exec type
+            if (hop.getExecType() != null) {
+                sb.append(hop.getExecType());
+            }
+            sb.append(";");
+
+            if (hop instanceof DataGenOp) {
+                boolean foundParams = false;
+                DataGenOp dgOp = (DataGenOp) hop;
+                ArrayList<Hop> inputs = dgOp.getInput();
+                for (Map.Entry<String, Integer> e : dgOp.getParamIndexMap().entrySet()) {
+                    sb.append("" + e.getKey() + ":" + inputs.get(e.getValue()).getHopID() + ",");
+                    foundParams = true;
+                }
+                if (foundParams) {
+                    sb.delete(sb.length() - 1, sb.length());
+                }
+                sb.append(";");
+            }
+
+            sb.append('\n');
+        }
+
+        hop.setVisited();
+        return sb.toString();
     }
 
     private static HashMap<String, Hop> resolveDGInputParam(String string, List<Hop> inp) {
@@ -487,130 +607,6 @@ public class Wormhole {
         default:
             throw new IllegalArgumentException("[ERROR] Unrecognized DataType: " + s);
         }
-    }
-
-    /**
-     * Serialize a list of hops into child-first topological order.
-     * 
-     * @param roots A list of HOP DAG roots
-     */
-    private static void serialize(List<Hop> roots, Map<Long, Hop> megaCache, String file) {
-        try {
-            Files.deleteIfExists(new File(file).toPath());
-
-            BufferedWriter writer = new BufferedWriter(new FileWriter(file, true));
-            StringBuilder sb = new StringBuilder();
-            for (Hop hop : roots) {
-                sb.append(serializeHop(hop, new ArrayList<>(), megaCache).toString());
-            }
-            for (Hop hop : roots) {
-                hop.resetVisitStatus();
-            }
-            writer.append(sb.toString() + "\n");
-            writer.close();
-            megaCache.entrySet().stream()
-                    .forEach(e -> System.out.println("" + e.getKey() + "\t" + e.getValue().getOpString()));
-        } catch (IOException ex) {
-            System.err.println(ex.getStackTrace());
-        }
-    }
-
-    /**
-     * Serialize a HOP if it is in lines. Serializing a hop will serialize its
-     * children first.
-     * 
-     * @param hop   The HOP to serialize
-     * @param lines The valid lines to serialize
-     * @return The string representation of the HOP and its HOP children in
-     *         child-first topological order
-     */
-    private static String serializeHop(Hop hop, ArrayList<Integer> lines, Map<Long, Hop> megaCache) {
-        StringBuilder sb = new StringBuilder();
-
-        // Hop already explored, return out
-        if (hop.isVisited()) {
-            return sb.toString();
-        }
-
-        megaCache.put(hop.getHopID(), hop);
-
-        // Enforce serializing children first
-        for (Hop input : hop.getInput()) {
-            sb.append(serializeHop(input, lines, megaCache));
-        }
-
-        // Serialize this node
-        if (isInRange(hop, lines)) {
-            // Line bounds
-            sb.append("" + hop.getBeginLine() + "," + hop.getEndLine() + ";");
-
-            // HOP ID
-            sb.append("" + hop.getHopID() + ";");
-
-            // Operator String
-            sb.append(hop.getOpString() + ";");
-
-            // Child(ren) HOP ID(s)
-            StringBuilder childs = new StringBuilder();
-            boolean childAdded = false;
-            for (Hop input : hop.getInput()) {
-                childs.append(childAdded ? "," : "");
-                childs.append(input.getHopID());
-                childAdded = true;
-            }
-            sb.append(childs.toString() + ";");
-
-            // Matrix characteristics
-            sb.append("" + hop.getDim1() + "," + hop.getDim2() + "," + hop.getRowsInBlock() + "," + hop.getColsInBlock()
-                    + "," + hop.getNnz());
-            if (hop.getUpdateType().isInPlace())
-                sb.append("," + hop.getUpdateType().toString().toLowerCase());
-            sb.append(";");
-
-            sb.append(hop.getDataType().name().charAt(0) + ";");
-
-            sb.append(hop.getValueType().name().charAt(0) + ";");
-
-            // memory estimates
-            sb.append(showMem(hop.getInputMemEstimate(), false) + ",")
-                    .append(showMem(hop.getIntermediateMemEstimate(), false) + ",")
-                    .append(showMem(hop.getOutputMemEstimate(), false) + ",")
-                    .append(showMem(hop.getMemEstimate(), false) + ";");
-
-            // data flow properties
-            if (hop.requiresReblock() && hop.requiresCheckpoint())
-                sb.append("rblk,chkpt");
-            else if (hop.requiresReblock())
-                sb.append("rblk");
-            else if (hop.requiresCheckpoint())
-                sb.append("chkpt");
-            sb.append(";");
-
-            // exec type
-            if (hop.getExecType() != null) {
-                sb.append(hop.getExecType());
-            }
-            sb.append(";");
-
-            if (hop instanceof DataGenOp) {
-                boolean foundParams = false;
-                DataGenOp dgOp = (DataGenOp) hop;
-                ArrayList<Hop> inputs = dgOp.getInput();
-                for (Map.Entry<String, Integer> e : dgOp.getParamIndexMap().entrySet()) {
-                    sb.append("" + e.getKey() + ":" + inputs.get(e.getValue()).getHopID() + ",");
-                    foundParams = true;
-                }
-                if (foundParams) {
-                    sb.delete(sb.length() - 1, sb.length());
-                }
-                sb.append(";");
-            }
-
-            sb.append('\n');
-        }
-
-        hop.setVisited();
-        return sb.toString();
     }
 
     // From Explain.java
