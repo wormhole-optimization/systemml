@@ -56,7 +56,7 @@ public class Wormhole {
     private static final boolean LOG_WARP_STD = true;
     private static final boolean LOG_WARP_ERR = true;
     private static final boolean LOG_DES = true;
-    private static final boolean USE_MEGACACHE = false;
+    private static final boolean USE_MEGACACHE = true;
     private static final String HOPS_FOLDER = "/tmp";
 
     /**
@@ -206,6 +206,8 @@ public class Wormhole {
         String remainder = opStrings._2();
         List<Long> childrenID = Arrays.asList(attributes[3].split(",")).stream().filter(s -> !s.equals(""))
                 .map(s -> Long.valueOf(s)).collect(Collectors.toList());
+        List<Hop> inp = hops.entrySet().stream().filter(e -> childrenID.contains(e.getKey())).map(e -> e.getValue())
+                .collect(Collectors.toList());
         List<Integer> matrixCharacteristics = Arrays.asList(attributes[4].split(",")).stream().filter(s -> !s.equals(""))
                 .map(s -> Integer.valueOf(s)).collect(Collectors.toList());
         int dim1 = matrixCharacteristics.get(0);
@@ -221,10 +223,6 @@ public class Wormhole {
         if (LOG_DES) {
             System.out.println("DESERIALIZE: " + hopString + "\n");
         }
-
-        // Resolve children as inp
-        List<Hop> inp = hops.entrySet().stream().filter(e -> childrenID.contains(e.getKey())).map(e -> e.getValue())
-                .collect(Collectors.toList());
 
         // Serde cache lookup first
         if (USE_MEGACACHE) {
