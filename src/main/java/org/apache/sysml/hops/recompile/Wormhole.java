@@ -20,9 +20,16 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.apache.sysml.conf.ConfigurationManager;
-import org.apache.sysml.hops.*;
+import org.apache.sysml.hops.AggBinaryOp;
+import org.apache.sysml.hops.AggUnaryOp;
+import org.apache.sysml.hops.BinaryOp;
+import org.apache.sysml.hops.DataGenOp;
+import org.apache.sysml.hops.DataOp;
+import org.apache.sysml.hops.FunctionOp;
+import org.apache.sysml.hops.Hop;
 import org.apache.sysml.hops.Hop.AggOp;
 import org.apache.sysml.hops.Hop.DataGenMethod;
+import org.apache.sysml.hops.Hop.DataOpTypes;
 import org.apache.sysml.hops.Hop.Direction;
 import org.apache.sysml.hops.Hop.OpOp1;
 import org.apache.sysml.hops.Hop.OpOp2;
@@ -30,6 +37,15 @@ import org.apache.sysml.hops.Hop.OpOp3;
 import org.apache.sysml.hops.Hop.OpOp4;
 import org.apache.sysml.hops.Hop.OpOpN;
 import org.apache.sysml.hops.Hop.ReOrgOp;
+import org.apache.sysml.hops.IndexingOp;
+import org.apache.sysml.hops.LeftIndexingOp;
+import org.apache.sysml.hops.LiteralOp;
+import org.apache.sysml.hops.NaryOp;
+import org.apache.sysml.hops.OptimizerUtils;
+import org.apache.sysml.hops.QuaternaryOp;
+import org.apache.sysml.hops.ReorgOp;
+import org.apache.sysml.hops.TernaryOp;
+import org.apache.sysml.hops.UnaryOp;
 import org.apache.sysml.parser.DataIdentifier;
 import org.apache.sysml.parser.Expression;
 import org.apache.sysml.parser.Expression.ValueType;
@@ -185,11 +201,18 @@ public class Wormhole {
         String[] attributes = hopString.split(";", -1);
         String lines = attributes[0];
         long hopID = Long.valueOf(attributes[1]);
-        String opName = attributes[2];
+        Tuple2<String, String> opStrings = firstWordAndRem(attributes[2]);
+        String opName = opStrings._1();
+        String remainder = opStrings._2();
         List<Long> childrenID = Arrays.asList(attributes[3].split(",")).stream().filter(s -> !s.equals(""))
                 .map(s -> Long.valueOf(s)).collect(Collectors.toList());
-        List<Long> matrixCharacteristics = Arrays.asList(attributes[4].split(",")).stream().filter(s -> !s.equals(""))
-                .map(s -> Long.valueOf(s)).collect(Collectors.toList());
+        List<Integer> matrixCharacteristics = Arrays.asList(attributes[4].split(",")).stream().filter(s -> !s.equals(""))
+                .map(s -> Integer.valueOf(s)).collect(Collectors.toList());
+        int dim1 = matrixCharacteristics.get(0);
+        int dim2 = matrixCharacteristics.get(1);
+        int rowsInBlock = matrixCharacteristics.get(2);
+        int colsInBlock = matrixCharacteristics.get(3);
+        int nnz = matrixCharacteristics.get(4);
         Expression.DataType dt = resolveDT(attributes[5]);
         Expression.ValueType vt = resolveVT(attributes[6]);
         String memoryEstimates = attributes[7];
@@ -264,16 +287,14 @@ public class Wormhole {
             throw new IllegalArgumentException("[ERROR] No support for PRead");
         } else if (opName.startsWith("PWrite")) {
             // DataOp
-            // TODO
-            throw new IllegalArgumentException("[ERROR] No support for PWrite");
+            return new DataOp(remainder, dt, vt, inp.get(0), Hop.DataOpTypes.TRANSIENTWRITE, remainder);
         } else if (opName.startsWith("TRead")) {
             // DataOp
-            // TODO
-            throw new IllegalArgumentException("[ERROR] No support for TRead");
+            return new DataOp(remainder, dt, vt, DataOpTypes.TRANSIENTREAD,
+                            remainder, dim1, dim2, nnz, rowsInBlock, colsInBlock);
         } else if (opName.startsWith("TWrite")) {
             // DataOp
-            // TODO
-            throw new IllegalArgumentException("[ERROR] No support for TWrite");
+            return new DataOp(remainder, dt, vt, inp.get(0), Hop.DataOpTypes.TRANSIENTWRITE, remainder);
         }
         throw new IllegalArgumentException("[ERROR] Cannot Recognize HOP in string: " + opName);
     }
@@ -617,5 +638,15 @@ public class Wormhole {
             return "MAX";
         }
         return OptimizerUtils.toMB(mem) + (units ? "MB" : "");
+    }
+
+    // From ParseExplain.kt
+    private static Tuple2<String, String> firstWordAndRem(String str) {
+        int idx = str.indexOf(' ');
+        if( idx == -1 ) {
+            return new Tuple2<>(str, null);
+        } else {
+            return new Tuple2<>(str.substring(0, idx), str.substring(idx+1));
+        }
     }
 }
