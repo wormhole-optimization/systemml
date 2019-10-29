@@ -1,0 +1,39 @@
+#-------------------------------------------------------------
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+# 
+#   http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+#-------------------------------------------------------------
+
+S= matrix(1, rows=2, cols=4)
+V= matrix(2, rows=3, cols=4)
+W= matrix(3, rows=2, cols=3)
+U= matrix(4, rows=2, cols=4)
+while(FALSE) {}
+
+HS = ((S %*% t(V)) * W) %*% V + S
+alpha = S * HS
+
+while(FALSE) {}
+X = HS * alpha
+write(X,$1)
+
+#HS = (W * (S %*% t(V))) %*% V + lambda * S * row_nonzeros;
+#alpha = norm_R2 / sum (S * HS);
+#U = U + alpha * S;  # OK since U is not used in HS
+
+# row_nonzeros is rowSums(W)

@@ -26,8 +26,8 @@
 # Environment
 
 # Following variables must be rewritten by your installation paths.
-DEFAULT_SPARK_HOME=/usr/local/spark-2.1.0/spark-2.1.0-bin-hadoop2.6
-DEFAULT_SYSTEMML_HOME=.
+DEFAULT_SPARK_HOME=/home/wopt/wormhole/spark
+DEFAULT_SYSTEMML_HOME=/home/wopt/wormhole/systemml/target
 
 if [ -z ${SPARK_HOME} ]; then
   SPARK_HOME=${DEFAULT_SPARK_HOME}
@@ -50,9 +50,9 @@ executor_cores="--executor-cores 24"
 conf="--conf spark.driver.maxResultSize=0"
 
 # override
-driver_memory="--driver-memory 2G"
+driver_memory="--driver-memory 100G"
 num_executors="--num-executors 2"
-executor_memory="--executor-memory 3G"
+executor_memory="--executor-memory 200G"
 executor_cores="--executor-cores 2"
 
 # error help print
