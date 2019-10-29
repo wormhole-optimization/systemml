@@ -1,0 +1,1 @@
+-f ./dml/spoof2pattern1.dml --args spoof/tmp.mtx

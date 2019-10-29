@@ -1,0 +1,1 @@
+-f ./dml/parrot_warp.dml --nvargs A=spoof/A B=spoof/B C=spoof/C P=spoof/parrot_warp_result fmt="binary"

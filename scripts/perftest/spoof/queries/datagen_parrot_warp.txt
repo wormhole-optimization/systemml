@@ -1,0 +1,1 @@
+-f ./dml/DatagenParrot.dml --args 10000 5000 1 spoof/A spoof/B spoof/C binary
