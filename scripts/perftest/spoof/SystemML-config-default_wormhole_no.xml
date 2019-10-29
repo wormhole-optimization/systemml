@@ -40,10 +40,10 @@
    <sysml.yarn.appmaster>false</sysml.yarn.appmaster>
 
    <!-- maximum jvm heap size of the dml yarn appmaster in MB, the requested memory is 1.5x this parameter -->
-   <sysml.yarn.appmaster.mem>2048</sysml.yarn.appmaster.mem>
+   <sysml.yarn.appmaster.mem>20000</sysml.yarn.appmaster.mem>
 
    <!-- maximum jvm heap size of the map/reduce tasks in MB, the requested memory is 1.5x this parameter, negative values ignored  -->
-   <sysml.yarn.mapreduce.mem>2048</sysml.yarn.mapreduce.mem>
+   <sysml.yarn.mapreduce.mem>20000</sysml.yarn.mapreduce.mem>
 
    <!-- yarn application submission queue, relevant for default capacity scheduler -->
    <sysml.yarn.app.queue>default</sysml.yarn.app.queue>
