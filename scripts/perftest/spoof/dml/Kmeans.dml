@@ -60,6 +60,13 @@ avg_sample_size_per_centroid = ifdef ($samp, 50);  # $samp=50;
 print ("BEGIN K-MEANS SCRIPT");
 print ("Reading X...");
 
+
+time = externalFunction(Integer i) return (Double B)
+       implemented in (classname="org.apache.sysml.udf.lib.TimeWrapper", exectype="mem");
+t0 = time(1);
+print("Fucking Time: " + 0);
+
+
 # X : matrix of data points as rows
 X = read (fileX);
 num_records   = nrow (X);
@@ -124,6 +131,9 @@ for (i in 1 : num_centroids)
         min_distances = min (min_distances, distances);
 }   }
 
+t = time(1);
+print("Fucking Time1: " + (t - t0));
+t0 = t
 # STEP 2: PERFORM K-MEANS ITERATIONS FOR ALL RUNS:
 
 termination_code = matrix (0, rows = num_runs, cols = 1);
@@ -132,7 +142,7 @@ num_iterations = matrix (0, rows = num_runs, cols = 1);
 
 print ("Performing k-means iterations for all runs...");
 
-parfor (run_index in 1 : num_runs, check = 0)
+for (run_index in 1 : num_runs, check = 0)
 {
     C = All_Centroids [(num_centroids * (run_index - 1) + 1) : (num_centroids * run_index), ];
     C_old = C;
@@ -144,7 +154,16 @@ parfor (run_index in 1 : num_runs, check = 0)
     {
         # Compute Euclidean squared distances from records (X rows) to centroids (C rows)
         # without the C-independent term, then take the minimum for each record
+        t = time(1);
+	print("Fucking Time x: " + (t - t0));
+	t0 = t
+
         D = -2 * (X %*% t(C)) + t(rowSums (C ^ 2));
+	t = time(1);
+	print("Fucking Time y: " + (t - t0));
+	t0 = t
+
+
         minD = rowMins (D);
         # Compute the current centroid-based within-cluster sum of squares (WCSS)
         wcss_old = wcss;
@@ -156,6 +175,10 @@ parfor (run_index in 1 : num_runs, check = 0)
                 print ("Run " + run_index + ", Iteration " + iter_count + ":  Centroid WCSS = " + wcss
                     + ";  Centroid change (avg.sq.dist.) = " + (sum ((C - C_old) ^ 2) / num_centroids));
         }   }
+        t = time(1);
+        print("Fucking Time a: " + (t - t0));
+        t0 = t
+
         # Check if convergence or maximum iteration has been reached
         if (wcss_old - wcss < eps * wcss & iter_count > 0) {
             term_code = 1;  # Convergence is reached
@@ -176,7 +199,12 @@ parfor (run_index in 1 : num_runs, check = 0)
                     C_old = C;
                     # Compute new centroids as weighted averages over the records
                     C = (t(P) %*% X) / t(P_denom);
-    }   }   }   }
+        }   }   }
+        t = time(1);
+        print("Fucking Time b: " + (t - t0));
+        t0 = t
+
+    }
     print ("Run " + run_index + ", Iteration " + iter_count + ":  Terminated with code = " + term_code + ",  Centroid WCSS = " + wcss);
     All_Centroids [(num_centroids * (run_index - 1) + 1) : (num_centroids * run_index), ] = C;
     final_wcss [run_index, 1] = wcss;
@@ -221,6 +249,9 @@ if (num_successful_runs > 0) {
     stop ("No output is produced.  Try increasing the number of iterations and/or runs.");
 }
 
+t = time(1);
+print("Fucking Time1: " + (t - t0));
+t0 = t
 
 
 get_sample_maps = function (int num_records, int num_samples, int approx_sample_size)
@@ -279,4 +310,6 @@ get_sample_maps = function (int num_records, int num_samples, int approx_sample_
             sample_maps    [(num_records * (i - 1) + 1) : (num_records * i),  ] = diag (one_per_record);
             sample_col_map [(num_records * (i - 1) + 1) : (num_records * i), i] = one_per_record;
 }   }   }
-
+t = time(1);
+print("Fucking Time1: " + (t - t0));
+t0 = t

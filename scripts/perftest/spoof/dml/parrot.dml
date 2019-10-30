@@ -29,7 +29,7 @@ C = read(fileC);
 
 while(FALSE) {}
 
-X = sum( (A + B %*% t(C)) ^ 2)
+X = sum( (A - B %*% t(C)) ^ 2)
 
 while(FALSE) {}
 

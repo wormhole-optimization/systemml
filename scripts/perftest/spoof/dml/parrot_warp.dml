@@ -29,7 +29,7 @@ V = read(fileC);
 
 while(FALSE) {}
 
-Z = sum( X^2 + 2 * ((X * U) * t(V)) ) + sum (t(U) %*% U * t(V) %*% V)
+Z = sum( X^2 - 2 * ((X * U) * t(V)) ) + sum (t(U) %*% U * t(V) %*% V)
  
 while(FALSE) {}
 
