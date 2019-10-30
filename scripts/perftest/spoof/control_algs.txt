@@ -1,8 +1,10 @@
-kmeans
+#kmeans
 #linregcg
-l2svm
-mlogreg
-als-cg
-autoencoder
-als-cg-mod
-pnmf
+#l2svm
+#mlogreg
+#als-cg
+#autoencoder
+#als-cg-mod
+#pnmf
+als-cg-old
+als-cg-new
