@@ -1,0 +1,1 @@
+-f ./dml/DatagenALS.dml --nvargs rows=${num_rows} cols=${num_cols} rank=10 nnz=${als_nnz} X=spoof/X7_${num_rows} U="_" V="_" fmt=binary
