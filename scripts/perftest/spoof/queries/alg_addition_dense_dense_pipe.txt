@@ -1,0 +1,1 @@
+-f ./dml/addition_dense_dense_pipe.dml --nvargs A=spoof/A B=spoof/B Z=spoof/Z fmt="binary"

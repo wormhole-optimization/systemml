@@ -1,0 +1,1 @@
+-f ./dml/alpha.dml --nvargs A=spoof/A B=spoof/B C=spoof/C D=spoof/D out=spoof/out fmt="binary"

@@ -115,10 +115,12 @@ while( as.integer(it/2) < max_iter & ! converged )
 {
   it = it + 1;
   if( is_U ) {
-    G = ((U %*% t(V) - X)) %*% V + lambda * U * row_nonzeros;
+    #G = (U %*% t(V) - X) %*% V + lambda * U * row_nonzeros;
+    G = U %*% t(V) %*% V - X %*% V + lambda * U * row_nonzeros;
   } 
   else {
-    G = t(t(U) %*% ((U %*% t(V) - X))) + lambda * V * col_nonzeros;
+    #G = t(t(U) %*% (U %*% t(V) - X)) + lambda * V * col_nonzeros;
+    G = V %*% t(U) %*% U - t(X) %*% U + lambda * V * col_nonzeros;
   }
 
   R = -G;
@@ -151,18 +153,18 @@ while( as.integer(it/2) < max_iter & ! converged )
   is_U = ! is_U;
 	
   # check for convergence
-  if( check & (it%%2 == 0) ) {
-    loss_cur = 0.5 * sum( (U %*% t(V) - X) ^ 2);
-    loss_cur = loss_cur + 0.5 * lambda * (sum (U ^ 2 * row_nonzeros) + sum (V ^ 2 * col_nonzeros));
-	
-    loss_dec = (loss_init - loss_cur) / loss_init;
-    print ("Train loss at iteration (" + as.integer(it/2) + "): " + loss_cur + " loss-dec " + loss_dec);
-    #if( loss_dec >= 0 & loss_dec < thr | loss_init == 0 ) {
-    #  print ("----- ALS-CG converged after " + as.integer(it/2) + " iterations!");
-    #  converged = TRUE;
-    #}
-    loss_init = loss_cur;
-  }
+  #if( check & (it%%2 == 0) ) {
+  #  loss_cur = 0.5 * sum( (U %*% t(V) - X) ^ 2);
+  #  loss_cur = loss_cur + 0.5 * lambda * (sum (U ^ 2 * row_nonzeros) + sum (V ^ 2 * col_nonzeros));
+  #      
+  #  loss_dec = (loss_init - loss_cur) / loss_init;
+  #  print ("Train loss at iteration (" + as.integer(it/2) + "): " + loss_cur + " loss-dec " + loss_dec);
+  #  #if( loss_dec >= 0 & loss_dec < thr | loss_init == 0 ) {
+  #  #  print ("----- ALS-CG converged after " + as.integer(it/2) + " iterations!");
+  #  #  converged = TRUE;
+  #  #}
+  #  loss_init = loss_cur;
+  #}
 }
 
 if( check ) {

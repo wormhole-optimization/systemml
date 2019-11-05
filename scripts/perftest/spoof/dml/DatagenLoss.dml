@@ -1,0 +1,36 @@
+#-------------------------------------------------------------
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+# 
+#   http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+#-------------------------------------------------------------
+
+dim0 = $1
+dim1 = $2
+dim2 = $3
+
+U = Rand(rows=dim0, cols=dim2, min=-1, max=1, pdf="uniform", seed=0, sparsity=1)
+V = Rand(rows=dim1, cols=dim2, min=-1, max=1, pdf="uniform", seed=1, sparsity=1)
+X = Rand(rows=dim0, cols=dim1, min=-1, max=1, pdf="uniform", seed=2, sparsity=0.01)
+R = Rand(rows=dim0, cols=1,    min=-1, max=1, pdf="uniform", seed=3, sparsity=1)
+C = Rand(rows=dim1, cols=1,    min=-1, max=1, pdf="uniform", seed=4, sparsity=1)
+
+write(U, $4, format=$9)
+write(V, $5, format=$9)
+write(X, $6, format=$9)
+write(R, $7, format=$9)
+write(C, $8, format=$9)

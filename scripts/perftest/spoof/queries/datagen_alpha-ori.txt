@@ -1,0 +1,1 @@
+-f ./dml/DatagenAlpha.dml --args 500000 500000 10 spoof/A spoof/B spoof/C spoof/D binary

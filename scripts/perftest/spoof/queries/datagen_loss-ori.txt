@@ -1,0 +1,1 @@
+-f ./dml/DatagenLoss.dml --args 500000 1000000 10 spoof/U spoof/V spoof/X spoof/R spoof/C binary

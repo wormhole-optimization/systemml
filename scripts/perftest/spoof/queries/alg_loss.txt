@@ -1,0 +1,1 @@
+-f ./dml/loss.dml --nvargs U=spoof/U V=spoof/V X=spoof/X R=spoof/R C=spoof/C L=spoof/L fmt="binary"

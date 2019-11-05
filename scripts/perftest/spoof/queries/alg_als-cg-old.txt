@@ -1,1 +1,1 @@
--f ./dml/ALS-CG.dml --nvargs X=spoof/X7_${num_rows} U=spoof/U V=spoof/V rank=10 maxi=20 reg="wL2" lambda=0.001 thr=0.000000000001 fmt="binary"
+-f ./dml/ALS-CG-old.dml --nvargs X=spoof/X7_${num_rows} U=spoof/U V=spoof/V rank=10 maxi=20 reg="wL2" lambda=0.001 thr=0.000000000001 fmt="binary"

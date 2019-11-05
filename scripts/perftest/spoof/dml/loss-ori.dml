@@ -1,0 +1,20 @@
+# script snippet from ALS-CG-mod.dml (lines 155-164)
+
+U = read($U)
+V = read($V)
+X = read($X)
+row_nonzeros = read($R)
+col_nonzeros = read($C)
+lambda = -0.0005
+loss_init = 3.14 # Recompiler will make loss_init value a constant for the given DAG
+
+while(FALSE) {}
+
+loss_cur = 0.5 * sum( (U %*% t(V) - X) ^ 2);
+loss_cur = loss_cur + 0.5 * lambda * (sum (U ^ 2 * row_nonzeros) + sum (V ^ 2 * col_nonzeros));
+loss_dec = (loss_init - loss_cur) / loss_init;
+
+while(FALSE) {}
+
+write(loss_dec, $L, format="text")
+

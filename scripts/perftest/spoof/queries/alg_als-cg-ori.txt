@@ -1,0 +1,2 @@
+-f ./dml/ALS-CG-ori.dml --nvargs X=spoof/X7_${num_rows} U=spoof/U V=spoof/V rank=10 maxi=20 reg="wL2" lambda=0.001 thr=0.000000000001 fmt="binary"
+
