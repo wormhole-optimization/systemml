@@ -77,7 +77,8 @@ public abstract class Hop implements ParseInfo
 	// static variable to assign an unique ID to every hop that is created
 	private static IDSequence _seqHopID = new IDSequence();
 	
-	protected final long _ID;
+	//protected final long _ID;
+	protected long _ID;
 	protected String _name;
 	protected DataType _dataType;
 	protected ValueType _valueType;
@@ -145,6 +146,10 @@ public abstract class Hop implements ParseInfo
 	
 	public long getHopID() {
 		return _ID;
+	}
+
+	public void setHopID(long id) {
+		_ID = id;
 	}
 
 	/**

@@ -175,6 +175,8 @@ public class Wormhole {
 
         // Deserialize and cache each hop in the dag
         for (int i = 0; i < dagString.size(); i++) {
+            System.out.println(hops.toString());
+
             Hop hop = deserializeHop(dagString.get(i), hops, megaCache);
             hops.put(hop.getHopID(), hop);
 
@@ -204,10 +206,16 @@ public class Wormhole {
         Tuple2<String, String> opStrings = firstWordAndRem(attributes[2]);
         String opName = opStrings._1();
         String remainder = opStrings._2();
-        List<Long> childrenID = Arrays.asList(attributes[3].split(",")).stream().filter(s -> !s.equals(""))
-                .map(s -> Long.valueOf(s)).collect(Collectors.toList());
-        List<Hop> inp = hops.entrySet().stream().filter(e -> childrenID.contains(e.getKey())).map(e -> e.getValue())
-                .collect(Collectors.toList());
+        List<Long> childrenID = new ArrayList<Long>();
+        for (String idString : attributes[3].split(",")) {
+            if (!idString.equals("")) {
+                childrenID.add(Long.valueOf(idString));
+            }
+        }
+        List<Hop> inp = new ArrayList<Hop>();
+        for (long id : childrenID) {
+            inp.add(hops.get(id));
+        }
         List<Integer> matrixCharacteristics = Arrays.asList(attributes[4].split(",")).stream().filter(s -> !s.equals(""))
                 .map(s -> Integer.valueOf(s)).collect(Collectors.toList());
         int dim1 = matrixCharacteristics.get(0);
@@ -217,9 +225,9 @@ public class Wormhole {
         int nnz = matrixCharacteristics.get(4);
         Expression.DataType dt = resolveDT(attributes[5]);
         Expression.ValueType vt = resolveVT(attributes[6]);
-        String memoryEstimates = attributes[7];
-        String dataFlowProp = attributes[8];
-        String execType = attributes[9];
+        //String memoryEstimates = attributes[7];
+        //String dataFlowProp = attributes[8];
+        //String execType = attributes[9];
         if (LOG_DES) {
             System.out.println("DESERIALIZE: " + hopString + "\n");
         }
@@ -238,63 +246,70 @@ public class Wormhole {
         }
 
         // New operator found, lets build it!
+        Hop h = null;
         if (opName.startsWith("u(") && opName.endsWith(")")) {
-            return new UnaryOp(inp.get(0).getName(), dt, vt, resolveOpOp1(opName), inp.get(0));
+            h = new UnaryOp(inp.get(0).getName(), dt, vt, resolveOpOp1(opName), inp.get(0));
         } else if (opName.startsWith("b(") && opName.endsWith(")")) {
-            return new BinaryOp(inp.get(0).getName(), dt, vt, resolveOpOp2(opName), inp.get(0), inp.get(1));
+            h = new BinaryOp(inp.get(0).getName(), dt, vt, resolveOpOp2(opName), inp.get(0), inp.get(1));
         } else if (opName.startsWith("t(") && opName.endsWith(")")) {
             if (inp.size() == 3) {
-                return new TernaryOp(inp.get(0).getName(), dt, vt, resolveOpOp3(opName), inp.get(0), inp.get(1),
+                h = new TernaryOp(inp.get(0).getName(), dt, vt, resolveOpOp3(opName), inp.get(0), inp.get(1),
                         inp.get(2));
             } else {
-                return new TernaryOp(inp.get(0).getName(), dt, vt, resolveOpOp3(opName), inp.get(0), inp.get(1),
+                h = new TernaryOp(inp.get(0).getName(), dt, vt, resolveOpOp3(opName), inp.get(0), inp.get(1),
                         inp.get(2), inp.get(3), inp.get(4));
             }
         } else if (opName.startsWith("q(") && opName.endsWith(")")) {
-            return new QuaternaryOp(inp.get(0).getName(), dt, vt, resolveOpOp4(opName), inp.get(0), inp.get(1),
+            h = new QuaternaryOp(inp.get(0).getName(), dt, vt, resolveOpOp4(opName), inp.get(0), inp.get(1),
                     inp.get(2), inp.get(3), true /* post */);
         } else if (opName.startsWith("m(") && opName.endsWith(")")) {
-            return new NaryOp(inp.get(0).getName(), dt, vt, resolveOpOpN(opName), inp.toArray(new Hop[inp.size()]));
+            h = new NaryOp(inp.get(0).getName(), dt, vt, resolveOpOpN(opName), inp.toArray(new Hop[inp.size()]));
         } else if (opName.startsWith("r(") && opName.endsWith(")")) {
-            return new ReorgOp(inp.get(0).getName(), dt, vt, resolveReOrgOp(opName), inp.get(0));
+            h = new ReorgOp(inp.get(0).getName(), dt, vt, resolveReOrgOp(opName), inp.get(0));
         } else if (opName.startsWith("dg(") && opName.endsWith(")")) {
-            return new DataGenOp(resolveDataGenMethod(opName), new DataIdentifier("dg"),
+            h = new DataGenOp(resolveDataGenMethod(opName), new DataIdentifier("dg"),
                     resolveDGInputParam(attributes[10], inp));
-        } else if (opName.startsWith("LiteralOp ")) {
-            return getLiteralOp(vt, opName);
+        } else if (opName.startsWith("LiteralOp")) {
+            h = getLiteralOp(vt, opName, remainder);
         } else if (opName.equals(LeftIndexingOp.OPSTRING)) {
             // TODO
-            throw new IllegalArgumentException("[ERROR] No support for LeftIndexingOp (lix)");
+            // TODO passedRowsLEU
+            // TODO passedColsLEU
+            h = new LeftIndexingOp(inp.get(0).getName(), dt, vt, inp.get(0), inp.get(1), inp.get(2), inp.get(3),
+                inp.get(4), inp.get(5), true /* passedRowsLEU */, true /* passedColsLEU */);
         } else if (opName.equals(IndexingOp.OPSTRING)) {
             // TODO passedRowsLEU
             // TODO passedColsLEU
-            return new IndexingOp(inp.get(0).getName(), dt, vt, inp.get(0), inp.get(1), inp.get(2), inp.get(3),
-                    inp.get(4), true /* passedRowsLEU */, true /* passedColsLEU */);
+            h = new IndexingOp(inp.get(0).getName(), dt, vt, inp.get(0), inp.get(1), inp.get(2), inp.get(3),
+                inp.get(4), true /* passedRowsLEU */, true /* passedColsLEU */);
         } else if (opName.equals(FunctionOp.OPSTRING)) {
             // TODO
             throw new IllegalArgumentException("[ERROR] No support for FunctionOp (extfunct)");
         } else if (opName.startsWith("ua(") && opName.endsWith(")")) {
             Tuple2<AggOp, Direction> agg = resolveAgg(opName);
-            return new AggUnaryOp(inp.get(0).getName(), dt, vt, agg._1(), agg._2(), inp.get(0));
+            h = new AggUnaryOp(inp.get(0).getName(), dt, vt, agg._1(), agg._2(), inp.get(0));
         } else if (opName.startsWith("ba(") && opName.endsWith(")")) {
             Tuple2<AggOp, OpOp2> agg = resolveAgg2(opName);
-            return new AggBinaryOp(inp.get(0).getName(), dt, vt, agg._2(), agg._1(), inp.get(0), inp.get(1));
+            h = new AggBinaryOp(inp.get(0).getName(), dt, vt, agg._2(), agg._1(), inp.get(0), inp.get(1));
         } else if (opName.startsWith("PRead")) {
             // DataOp
             // TODO
-            throw new IllegalArgumentException("[ERROR] No support for PRead");
+            new IllegalArgumentException("[ERROR] No support for PRead");
         } else if (opName.startsWith("PWrite")) {
             // DataOp
-            return new DataOp(remainder, dt, vt, inp.get(0), Hop.DataOpTypes.TRANSIENTWRITE, remainder);
+            h = new DataOp(remainder, dt, vt, inp.get(0), Hop.DataOpTypes.TRANSIENTWRITE, remainder);
         } else if (opName.startsWith("TRead")) {
             // DataOp
-            return new DataOp(remainder, dt, vt, DataOpTypes.TRANSIENTREAD,
+            h = new DataOp(remainder, dt, vt, DataOpTypes.TRANSIENTREAD,
                             remainder, dim1, dim2, nnz, rowsInBlock, colsInBlock);
         } else if (opName.startsWith("TWrite")) {
             // DataOp
-            return new DataOp(remainder, dt, vt, inp.get(0), Hop.DataOpTypes.TRANSIENTWRITE, remainder);
+            h = new DataOp(remainder, dt, vt, inp.get(0), Hop.DataOpTypes.TRANSIENTWRITE, remainder);
+        } else {
+            throw new IllegalArgumentException("[ERROR] Cannot Recognize HOP in string: " + opName);
         }
-        throw new IllegalArgumentException("[ERROR] Cannot Recognize HOP in string: " + opName);
+        h.setHopID(hopID);
+        return h;
     }
 
     /**
@@ -438,19 +453,18 @@ public class Wormhole {
         return out;
     }
 
-    private static Hop getLiteralOp(ValueType vt, String opName) {
-        String valueString = opName.substring("LiteralOp ".length());
+    private static Hop getLiteralOp(ValueType vt, String opName, String remainder) {
         switch (vt) {
         case INT:
-            return new LiteralOp(Long.valueOf(valueString));
+            return new LiteralOp(Long.valueOf(remainder));
         case DOUBLE:
-            return new LiteralOp(Double.valueOf(valueString));
+            return new LiteralOp(Double.valueOf(remainder));
         case STRING:
-            return new LiteralOp(valueString);
+            return new LiteralOp(remainder);
         case BOOLEAN:
-            return new LiteralOp(Boolean.valueOf(valueString));
+            return new LiteralOp(Boolean.valueOf(remainder));
         default:
-            throw new IllegalArgumentException("[ERROR] LiteralOp ValueType not recognized: " + valueString);
+            throw new IllegalArgumentException("[ERROR] LiteralOp ValueType not recognized: " + remainder);
         }
     }
 
@@ -487,17 +501,22 @@ public class Wormhole {
         }
     }
 
+    private static DataGenMethod resolveDataGenMethod(String opName) {
+        return Hop.DataGenMethod.valueOf(opName.substring(3, opName.length() - 1).toUpperCase());
+    }
+
     private static AggOp resolveAggOp(String opName) {
         for (Map.Entry<AggOp, String> e : Hop.HopsAgg2String.entrySet()) {
             if (e.getValue().equals(opName)) {
                 return e.getKey();
             }
         }
+        for (Hop.AggOp op : Hop.AggOp.class.getEnumConstants()) {
+            if (op.name().toLowerCase().equals(opName)) {
+                return op;
+            }
+        }
         throw new IllegalArgumentException("[ERROR] Unrecognized AggOp: " + opName);
-    }
-
-    private static DataGenMethod resolveDataGenMethod(String opName) {
-        return Hop.DataGenMethod.valueOf(opName.substring(3, opName.length() - 1).toUpperCase());
     }
 
     private static ReOrgOp resolveReOrgOp(String opName) {
@@ -507,37 +526,32 @@ public class Wormhole {
                 return e.getKey();
             }
         }
+        for (Hop.ReOrgOp op : Hop.ReOrgOp.class.getEnumConstants()) {
+            if (op.name().toLowerCase().equals(opName)) {
+                return op;
+            }
+        }
         throw new IllegalArgumentException("[ERROR] Unrecognized ReOrgOp: " + opName);
     }
 
     private static OpOpN resolveOpOpN(String opName) {
-        switch (opName.substring(2, opName.length() - 1)) {
-        case "printf":
-            return OpOpN.PRINTF;
-        case "cbind":
-            return OpOpN.CBIND;
-        case "rbind":
-            return OpOpN.RBIND;
-        default:
-            throw new IllegalArgumentException("[ERROR] Unrecognized OpOpN: " + opName);
+        opName = opName.substring(2, opName.length() - 1);
+        for (Hop.OpOpN op : Hop.OpOpN.class.getEnumConstants()) {
+            if (op.name().toLowerCase().equals(opName)) {
+                return op;
+            }
         }
+        throw new IllegalArgumentException("[ERROR] Unrecognized OpOpN: " + opName);
     }
 
     private static OpOp4 resolveOpOp4(String opName) {
-        switch (opName.substring(2, opName.length() - 1)) {
-        case "wsloss":
-            return OpOp4.WSLOSS;
-        case "wdivmm":
-            return OpOp4.WDIVMM;
-        case "wcemm":
-            return OpOp4.WCEMM;
-        case "wumm":
-            return OpOp4.WUMM;
-        case "wsigmoid":
-            return OpOp4.WSIGMOID;
-        default:
-            throw new IllegalArgumentException("[ERROR] Unrecognized OpOp4: " + opName);
+        opName = opName.substring(2, opName.length() - 1);
+        for (Hop.OpOp4 op : Hop.OpOp4.class.getEnumConstants()) {
+            if (op.name().toLowerCase().equals(opName)) {
+                return op;
+            }
         }
+        throw new IllegalArgumentException("[ERROR] Unrecognized OpOp4: " + opName);
     }
 
     private static OpOp3 resolveOpOp3(String opName) {
@@ -545,6 +559,11 @@ public class Wormhole {
         for (Map.Entry<Hop.OpOp3, String> e : Hop.HopsOpOp3String.entrySet()) {
             if (e.getValue().equals(opName)) {
                 return e.getKey();
+            }
+        }
+        for (Hop.OpOp3 op : Hop.OpOp3.class.getEnumConstants()) {
+            if (op.name().toLowerCase().equals(opName)) {
+                return op;
             }
         }
         throw new IllegalArgumentException("[ERROR] Unrecognized OpOp3: " + opName);
@@ -557,30 +576,27 @@ public class Wormhole {
                 return e.getKey();
             }
         }
+        for (Hop.OpOp2 op : Hop.OpOp2.class.getEnumConstants()) {
+            if (op.name().toLowerCase().equals(opName)) {
+                return op;
+            }
+        }
         throw new IllegalArgumentException("[ERROR] Unrecognized OpOp2: " + opName);
     }
 
     private static OpOp1 resolveOpOp1(String opName) {
-        switch (opName.substring(2, opName.length() - 1)) {
-        case "cast_as_scalar":
-            return Hop.OpOp1.CAST_AS_SCALAR;
-        case "cast_as_matrix":
-            return Hop.OpOp1.CAST_AS_MATRIX;
-        case "cast_as_int":
-            return Hop.OpOp1.CAST_AS_INT;
-        case "cast_as_double":
-            return Hop.OpOp1.CAST_AS_DOUBLE;
-        case "cast_as_boolean":
-            return Hop.OpOp1.CAST_AS_BOOLEAN;
-        default: {
-            for (Map.Entry<Hop.OpOp1, String> e : Hop.HopsOpOp12String.entrySet()) {
-                if (e.getValue().equals(opName)) {
-                    return e.getKey();
-                }
+        opName = opName.substring(2, opName.length() - 1);
+        for (Map.Entry<Hop.OpOp1, String> e : Hop.HopsOpOp12String.entrySet()) {
+            if (e.getValue().equals(opName)) {
+                return e.getKey();
             }
-            throw new IllegalArgumentException("[ERROR] Unrecognized OpOp1: " + opName);
         }
+        for (Hop.OpOp1 op : Hop.OpOp1.class.getEnumConstants()) {
+            if (op.name().toLowerCase().equals(opName)) {
+                return op;
+            }
         }
+        throw new IllegalArgumentException("[ERROR] Unrecognized OpOp1: " + opName);
     }
 
     private static ValueType resolveVT(String s) {
