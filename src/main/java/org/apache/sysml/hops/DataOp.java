@@ -510,6 +510,10 @@ public class DataOp extends Hop
 			//do nothing; dimensions updated via set output params
 		}
 	}
+
+	public HashMap<String, Integer> getParamIndexMap() {
+		return _paramIndexMap;
+	}
 		
 	
 	/**

@@ -210,6 +210,30 @@ public class ConfigurationManager
 	public static boolean isWormholeEnabled() {
 		return getDMLConfig().getBooleanValue(DMLConfig.WORMHOLE);
 	}
+
+	public static boolean isWormholeDeserializationLogEnabled() {
+		return getDMLConfig().getBooleanValue(DMLConfig.WORMHOLE_LOG_DES);
+	}
+
+	public static boolean isWormholeWarpStdLogEnabled() {
+		return getDMLConfig().getBooleanValue(DMLConfig.WORMHOLE_LOG_WARP_STD);
+	}
+
+	public static boolean isWormholeWarpErrLogEnabled() {
+		return getDMLConfig().getBooleanValue(DMLConfig.WORMHOLE_LOG_WARP_ERR);
+	}
+
+	public static boolean isWormholeCacheEnabled() {
+		return getDMLConfig().getBooleanValue(DMLConfig.WORMHOLE_CACHE);
+	}
+
+	public static String getWormholeFolder() {
+		return getDMLConfig().getTextValue(DMLConfig.WORMHOLE_FOLDER);
+	}
+
+	public static boolean useWormholeMetadata() {
+		return getDMLConfig().getBooleanValue(DMLConfig.WORMHOLE_META);
+	}
 	
 	///////////////////////////////////////
 	// Thread-local classes

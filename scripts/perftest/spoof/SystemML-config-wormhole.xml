@@ -25,7 +25,7 @@
    <sysml.scratch>scratch_space</sysml.scratch> 
 
    <!-- compiler optimization level, valid values: 0 | 1 | 2 | 3 | 4, default: 2 -->
-   <sysml.optlevel>2</sysml.optlevel>
+   <sysml.optlevel>0</sysml.optlevel>
 
    <!-- default number of reduce tasks per MR job, default: 2 x number of nodes -->
    <sysml.numreducers>10</sysml.numreducers> 
@@ -97,4 +97,11 @@
    <sysml.spoof.use_script_fact>no</sysml.spoof.use_script_fact>
 
    <sysml.wormhole.enabled>true</sysml.wormhole.enabled>
+   <sysml.wormhole.enabled.log>true</sysml.wormhole.enabled.log>
+   <sysml.wormhole.enabled.warp.std>false</sysml.wormhole.enabled.warp.std>
+   <sysml.wormhole.enabled.warp.err>false</sysml.wormhole.enabled.warp.err>
+   <sysml.wormhole.enabled.cache>false</sysml.wormhole.enabled.cache>
+   <sysml.wormhole.enabled.folder>/tmp</sysml.wormhole.enabled.folder>
+   <sysml.wormhole.enabled.meta>false</sysml.wormhole.enabled.meta>
+
 </root>

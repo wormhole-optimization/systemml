@@ -327,6 +327,15 @@ public class Recompiler
 				rSetExecType( hopRoot, et );
 			Hop.resetVisitStatus(hops);
 		}
+
+		if (ConfigurationManager.isWormholeEnabled()) {
+			Hop.resetVisitStatus(hops);
+
+			Wormhole wormhole = new Wormhole();
+			hops = wormhole.optimize(hops);
+
+			Hop.resetVisitStatus(hops);
+		}
 		
 		// update statistics, rewrites, and mem estimates
 		if( updateStats ) {
@@ -360,12 +369,6 @@ public class Recompiler
 		if (ConfigurationManager.isSpoofEnabled()) {
 			Hop.resetVisitStatus(hops);
 			Spoof2Compiler.generateCodeFromHopDAGs(hops, true, !inplace);
-			Hop.resetVisitStatus(hops);
-		}
-
-		if (ConfigurationManager.isWormholeEnabled()) {
-			Hop.resetVisitStatus(hops);
-			hops = Wormhole.optimize(hops);
 			Hop.resetVisitStatus(hops);
 		}
 		
