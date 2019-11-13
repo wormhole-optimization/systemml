@@ -1,10 +1,11 @@
-#kmeans
-#linregcg
-#l2svm
+kmeans
+linregcg
+l2svm
 #mlogreg
 #als-cg
 #autoencoder
 #als-cg-mod
 #pnmf
-als-cg-old
-als-cg-new
+#als-cg-old
+#als-cg-new
+#alpha-ori

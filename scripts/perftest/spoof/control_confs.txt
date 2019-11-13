@@ -6,8 +6,8 @@
 #default_spoof_best
 #default_spoof_no
 #default_spoof_script
-default_wormhole_no
 #nofuse
 #nofuse_spoof_best
 #nofuse_spoof_no
 #nofuse_spoof_script
+wormhole
