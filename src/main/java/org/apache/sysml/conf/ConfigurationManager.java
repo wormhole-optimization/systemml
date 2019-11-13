@@ -234,6 +234,10 @@ public class ConfigurationManager
 	public static boolean useWormholeMetadata() {
 		return getDMLConfig().getBooleanValue(DMLConfig.WORMHOLE_META);
 	}
+
+	public static boolean isWormholeManual() {
+		return getDMLConfig().getBooleanValue(DMLConfig.WORMHOLE_MANUAL);
+	}
 	
 	///////////////////////////////////////
 	// Thread-local classes

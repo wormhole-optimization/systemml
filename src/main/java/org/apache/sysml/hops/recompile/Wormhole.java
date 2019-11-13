@@ -63,6 +63,7 @@ public class Wormhole {
     private final boolean USE_MEGACACHE = ConfigurationManager.isWormholeCacheEnabled();
     private final String HOPS_FOLDER = ConfigurationManager.getWormholeFolder();
     private final boolean HOPS_META = ConfigurationManager.useWormholeMetadata();
+    private final boolean MANUAL_OPT = ConfigurationManager.isWormholeManual();
 
     /**
      * Optimize the HOP DAG via the wormhole optimizer
@@ -120,11 +121,12 @@ public class Wormhole {
         }
 
         // Recover the optimized plan
-        ArrayList<Hop> optimized = deserialize(megaCache, "/tmp/hop_test");
-        // ArrayList<Hop> optimized = deserialize(megaCache, file + "_opt");
-        
-        // Serialize the recovered/optimized plan 
-        // serialize(optimized, megaCache, file + "_serdeser");
+        ArrayList<Hop> optimized;
+        if (MANUAL_OPT) {
+            optimized = deserialize(megaCache, "/tmp/hop_test");
+        } else {
+            optimized = deserialize(megaCache, file + "_opt");
+        }
 
         return optimized;
     }

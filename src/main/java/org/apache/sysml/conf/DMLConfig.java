@@ -86,6 +86,7 @@ public class DMLConfig
 	public static final String WORMHOLE_CACHE       = "sysml.wormhole.enabled.cache"; //boolean
 	public static final String WORMHOLE_FOLDER      = "sysml.wormhole.enabled.folder"; //String
 	public static final String WORMHOLE_META        = "sysml.wormhole.enabled.meta"; //boolean
+	public static final String WORMHOLE_MANUAL      = "sysml.wormhole.enabled.manual"; //boolean
     public static final String SPOOF_USE_SCRIPT_FACT= "sysml.spoof.use_script_fact"; //string: no, script, best -- whether to use the script factorization. Best means take the best costing among using it or not using it.
 	public static final String CODEGEN              = "sysml.codegen.enabled"; //boolean
 	public static final String CODEGEN_COMPILER     = "sysml.codegen.compiler"; //see SpoofCompiler.CompilerType
@@ -146,6 +147,7 @@ public class DMLConfig
 		_defaultVals.put(WORMHOLE_CACHE,         "false" );
 		_defaultVals.put(WORMHOLE_FOLDER,        "/tmp" );
 		_defaultVals.put(WORMHOLE_META,          "false");
+		_defaultVals.put(WORMHOLE_MANUAL,        "false");
 		_defaultVals.put(SPOOF_USE_SCRIPT_FACT,  "best" );
 		_defaultVals.put(CODEGEN,                "false" );
 		_defaultVals.put(CODEGEN_COMPILER,       CompilerType.AUTO.name() );
