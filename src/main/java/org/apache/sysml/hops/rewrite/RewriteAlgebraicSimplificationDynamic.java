@@ -175,7 +175,7 @@ public class RewriteAlgebraicSimplificationDynamic extends HopRewriteRule
 			hi = pushdownBinaryOperationOnDiag(hop, hi, i);   //e.g., diag(X)*7 -> diag(X*7); if col vector
 			hi = pushdownSumOnAdditiveBinary(hop, hi, i);     //e.g., sum(A+B) -> sum(A)+sum(B); if dims(A)==dims(B)
 			if(OptimizerUtils.ALLOW_OPERATOR_FUSION) {
-				//hi = simplifyWeightedSquaredLoss(hop, hi, i);     //e.g., sum(W * (X - U %*% t(V)) ^ 2) -> wsl(X, U, t(V), W, true), 
+				hi = simplifyWeightedSquaredLoss(hop, hi, i);     //e.g., sum(W * (X - U %*% t(V)) ^ 2) -> wsl(X, U, t(V), W, true), 
 				hi = simplifyWeightedSigmoidMMChains(hop, hi, i); //e.g., W * sigmoid(Y%*%t(X)) -> wsigmoid(W, Y, t(X), type)
 				hi = simplifyWeightedDivMM(hop, hi, i);           //e.g., t(U) %*% (X/(U%*%t(V))) -> wdivmm(X, U, t(V), left)
 				hi = simplifyWeightedCrossEntropy(hop, hi, i);    //e.g., sum(X*log(U%*%t(V))) -> wcemm(X, U, t(V))
