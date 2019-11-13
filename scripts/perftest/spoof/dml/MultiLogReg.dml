@@ -80,10 +80,10 @@ maxinneriter = ifdef ($mii, 0);      # $mii  = 0;
 
 tol = as.double (tol); 
 
-print ("BEGIN MULTINOMIAL LOGISTIC REGRESSION SCRIPT");
-print ("Reading X...");
+#print ("BEGIN MULTINOMIAL LOGISTIC REGRESSION SCRIPT");
+#print ("Reading X...");
 X = read (fileX);
-print ("Reading Y...");
+#print ("Reading Y...");
 Y_vec = read (fileY);
 
 eta0 = 0.0001;
@@ -174,7 +174,7 @@ iter = 1;
 # boolean for convergence check
 converge = (norm_Grad < tol) | (iter > maxiter);
 
-print ("-- Initially:  Objective = " + obj + ",  Gradient Norm = " + norm_Grad + ",  Trust Delta = " + delta);
+#print ("-- Initially:  Objective = " + obj + ",  Gradient Norm = " + norm_Grad + ",  Trust Delta = " + delta);
 
 if (fileLog != " ") {
     log_str = "OBJECTIVE,0," + obj;
@@ -311,14 +311,13 @@ while (! converge)
 		}
 	} 
 	
-	if (is_trust_boundary_reached == 1)
-	{
-	    print ("-- Outer Iteration " + iter + ": Had " + (inneriter - 1) + " CG iterations, trust bound REACHED");
-	} else {
-	    print ("-- Outer Iteration " + iter + ": Had " + (inneriter - 1) + " CG iterations");
-	}
-	print ("   -- Obj.Reduction:  Actual = " + actred + ",  Predicted = " + qk + 
-	       "  (A/P: " + (round (10000.0 * rho) / 10000.0) + "),  Trust Delta = " + delta);
+	#if (is_trust_boundary_reached == 1)
+	#{
+	#    print ("-- Outer Iteration " + iter + ": Had " + (inneriter - 1) + " CG iterations, trust bound REACHED");
+	#} else {
+	#    print ("-- Outer Iteration " + iter + ": Had " + (inneriter - 1) + " CG iterations");
+	#}
+	#print ("   -- Obj.Reduction:  Actual = " + actred + ",  Predicted = " + qk + "  (A/P: " + (round (10000.0 * rho) / 10000.0) + "),  Trust Delta = " + delta);
 	       
 	if (is_rho_accepted)
 	{
@@ -331,7 +330,7 @@ while (! converge)
 		Grad = Grad + lambda * B;
 		norm_Grad = sqrt (sum (Grad ^ 2));
 		obj = obj_new;
-	    print ("   -- New Objective = " + obj + ",  Beta Change Norm = " + snorm + ",  Gradient Norm = " + norm_Grad);
+	    #print ("   -- New Objective = " + obj + ",  Beta Change Norm = " + snorm + ",  Gradient Norm = " + norm_Grad);
         if (fileLog != " ") {
             log_str = append (log_str, "IS_POINT_UPDATED," + iter + ",1");
             log_str = append (log_str, "GRADIENT_NORM,"    + iter + "," + norm_Grad);
@@ -349,7 +348,9 @@ while (! converge)
 	iter = iter + 1;
 	converge = ((norm_Grad < (tol * norm_Grad_initial)) | (iter > maxiter) |
 	    ((is_trust_boundary_reached == 0) & (abs (actred) < (abs (obj) + abs (obj_new)) * 0.00000000000001)));
-    if (converge) { print ("Termination / Convergence condition satisfied."); } else { print (" "); }
+    if (converge) {
+		#print ("Termination / Convergence condition satisfied."); } else { print (" ");
+	}
 } 
 
 if (intercept_status == 2) {
@@ -358,9 +359,9 @@ if (intercept_status == 2) {
 } else {
     B_out = B;
 }
-write (B_out, fileB, format=fmtB);
+#write (B_out, fileB, format=fmtB);
 
-if (fileLog != " ") {
-    write (log_str, fileLog);
-}
+#if (fileLog != " ") {
+#    write (log_str, fileLog);
+#}
 

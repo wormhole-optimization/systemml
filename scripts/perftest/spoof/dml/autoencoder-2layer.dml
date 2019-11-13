@@ -180,7 +180,7 @@ upd_b4 = matrix(0, rows=nrow(b4), cols=ncol(b4))
 if( full_obj ){
       [full_H1, full_H1_prime, full_H2, full_H2_prime, full_H3, full_H3_prime, full_Yhat, full_Yhat_prime, full_E] = feedForward(X, W1, b1, W2, b2, W3, b3, W4, b4, X)
       full_o = obj(full_E)
-      print("EPOCHS=" + 0 + " OBJ (FULL DATA): " + full_o)
+      #print("EPOCHS=" + 0 + " OBJ (FULL DATA): " + full_o)
 }
 
 iter = 0
@@ -197,7 +197,7 @@ while( iter < max_iterations ){
       [W1_grad, b1_grad, W2_grad, b2_grad, W3_grad, b3_grad, W4_grad, b4_grad] = grad(X_batch, H1, H1_prime, H2, H2_prime, H3, H3_prime, Yhat_prime, E, W1, W2, W3, W4)
 
       o = obj(E)
-      print("epochs=%5.4f BATCH beg=%d end=%d obj=%f", (iter / num_iters_per_epoch), beg, end, o)
+      #print("epochs=%5.4f BATCH beg=%d end=%d obj=%f", (iter / num_iters_per_epoch), beg, end, o)
 
       #update
       local_step = step / nrow(X_batch)
@@ -228,21 +228,21 @@ while( iter < max_iterations ){
       	  [full_H1, full_H1_prime, full_H2, full_H2_prime, full_H3, full_H3_prime, full_Yhat, full_Yhat_prime, full_E] = feedForward(X, W1, b1, W2, b2, W3, b3, W4, b4, X)
           full_o = obj(full_E)
       	  epochs = iter %/% num_iters_per_epoch
-          print("EPOCHS=" + epochs + " iter=" + iter + " OBJ (FULL DATA)=" + full_o)
+          #print("EPOCHS=" + epochs + " iter=" + iter + " OBJ (FULL DATA)=" + full_o)
       }
 }
 
-write(W1, $W1_out, format=fmt)
-write(b1, $b1_out, format=fmt)
-write(W2, $W2_out, format=fmt)
-write(b2, $b2_out, format=fmt)
-write(W3, $W3_out, format=fmt)
-write(b3, $b3_out, format=fmt)
-write(W4, $W4_out, format=fmt)
-write(b4, $b4_out, format=fmt)
+#write(W1, $W1_out, format=fmt)
+#write(b1, $b1_out, format=fmt)
+#write(W2, $W2_out, format=fmt)
+#write(b2, $b2_out, format=fmt)
+#write(W3, $W3_out, format=fmt)
+#write(b3, $b3_out, format=fmt)
+#write(W4, $W4_out, format=fmt)
+#write(b4, $b4_out, format=fmt)
 
 if( hfile != " " ){
       [full_H1, full_H1_prime, full_H2, full_H2_prime, full_H3, full_H3_prime, full_Yhat, full_Yhat_prime, full_E] = feedForward(X, W1, b1, W2, b2, W3, b3, W4, b4, X)
       reordered_H = t(permut) %*% full_H2
-      write(reordered_H, hfile, format=fmt)
+      #write(reordered_H, hfile, format=fmt)
 }

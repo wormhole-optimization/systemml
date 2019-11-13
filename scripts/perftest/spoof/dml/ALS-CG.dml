@@ -79,12 +79,12 @@ W = (X != 0);
 row_nonzeros = matrix(0,rows=1,cols=1);
 col_nonzeros = matrix(0,rows=1,cols=1);
 if( reg == "L2" ) {
-  print ("BEGIN ALS-CG SCRIPT WITH NONZERO SQUARED LOSS + L2 WITH LAMBDA - " + lambda);
+  #print ("BEGIN ALS-CG SCRIPT WITH NONZERO SQUARED LOSS + L2 WITH LAMBDA - " + lambda);
   row_nonzeros = matrix(1, nrow(W), 1);
   col_nonzeros = matrix(1, ncol(W), 1);
 } 
 else if( reg == "wL2" ) {
-  print ("BEGIN ALS-CG SCRIPT WITH NONZERO SQUARED LOSS + WEIGHTED L2 WITH LAMBDA - " + lambda);
+  #print ("BEGIN ALS-CG SCRIPT WITH NONZERO SQUARED LOSS + WEIGHTED L2 WITH LAMBDA - " + lambda);
   row_nonzeros = rowSums(W);
   col_nonzeros = t(colSums(W));
 } 
@@ -106,7 +106,7 @@ loss_init = 0.0; # only used if check is TRUE
 if( check ) {
   loss_init = 0.5 * sum( (X != 0) * (U %*% t(V) - X) ^ 2);
   loss_init = loss_init + 0.5 * lambda * (sum (U ^ 2 * row_nonzeros) + sum (V ^ 2 * col_nonzeros));
-  print ("-----   Initial train loss: " + loss_init + " -----");
+  #print ("-----   Initial train loss: " + loss_init + " -----");
 }
 
 it = 0;
@@ -156,7 +156,7 @@ while( as.integer(it/2) < max_iter & ! converged )
     loss_cur = loss_cur + 0.5 * lambda * (sum (U ^ 2 * row_nonzeros) + sum (V ^ 2 * col_nonzeros));
 	
     loss_dec = (loss_init - loss_cur) / loss_init;
-    print ("Train loss at iteration (" + as.integer(it/2) + "): " + loss_cur + " loss-dec " + loss_dec);
+    #print ("Train loss at iteration (" + as.integer(it/2) + "): " + loss_cur + " loss-dec " + loss_dec);
     #if( loss_dec >= 0 & loss_dec < thr | loss_init == 0 ) {
     #  print ("----- ALS-CG converged after " + as.integer(it/2) + " iterations!");
     #  converged = TRUE;
@@ -165,15 +165,15 @@ while( as.integer(it/2) < max_iter & ! converged )
   }
 }
 
-if( check ) {
-  print ("----- Final train loss: " + loss_init + " -----");
-}
+#if( check ) {
+#  print ("----- Final train loss: " + loss_init + " -----");
+#}
 
-if( !converged ) {
-  print ("Max iteration achieved but not converged!");
-}
+#if( !converged ) {
+#  print ("Max iteration achieved but not converged!");
+#}
 
 V = t(V);
-write (U, fileU, format=fmtO);
-write (V, fileV, format=fmtO);
+#write (U, fileU, format=fmtO);
+#write (V, fileV, format=fmtO);
  

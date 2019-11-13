@@ -114,7 +114,7 @@ g_old = t(X) %*% Y
 s = g_old
 
 Xw = matrix(0, rows=nrow(X), cols=1)
-debug_str = "# Iter, Obj"
+#debug_str = "# Iter, Obj"
 iter = 0
 continue = TRUE
 while(continue & iter < maxiterations)  {
@@ -147,8 +147,8 @@ while(continue & iter < maxiterations)  {
   obj = 0.5 * sum(out * out) + lambda/2 * sum(w * w)
   g_new = t(X) %*% (out * Y) - lambda * w
 
-  print("ITER " + iter + ": OBJ=" + obj)
-  debug_str = append(debug_str, iter + "," + obj)
+  #print("ITER " + iter + ": OBJ=" + obj)
+  #debug_str = append(debug_str, iter + "," + obj)
 
   tmp = sum(s * g_old)
 
@@ -169,7 +169,7 @@ extra_model_params[3,1] = intercept
 extra_model_params[4,1] = dimensions
 
 w = t(cbind(t(w), t(extra_model_params)))
-write(w, $model, format=cmdLine_fmt)
+#write(w, $model, format=cmdLine_fmt)
 
 #logFile = $Log
 #if(logFile != " ") {

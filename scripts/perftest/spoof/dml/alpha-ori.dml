@@ -30,5 +30,5 @@ alpha = 6.14 / sum (B * ((D * (B %*% t(A))) %*% A + 0.001 * B * C));
 
 while(FALSE) {}
 
-write(alpha, $out, format="text")
+alpha = -1 * alpha
 
