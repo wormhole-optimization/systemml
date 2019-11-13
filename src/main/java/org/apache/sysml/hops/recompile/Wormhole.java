@@ -226,7 +226,7 @@ public class Wormhole {
                 childrenID.add(Long.valueOf(idString));
             }
         }
-        List<Hop> inp = new ArrayList<Hop>();
+        ArrayList<Hop> inp = new ArrayList<Hop>();
         for (long id : childrenID) {
             inp.add(hops.get(id));
         }
@@ -285,7 +285,7 @@ public class Wormhole {
         } else if (opName.startsWith("m(") && opName.endsWith(")")) {
             h = new NaryOp(inp.get(0).getName(), dt, vt, resolveOpOpN(opName), inp.toArray(new Hop[inp.size()]));
         } else if (opName.startsWith("r(") && opName.endsWith(")")) {
-            h = new ReorgOp(inp.get(0).getName(), dt, vt, resolveReOrgOp(opName), inp.get(0));
+            h = new ReorgOp(inp.get(0).getName(), dt, vt, resolveReOrgOp(opName), inp);
         } else if (opName.startsWith("dg(") && opName.endsWith(")")) {
             h = new DataGenOp(resolveDataGenMethod(opName), new DataIdentifier("dg"),
                 resolveInputParamMap(attributes[10], inp));
@@ -313,8 +313,9 @@ public class Wormhole {
             h = new AggBinaryOp(inp.get(0).getName(), dt, vt, agg._2(), agg._1(), inp.get(0), inp.get(1));
         } else if (opName.startsWith("PRead")) {
             // DataOp
+            // TODO PERSISTENTREAD
             // h = new DataOp(remainder, dt, vt, DataOpTypes.PERSISTENTREAD, resolveInputParamMap(attributes[10], inp));
-            h = new DataOp(remainder, dt, vt, DataOpTypes.PERSISTENTREAD, remainder, dim1, dim2, nnz, rowsInBlock, colsInBlock);
+            h = new DataOp(remainder, dt, vt, DataOpTypes.TRANSIENTREAD, remainder, dim1, dim2, nnz, rowsInBlock, colsInBlock);
         } else if (opName.startsWith("PWrite")) {
             // DataOp
             // TODO PERSISTENTWRITE
