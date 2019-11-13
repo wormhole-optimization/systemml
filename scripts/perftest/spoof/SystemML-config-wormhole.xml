@@ -103,5 +103,6 @@
    <sysml.wormhole.enabled.cache>false</sysml.wormhole.enabled.cache>
    <sysml.wormhole.enabled.folder>/tmp</sysml.wormhole.enabled.folder>
    <sysml.wormhole.enabled.meta>false</sysml.wormhole.enabled.meta>
+   <sysml.wormhole.enabled.manual>false</sysml.wormhole.enabled.manual>
 
 </root>
