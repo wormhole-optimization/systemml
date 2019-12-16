@@ -329,6 +329,7 @@ public class Recompiler
 		}
 
 		if (ConfigurationManager.isWormholeEnabled()) {
+			System.out.println("WORMHOLE OPTIMIZATION STARTING");
 			Hop.resetVisitStatus(hops);
 
 			Wormhole wormhole = new Wormhole();
