@@ -140,11 +140,11 @@ public class DMLConfig
 		_defaultVals.put(CP_PARALLEL_IO,         "true" );
 		_defaultVals.put(COMPRESSED_LINALG,      Compression.CompressConfig.AUTO.name() );
 		_defaultVals.put(SPOOF,                  "false" );
-		_defaultVals.put(WORMHOLE,               "false" );
+		_defaultVals.put(WORMHOLE,               "true" );
 		_defaultVals.put(WORMHOLE_LOG_DES,       "false" );
 		_defaultVals.put(WORMHOLE_LOG_WARP_STD,  "false" );
 		_defaultVals.put(WORMHOLE_LOG_WARP_ERR,  "false" );
-		_defaultVals.put(WORMHOLE_CACHE,         "false" );
+		_defaultVals.put(WORMHOLE_CACHE,         "true" );
 		_defaultVals.put(WORMHOLE_FOLDER,        "/tmp" );
 		_defaultVals.put(WORMHOLE_META,          "false");
 		_defaultVals.put(WORMHOLE_MANUAL,        "false");
